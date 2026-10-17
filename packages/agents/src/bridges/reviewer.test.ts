@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
+import { createFolioReviewerPageSource } from "@stll/folio-core/reviewer-page-source";
 
 import { executeFolioToolCall } from "../execute";
 import { FOLIO_AGENT_TOOL_NAMES } from "../types";
@@ -74,5 +75,23 @@ describe("createReviewerBridge revisionStamp", () => {
     const [comment] = reviewer.getComments();
     expect(comment?.date).toBe(revisionStamp.date);
     expect(comment?.replies.map(({ date }) => date)).toEqual([revisionStamp.date]);
+  });
+});
+
+describe("createReviewerBridge page source", () => {
+  test("attaches headless page capabilities only when supplied", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx("Page text"));
+    const unsupported = createReviewerBridge(reviewer);
+    expect(unsupported.getPageCount).toBeUndefined();
+    expect(unsupported.getPageText).toBeUndefined();
+    expect(unsupported.getTargetPage).toBeUndefined();
+
+    const pageSource = createFolioReviewerPageSource(reviewer);
+    expect(pageSource).not.toBeNull();
+    if (!pageSource) return;
+    const bridge = createReviewerBridge(reviewer, { pageSource });
+    expect(bridge.getPageCount?.()).toBe(1);
+    expect(bridge.getPageText?.(1)).toContain("Page text");
+    expect(bridge.showInDocument).toBeUndefined();
   });
 });

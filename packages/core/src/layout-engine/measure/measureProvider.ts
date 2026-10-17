@@ -44,6 +44,9 @@ let activeMeasureProvider: MeasureProvider = throwingMeasureProvider;
 
 export const getMeasureProvider = (): MeasureProvider => activeMeasureProvider;
 
+/** Whether a real provider is installed, so callers can omit measuring features instead of panicking. */
+export const hasMeasureProvider = (): boolean => activeMeasureProvider !== throwingMeasureProvider;
+
 export const setMeasureProvider = (provider: MeasureProvider): void => {
   activeMeasureProvider = provider;
 };

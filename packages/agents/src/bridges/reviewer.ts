@@ -5,6 +5,7 @@ import type {
   FolioReviewComment,
   FolioReviewCommentReply,
 } from "@stll/folio-core/server";
+import type { FolioHeadlessPageSource } from "@stll/folio-core/reviewer-page-source";
 
 import type { FolioAgentBridge } from "../bridge";
 import { registerDecodedCommentHandlers, registerOperationSession } from "../bridge";
@@ -23,6 +24,8 @@ export type CreateReviewerBridgeOptions = {
    * would allocate from the same seed. Omit to use the wall clock.
    */
   revisionStamp?: FolioRevisionStamp;
+  /** Optional pagination over the reviewer's current headless document state. */
+  pageSource?: FolioHeadlessPageSource;
 };
 
 const toAgentCommentReply = (reply: FolioReviewCommentReply): FolioAgentCommentReply => ({
@@ -43,11 +46,9 @@ const toAgentComment = (comment: FolioReviewComment): FolioAgentComment => ({
 
 /**
  * Build a {@link FolioAgentBridge} over a headless {@link FolioDocxReviewer}
- * (`@stll/folio-core/server`). No optional capability members are
- * implemented: a headless document has no live page/selection/scroll
- * surface, so `read_page`, `read_selection`, and `scroll_to_block` report an
- * unsupported-capability error via {@link executeFolioToolCall} on this
- * bridge.
+ * (`@stll/folio-core/server`). Page capabilities are attached only when a
+ * caller supplies a headless page source; selection and scrolling remain
+ * live-editor-only capabilities.
  */
 export const createReviewerBridge = (
   reviewer: FolioDocxReviewer,
@@ -80,6 +81,12 @@ export const createReviewerBridge = (
       return decoded !== null && reviewer.resolveComment(decoded.raw, { resolved });
     },
   };
+  const { pageSource } = options;
+  if (pageSource) {
+    bridge.getPageCount = () => pageSource.pageCount();
+    bridge.getPageText = (page) => pageSource.pageText(page);
+    bridge.getTargetPage = (target) => pageSource.targetPage(target);
+  }
   registerOperationSession(bridge, reviewer);
   return registerDecodedCommentHandlers(bridge, {
     replyToComment: ({ numeric }, text) =>

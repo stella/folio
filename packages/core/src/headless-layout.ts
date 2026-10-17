@@ -232,6 +232,43 @@ const buildFlowOptions = (document: Document, pageContentHeight: number): ToFlow
   return options;
 };
 
+/**
+ * Paginate an already projected main story. This is the synchronous seam used
+ * by consumers which own a current ProseMirror document (notably the headless
+ * reviewer), avoiding a serialize/parse round trip after every edit.
+ */
+export const layoutCurrentProseDocHeadless = (
+  document: Document,
+  proseDoc: PMNode,
+  options: HeadlessLayoutOptions = {},
+): Layout => {
+  // Probe before doing any conversion so capability composition can omit page
+  // methods when the process has no measurement backend.
+  getMeasureProvider().getFontMetrics({ fontSize: 11 });
+  const sections = document.package.document.sections ?? [];
+  const firstSection = sections.at(0)?.properties;
+  const finalSection = sections.at(-1)?.properties ?? firstSection;
+  const pageSize = getPageSize(firstSection);
+  const margins = getMargins(firstSection);
+  const pageContentHeight = pageSize.h - margins.top - margins.bottom;
+  const contentWidth = pageSize.w - margins.left - margins.right;
+  const blocks = toFlowBlocks(proseDoc, buildFlowOptions(document, pageContentHeight));
+  const measures = measureBlocks(blocks, contentWidth);
+  return layoutDocument(blocks, measures, {
+    pageSize,
+    margins,
+    pageNumbering: getPageNumbering(firstSection),
+    finalPageSize: getPageSize(finalSection),
+    finalMargins: getMargins(finalSection),
+    finalPageNumbering: getPageNumbering(finalSection),
+    sectionVerticalAlignments: sections.map(({ properties }) => properties.verticalAlign),
+    pageGap: options.pageGap ?? 0,
+    titlePage: firstSection?.titlePg === true,
+    evenAndOddHeaders: document.package.settings?.evenAndOddHeaders === true,
+    mirrorMargins: readsMirrorMargins(document.package.settings),
+  });
+};
+
 const readsMirrorMargins = (settings: Document["package"]["settings"]): boolean =>
   settings?.mirrorMargins === true;
 
