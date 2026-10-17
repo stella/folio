@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { normalizeLineText } from "../textNorm";
+import { normalizeLineText, textSimilarity } from "../textNorm";
 
 describe("normalizeLineText", () => {
   test("collapses long dot leaders for stable TOC matching", () => {
@@ -69,5 +69,87 @@ describe("normalizeLineText", () => {
 
   test("folds CJK radical aliases emitted by PDF font maps", () => {
     expect(normalizeLineText("⺟甲⼄丙丁")).toBe("母甲乙丙丁");
+  });
+});
+
+const referenceDistance = (a: readonly string[], b: readonly string[]): number => {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      current[j] = Math.min(
+        (previous[j] ?? 0) + 1,
+        (current[j - 1] ?? 0) + 1,
+        (previous[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length] ?? 0;
+};
+
+describe("textSimilarity", () => {
+  test("preserves normalized Levenshtein scores across ASCII and BMP inputs", () => {
+    const fragments = [
+      "",
+      "a",
+      "b",
+      "ab",
+      "ba",
+      "Novák",
+      "Nováka",
+      "Novak",
+      "novák",
+      ".+[]",
+      "é",
+      "e\u0301",
+    ];
+    for (const a of fragments) {
+      for (const b of fragments) {
+        for (const left of [a, a + a]) {
+          const maxLength = Math.max(left.length, b.length);
+          expect(textSimilarity(left, b)).toBe(
+            maxLength === 0 ? 1 : 1 - referenceDistance(left.split(""), b.split("")) / maxLength,
+          );
+        }
+      }
+    }
+  });
+
+  test("uses a scalar distance and denominator across generated astral pairs", () => {
+    const fragments = [
+      "",
+      "a",
+      "😀",
+      "😃",
+      "a😀",
+      "😀a",
+      "𞤀",
+      "e\u0301",
+      "é",
+      "\ud800",
+      "\udc00",
+      "\ufffd",
+    ];
+    for (const a of fragments) {
+      for (const b of fragments) {
+        const left = Array.from((a + b).toWellFormed());
+        const right = Array.from((b + a).toWellFormed());
+        const maxLength = Math.max(left.length, right.length);
+        expect(textSimilarity(a + b, b + a)).toBe(
+          maxLength === 0 ? 1 : 1 - referenceDistance(left, right) / maxLength,
+        );
+      }
+    }
+  });
+
+  test("pins astral edit and denominator units", () => {
+    expect(textSimilarity("😀", "😃")).toBe(0);
+    expect(textSimilarity("a😀", "a😃")).toBe(0.5);
+    expect(textSimilarity("😀", "")).toBe(0);
+    expect(textSimilarity("😀", "ab")).toBe(0);
+    expect(textSimilarity("😀a", "a")).toBe(0.5);
+    expect(textSimilarity("\ud800", "\udc00")).toBe(1);
+    expect(textSimilarity("\ud800a", "\ufffdb")).toBe(0.5);
   });
 });

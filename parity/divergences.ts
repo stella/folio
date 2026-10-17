@@ -11,6 +11,7 @@ import path from "node:path";
 
 import { isReferenceRendererId } from "./referenceRenderer";
 import { normalizeLineText } from "./textNorm";
+import { createLiteralSearch } from "./literalSearch";
 import type { CorpusReport, Divergence, DivergenceKind } from "./types";
 
 type Flags = {
@@ -179,7 +180,9 @@ const main = async (): Promise<void> => {
   const flags = parseArgs(process.argv.slice(2));
   const reportPath = path.resolve(flags.report!);
   const report = await readReport(reportPath);
-  const textNeedle = flags.text ? normalizeLineText(flags.text).toLocaleLowerCase() : undefined;
+  const matchesText = flags.text
+    ? createLiteralSearch(normalizeLineText(flags.text).toLocaleLowerCase())
+    : undefined;
 
   const rows = report.results
     .filter((result) => matchesDoc(result.file, flags.doc))
@@ -198,8 +201,7 @@ const main = async (): Promise<void> => {
     .filter((row) => flags.kind === undefined || row.kind === flags.kind)
     .filter(
       (row) =>
-        textNeedle === undefined ||
-        normalizeLineText(row.text).toLocaleLowerCase().includes(textNeedle),
+        matchesText === undefined || matchesText(normalizeLineText(row.text).toLocaleLowerCase()),
     )
     .toSorted(
       (a, b) =>

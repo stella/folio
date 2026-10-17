@@ -6,6 +6,7 @@ import type {
   TableCell,
 } from "../packages/core/src/layout-engine/types";
 import { normalizeLineText } from "./textNorm";
+import { createLiteralSearch } from "./literalSearch";
 
 type TracePathSegment = number | "blocks" | "cells" | "content" | "rows";
 
@@ -162,7 +163,7 @@ const summarizeCell = ({ cell, cellIndex, blockText }: SummarizeCellOptions): Ta
 });
 
 type TraceContext = {
-  needle: string;
+  matchesText: ReturnType<typeof createLiteralSearch>;
   limit: number;
   matches: FlowMatch[];
   blockText: BlockTextReader;
@@ -187,7 +188,7 @@ const visitBlocks = ({ blocks, path, context }: VisitBlocksOptions): void => {
     const blockPath = [...path, blockIndex];
     if (block.kind === "paragraph") {
       const text = context.blockText(block);
-      if (normalizedSearchText(text).includes(context.needle)) {
+      if (context.matchesText(normalizedSearchText(text))) {
         context.matches.push({
           type: "paragraph",
           path: blockPath,
@@ -222,7 +223,7 @@ const visitTable = ({ table, path, context }: VisitTableOptions): void => {
     }
 
     const text = row.cells.map((cell) => cell.blocks.map(context.blockText).join(" ")).join(" ");
-    if (normalizedSearchText(text).includes(context.needle)) {
+    if (context.matchesText(normalizedSearchText(text))) {
       context.matches.push({
         type: "tableRow",
         path: [...path, "rows", rowIndex],
@@ -258,7 +259,7 @@ export const traceFlowBlocks = ({ blocks, query, limit }: TraceFlowBlocksOptions
     blocks,
     path: ["blocks"],
     context: {
-      needle: normalizedSearchText(query),
+      matchesText: createLiteralSearch(normalizedSearchText(query)),
       limit,
       matches,
       blockText: createBlockTextReader(),

@@ -12,6 +12,7 @@ import { compareGeoms, mergeVisualRows } from "./compare";
 import { createFolioExtractor } from "./folioExtract";
 import { getReferenceRenderer, isReferenceRendererId } from "./referenceRenderer";
 import { normalizeLineText, textSimilarity } from "./textNorm";
+import { createCandidateContainment } from "./literalSearch";
 import { REVIEW_VIEWS } from "./types";
 import type { DocGeom, LineBox, PageGeom, ReferenceRendererId, ReviewView } from "./types";
 import { getReferenceLocalFonts } from "./wordFonts";
@@ -141,9 +142,13 @@ const pageInfo = (geom: DocGeom, pageNumber: number): PageGeom | undefined =>
 
 const candidatesFor = (lines: LineBox[], text: string, limit: number): Candidate[] => {
   const needle = normalizeLineText(text);
+  const isContained = createCandidateContainment(
+    needle,
+    lines.map(({ normText }) => normText),
+  );
   return lines
     .map((line, index) => {
-      const contains = line.normText.includes(needle) || needle.includes(line.normText);
+      const contains = isContained(line.normText);
       const similarity = contains ? 1 : textSimilarity(needle, line.normText);
       return { rank: 0, similarity, lineIndex: index + 1, line };
     })

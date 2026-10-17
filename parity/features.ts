@@ -19,6 +19,7 @@
 
 import { fontFamiliesMatch, normalizeFontName, observedSatisfiesRequested } from "./fontNames";
 import { normalizeLineText, textSimilarity } from "./textNorm";
+import { createCandidateContainment } from "./literalSearch";
 import type {
   AttributedDivergence,
   Cluster,
@@ -839,10 +840,14 @@ const findMatchingParagraph = (
   const tocFieldParagraph = findTocFieldParagraph(normalizedSearchText, candidates);
   if (tocFieldParagraph) return tocFieldParagraph;
 
+  const isContained = createCandidateContainment(
+    normalizedSearchText,
+    candidates.map(({ normText }) => normText),
+  );
   const substringMatches = candidates.filter(({ normText }) => {
     const shorterLen = Math.min(normText.length, normalizedSearchText.length);
     if (shorterLen < MIN_MATCH_LEN) return false;
-    return normText.includes(normalizedSearchText) || normalizedSearchText.includes(normText);
+    return isContained(normText);
   });
   if (substringMatches.length > 0) {
     if (substringMatches.length === 1) return substringMatches[0]?.paragraph;
