@@ -23,21 +23,24 @@ import {
   type CanonicalCommit,
 } from "./canonicalSession";
 
-const setup = (text = "alpha beta") => {
-  const document = {
-    package: {
-      document: {
-        content: [
-          {
-            type: "paragraph",
-            paraId: "12345678",
-            content: [{ type: "run", content: [{ type: "text", text }] }],
+const setup = (source: string | Document = "alpha beta") => {
+  const document =
+    typeof source === "string"
+      ? ({
+          package: {
+            document: {
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "12345678",
+                  content: [{ type: "run", content: [{ type: "text", text: source }] }],
+                },
+                { type: "paragraph", paraId: "23456789", content: [] },
+              ],
+            },
           },
-          { type: "paragraph", paraId: "23456789", content: [] },
-        ],
-      },
-    },
-  } satisfies Document;
+        } satisfies Document)
+      : source;
   const created = createCanonicalSession(document);
   if (created.isErr()) return panic(created.error.message);
   const session = created.value;
@@ -62,6 +65,55 @@ const setup = (text = "alpha beta") => {
 };
 
 describe("canonical public operation batches", () => {
+  test("merge with next refuses at table container boundaries", () => {
+    const document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    {
+                      type: "tableCell",
+                      content: [
+                        {
+                          type: "paragraph",
+                          paraId: "12345678",
+                          content: [{ type: "run", content: [{ type: "text", text: "A" }] }],
+                        },
+                      ],
+                    },
+                    {
+                      type: "tableCell",
+                      content: [
+                        {
+                          type: "paragraph",
+                          paraId: "23456789",
+                          content: [{ type: "run", content: [{ type: "text", text: "B" }] }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            { type: "paragraph", paraId: "34567890", content: [] },
+          ],
+        },
+      },
+    } satisfies Document;
+    for (const blockId of ["12345678", "23456789"] as const) {
+      const editor = setup(document);
+      const result = editor.apply([{ id: "merge", type: "mergeBlockWithNext", blockId }]);
+      expect(result.applied).toEqual([]);
+      expect(result.issues).toMatchObject([{ operationId: "merge", reason: "missingBlock" }]);
+      expect(editor.session.version).toBe(0);
+    }
+  });
+
   test("generated mixed human and public histories undo through one journal", () => {
     assertProperty(
       fc.property(
@@ -120,7 +172,7 @@ describe("canonical public operation batches", () => {
     expect(refused.status).toBe("rejected");
     expect(
       refused.issues.find(({ operationId }) => operationId === "table")?.canonicalRefusal,
-    ).toEqual({ gap: "command-descriptors" });
+    ).toEqual({ gap: "publicOps.tableStructure" });
     expect(editor.session.document).toBe(before);
     expect(editor.state()).toBe(state);
     expect(editor.session.version).toBe(0);
@@ -295,7 +347,7 @@ test("read preconditions and session lifecycle cannot mutate the journal", () =>
     editor
       .apply([{ id: "table", type: "insertTable", blockId: "12345678", rows: [["cell"]] }])
       .issues.at(0)?.canonicalRefusal?.gap,
-  ).toBe("command-descriptors");
+  ).toBe("publicOps.tableStructure");
   const before = editor.session.document;
   editor.session.beginComposition();
   expect(

@@ -213,6 +213,7 @@ export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
 
 type ParagraphAddress = {
   blockId: string;
+  container: readonly BlockContent[];
   start: number;
   text: string;
   boundaries: readonly (readonly CanonicalInlineGap[])[];
@@ -343,9 +344,12 @@ class CanonicalProjection {
     return this.paragraphsById.get(blockId);
   }
 
-  nextParagraph(blockId: string): ParagraphAddress | undefined {
+  nextParagraphInContainer(blockId: string): ParagraphAddress | undefined {
     const index = this.paragraphs.findIndex((paragraph) => paragraph.blockId === blockId);
-    return index < 0 ? undefined : this.paragraphs.at(index + 1);
+    if (index < 0) return undefined;
+    const paragraph = this.paragraphs.at(index);
+    const next = this.paragraphs.at(index + 1);
+    return paragraph?.container === next?.container ? next : undefined;
   }
 }
 
@@ -505,11 +509,12 @@ const project = ({
     if (item.type === "commentReference" && !commentContext.rangedIds.has(item.id))
       commentContext.pointIds.add(item.id);
   });
-  const sources = new Map<string, Paragraph>();
+  const sources = new Map<string, { source: Paragraph; container: readonly BlockContent[] }>();
   const collectSources = (blocks: readonly BlockContent[]): void => {
     for (const block of blocks) {
       if (block.type === "paragraph") {
-        if (block.paraId !== undefined) sources.set(block.paraId, block);
+        if (block.paraId !== undefined)
+          sources.set(block.paraId, { source: block, container: blocks });
         continue;
       }
       if (block.type !== "table") continue;
@@ -525,8 +530,8 @@ const project = ({
     if (failure !== undefined) return;
     if (node.type.name !== "paragraph") return;
     const paraId = node.attrs["paraId"];
-    const source = typeof paraId === "string" ? sources.get(paraId) : undefined;
-    if (source === undefined) {
+    const located = typeof paraId === "string" ? sources.get(paraId) : undefined;
+    if (located === undefined) {
       failure = new CanonicalSessionError({
         gap: CANONICAL_GAP.storyContentProjection,
         reason: "refused",
@@ -534,6 +539,7 @@ const project = ({
       });
       return;
     }
+    const { source, container } = located;
     const inline = projectCanonicalInline({
       source,
       paragraph: node,
@@ -548,7 +554,14 @@ const project = ({
       });
       return;
     }
-    paragraphs.push({ blockId: source.paraId, start: offset + 1, ...inline.value, node, source });
+    paragraphs.push({
+      blockId: source.paraId,
+      container,
+      start: offset + 1,
+      ...inline.value,
+      node,
+      source,
+    });
     visitCommentMarkers([source], ({ item }) => {
       if (item.type === "commentRangeStart") commentContext.openIds.add(item.id);
       if (item.type === "commentRangeEnd") commentContext.openIds.delete(item.id);
@@ -1365,6 +1378,11 @@ class CanonicalSession {
     const first = firstGroup?.paragraphs.at(-1);
     const second = secondGroup?.paragraphs.at(0);
     if (!first?.paraId || !second?.paraId)
+      return noChange("There is no adjacent paragraph to join.");
+    if (
+      this.projection.paragraph(first.paraId)?.container !==
+      this.projection.paragraph(second.paraId)?.container
+    )
       return noChange("There is no adjacent paragraph to join.");
     if (!isCanonicalJoinBoundary(state, direction))
       return refuse("Join requires a caret at a paragraph boundary.");

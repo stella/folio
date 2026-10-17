@@ -22,6 +22,7 @@ export const CANONICAL_GAP = {
   publicComments: "publicOps.comments",
   publicSuggestedMode: "publicOps.suggestedMode",
   publicUnsupportedInline: "publicOps.unsupportedInline",
+  publicTableStructure: "publicOps.tableStructure",
   publicPendingParagraphMarkProperties: "publicOps.pendingParagraphMarkProperties",
   publicHeadlessSession: "publicOps.headlessSession",
   publicSecondaryStories: "publicOps.secondaryStories",
@@ -181,6 +182,13 @@ export const CANONICAL_CAPABILITIES = {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary: "Unsupported public payloads refuse with a typed compiler capability gap.",
+  },
+  [CANONICAL_GAP.publicTableStructure]: {
+    owner: "document-operations",
+    defaultSessionMutation: "pm-public-operations",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary: "Public table structure operations require canonical table operation descriptors.",
   },
   [CANONICAL_GAP.publicPendingParagraphMarkProperties]: {
     owner: "document-operations",

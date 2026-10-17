@@ -63,15 +63,15 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS = {
   deleteBlock: CANONICAL_GAP.publicUnsupportedInline,
   commentOnBlock: "compile",
   commentOnRange: "compile",
-  insertTable: CANONICAL_GAP.commands,
-  insertSignatureTable: CANONICAL_GAP.commands,
-  deleteTable: CANONICAL_GAP.commands,
-  insertTableRow: CANONICAL_GAP.commands,
-  deleteTableRow: CANONICAL_GAP.commands,
-  insertTableColumn: CANONICAL_GAP.commands,
-  deleteTableColumn: CANONICAL_GAP.commands,
-  mergeTableCells: CANONICAL_GAP.commands,
-  splitTableCell: CANONICAL_GAP.commands,
+  insertTable: CANONICAL_GAP.publicTableStructure,
+  insertSignatureTable: CANONICAL_GAP.publicTableStructure,
+  deleteTable: CANONICAL_GAP.publicTableStructure,
+  insertTableRow: CANONICAL_GAP.publicTableStructure,
+  deleteTableRow: CANONICAL_GAP.publicTableStructure,
+  insertTableColumn: CANONICAL_GAP.publicTableStructure,
+  deleteTableColumn: CANONICAL_GAP.publicTableStructure,
+  mergeTableCells: CANONICAL_GAP.publicTableStructure,
+  splitTableCell: CANONICAL_GAP.publicTableStructure,
 } as const satisfies Record<FolioDocumentOperation["type"], "compile" | CanonicalGap>;
 
 export type CanonicalPublicOperationOptions = Omit<
@@ -700,7 +700,7 @@ export class CanonicalPublicOperations {
         };
         break;
       case "mergeBlockWithNext": {
-        const next = projection.value.nextParagraph(blockId);
+        const next = projection.value.nextParagraphInContainer(blockId);
         if (next === undefined) return refusal("missingBlock");
         intent = { type: "joinParagraphs", story, blockId, nextBlockId: next.blockId };
         break;
