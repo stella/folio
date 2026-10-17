@@ -410,6 +410,13 @@
       "kind": "collisions",
       "generation": "targeted",
       "title": "suggested note styles share the saved Markdown projection"
+    },
+    {
+      "seed": 1101252668,
+      "steps": 16,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "text deletion retains point comments in surviving table cells"
     }
   ]
 }
