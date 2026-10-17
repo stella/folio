@@ -1419,10 +1419,44 @@ class CanonicalSession {
     if (ops.length === 0) return refuse("The operation batch is empty.");
     const selected = this.projection.selectionAt(state);
     if (selected.isErr()) return selected;
+    let preparedOps = ops;
+    if (
+      this.mode.type === "suggesting" &&
+      ops.every(
+        (op) => op.type === DOCUMENT_OP_TYPES.ADD_NOTE || op.type === DOCUMENT_OP_TYPES.REMOVE_NOTE,
+      )
+    ) {
+      const tracked: DocumentOp[] = [];
+      let document = this.currentDocument;
+      for (const op of ops) {
+        if (op.type !== DOCUMENT_OP_TYPES.ADD_NOTE && op.type !== DOCUMENT_OP_TYPES.REMOVE_NOTE)
+          panic("A note operation batch contains only note operations.");
+        const allocation = this.allocateIntentIds(document, {
+          type: "insertAtom",
+          from: op.at,
+          to: op.at,
+          atom: { type: "break", breakType: "line" },
+        });
+        const next = {
+          ...op,
+          revision: {
+            id: allocation.revisionId,
+            author: this.mode.author,
+            date: new Date().toISOString(),
+          },
+          newIds: allocation.newIds,
+        } as const;
+        const applied = applyDocumentOp(document, next);
+        if (applied.isErr()) return refuse(applied.error.message);
+        document = applied.value.document;
+        tracked.push(next);
+      }
+      preparedOps = tracked;
+    }
     const preDocument = this.currentDocument;
     return this.stage({
       state,
-      ops,
+      ops: preparedOps,
       selection: selected.value,
       origin: "input",
       onPublish: (inverse, version) => {
@@ -1430,7 +1464,7 @@ class CanonicalSession {
           entries: [
             {
               type: "applied",
-              ops,
+              ops: preparedOps,
               inverse,
               preSelection: selected.value,
               postSelection: selected.value,

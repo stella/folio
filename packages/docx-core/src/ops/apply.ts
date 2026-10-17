@@ -2187,6 +2187,8 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
         openStart: 0,
         openEnd: 0,
       },
+      ...(op.revision === undefined ? {} : { revision: op.revision }),
+      ...(op.newIds === undefined ? {} : { newIds: op.newIds }),
     });
     if (reference.isErr()) return reference;
     return storyLifecycleEdit(document, reference.value.document, op);
@@ -2214,6 +2216,8 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
     type: DOCUMENT_OP_TYPES.DELETE_RANGE,
     from: op.at,
     to: { ...op.at, offset: op.at.offset + 1 },
+    ...(op.revision === undefined ? {} : { revision: op.revision }),
+    ...(op.newIds === undefined ? {} : { newIds: op.newIds }),
   });
   if (removed.isErr()) return removed;
   const stillReferenced = documentStories(removed.value.document).some((story) => {
@@ -2221,10 +2225,13 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
       return false;
     return storyParagraphs(storyBody(removed.value.document, story)).some(({ paragraph }) =>
       leafSpans(paragraph.content).some(
-        ({ node }) =>
+        ({ node, ancestors }) =>
           ((kind === "footnote" && node.type === "footnoteRef") ||
             (kind === "endnote" && node.type === "endnoteRef")) &&
-          node.id === id,
+          node.id === id &&
+          !ancestors.some(
+            (ancestor) => ancestor.type === "deletion" && ancestor.info.id === op.revision?.id,
+          ),
       ),
     );
   });
@@ -2234,6 +2241,7 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       "Another reference still owns this note.",
     );
+  if (op.revision !== undefined) return storyLifecycleEdit(document, removed.value.document, op);
   const next =
     kind === "footnote"
       ? {
@@ -2359,6 +2367,8 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
       return op.revision;
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
@@ -2367,8 +2377,6 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
-    case DOCUMENT_OP_TYPES.ADD_NOTE:
-    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:

@@ -34,6 +34,7 @@ import {
   asParagraphContent,
   childNodes,
   type InlineNode,
+  leafSpans,
   mergeAlike,
   mergeLists,
   rebuildNode,
@@ -43,6 +44,8 @@ import { paragraphLength } from "./offsets";
 import { identitySlots, withInlineIdentity } from "./slots";
 import { canonicalDeferredGroups } from "./identity";
 import { joinParagraphSeam } from "./inline";
+import { storyLifecycleEdit } from "./storyLifecycle";
+import { documentStories } from "./stories";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import { isAddedRevision, isTrackedWrapper, reviewFieldsOf, withMarkFormatting } from "./review";
@@ -69,6 +72,49 @@ const refusal = (op: ResolveRevisionOp, reason: DocumentOpRefusal["reason"], mes
 /** Whether a decision removes the content of a tracked change of this kind. */
 const removesContent = (node: InlineNode, decision: RevisionDecision): boolean =>
   decision === REVISION_DECISIONS.ACCEPT ? !isAddedRevision(node) : isAddedRevision(node);
+
+type NoteReference = { kind: "footnote" | "endnote"; id: number };
+
+/** Note bodies whose selected reference revision is removed by this decision. */
+const removedNoteReferences = (
+  document: Document,
+  op: ResolveRevisionOp,
+  ids: ReadonlySet<number>,
+): NoteReference[] => {
+  const references = new Map<string, NoteReference>();
+  for (const { paragraph } of storyParagraphs(storyBody(document, op.story))) {
+    for (const { node, ancestors } of leafSpans(paragraph.content)) {
+      if (node.type !== "footnoteRef" && node.type !== "endnoteRef") continue;
+      if (
+        !ancestors.some(
+          (ancestor) =>
+            isTrackedWrapper(ancestor) &&
+            ids.has(ancestor.info.id) &&
+            removesContent(ancestor, op.decision),
+        )
+      )
+        continue;
+      const reference = {
+        kind: node.type === "footnoteRef" ? "footnote" : "endnote",
+        id: node.id,
+      } as const;
+      references.set(`${reference.kind}:${reference.id}`, reference);
+    }
+  }
+  return [...references.values()];
+};
+
+const hasNoteReference = (document: Document, reference: NoteReference): boolean =>
+  documentStories(document).some((story) =>
+    storyParagraphs(storyBody(document, story)).some(({ paragraph }) =>
+      leafSpans(paragraph.content).some(
+        ({ node }) =>
+          node.id === reference.id &&
+          ((reference.kind === "footnote" && node.type === "footnoteRef") ||
+            (reference.kind === "endnote" && node.type === "endnoteRef")),
+      ),
+    ),
+  );
 
 /** Whether a mark of this kind recorded a break being added. */
 const markWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
@@ -1238,6 +1284,7 @@ export const resolveRevision = (
     acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
     cutEdges: new WeakMap(),
   };
+  const noteReferences = removedNoteReferences(document, op, ids);
   const paragraphs = storyParagraphs(storyBody(document, op.story));
   const reachable = new Set([
     ...paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]),
@@ -1437,6 +1484,32 @@ export const resolveRevision = (
     }
     edits.push(joined.value);
     current = joined.value.document;
+  }
+  if (noteReferences.length > 0) {
+    const orphaned = noteReferences.filter((reference) => !hasNoteReference(current, reference));
+    if (orphaned.length > 0) {
+      const footnotes = new Set(
+        orphaned.filter(({ kind }) => kind === "footnote").map(({ id }) => id),
+      );
+      const endnotes = new Set(
+        orphaned.filter(({ kind }) => kind === "endnote").map(({ id }) => id),
+      );
+      const cleaned = {
+        ...current,
+        package: {
+          ...current.package,
+          ...(footnotes.size === 0
+            ? {}
+            : { footnotes: current.package.footnotes?.filter(({ id }) => !footnotes.has(id)) }),
+          ...(endnotes.size === 0
+            ? {}
+            : { endnotes: current.package.endnotes?.filter(({ id }) => !endnotes.has(id)) }),
+        },
+      };
+      const cleanup = storyLifecycleEdit(current, cleaned, op);
+      if (cleanup.isErr()) return cleanup;
+      edits.push(cleanup.value);
+    }
   }
   return Result.ok(combineEdits(document, edits));
 };

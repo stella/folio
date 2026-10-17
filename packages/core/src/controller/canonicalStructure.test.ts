@@ -123,6 +123,67 @@ test("section and note command batches have exact canonical inverses", () => {
   expect(session.document).toStrictEqual(original);
 });
 
+test("section break commands apply to every selected paragraph in both editor modes", () => {
+  for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Reviewer" }] as const) {
+    const session = createCanonicalSession(seed()).unwrap();
+    session.setMode(mode);
+    let state = EditorState.create({ schema, doc: session.projection.doc });
+    state = select(state, 2, state.doc.content.size - 2);
+    const original = session.document;
+    const command = singletonManager.requireCommand("insertSectionBreak")("nextPage");
+    const intents =
+      getCanonicalCommandIntents(command, state) ?? panic("Missing section descriptor.");
+    state = accept(session, state, prepareCanonicalCommands(session, state, intents).unwrap());
+    expect(
+      paragraphs(session).map(({ sectionProperties }) => sectionProperties?.sectionStart),
+    ).toEqual(["nextPage", "nextPage"]);
+    state = accept(session, state, session.prepareUndo(state).unwrap());
+    expect(session.document).toStrictEqual(original);
+  }
+});
+
+test("note-reference descriptors delete beside a caret or across a range with exact undo", () => {
+  for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Reviewer" }] as const) {
+    for (const selection of ["before", "after", "range"] as const) {
+      const session = createCanonicalSession(seed()).unwrap();
+      let state = select(EditorState.create({ schema, doc: session.projection.doc }), 3);
+      const insert = singletonManager.requireCommand("insertFootnote")(1, [
+        {
+          type: "paragraph",
+          content: [{ type: "run", content: [{ type: "text", text: "A note." }] }],
+        },
+      ]);
+      const insertIntents =
+        getCanonicalCommandIntents(insert, state) ?? panic("Missing note insertion descriptor.");
+      state = accept(
+        session,
+        state,
+        prepareCanonicalCommands(session, state, insertIntents).unwrap(),
+      );
+      const inserted = session.document;
+      session.setMode(mode);
+      let referenceFrom: number | undefined;
+      state.doc.descendants((node, position) => {
+        if (node.marks.some((mark) => mark.type.name === "footnoteRef")) referenceFrom = position;
+      });
+      if (referenceFrom === undefined) panic("Inserted note has no projected reference.");
+      if (selection === "before") state = select(state, referenceFrom);
+      else if (selection === "after") state = select(state, referenceFrom + 1);
+      else state = select(state, referenceFrom, referenceFrom + 1);
+      const remove = singletonManager.requireCommand("deleteNoteRef")();
+      const removeIntents =
+        getCanonicalCommandIntents(remove, state) ?? panic("Missing note deletion descriptor.");
+      state = accept(
+        session,
+        state,
+        prepareCanonicalCommands(session, state, removeIntents).unwrap(),
+      );
+      state = accept(session, state, session.prepareUndo(state).unwrap());
+      expect(session.document).toStrictEqual(inserted);
+    }
+  }
+});
+
 test("list-level commands preserve plain paragraphs and refuse all-plain selections without history", async () => {
   let cases = 0;
   await assertProperty(
