@@ -28,10 +28,17 @@ minimumReleaseAgeExcludes = [
   "@stll/conditions",
   "@stll/country-codes",
   "@stll/docx-utils",
+  "@stll/fuzzy-search",
+  "@stll/fuzzy-search-darwin-arm64",
+  "@stll/fuzzy-search-darwin-x64",
+  "@stll/fuzzy-search-linux-arm64-gnu",
+  "@stll/fuzzy-search-linux-x64-gnu",
   "@stll/oxlint-config",
   "@stll/template-conditions",
   "@stll/text-normalize",
   "@stll/time",
+  "@stll/fuzzy-search-wasm32-wasi",
+  "@stll/fuzzy-search-win32-x64-msvc",
   # Security patch for a dependency-audit finding. dompurify 3.4.13 is the only
   # release that fixes GHSA-55q2-fjhq-7xh7; publisher and repository ownership
   # match the preceding releases. Remove after quarantine expiry.
