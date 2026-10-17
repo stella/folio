@@ -56,52 +56,78 @@ test("each destination consumes the one packaged VSIX and verifies its checksum"
   expect(jobOf("github-release")["permissions"]).toEqual({ contents: "write" });
 });
 
-test("release upload selects all published tags at the source, including annotated tags", () => {
+type ReleaseRun = { version: string; existing: string | null };
+const runRelease = ({ version, existing }: ReleaseRun): { exitCode: number; calls: string[] } => {
   const directory = mkdtempSync(path.join(tmpdir(), "folio-release-assets-"));
-  const tag = "@stll/folio-core@0.41.0";
-  const annotated = "@stll/folio-cli@0.5.1";
   const script = stepsOf("github-release").find(
-    (step) => step["name"] === "Upload to published releases at the source commit",
+    (step) => step["name"] === "Publish the extension release",
   )?.["run"];
-  if (typeof script !== "string") throw new Error("Missing release upload script");
+  if (typeof script !== "string") throw new Error("Missing extension release script");
   try {
-    writeFileSync(path.join(directory, "git"), '#!/bin/sh\ncat "$TEST_REFS"\n', { mode: 0o755 });
     writeFileSync(
       path.join(directory, "gh"),
-      '#!/bin/sh\nif [ "$1" = api ]; then cat "$TEST_RELEASES"; else printf "%s\\n" "$3" >> "$TEST_UPLOADS"; fi\n',
+      [
+        "#!/bin/sh",
+        'printf "%s\\n" "$*" >> "$TEST_CALLS"',
+        'if [ "$1 $2" = "release view" ]; then [ -n "$TEST_EXISTING" ]; exit $?; fi',
+        'if [ "$1" = api ]; then printf "%s\\n" "$TEST_EXISTING"; fi',
+        "exit 0",
+      ].join("\n") + "\n",
       { mode: 0o755 },
     );
-    writeFileSync(
-      path.join(directory, "refs"),
-      [
-        `${SOURCE}\trefs/tags/${tag}`,
-        `${OTHER}\trefs/tags/${annotated}`,
-        `${SOURCE}\trefs/tags/${annotated}^{}`,
-        `${SOURCE}\trefs/tags/draft`,
-        `${SOURCE}\trefs/tags/no-release`,
-        `${OTHER}\trefs/tags/old-release`,
-      ].join("\n") + "\n",
-    );
-    writeFileSync(path.join(directory, "releases"), `${tag}\n${annotated}\nold-release\n`);
     const result = Bun.spawnSync(["bash", "-c", script], {
       cwd: directory,
       env: {
         ...process.env,
         PATH: `${directory}:${process.env["PATH"] ?? ""}`,
-        RUNNER_TEMP: directory,
         REPO: "stella/folio",
         SOURCE_REF: SOURCE,
-        TEST_REFS: path.join(directory, "refs"),
-        TEST_RELEASES: path.join(directory, "releases"),
-        TEST_UPLOADS: path.join(directory, "uploads"),
+        VERSION: version,
+        TEST_EXISTING: existing ?? "",
+        TEST_CALLS: path.join(directory, "calls"),
       },
     });
-    expect(result.exitCode).toBe(0);
-    expect(readFileSync(path.join(directory, "uploads"), "utf8").trim().split("\n")).toEqual([
-      annotated,
-      tag,
-    ]);
+    let calls: string[] = [];
+    try {
+      calls = readFileSync(path.join(directory, "calls"), "utf8").trim().split("\n");
+    } catch {
+      calls = [];
+    }
+    return { exitCode: result.exitCode, calls };
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+};
+
+test("the extension gets its own release at the source commit and never touches package releases", () => {
+  const { exitCode, calls } = runRelease({ version: "0.5.3", existing: null });
+  expect(exitCode).toBe(0);
+  const create = calls.find((call) => call.startsWith("release create "));
+  expect(create).toStartWith("release create folio-vscode@0.5.3 folio.vsix folio.vsix.sha256 ");
+  expect(create).toContain(`--target ${SOURCE}`);
+  expect(create).toContain("--latest=false");
+  expect(calls.filter((call) => call.startsWith("release upload "))).toEqual([]);
+  expect(calls.every((call) => !call.includes("@stll/"))).toBe(true);
+});
+
+test("a retry from the same commit replaces the files of the existing extension release", () => {
+  const { exitCode, calls } = runRelease({ version: "0.5.3", existing: SOURCE });
+  expect(exitCode).toBe(0);
+  expect(calls.filter((call) => call.startsWith("release upload "))).toEqual([
+    "release upload folio-vscode@0.5.3 folio.vsix folio.vsix.sha256 --repo stella/folio --clobber",
+  ]);
+  expect(calls.some((call) => call.startsWith("release create "))).toBe(false);
+});
+
+test("a later commit at an unchanged version leaves the existing extension release alone", () => {
+  const { exitCode, calls } = runRelease({ version: "0.5.3", existing: OTHER });
+  expect(exitCode).toBe(0);
+  expect(calls.some((call) => call.startsWith("release upload "))).toBe(false);
+  expect(calls.some((call) => call.startsWith("release create "))).toBe(false);
+});
+
+test("an unreleased extension version publishes nothing", () => {
+  const { exitCode, calls } = runRelease({ version: "0.0.0", existing: null });
+  expect(exitCode).toBe(0);
+  expect(calls).toEqual([]);
 });

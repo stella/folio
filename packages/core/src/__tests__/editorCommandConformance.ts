@@ -114,6 +114,7 @@ const commandManager = (view: OperationContext["view"]) =>
 
 const CARET: readonly SelectionPlacement[] = ["caret-middle"];
 const RANGE: readonly SelectionPlacement[] = ["word"];
+const RUN_FORMATTING: readonly SelectionPlacement[] = ["caret-middle", "word", "cross-paragraph"];
 
 // Toggling a text mark over selected text must change the document. This
 // applicability contract reads the input, never a command/planner verdict.
@@ -228,18 +229,22 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
   toggleBold: [registryCommand("toggleBold", [], { placements: RANGE })],
   toggleItalic: [registryCommand("toggleItalic", [], { placements: RANGE })],
   toggleUnderline: [registryCommand("toggleUnderline", [], { placements: RANGE })],
-  toggleStrike: [registryCommand("toggleStrike", [], { placements: RANGE })],
-  toggleSuperscript: [registryCommand("toggleSuperscript", [], { placements: RANGE })],
-  toggleSubscript: [registryCommand("toggleSubscript", [], { placements: RANGE })],
-  setTextColor: [registryCommand("setTextColor", [{ rgb: "C00000" }], { placements: RANGE })],
+  toggleStrike: [registryCommand("toggleStrike", [], { placements: RUN_FORMATTING })],
+  toggleSuperscript: [registryCommand("toggleSuperscript", [], { placements: RUN_FORMATTING })],
+  toggleSubscript: [registryCommand("toggleSubscript", [], { placements: RUN_FORMATTING })],
+  setTextColor: [
+    registryCommand("setTextColor", [{ rgb: "C00000" }], { placements: RUN_FORMATTING }),
+  ],
   clearTextColor: [registryCommand("clearTextColor", [], { placements: RANGE })],
-  setHighlight: [registryCommand("setHighlight", ["yellow"], { placements: RANGE })],
-  clearHighlight: [registryCommand("clearHighlight", [], { placements: RANGE })],
+  setHighlight: [registryCommand("setHighlight", ["yellow"], { placements: RUN_FORMATTING })],
+  clearHighlight: [registryCommand("clearHighlight", [], { placements: RUN_FORMATTING })],
   setFontSize: [registryCommand("setFontSize", [28], { placements: RANGE })],
   clearFontSize: [registryCommand("clearFontSize", [], { placements: RANGE })],
-  setFontFamily: [registryCommand("setFontFamily", ["Arial"], { placements: RANGE })],
-  clearFontFamily: [registryCommand("clearFontFamily", [], { placements: RANGE })],
-  setUnderlineStyle: [registryCommand("setUnderlineStyle", ["double"], { placements: RANGE })],
+  setFontFamily: [registryCommand("setFontFamily", ["Arial"], { placements: RUN_FORMATTING })],
+  clearFontFamily: [registryCommand("clearFontFamily", [], { placements: RUN_FORMATTING })],
+  setUnderlineStyle: [
+    registryCommand("setUnderlineStyle", ["double"], { placements: RUN_FORMATTING }),
+  ],
   setHyperlink: [registryCommand("setHyperlink", ["https://example.org/"], { placements: RANGE })],
   removeHyperlink: [registryCommand("removeHyperlink", [], { placements: RANGE })],
   insertHyperlink: [registryCommand("insertHyperlink", ["a link", "https://example.org/"])],

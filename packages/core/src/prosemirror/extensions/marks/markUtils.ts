@@ -342,7 +342,11 @@ function createMarkWithMergedAttrs(
 }
 
 type CanonicalSetMarkFormattingOptions = { state: EditorState; type: MarkType; attrs: MarkAttrs };
-const canonicalSetMarkFormatting = ({ state, type, attrs }: CanonicalSetMarkFormattingOptions) => {
+export const canonicalSetMarkFormatting = ({
+  state,
+  type,
+  attrs,
+}: CanonicalSetMarkFormattingOptions) => {
   const markType = documentMarkType(state, type);
   const { empty } = state.selection;
   const { from, to } = canonicalSelectionRange(state);
@@ -542,8 +546,13 @@ const withRunFormattingOverride =
 
 /** `toggleMark` for the document's own counterpart of `type`. */
 export const toggleDocumentMark = (type: MarkType): Command => {
-  const command: Command = (state, dispatch, view) =>
-    toggleMark(documentMarkType(state, type))(state, dispatch, view);
+  const command: Command = (state, dispatch, view) => {
+    const markType = documentMarkType(state, type);
+    const nextCommand = isMarkActive(state, markType)
+      ? removeMark(markType)
+      : setMark(markType, {});
+    return nextCommand(state, dispatch, view);
+  };
   if (!RUN_FORMATTING_MARK_NAMES.has(type.name)) return command;
   return withCanonicalCommand(command, (state) => {
     const markType = documentMarkType(state, type);

@@ -1,5 +1,23 @@
 # @stll/folio-vue
 
+## 0.26.0
+
+### Minor Changes
+
+- [#1701](https://github.com/stella/folio/pull/1701) [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep comment expansion under editor ownership and reveal visible search ranges beyond reply previews; UnifiedSidebar now requires controlled activeItemId.
+
+- [#1701](https://github.com/stella/folio/pull/1701) [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Highlight all document search matches across rendered stories and expose navigation, counts, and safe replacement eligibility.
+
+### Patch Changes
+
+- [#1701](https://github.com/stella/folio/pull/1701) [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bind replacements to complete search keys and pair controlled React dialog results with their producing query.
+
+- [#1701](https://github.com/stella/folio/pull/1701) [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reveal search matches on unmounted pages and activate comment threads before navigating to visible reply text.
+
+- [#1701](https://github.com/stella/folio/pull/1701) [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry note identities in layout metadata to reveal search matches on unmounted endnote pages and notify Vue find-result listeners once per update.
+- Updated dependencies [[`a2b23d9`](https://github.com/stella/folio/commit/a2b23d964f778c45165dd0b8d61bd443483acebf), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54), [`ed89c2f`](https://github.com/stella/folio/commit/ed89c2f645974f285a76bb5eda33c6cd0d22ecfb), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54)]:
+  - @stll/folio-core@0.62.0
+
 ## 0.25.0
 
 ### Minor Changes

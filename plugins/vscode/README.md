@@ -24,7 +24,7 @@ Save writes back to the same file.
 
 ## Offline or restricted network install
 
-Download `folio.vsix` from a [GitHub release](https://github.com/stella/folio/releases)
+Download `folio.vsix` from a [`folio-vscode@<version>` GitHub release](https://github.com/stella/folio/releases?q=folio-vscode&expanded=true)
 or the [Open VSX extension page](https://open-vsx.org/extension/stll/stella-folio).
 In the Extensions view, open the **...** menu and choose **Install from VSIX...**,
 then select the downloaded file. You can also install it from a terminal:

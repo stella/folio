@@ -4,7 +4,7 @@ name: Publish VS Code extension
 # VS Code Marketplace, Open VSX, and GitHub releases. publish.yml starts it after every release,
 # so each @stll/folio-cli version ships the extension at the same version; a
 # release that left that version alone skips duplicate registry publication.
-# The package is attached to every published GitHub release at the source commit. It is
+# The package is also published as its own GitHub release, folio-vscode@<version>. It is
 # started as its own run, not called: each registry job then takes its
 # credential from its own environment, and the release passes it no secrets.
 # Run it by hand to retry a publish; publishing takes a commit on main. Leave
@@ -126,7 +126,7 @@ jobs:
           if-no-files-found: error
 
   github-release:
-    name: Attach the .vsix to GitHub releases
+    name: Publish the .vsix as its own GitHub release
     needs: package
     if: inputs.publish
     runs-on: ubuntu-latest
@@ -140,26 +140,37 @@ jobs:
       - name: Verify the package checksum
         run: sha256sum --check folio.vsix.sha256
 
-      - name: Upload to published releases at the source commit
+      # npm package releases hold exactly their package tarball (the shared
+      # release workflow verifies that on every release), so the extension
+      # has a release of its own, `folio-vscode@<version>`, at the source commit.
+      - name: Publish the extension release
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SOURCE_REF: ${{ inputs.source-ref || github.sha }}
+          VERSION: ${{ needs.package.outputs.version }}
         run: |
           set -euo pipefail
-          git ls-remote --tags "https://github.com/$REPO.git" > "$RUNNER_TEMP/release-refs"
-          awk -v sha="$SOURCE_REF" '$1 == sha { tag = substr($2, 11); sub(/\^\{\}$/, "", tag); print tag }' \
-            "$RUNNER_TEMP/release-refs" | sort -u > "$RUNNER_TEMP/source-tags"
-          gh api --paginate "repos/$REPO/releases?per_page=100" \
-            --jq '.[] | select(.draft == false) | .tag_name' | sort -u > "$RUNNER_TEMP/published-tags"
-          comm -12 "$RUNNER_TEMP/source-tags" "$RUNNER_TEMP/published-tags" > "$RUNNER_TEMP/release-targets"
-          if [[ ! -s "$RUNNER_TEMP/release-targets" ]]; then
-            echo "::notice::No published GitHub release points to the source commit."
+          if [[ "$VERSION" == "0.0.0" ]]; then
+            echo "::notice::The extension is at 0.0.0; release @stll/folio-cli first, which sets its version."
             exit 0
           fi
-          while IFS= read -r tag; do
+          tag="folio-vscode@$VERSION"
+          if gh release view "$tag" --repo "$REPO" > /dev/null 2>&1; then
+            # A later package release can leave the extension version alone.
+            # Only a retry from the commit the release names may replace its files.
+            released="$(gh api "repos/$REPO/commits/$tag" --jq .sha)"
+            if [[ "$released" != "$SOURCE_REF" ]]; then
+              echo "::notice::$tag was released from $released; leaving it unchanged."
+              exit 0
+            fi
             gh release upload "$tag" folio.vsix folio.vsix.sha256 --repo "$REPO" --clobber
-          done < "$RUNNER_TEMP/release-targets"
+          else
+            gh release create "$tag" folio.vsix folio.vsix.sha256 --repo "$REPO" \
+              --target "$SOURCE_REF" --latest=false \
+              --title "folio for VS Code $VERSION" \
+              --notes "The folio VS Code extension $VERSION, built from $SOURCE_REF."
+          fi
 
   marketplace:
     name: VS Code Marketplace
