@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
 
 import {
   buildForbiddenRules,
@@ -14,6 +15,8 @@ import {
   parseGlossary,
 } from "./i18n-lint";
 import type { LintBaseline } from "./i18n-lint";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 describe("findPlaceholderMismatch", () => {
   test("returns null when the variable sets match (order is irrelevant)", () => {
@@ -554,7 +557,7 @@ describe("terminology search semantics", () => {
           ).toEqual(expected);
         },
       ),
-      { seed: 27018, numRuns: 300 },
+      propertyConfig({ seed: 27018, numRuns: 300 }),
     );
   });
 
@@ -646,7 +649,7 @@ describe("terminology search semantics", () => {
           expect(findForbiddenTerms("Matter", target, locale, makeRules(needle))).toEqual(expected);
         },
       ),
-      { seed: 27017, numRuns: 300 },
+      propertyConfig({ seed: 27017, numRuns: 300 }),
     );
   });
 });
