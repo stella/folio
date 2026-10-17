@@ -200,10 +200,19 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
     for (const part of parts ?? []) visit(part.content);
   }
   const markerLevels = new Map<number, Set<number>>();
+  const abstractNums = document.package.numbering?.abstractNums ?? [];
   for (const instance of document.package.numbering?.nums ?? []) {
-    const abstract = document.package.numbering?.abstractNums.find(
+    let abstract = abstractNums.find(
       (definition) => definition.abstractNumId === instance.abstractNumId,
     );
+    // An empty definition linked to a numbering style takes its levels from the definition that style names.
+    const link = abstract?.numStyleLink;
+    if (link !== undefined && abstract?.levels.length === 0) {
+      abstract =
+        abstractNums.find(
+          (definition) => definition.styleLink === link && definition.levels.length > 0,
+        ) ?? abstract;
+    }
     const levels = new Map((abstract?.levels ?? []).map((level) => [level.ilvl, level]));
     for (const override of instance.levelOverrides ?? []) {
       if (override.lvl) levels.set(override.ilvl, override.lvl);
@@ -214,7 +223,8 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
         [...levels.values()]
           .filter((level) => {
             if (level.rPr?.hidden) return false;
-            if (level.lvlText.length === 0) return level.numFmt !== "none";
+            // A legal level counts in decimal whatever its own format says.
+            if (level.lvlText.length === 0) return level.isLgl === true || level.numFmt !== "none";
             // Only marker presence matters here; counter values and numbering glyphs do not.
             return (
               level.lvlText
