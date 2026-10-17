@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.63.0
+
+### Minor Changes
+
+- [#1782](https://github.com/stella/folio/pull/1782) [`a218895`](https://github.com/stella/folio/commit/a2188950bf1806f15eedd44f15af9ab4a520c2c5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Strike, superscript, subscript, text color, highlight, font family and underline style commands run through canonical document operations in canonical sessions. Strike, superscript and subscript toggles decide on and off the same way as bold and italic, ignoring note reference marks.
+
 ## 0.62.0
 
 ### Minor Changes
