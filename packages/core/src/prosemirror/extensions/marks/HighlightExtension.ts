@@ -4,6 +4,7 @@
 
 import { panic } from "better-result";
 
+import { canonicalRunFormatting, withCanonicalCommand } from "../../canonicalCommands";
 import type { TextFormatting } from "../../../types/document";
 import { HIGHLIGHT_COLOR_VALUES } from "../../../types/documentEnumValues";
 import { resolveHighlightToCss } from "../../../utils/colorResolver";
@@ -165,13 +166,19 @@ export const HighlightExtension = createMarkExtension({
       commands: {
         setHighlight: (color: string) => {
           if (!color || color === "none") {
-            return removeMark(highlightType);
+            return withCanonicalCommand(removeMark(highlightType), (state) =>
+              canonicalRunFormatting(state, { highlight: null }),
+            );
           }
-          return setMark(highlightType, {
-            color: parseDOMHighlightColor(color) ?? "yellow",
-          });
+          const highlight = parseDOMHighlightColor(color) ?? "yellow";
+          return withCanonicalCommand(setMark(highlightType, { color: highlight }), (state) =>
+            canonicalRunFormatting(state, { highlight }),
+          );
         },
-        clearHighlight: () => removeMark(highlightType),
+        clearHighlight: () =>
+          withCanonicalCommand(removeMark(highlightType), (state) =>
+            canonicalRunFormatting(state, { highlight: null }),
+          ),
       },
     };
   },

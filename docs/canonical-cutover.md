@@ -40,25 +40,16 @@ Session branch counts are held per file in `scripts/canonical-cutover-baseline.j
 
 Derived from the extension command registry. Entries lack a structural proof that every factory return path attaches a canonical descriptor; this conservative census is not a runtime support policy. CI requires the committed list to match the census and rejects new entries against the PR-base source census.
 
-### command-descriptors (50)
+### command-descriptors (41)
 
 - `packages/core/src/prosemirror/extensions/core/HistoryExtension.ts#redo`
 - `packages/core/src/prosemirror/extensions/core/HistoryExtension.ts#undo`
 - `packages/core/src/prosemirror/extensions/core/ParagraphExtension.ts#insertSectionBreak`
 - `packages/core/src/prosemirror/extensions/core/ParagraphExtension.ts#removeSectionBreak`
 - `packages/core/src/prosemirror/extensions/features/SelectionTrackerExtension.ts#extractSelectionContext`
-- `packages/core/src/prosemirror/extensions/marks/FontFamilyExtension.ts#clearFontFamily`
-- `packages/core/src/prosemirror/extensions/marks/FontFamilyExtension.ts#setFontFamily`
 - `packages/core/src/prosemirror/extensions/marks/FootnoteRefExtension.ts#deleteNoteRef`
 - `packages/core/src/prosemirror/extensions/marks/FootnoteRefExtension.ts#insertEndnote`
 - `packages/core/src/prosemirror/extensions/marks/FootnoteRefExtension.ts#insertFootnote`
-- `packages/core/src/prosemirror/extensions/marks/HighlightExtension.ts#clearHighlight`
-- `packages/core/src/prosemirror/extensions/marks/HighlightExtension.ts#setHighlight`
-- `packages/core/src/prosemirror/extensions/marks/StrikeExtension.ts#toggleStrike`
-- `packages/core/src/prosemirror/extensions/marks/SubscriptExtension.ts#toggleSubscript`
-- `packages/core/src/prosemirror/extensions/marks/SuperscriptExtension.ts#toggleSuperscript`
-- `packages/core/src/prosemirror/extensions/marks/TextColorExtension.ts#setTextColor`
-- `packages/core/src/prosemirror/extensions/marks/UnderlineExtension.ts#setUnderlineStyle`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addColumnLeft`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addColumnRight`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addRowAbove`

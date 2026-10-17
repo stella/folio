@@ -81,26 +81,50 @@ jobs:
         if: steps.prune.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
         run: |
           set -euo pipefail
-
-          bot_id="$(gh api "users/${APP_SLUG}[bot]" --jq '.id')"
-          git config user.name "${APP_SLUG}[bot]"
-          git config user.email "${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com"
-
-          git checkout -b "$PRUNE_BRANCH"
-          git add bunfig.toml plugins/vscode/bunfig.toml
-          git commit -m "chore(deps): remove expired quarantine excludes
-
-          The release-age gate admits these packages on its own now, and an
-          entry left behind would let their next version skip it."
 
           # Force-with-lease is unsafe against a branch this job does not own,
           # so the branch name is reserved for this job alone. Re-running
           # replaces its own proposal with one computed from the default branch.
-          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push --force "$remote" "HEAD:refs/heads/${PRUNE_BRANCH}"
+          base="$(git rev-parse HEAD)"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${PRUNE_BRANCH}" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${PRUNE_BRANCH}" \
+              -f sha="$base" -F force=true > /dev/null
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/heads/${PRUNE_BRANCH}" -f sha="$base" > /dev/null
+          fi
+
+          # The default branch accepts only signed commits. A commit created
+          # through the API with the app token is signed by GitHub; a local
+          # commit pushed with the token is not.
+          jq -n \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg branch "$PRUNE_BRANCH" \
+            --arg base "$base" \
+            --arg root "$(base64 -w0 bunfig.toml)" \
+            --arg vscode "$(base64 -w0 plugins/vscode/bunfig.toml)" \
+            '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {
+                input: {
+                  branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                  expectedHeadOid: $base,
+                  message: {
+                    headline: "chore(deps): remove expired quarantine excludes",
+                    body: "The release-age gate admits these packages on its own now, and an entry left behind would let their next version skip it."
+                  },
+                  fileChanges: {
+                    additions: [
+                      { path: "bunfig.toml", contents: $root },
+                      { path: "plugins/vscode/bunfig.toml", contents: $vscode }
+                    ]
+                  }
+                }
+              }
+            }' \
+            | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid' > /dev/null
 
           if [[ -n "$(gh pr list --head "$PRUNE_BRANCH" --state open --json number --jq '.[0].number // ""')" ]]; then
             echo "Updated the open removal PR." >> "$GITHUB_STEP_SUMMARY"
