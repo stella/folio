@@ -82,6 +82,21 @@ import {
 } from "./packaged-consumer-lib";
 import { findUncoveredUtilities } from "./standalone-css-coverage";
 import { PUBLISHED_PACKAGES } from "./lib/published-packages";
+import { createLiteralChecklist } from "./lib/literal-checklist";
+
+const scanReactRules = createLiteralChecklist([
+  ".folio-root",
+  ".ProseMirror",
+  ".prosemirror-editor-wrapper",
+  ".folio-ai-host",
+  ".folio-default-button",
+]);
+const scanVueRules = createLiteralChecklist([".ep-root", ".basic-toolbar"]);
+const scanReactSentinels = createLiteralChecklist([
+  "react-stack-bottom-frame",
+  "__SECRET_INTERNALS_DO_NOT_USE",
+  "__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED",
+]);
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 // Resolve the classic TypeScript compiler explicitly rather than via
@@ -642,14 +657,7 @@ if (target === "react") {
   } else {
     const css = await readFile(cssPath, "utf-8");
     const fontImports = css.match(/@import\s+["']@fontsource\/[^"']+["']/gu) ?? [];
-    const requiredRules = [
-      ".folio-root",
-      ".ProseMirror",
-      ".prosemirror-editor-wrapper",
-      ".folio-ai-host",
-      ".folio-default-button",
-    ];
-    const missingRules = requiredRules.filter((r) => !css.includes(r));
+    const { missing: missingRules } = scanReactRules(css);
     // @fontsource must stay a bare @import, never inlined as font data.
     const fontsourceInlined =
       /url\([^)]*@fontsource/u.test(css) || /url\(["']?data:font/u.test(css);
@@ -755,8 +763,7 @@ if (target === "vue") {
     record("css: dist/folio-vue.css present", false, "missing from tarball");
   } else {
     const css = await readFile(cssPath, "utf-8");
-    const requiredRules = [".ep-root", ".basic-toolbar"];
-    const missingRules = requiredRules.filter((r) => !css.includes(r));
+    const { missing: missingRules } = scanVueRules(css);
 
     let parses = true;
     let parseDetail = "";
@@ -795,12 +802,7 @@ const jsContents = await Promise.all(
 );
 const allJs = jsContents.map((c) => c.code).join("\n");
 // Tell-tale internals that only exist if React's source were bundled.
-const reactSentinels = [
-  "react-stack-bottom-frame",
-  "__SECRET_INTERNALS_DO_NOT_USE",
-  "__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED",
-];
-const leaked = reactSentinels.filter((s) => allJs.includes(s));
+const { present: leaked } = scanReactSentinels(allJs);
 // Runtime externals used by each built package must appear as import
 // specifiers, never bundled. Type-only dependencies do not survive in JS and
 // therefore cannot be asserted here.
