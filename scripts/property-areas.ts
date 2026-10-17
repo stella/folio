@@ -35,7 +35,7 @@ import ts from "typescript";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
-const ROOT_TEST_DIRS = ["scripts", "test"] as const;
+export const ROOT_TEST_DIRS = ["scripts", "test", "parity"] as const;
 const PROPERTY_FILE = /\.test\.tsx?$/;
 
 /**
