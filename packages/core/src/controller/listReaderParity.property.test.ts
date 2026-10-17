@@ -181,6 +181,11 @@ const sourceFormatting = (source: Source, numId: number, ilvl: number): Paragrap
   const numPr = overrides[source];
   return { styleId: `Numbered${numId}`, ...(numPr === undefined ? {} : { numPr }) };
 };
+const PLAIN_STYLE_ID = "Plain";
+const plainFormatting = (source: Source, numId: number, ilvl: number): ParagraphFormatting => ({
+  ...sourceFormatting(source, numId, ilvl),
+  styleId: PLAIN_STYLE_ID,
+});
 const paragraph = (formatting?: ParagraphFormatting): Paragraph => ({
   type: "paragraph",
   ...(formatting === undefined ? {} : { formatting }),
@@ -203,13 +208,17 @@ const documents = ({
 }): Document[] => {
   const result: Document[] = [];
   for (const source of ["absent", "levelOnly", "reference", "none"] as const) {
-    for (const direction of ["styleToDirect", "directToStyle"] as const) {
+    for (const direction of ["styleToDirect", "directToStyle", "directToPlain"] as const) {
       for (const before of [false, true])
         for (const after of [false, true]) {
           const inherited = sourceFormatting(source, numId, level);
           const direct = sourceFormatting("reference", numId + 1, level);
-          const original = direction === "styleToDirect" ? inherited : direct;
-          const current = direction === "styleToDirect" ? direct : inherited;
+          const transitions = {
+            styleToDirect: { original: inherited, current: direct },
+            directToStyle: { original: direct, current: inherited },
+            directToPlain: { original: direct, current: plainFormatting(source, numId, level) },
+          } as const;
+          const { original, current } = transitions[direction];
           const changed = paragraph(current);
           changed.propertyChanges = [
             { type: "paragraphPropertyChange", info: INFO, previousFormatting: original },
@@ -231,11 +240,14 @@ const documents = ({
                 ],
               },
               styles: {
-                styles: [numId, numId + 1].map((id) => ({
-                  type: "paragraph",
-                  styleId: `Numbered${id}`,
-                  pPr: { numPr: paragraphNumberingReference({ numId: id, ilvl: level }) },
-                })),
+                styles: [
+                  ...[numId, numId + 1].map((id) => ({
+                    type: "paragraph",
+                    styleId: `Numbered${id}`,
+                    pPr: { numPr: paragraphNumberingReference({ numId: id, ilvl: level }) },
+                  })),
+                  { type: "paragraph", styleId: PLAIN_STYLE_ID },
+                ],
               },
               numbering: {
                 nums: [
@@ -299,8 +311,9 @@ test(
             let markdownLabel: string | undefined;
             const nextMarkdown = createListLabelCounter(markdown);
             ctx.nextListLabel = (attrs) => {
-              markdownLabel = nextMarkdown(attrs);
-              return markdownLabel;
+              const visible = nextMarkdown(attrs);
+              markdownLabel = visible.label;
+              return visible;
             };
             const labels: (string | undefined)[] = [];
             pm.forEach((node, _offset, index) => {
@@ -310,7 +323,9 @@ test(
                 throw new Error("Generated reader fixture must contain paragraphs");
               const expected = advanceVisibleListMarker(attrs, owner).marker ?? undefined;
               labels.push(expected);
-              expect(nextSnapshot(attrs), `snapshot label at paragraph ${index}`).toEqual(expected);
+              expect(nextSnapshot(attrs).label, `snapshot label at paragraph ${index}`).toEqual(
+                expected,
+              );
               const adapted = listLabelAttrsFromRendering(
                 para.listRendering,
                 paragraphNumberingSourcesFromBoundary({
@@ -325,7 +340,9 @@ test(
                 pPrMark: attrs.pPrMark,
                 _propertyChanges: attrs._propertyChanges,
               };
-              expect(nextModel(modelAttrs), `model label at paragraph ${index}`).toEqual(expected);
+              expect(nextModel(modelAttrs).label, `model label at paragraph ${index}`).toEqual(
+                expected,
+              );
               const renderedMarkdown = renderParagraph(ctx, converted.package, para);
               expect(markdownLabel, `Markdown label at paragraph ${index}`).toEqual(expected);
               expect(renderedMarkdown.trimStart(), `Markdown text at paragraph ${index}`).toBe(
@@ -345,11 +362,31 @@ test(
                   `${reader} counter streams at paragraph ${index}`,
                 ).toEqual(stateSnapshot(owner));
             });
+            const snapshotBlocks = createFolioAIEditSnapshot(pm).blocks;
             expect(
-              createFolioAIEditSnapshot(pm).blocks.map((block) =>
+              snapshotBlocks.map((block) =>
                 block.kind === "diagnostic" ? undefined : block.displayLabel,
               ),
             ).toEqual(labels);
+            const numbering = document.package.numbering;
+            const definedLevels = new Set(
+              (numbering?.nums ?? []).flatMap(({ numId: id, abstractNumId: abstractId }) =>
+                (
+                  numbering?.abstractNums.find((entry) => entry.abstractNumId === abstractId)
+                    ?.levels ?? []
+                ).map(({ ilvl }) => `${id}:${ilvl}`),
+              ),
+            );
+            for (const [index, block] of snapshotBlocks.entries()) {
+              if (block.kind === "diagnostic" || block.displayLabel === undefined) continue;
+              const reference = block.listReference;
+              expect(
+                reference === undefined
+                  ? undefined
+                  : definedLevels.has(`${reference.numId}:${reference.level}`),
+                `list reference beside label ${block.displayLabel} at paragraph ${index}`,
+              ).toBe(true);
+            }
             expect(
               toFlowBlocks(pm)
                 .filter((block) => block.kind === "paragraph")
@@ -460,7 +497,7 @@ const assertSparseReaders = async ({
         computeListMarker(para, parser);
         const label = para.listRendering?.markerHidden ? undefined : para.listRendering?.marker;
         expect(
-          next(listLabelAttrsFromRendering(rendering, { numPr, numPrFromStyle: undefined })),
+          next(listLabelAttrsFromRendering(rendering, { numPr, numPrFromStyle: undefined })).label,
         ).toEqual(label);
         for (const stream of [reader.final, reader.original]) {
           expect(stream.counters).toEqual(parser.listCounters);
