@@ -15,7 +15,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { history, redo, undo } from "prosemirror-history";
 import { Schema, Slice, Fragment } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
+import { EditorState, Plugin } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
 
 import {
@@ -31,6 +31,7 @@ import {
   ensureParaIdsInDoc,
   ensureParaIdsInState,
   ParaIdAllocatorExtension,
+  requestDeterministicParaIds,
 } from "./ParaIdAllocatorExtension";
 
 const schema = new Schema({
@@ -143,6 +144,29 @@ const collectSourceTokens = (state: EditorState): (string | null)[] => {
 };
 
 describe("ParaIdAllocatorExtension", () => {
+  test("inherits deterministic allocation through later plugin repairs", () => {
+    const appendFiller = new Plugin({
+      appendTransaction: (_transactions, _oldState, newState) => {
+        if (newState.doc.childCount !== 1) return null;
+        return newState.tr.insert(newState.doc.content.size, para("Filler"));
+      },
+    });
+    const initial = EditorState.create({
+      doc: schema.node("doc", null, [para("Authored", "11111111")]),
+      plugins: [plugin, appendFiller],
+    });
+    const resolve = () =>
+      initial.apply(requestDeterministicParaIds(initial.tr.insertText("!", 1), "projection"));
+    const first = resolve();
+    const second = resolve();
+
+    expect(second.doc.eq(first.doc)).toBe(true);
+    const ids = collectParaIds(first);
+    expect(ids.at(0)).toBe("11111111");
+    expect(ids.at(1)).toMatch(/^[0-9A-F]{8}$/u);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   test("allocates initial IDs by rebuilding only changed document branches", () => {
     const first = para("First", "11111111");
     const nested = schema.node("blockquote", null, [

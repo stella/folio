@@ -14,6 +14,7 @@ import { TableMap } from "prosemirror-tables";
 import { resolveStateStory } from "../markupViewProjection";
 import { finalRevisionParagraphRanges } from "../../internal/revisionResolutionTracking";
 import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
+import { requestDeterministicParaIds } from "../extensions/features/ParaIdAllocatorExtension";
 import { trackedRevisionPathOf, retainedTrackedRevisionMark } from "../trackedRevisionPath";
 import { Mapping } from "prosemirror-transform";
 import { panic } from "better-result";
@@ -1430,6 +1431,9 @@ const resolveAllChanges =
         positionMap: result.positionMap,
       }),
     );
+    // Resolution is a reproducible projection. Schema fillers, including cells
+    // a table-repair plugin adds, need the same identities on every reading.
+    requestDeterministicParaIds(tr, `resolve-all:${mode}`);
     markChangedParagraphRanges(tr, {
       ranges: finalRevisionParagraphRanges(result),
       mappingFrom: tr.steps.length,
