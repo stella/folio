@@ -1,5 +1,13 @@
 # @stll/folio-cli
 
+## 0.5.4
+
+### Patch Changes
+
+- Updated dependencies [[`a218895`](https://github.com/stella/folio/commit/a2188950bf1806f15eedd44f15af9ab4a520c2c5)]:
+  - @stll/folio-core@0.63.0
+  - @stll/folio-agents@0.16.4
+
 ## 0.5.3
 
 ### Patch Changes
