@@ -109,9 +109,9 @@ const hasNoteReference = (document: Document, reference: NoteReference): boolean
     storyParagraphs(storyBody(document, story)).some(({ paragraph }) =>
       leafSpans(paragraph.content).some(
         ({ node }) =>
-          node.id === reference.id &&
-          ((reference.kind === "footnote" && node.type === "footnoteRef") ||
-            (reference.kind === "endnote" && node.type === "endnoteRef")),
+          (node.type === "footnoteRef" || node.type === "endnoteRef") &&
+          node.type === (reference.kind === "footnote" ? "footnoteRef" : "endnoteRef") &&
+          node.id === reference.id,
       ),
     ),
   );
