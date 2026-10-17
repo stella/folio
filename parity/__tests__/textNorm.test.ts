@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../test/property-testing";
 
 import { normalizeLineText, textSimilarity } from "../textNorm";
 
@@ -152,4 +154,45 @@ describe("textSimilarity", () => {
     expect(textSimilarity("\ud800", "\udc00")).toBe(1);
     expect(textSimilarity("\ud800a", "\ufffdb")).toBe(0.5);
   });
+
+  test(
+    "matches an independent scalar Levenshtein oracle for generated strings",
+    () => {
+      const scalar = fc.constantFrom("a", "b", "é", "e\u0301", "😀", "😃", "𞤀");
+      const text = fc.array(scalar, { maxLength: 24 }).map((parts) => parts.join(""));
+      assertProperty(
+        fc.property(text, text, (a, b) => {
+          const left = Array.from(a.toWellFormed());
+          const right = Array.from(b.toWellFormed());
+          const maxLength = Math.max(left.length, right.length);
+          const expected = maxLength === 0 ? 1 : 1 - referenceDistance(left, right) / maxLength;
+          expect(textSimilarity(a, b)).toBe(expected);
+        }),
+        { id: "fuzzy similarity matches independent scalar edit-distance oracle", numRuns: 100 },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
+  test(
+    "matches the scalar oracle after malformed UTF-16 normalization",
+    () => {
+      const unit = fc.constantFrom("a", "😀", "😃", "\ud800", "\udc00", "\ufffd");
+      const text = fc.array(unit, { maxLength: 20 }).map((parts) => parts.join(""));
+      assertProperty(
+        fc.property(text, text, (a, b) => {
+          const left = Array.from(a.toWellFormed());
+          const right = Array.from(b.toWellFormed());
+          const maxLength = Math.max(left.length, right.length);
+          const expected = maxLength === 0 ? 1 : 1 - referenceDistance(left, right) / maxLength;
+          expect(textSimilarity(a, b)).toBe(expected);
+        }),
+        {
+          id: "fuzzy similarity normalizes malformed UTF-16 before scalar distance",
+          numRuns: 100,
+        },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
 });

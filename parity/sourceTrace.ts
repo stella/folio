@@ -176,7 +176,8 @@ const normalizedSearchText = (value: string): string =>
 const main = async (): Promise<void> => {
   const flags = parseArgs(process.argv.slice(2));
   const docPath = path.resolve(flags.doc!);
-  const matchesText = createLiteralSearch(normalizedSearchText(flags.text!));
+  const needle = normalizedSearchText(flags.text!);
+  const matchesText = createLiteralSearch(needle);
   const parsed = await parseDocx(await Bun.file(docPath).arrayBuffer(), {
     preloadFonts: false,
     detectVariables: false,
