@@ -20,7 +20,6 @@ jobs:
       && (
         (
           github.event_name == 'pull_request_target'
-          && github.event.pull_request.user.login != 'dependabot[bot]'
         ) || (
           github.event_name == 'issue_comment'
           && github.event.issue.pull_request
@@ -30,7 +29,7 @@ jobs:
           )
         )
       )
-    uses: stella/.github/.github/workflows/cla.yml@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+    uses: stella/.github/.github/workflows/cla.yml@8f19eb7220047e5b06f6e75f0b9f908bfd01f5f6
     with:
       # Automation accounts cannot sign a CLA, so any app that opens PRs here
       # has to be listed or its every PR fails the check permanently.

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { EditorState, TextSelection } from "prosemirror-state";
+import { panic } from "better-result";
+import { EditorState, TextSelection, type Command } from "prosemirror-state";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { schema, singletonManager } from "../prosemirror/schema";
 import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
@@ -94,6 +95,70 @@ describe("canonical command integration", () => {
           expect(formatting(canonical)).toEqual(formatting(legacy));
           expect(canonical.selection.toJSON()).toEqual(legacy.selection.toJSON());
         }
+      }
+    }
+  });
+
+  test("toggles on a partly formatted selection clear all of it, then apply to all of it", () => {
+    const toggles = [
+      ["bold", "toggleBold"],
+      ["italic", "toggleItalic"],
+      ["underline", "toggleUnderline"],
+      ["strike", "toggleStrike"],
+      ["superscript", "toggleSuperscript"],
+      ["subscript", "toggleSubscript"],
+    ] as const;
+    const runLegacy = (state: EditorState, command: Command): EditorState => {
+      let next: EditorState | undefined;
+      command(state, (transaction) => {
+        next = state.apply(transaction);
+      });
+      return next ?? panic("The legacy toggle did not apply.");
+    };
+    for (const [markName, commandName] of toggles) {
+      const doc = schema.node("doc", null, [
+        schema.node("paragraph", { paraId: "12345678" }, [
+          schema.text("ab", [schema.mark(markName)]),
+          schema.text("cd"),
+        ]),
+      ]);
+      const session = createCanonicalSession({
+        package: { document: { content: proseDocToBlocks(doc) } },
+      }).unwrap();
+      const initial = EditorState.create({
+        schema,
+        doc: session.projection.doc,
+        selection: TextSelection.create(session.projection.doc, 1, 5),
+      });
+      const marked = (value: EditorState) => {
+        const flags: boolean[] = [];
+        value.doc.descendants((node) => {
+          if (!node.isText) return;
+          // Underline turns off as the `none` style, so only a visible style counts.
+          const has = node.marks.some(
+            (mark) => mark.type.name === markName && mark.attrs["style"] !== "none",
+          );
+          for (const _ of node.text ?? "") flags.push(has);
+        });
+        return flags;
+      };
+      let legacy = initial;
+      let canonical = initial;
+      for (const expected of [false, true]) {
+        const command = singletonManager.requireCommand(commandName)();
+        legacy = runLegacy(legacy, command);
+        const intents =
+          getCanonicalCommandIntents(command, canonical) ??
+          (() => {
+            throw new TypeError(`${commandName} has no canonical descriptor.`);
+          })();
+        canonical = publishCanonicalProjection({
+          session,
+          state: canonical,
+          commit: prepareCanonicalCommands(session, canonical, intents).unwrap(),
+        }).unwrap().state;
+        expect(marked(legacy)).toEqual([expected, expected, expected, expected]);
+        expect(marked(canonical)).toEqual([expected, expected, expected, expected]);
       }
     }
   });

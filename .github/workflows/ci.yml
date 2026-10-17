@@ -163,6 +163,10 @@ jobs:
           set -euo pipefail
           changes=$(bunx --no-install stll-toolchain-changed --since "$TOOLCHAIN_BASE")
           printf '%s\n' "$changes"
+          # Unreadable is safe (every job runs) but costs the whole fast path, so say so loudly.
+          if [[ "$(jq -r '.status' <<< "$changes")" == "unreadable" ]]; then
+            echo "::error title=Toolchain change detection unreadable::$(jq -r '.error // "no reason given"' <<< "$changes"); every job runs."
+          fi
           changed=$(jq -er '
             if .status == "unreadable" then "true"
             elif .status == "compared" and (.changed | type) == "boolean" then (.changed | tostring)
@@ -969,7 +973,7 @@ jobs:
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "8.0.425"
 
       - run: bun install --frozen-lockfile
 

@@ -1,5 +1,12 @@
 # @stll/folio-agents
 
+## 0.16.3
+
+### Patch Changes
+
+- Updated dependencies [[`a2b23d9`](https://github.com/stella/folio/commit/a2b23d964f778c45165dd0b8d61bd443483acebf), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54), [`ed89c2f`](https://github.com/stella/folio/commit/ed89c2f645974f285a76bb5eda33c6cd0d22ecfb), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54), [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54)]:
+  - @stll/folio-core@0.62.0
+
 ## 0.16.2
 
 ### Patch Changes

@@ -300,6 +300,20 @@ describe("quarantine exclude wiring", () => {
     expect(workflow).toContain(`bun ${SCRIPT_PATH} --prune`);
     expect(workflow).toContain(`bun ${SCRIPT_PATH}\n`);
   });
+
+  test("the prune workflow commits every install root through the signed commit API", async () => {
+    const workflow = await Bun.file(
+      join(import.meta.dirname, "../.github/workflows/quarantine-prune.yml"),
+    ).text();
+
+    // The default branch accepts only signed commits; a pushed local commit is unsigned.
+    expect(workflow).toContain("createCommitOnBranch");
+    expect(workflow).not.toMatch(/\bgit (?:commit|push)\b/u);
+    for (const directory of quarantineInstallRoots) {
+      const path = directory === "." ? "bunfig.toml" : `${directory}/bunfig.toml`;
+      expect(workflow).toContain(`{ path: "${path}", contents: `);
+    }
+  });
 });
 
 test("the prune command removes expired exceptions from every independent install root", () => {
