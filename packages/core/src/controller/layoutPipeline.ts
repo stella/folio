@@ -72,7 +72,6 @@ import type {
   FootnoteContent,
   Layout,
   Measure,
-  PageHeaderFooterRefs,
   PageMargins,
 } from "../layout-engine/types";
 import type { BlockLookup, LayoutPainter } from "../layout-painter";
@@ -91,6 +90,11 @@ import type {
 import { tryBuildIncrementalMeasures } from "../paged-layout/incrementalMeasure";
 import type { DirtyRange } from "../paged-layout/incrementalMeasure";
 import type { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
+import {
+  bodyBlocksClearSectionHeaderFooter,
+  bodyMarginsClearHeaderFooter,
+  sectionVariantMargins,
+} from "../paged-layout/headerFooterMarginClearance";
 import { computePerBlockMeasureInputs } from "../paged-layout/sectionBlockWidths";
 import {
   getMargins,
@@ -294,79 +298,6 @@ export type LayoutPipelineDeps<THfPMs> = {
   /** Independent highlight visibility in All Markup; resolved views always hide comments. */
   showCommentHighlights?: boolean;
 };
-
-type BodyMarginClearanceOptions = {
-  authoredMargins: PageMargins;
-  preparedHeader: HeaderFooterContent | undefined;
-  preparedFooter: HeaderFooterContent | undefined;
-};
-
-function bodyMarginsClearHeaderFooter({
-  authoredMargins,
-  preparedHeader,
-  preparedFooter,
-}: BodyMarginClearanceOptions): PageMargins {
-  const headerBottom = preparedHeader
-    ? (authoredMargins.header ?? 0) + (preparedHeader.marginPushBottom ?? preparedHeader.height)
-    : authoredMargins.top;
-  const footerClearance = preparedFooter
-    ? (authoredMargins.footer ?? 0) + (preparedFooter.marginPushBottom ?? preparedFooter.height)
-    : authoredMargins.bottom;
-  const top = Math.max(authoredMargins.top, headerBottom);
-  const clearedTop = Math.max(top, preparedHeader?.bodyTopClearance ?? 0);
-  const bottom = Math.max(authoredMargins.bottom, footerClearance);
-  if (clearedTop === authoredMargins.top && bottom === authoredMargins.bottom) {
-    return authoredMargins;
-  }
-  return { ...authoredMargins, top: clearedTop, bottom };
-}
-
-type SectionHeaderFooterClearanceOptions = {
-  authoredMargins: PageMargins;
-  sectionHeaderFooterRefs: PageHeaderFooterRefs[] | undefined;
-  headerContentByRId: Map<string, HeaderFooterContent> | undefined;
-  footerContentByRId: Map<string, HeaderFooterContent> | undefined;
-};
-
-function bodyBlocksClearSectionHeaderFooter(
-  blocks: FlowBlock[],
-  {
-    authoredMargins,
-    sectionHeaderFooterRefs,
-    headerContentByRId,
-    footerContentByRId,
-  }: SectionHeaderFooterClearanceOptions,
-): FlowBlock[] {
-  if (!sectionHeaderFooterRefs || (!headerContentByRId && !footerContentByRId)) {
-    return blocks;
-  }
-
-  let sectionIndex = 0;
-  let currentAuthoredMargins = authoredMargins;
-  let changed = false;
-  const nextBlocks = blocks.map((block) => {
-    if (block.kind !== "sectionBreak") {
-      return block;
-    }
-
-    currentAuthoredMargins = block.margins ?? currentAuthoredMargins;
-    const refs = sectionHeaderFooterRefs[sectionIndex];
-    sectionIndex += 1;
-    const effectiveMargins = bodyMarginsClearHeaderFooter({
-      authoredMargins: currentAuthoredMargins,
-      preparedHeader: refs?.headerDefault ? headerContentByRId?.get(refs.headerDefault) : undefined,
-      preparedFooter: refs?.footerDefault ? footerContentByRId?.get(refs.footerDefault) : undefined,
-    });
-    if (effectiveMargins === currentAuthoredMargins && block.margins === currentAuthoredMargins) {
-      return block;
-    }
-
-    changed = true;
-    return { ...block, margins: effectiveMargins };
-  });
-
-  return changed ? nextBlocks : blocks;
-}
 
 const arePageMarginsEqual = (left: PageMargins, right: PageMargins): boolean =>
   left.top === right.top &&
@@ -794,33 +725,17 @@ function runLayoutPipelineMeasured<THfPMs>(
     const sectionPropertiesForMargins =
       document?.package.document.sections?.map((section) => section.properties) ??
       (sectionProperties ? [sectionProperties] : []);
-    const sectionEvenPageMargins = sectionHeaderFooterRefs?.map((refs, index) => {
-      if (refs.evenAndOddHeaders !== true) {
-        return undefined;
-      }
-      const properties = sectionPropertiesForMargins[index];
-      const authoredMargins = properties ? getMargins(properties) : margins;
-      return bodyMarginsClearHeaderFooter({
-        authoredMargins,
-        preparedHeader: refs.headerEven ? headerContentByRId?.get(refs.headerEven) : undefined,
-        preparedFooter: refs.footerEven ? footerContentByRId?.get(refs.footerEven) : undefined,
-      });
-    });
-
     // Each section's own `w:titlePg` (§17.10.6) decides whether its first page
-    // shows first-page parts, so each section clears its own first-page parts.
-    const sectionFirstPageMargins = sectionHeaderFooterRefs?.map((refs, index) => {
-      if (refs.titlePg !== true) {
-        return undefined;
-      }
-      const properties = sectionPropertiesForMargins[index];
-      const authoredMargins = properties ? getMargins(properties) : margins;
-      return bodyMarginsClearHeaderFooter({
-        authoredMargins,
-        preparedHeader: refs.headerFirst ? headerContentByRId?.get(refs.headerFirst) : undefined,
-        preparedFooter: refs.footerFirst ? footerContentByRId?.get(refs.footerFirst) : undefined,
-      });
-    });
+    // shows first-page parts, so each section clears its own variant parts.
+    const variantMarginOptions = {
+      sectionHeaderFooterRefs,
+      sectionMargins: sectionPropertiesForMargins.map(getMargins),
+      fallbackMargins: margins,
+      headerContentByRId,
+      footerContentByRId,
+    };
+    const sectionEvenPageMargins = sectionVariantMargins("even", variantMarginOptions);
+    const sectionFirstPageMargins = sectionVariantMargins("first", variantMarginOptions);
 
     newBlocks = bodyBlocksClearSectionHeaderFooter(newBlocks, {
       authoredMargins: margins,

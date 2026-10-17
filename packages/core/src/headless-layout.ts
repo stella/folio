@@ -18,10 +18,6 @@
  * paginate with the body, so an export paints the pages the editor paints
  * rather than bare bodies.
  *
- * What this entry still does not do is push the body down for a header taller
- * than its margin: the editor's margin clearing lives in the controller, and a
- * document whose header overflows its margin will overlap the body here.
- *
  * ## Measurement
  *
  * Layout is only as good as the installed `MeasureProvider`. The caller
@@ -82,6 +78,10 @@ import {
 } from "./layout-bridge/convert/headerFooterLayout";
 import { toFlowBlocks, WORD_UNSPECIFIED_FONT_SIZE } from "./layout-bridge/convert/toFlowBlocks";
 import type { ToFlowBlocksOptions } from "./layout-bridge/convert/toFlowBlocks";
+import {
+  bodyBlocksClearSectionHeaderFooter,
+  sectionVariantMargins,
+} from "./paged-layout/headerFooterMarginClearance";
 import { getMargins, getPageSize, getPageNumbering } from "./paged-layout/sectionGeometry";
 import type { DocumentFeatures } from "./display-list/build/buildDisplayList";
 import type { PageFurnitureInputs } from "./display-list/build/furniture";
@@ -545,11 +545,30 @@ export const layoutDocxHeadless = async (
       const endnoteTexts = formatEndnoteTexts(endnoteNumbers, (displayNumber) =>
         formatOoxmlCounter(displayNumber, endnoteNumberFormat),
       );
-      const blocks = remapNoteMarkerText(authored, {
+      const noteNumberedBlocks = remapNoteMarkerText(authored, {
         footnoteNumbers,
         endnoteTexts,
       });
 
+      const sectionHeaderFooterRefs = resolveSectionHeaderFooterRefs(document);
+      const now = options.now ?? new Date();
+      const storyShared = { contentWidth, storyOptions, pageCount: 1, now } as const;
+      const headerContentByRId = convertStories({
+        ...storyShared,
+        parts: document.package.headers,
+        metrics: { section: "header", pageSize, margins },
+      });
+      const footerContentByRId = convertStories({
+        ...storyShared,
+        parts: document.package.footers,
+        metrics: { section: "footer", pageSize, margins },
+      });
+      const blocks = bodyBlocksClearSectionHeaderFooter(noteNumberedBlocks, {
+        authoredMargins: margins,
+        sectionHeaderFooterRefs,
+        headerContentByRId,
+        footerContentByRId,
+      });
       const measures = measureBlocks(blocks, contentWidth);
 
       const footnoteContentById =
@@ -580,23 +599,37 @@ export const layoutDocxHeadless = async (
       });
       const flow = spliceEndnoteAreas(blocks, measures, endnoteAreas);
 
-      const sectionHeaderFooterRefs = resolveSectionHeaderFooterRefs(document);
       const finalPageSize = getPageSize(finalSection);
-      const finalMargins = getMargins(finalSection);
+      const sectionProperties = sections.map(({ properties }) => properties);
+      const sectionMargins = sectionProperties.map(getMargins);
+      const variantMarginOptions = {
+        sectionHeaderFooterRefs,
+        sectionMargins,
+        fallbackMargins: margins,
+        headerContentByRId,
+        footerContentByRId,
+      };
+      const defaultMargins = sectionVariantMargins("default", variantMarginOptions);
+      const initialMargins = defaultMargins?.at(0) ?? margins;
+      const finalMargins = defaultMargins?.at(-1) ?? getMargins(finalSection);
+      const sectionEvenPageMargins = sectionVariantMargins("even", variantMarginOptions);
+      const sectionFirstPageMargins = sectionVariantMargins("first", variantMarginOptions);
       const layoutOptions: LayoutOptions = {
         pageSize,
-        margins,
+        margins: initialMargins,
         pageNumbering: getPageNumbering(firstSection),
         finalPageSize,
         finalMargins,
         finalPageNumbering: getPageNumbering(finalSection),
-        sectionVerticalAlignments: sections.map(({ properties }) => properties.verticalAlign),
+        sectionVerticalAlignments: sectionProperties.map(({ verticalAlign }) => verticalAlign),
         pageGap: options.pageGap ?? 0,
         titlePage: firstSection?.titlePg === true,
         evenAndOddHeaders: document.package.settings?.evenAndOddHeaders === true,
         mirrorMargins: readsMirrorMargins(document.package.settings),
         ...(footnoteHeightById.size === 0 ? {} : { footnoteHeightById }),
         ...(sectionHeaderFooterRefs === undefined ? {} : { sectionHeaderFooterRefs }),
+        ...(sectionEvenPageMargins === undefined ? {} : { sectionEvenPageMargins }),
+        ...(sectionFirstPageMargins === undefined ? {} : { sectionFirstPageMargins }),
         ...(endnoteAreas === undefined ? {} : { noteAreas: endnoteAreas.noteAreas }),
       };
       const blockLookup = buildBlockLookup(flow.blocks, flow.measures);
@@ -610,10 +643,23 @@ export const layoutDocxHeadless = async (
       if (continuationSeparator !== undefined) {
         blockLookup.set(String(continuationSeparator.block.id), continuationSeparator);
       }
+      const layout = layoutDocument(flow.blocks, flow.measures, layoutOptions);
+      const pageCount = layout.pages.length;
+      const finalStoryShared = { contentWidth, storyOptions, pageCount, now } as const;
       return {
-        layout: layoutDocument(flow.blocks, flow.measures, layoutOptions),
+        layout,
         blockLookup,
         footnoteContentById,
+        headerContentByRId: convertStories({
+          ...finalStoryShared,
+          parts: document.package.headers,
+          metrics: { section: "header", pageSize, margins },
+        }),
+        footerContentByRId: convertStories({
+          ...finalStoryShared,
+          parts: document.package.footers,
+          metrics: { section: "footer", pageSize, margins },
+        }),
       };
     });
     if (laidOut.isErr()) {
@@ -625,37 +671,7 @@ export const layoutDocxHeadless = async (
       );
     }
 
-    const { layout, blockLookup, footnoteContentById } = laidOut.value;
-
-    // Headers and footers are converted after pagination because a page-number
-    // field measures against the final page count, and because nothing in a
-    // header changes where the body's lines fell.
-    const stories = Result.try(() => {
-      const pageCount = layout.pages.length;
-      const now = options.now ?? new Date();
-      const shared = { contentWidth, storyOptions, pageCount, now } as const;
-      return {
-        headerContentByRId: convertStories({
-          ...shared,
-          parts: document.package.headers,
-          metrics: { section: "header", pageSize, margins },
-        }),
-        footerContentByRId: convertStories({
-          ...shared,
-          parts: document.package.footers,
-          metrics: { section: "footer", pageSize, margins },
-        }),
-      };
-    });
-    if (stories.isErr()) {
-      return Result.err(
-        new HeadlessLayoutError({
-          message: "The header and footer stories could not be laid out.",
-          cause: stories.error,
-        }),
-      );
-    }
-    return Result.ok({ layout, blockLookup, footnoteContentById, ...stories.value });
+    return Result.ok(laidOut.value);
   };
 
   // Measurement hyphenates synchronously and cannot wait for a dictionary, so
