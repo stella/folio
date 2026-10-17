@@ -531,7 +531,7 @@ const project = ({
     if (node.type.name !== "paragraph") return;
     const paraId = node.attrs["paraId"];
     const located = typeof paraId === "string" ? sources.get(paraId) : undefined;
-    if (located === undefined) {
+    if (typeof paraId !== "string" || located === undefined) {
       failure = new CanonicalSessionError({
         gap: CANONICAL_GAP.storyContentProjection,
         reason: "refused",
@@ -555,7 +555,7 @@ const project = ({
       return;
     }
     paragraphs.push({
-      blockId: source.paraId,
+      blockId: paraId,
       container,
       start: offset + 1,
       ...inline.value,
