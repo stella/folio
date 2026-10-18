@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, describe, expect, test } from "bun:test";
 import {
   existsSync,
   mkdirSync,
@@ -10,6 +12,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const repo = path.resolve(import.meta.dir, "..");
 const workflow = Bun.YAML.parse(readFileSync(path.join(repo, ".github/workflows/ci.yml"), "utf8"));

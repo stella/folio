@@ -1,7 +1,11 @@
-import { expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const rootDir = resolve(import.meta.dir, "..");
 const probeFile = resolve(rootDir, "tests/visual/canonicalTimerProbe.ts");

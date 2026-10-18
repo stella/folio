@@ -1,3 +1,5 @@
+import { scanTestTimeout } from "../test/scan-timeout";
+
 /**
  * One writer for every `CT_OnOff` element in the tree.
  *
@@ -17,8 +19,10 @@
  * documentation of the lexical space, not a second writer.
  */
 
-import { describe, expect, test } from "bun:test";
+import { setDefaultTimeout, describe, expect, test } from "bun:test";
 import path from "node:path";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES_DIR = path.join(REPOSITORY_ROOT, "packages");
