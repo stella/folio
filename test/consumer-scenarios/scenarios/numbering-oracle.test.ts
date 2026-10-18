@@ -688,6 +688,50 @@ test("a reference resolves a list created by an earlier suggested insertion", as
   assert.equal(result.displayLabel, "•");
 });
 
+test("a reference resolves a pending list inserted beside a table cell", async () => {
+  const reviewer = await openReviewer(await tableDocument());
+  const tableCells = rowsOf(reviewer).filter((row) => row.table !== undefined);
+  const listAnchor = tableCells.at(0);
+  const referenceAnchor = tableCells.at(-1);
+  assert.ok(listAnchor);
+  assert.ok(referenceAnchor);
+
+  await applyChecked(
+    reviewer,
+    [
+      {
+        type: "insertAfterBlock",
+        blockId: listAnchor.id,
+        text: "Created beside a table.",
+        numbering: { kind: "newList", format: "bullet" },
+      },
+    ],
+    "suggested",
+    "create a pending list beside a table cell",
+  );
+  const bullet = rowsOf(reviewer).find((row) => row.text === "Created beside a table.");
+  assert.ok(bullet);
+  assert.deepEqual(bullet.listReference, { numId: 1, level: 0 });
+
+  await applyChecked(
+    reviewer,
+    [
+      {
+        type: "insertAfterBlock",
+        blockId: referenceAnchor.id,
+        text: "Reference the pending list.",
+        numbering: { kind: "reference", numId: 1, ilvl: 0 },
+      },
+    ],
+    "suggested",
+    "reference a pending list created beside a table cell",
+  );
+  const referenced = rowsOf(reviewer).find((row) => row.text === "Reference the pending list.");
+  assert.ok(referenced);
+  assert.equal(referenced.kind, "listItem");
+  assert.equal(referenced.displayLabel, "•");
+});
+
 type PendingRecord = ReturnType<
   Awaited<ReturnType<typeof openReviewer>>["exportPendingSuggestions"]
 >[number];

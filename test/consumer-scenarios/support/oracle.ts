@@ -96,9 +96,17 @@ const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts =>
   for (const { operation } of reviewer.exportPendingSuggestions()) {
     if (operation.type !== "insertAfterBlock" && operation.type !== "insertBeforeBlock") continue;
     if (operation.numbering?.kind !== "newList") continue;
-    const anchorIndex = blocks.findIndex(({ id }) => id === operation.blockId);
+    let anchorIndex = blocks.findIndex(({ id }) => id === operation.blockId);
     if (anchorIndex < 0) continue;
     const direction = operation.type === "insertAfterBlock" ? 1 : -1;
+    const anchorTable = blocks[anchorIndex]?.table;
+    if (anchorTable) {
+      while (
+        blocks.at(anchorIndex + direction)?.table?.outerTableIndex === anchorTable.outerTableIndex
+      ) {
+        anchorIndex += direction;
+      }
+    }
     const blockAt = (index: number) => (index >= 0 ? blocks.at(index) : undefined);
     let insertedIndex = anchorIndex + direction;
     while (pendingInsertionBlockIds.has(blockAt(insertedIndex)?.id ?? "")) {
