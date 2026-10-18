@@ -1,4 +1,5 @@
 import { validateDocumentModel } from "@stll/docx-core";
+import { isCanonicallyEmptyParagraphFormatting } from "@stll/docx-core/model";
 import type { ValidateDocumentModelIssue, ValidateDocumentModelResult } from "@stll/docx-core";
 
 import type { Document } from "../types/document";
@@ -71,7 +72,7 @@ export const validateFolioDocumentModel = (document: Document): ValidateDocument
         } else if (
           block["formatting"] !== undefined &&
           isRecord(block["formatting"]) &&
-          Object.keys(block["formatting"]).length === 0
+          isCanonicallyEmptyParagraphFormatting(block["formatting"])
         ) {
           issues.push({
             path: `${blockPath}.formatting`,
@@ -105,12 +106,56 @@ export const validateFolioDocumentModel = (document: Document): ValidateDocument
             validateBlocks(cell["content"], `${cellPath}.content`);
           }
         }
-      } else if (block["type"] === "blockSdt") {
+      } else if (block["type"] === "blockSdt" || block["type"] === "blockCustomXml") {
         validateBlocks(block["content"], `${blockPath}.content`);
       }
     }
   };
   validateBlocks(documentBody["content"], "package.document.content");
+  const validateStoryMap = (stories: unknown, path: string): void => {
+    if (stories === undefined) return;
+    if (!(stories instanceof Map)) {
+      addMalformedIssue(path, "a map");
+      return;
+    }
+    for (const [id, story] of stories) {
+      const storyPath = `${path}[${JSON.stringify(id)}]`;
+      if (!isRecord(story)) {
+        addMalformedIssue(storyPath, "an object");
+        continue;
+      }
+      validateBlocks(story["content"], `${storyPath}.content`);
+    }
+  };
+  const validateNoteStories = (notes: unknown, path: string): void => {
+    if (notes === undefined) return;
+    if (!Array.isArray(notes)) {
+      addMalformedIssue(path, "an array");
+      return;
+    }
+    for (const [index, note] of notes.entries()) {
+      const notePath = `${path}[${String(index)}]`;
+      if (!isRecord(note)) {
+        addMalformedIssue(notePath, "an object");
+        continue;
+      }
+      validateBlocks(note["content"], `${notePath}.content`);
+    }
+  };
+  validateStoryMap(documentPackage["headers"], "package.headers");
+  validateStoryMap(documentPackage["footers"], "package.footers");
+  validateNoteStories(documentPackage["footnotes"], "package.footnotes");
+  validateNoteStories(documentPackage["endnotes"], "package.endnotes");
+  if (Array.isArray(documentBody["comments"])) {
+    for (const [index, comment] of documentBody["comments"].entries()) {
+      const commentPath = `package.document.comments[${String(index)}]`;
+      if (!isRecord(comment)) {
+        addMalformedIssue(commentPath, "an object");
+        continue;
+      }
+      validateBlocks(comment["content"], `${commentPath}.content`);
+    }
+  }
   return { valid: issues.every(({ severity }) => severity !== "error"), issues };
 };
 

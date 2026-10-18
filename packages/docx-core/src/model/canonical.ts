@@ -20,7 +20,11 @@ export const setDocumentBodyComments = (body: DocumentBody, comments: Comment[])
 export const finalizeParagraphFormatting = (
   formatting: ParagraphFormatting | undefined,
 ): ParagraphFormatting | undefined => {
-  if (formatting === undefined) return undefined;
-  const modeledKeys = Object.keys(formatting).filter((key) => key !== "sourceXml");
-  return modeledKeys.length === 0 ? undefined : formatting;
+  return isCanonicallyEmptyParagraphFormatting(formatting) ? undefined : formatting;
 };
+
+/** Whether paragraph formatting states no modeled properties. */
+export const isCanonicallyEmptyParagraphFormatting = (
+  formatting: ParagraphFormatting | undefined,
+): boolean =>
+  formatting === undefined || Object.keys(formatting).every((key) => key === "sourceXml");

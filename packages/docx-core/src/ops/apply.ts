@@ -1264,8 +1264,11 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
       "A paragraph property change does not record the paragraph mark's run properties.",
     );
   }
-  const formatting = patchedSet(paragraph.formatting, op.patch, op.whenEmpty);
-  if (structurallyEqual(formatting, paragraph.formatting)) {
+  const formatting = finalizeParagraphFormatting(
+    patchedSet(paragraph.formatting, op.patch, op.whenEmpty),
+  );
+  const currentFormatting = finalizeParagraphFormatting(paragraph.formatting);
+  if (structurallyEqual(formatting, currentFormatting)) {
     return unchanged(document);
   }
   const next = withParagraphFormatting(paragraph, formatting);
