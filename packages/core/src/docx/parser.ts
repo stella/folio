@@ -86,6 +86,7 @@ import {
 } from "./modelValidation";
 import { extractMetafileRaster, isMetafileMimeType } from "./metafileRaster";
 import { renderEmfSvg } from "./metafileSvg";
+import { renderWmfSvg } from "./wmfSvg";
 import {
   type PreviewBudgetOverrides,
   type PreviewLedger,
@@ -138,6 +139,7 @@ import type { DocxUnzipOptions, RawDocxContent } from "./unzip";
 import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 
 const EMF_MIME_TYPE = "image/x-emf";
+const WMF_MIME_TYPES = new Set(["image/x-wmf", "image/wmf"]);
 const SVG_MIME_TYPE = "image/svg+xml";
 const MAX_PACKAGE_EMF_PREVIEW_BYTES = 8 * 1024 * 1024;
 
@@ -1021,12 +1023,16 @@ async function buildMediaMap(
       continue;
     }
 
-    const emfSvg =
-      isReferenced && mimeType === EMF_MIME_TYPE && remainingEmfPreviewBytes > 0
-        ? renderEmfSvg(data)
-        : null;
-    if (emfSvg) {
-      const svgBytes = encodeUtf8(emfSvg);
+    let metafileSvg: string | null = null;
+    if (isReferenced && remainingEmfPreviewBytes > 0) {
+      if (mimeType === EMF_MIME_TYPE) {
+        metafileSvg = renderEmfSvg(data);
+      } else if (WMF_MIME_TYPES.has(mimeType)) {
+        metafileSvg = renderWmfSvg(data);
+      }
+    }
+    if (metafileSvg) {
+      const svgBytes = encodeUtf8(metafileSvg);
       if (svgBytes.byteLength <= remainingEmfPreviewBytes) {
         remainingEmfPreviewBytes -= svgBytes.byteLength;
         const mediaFile: MediaFile = {
