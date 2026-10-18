@@ -6,6 +6,14 @@
  * Original EMF bytes remain the source of truth for DOCX round-trip.
  */
 
+import {
+  assembleMetafileSvg,
+  metafileColorRefToCss,
+  metafileNumberText,
+  transformMetafilePoint,
+  type MetafilePoint,
+} from "./metafileSvgShared";
+
 const EMF_SIGNATURE = 0x464d_4520;
 const MAX_EMF_RECORDS = 10_000;
 const MAX_EMF_POINTS = 20_000;
@@ -95,20 +103,6 @@ const uint32 = (view: DataView, offset: number, end: number): number | undefined
 const int32 = (view: DataView, offset: number, end: number): number | undefined =>
   offset >= 0 && offset + 4 <= end ? view.getInt32(offset, true) : undefined;
 
-const numberText = (value: number): string => {
-  const rounded = Math.round(value * 10_000) / 10_000;
-  return Object.is(rounded, -0) ? "0" : String(rounded);
-};
-
-const colorRefToCss = (color: number): string => {
-  const red = color & 0xff;
-  const green = (color >>> 8) & 0xff;
-  const blue = (color >>> 16) & 0xff;
-  return `#${red.toString(16).padStart(2, "0")}${green
-    .toString(16)
-    .padStart(2, "0")}${blue.toString(16).padStart(2, "0")}`;
-};
-
 const stockObject = (handle: number): GraphicsObject | undefined => {
   switch (handle) {
     case 0x8000_0000:
@@ -138,32 +132,20 @@ const mappedPoint = (
   x: number,
   y: number,
 ): { x: number; y: number } | undefined => {
-  let mappedX: number;
-  let mappedY: number;
-  if (state.mapMode === MAP_MODE_TEXT) {
-    mappedX = x - state.windowOrigin.x + state.viewportOrigin.x - bounds.left;
-    mappedY = y - state.windowOrigin.y + state.viewportOrigin.y - bounds.top;
-  } else {
-    const { windowExtent, windowOrigin, viewportExtent, viewportOrigin } = state;
-    if (windowExtent.x === 0 || windowExtent.y === 0) {
-      return undefined;
-    }
-    mappedX =
-      ((x - windowOrigin.x) * viewportExtent.x) / windowExtent.x + viewportOrigin.x - bounds.left;
-    mappedY =
-      ((y - windowOrigin.y) * viewportExtent.y) / windowExtent.y + viewportOrigin.y - bounds.top;
-  }
-  if (!Number.isFinite(mappedX) || !Number.isFinite(mappedY)) {
-    return undefined;
-  }
-  if (Math.abs(mappedX) > MAX_EMF_DIMENSION * 100 || Math.abs(mappedY) > MAX_EMF_DIMENSION * 100) {
-    return undefined;
-  }
-  return { x: mappedX, y: mappedY };
+  const unitExtent: MetafilePoint = { x: 1, y: 1 };
+  return transformMetafilePoint({
+    point: { x, y },
+    windowOrigin: state.windowOrigin,
+    windowExtent: state.mapMode === MAP_MODE_TEXT ? unitExtent : state.windowExtent,
+    viewportOrigin: state.viewportOrigin,
+    viewportExtent: state.mapMode === MAP_MODE_TEXT ? unitExtent : state.viewportExtent,
+    outputOrigin: { x: bounds.left, y: bounds.top },
+    maxCoordinate: MAX_EMF_DIMENSION * 100,
+  });
 };
 
 const pathPoint = (command: string, point: { x: number; y: number }): string =>
-  `${command}${numberText(point.x)} ${numberText(point.y)}`;
+  `${command}${metafileNumberText(point.x)} ${metafileNumberText(point.y)}`;
 
 const selectGraphicsObject = (
   state: DeviceState,
@@ -344,7 +326,7 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         }
         objects.set(handle, {
           type: "brush",
-          fill: style === 1 ? null : colorRefToCss(color),
+          fill: style === 1 ? null : metafileColorRefToCss(color),
         });
         break;
       }
@@ -490,7 +472,7 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
             return null;
           }
           commands.push(
-            `C${numberText(first.x)} ${numberText(first.y)} ${numberText(second.x)} ${numberText(second.y)} ${numberText(third.x)} ${numberText(third.y)}`,
+            `C${metafileNumberText(first.x)} ${metafileNumberText(first.y)} ${metafileNumberText(second.x)} ${metafileNumberText(second.y)} ${metafileNumberText(third.x)} ${metafileNumberText(third.y)}`,
           );
         }
         break;
@@ -639,6 +621,10 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
     default:
       pathState satisfies never;
   }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${numberText(width)} ${numberText(height)}">${renderedPaths.join("")}</svg>`;
-  return svg.length <= MAX_EMF_SVG_CHARACTERS ? svg : null;
+  return assembleMetafileSvg({
+    width,
+    height,
+    elements: renderedPaths,
+    maxCharacters: MAX_EMF_SVG_CHARACTERS,
+  });
 }
