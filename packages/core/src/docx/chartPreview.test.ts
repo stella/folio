@@ -26,7 +26,13 @@ const xmlFile = (path: string, xml: string): [string, MediaFile] => [
   },
 ];
 const cache = (name: "cat" | "val", values: readonly (string | number)[]) =>
-  `<c:${name}><c:${name === "cat" ? "strRef" : "numRef"}><c:${name === "cat" ? "strCache" : "numCache"}>${values.map((value, index) => `<c:pt idx="${index}"><c:v>${value}</c:v></c:pt>`).join("")}</c:${name === "cat" ? "strCache" : "numCache"}></c:${name === "cat" ? "strRef" : "numRef"}></c:${name}>`;
+  `<c:${name}><c:${name === "cat" ? "strRef" : "numRef"}><c:${name === "cat" ? "strCache" : "numCache"}><c:ptCount val="${values.length}"/>${values.map((value, index) => `<c:pt idx="${index}"><c:v>${value}</c:v></c:pt>`).join("")}</c:${name === "cat" ? "strCache" : "numCache"}></c:${name === "cat" ? "strRef" : "numRef"}></c:${name}>`;
+const indexedCache = (
+  name: "cat" | "val",
+  count: number,
+  points: readonly (readonly [number, string | number])[],
+) =>
+  `<c:${name}><c:${name === "cat" ? "strRef" : "numRef"}><c:${name === "cat" ? "strCache" : "numCache"}><c:ptCount val="${count}"/>${points.map(([index, value]) => `<c:pt idx="${index}"><c:v>${value}</c:v></c:pt>`).join("")}</c:${name === "cat" ? "strCache" : "numCache"}></c:${name === "cat" ? "strRef" : "numRef"}></c:${name}>`;
 const series = (values: readonly (string | number)[], color = "4472C4") =>
   `<c:ser><c:spPr><a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:srgbClr val="${color}"/></a:solidFill></c:spPr>${cache(
     "cat",
@@ -165,6 +171,60 @@ describe("chart previews", () => {
     }
   });
 
+  test("keeps sparse cache positions and breaks lines across missing values", () => {
+    const caches = `${indexedCache("cat", 3, [
+      [0, "A"],
+      [1, "B"],
+      [2, "C"],
+    ])}${indexedCache("val", 3, [
+      [0, 1],
+      [2, 2],
+    ])}`;
+    const bars = preview(chart("barChart", `<c:barDir val="col"/><c:ser>${caches}</c:ser>`))
+      ?.preview?.shapes;
+    expect(bars).toHaveLength(2);
+    expect(bars?.map((shape) => (shape.type === "rect" ? shape.x : null))).toEqual([
+      108.66666666666667, 682,
+    ]);
+
+    const lines = preview(
+      chart("lineChart", `<c:ser><c:marker><c:symbol val="circle"/></c:marker>${caches}</c:ser>`),
+    )?.preview?.shapes;
+    expect(lines).toHaveLength(2);
+    expect(lines?.every((shape) => shape.type === "rect")).toBe(true);
+  });
+
+  test("associates out-of-order cache points by index", () => {
+    const caches = `${indexedCache("cat", 3, [
+      [2, "C"],
+      [0, "A"],
+      [1, "B"],
+    ])}${indexedCache("val", 3, [
+      [2, 3],
+      [0, 1],
+      [1, 2],
+    ])}`;
+    const shapes = preview(chart("lineChart", `<c:ser>${caches}</c:ser>`))?.preview?.shapes;
+    const line = shapes?.at(0);
+    expect(line?.type).toBe("polyline");
+    if (line?.type !== "polyline") throw new Error("line chart did not produce a polyline");
+    expect(line.points.map(({ y }) => y)).toEqual([900, 500, 99.99999999999997]);
+  });
+
+  test.each([
+    indexedCache("val", 2, [[2, 1]]),
+    indexedCache("val", 2, [
+      [0, 1],
+      [0, 2],
+    ]),
+  ])("fails closed for an invalid cache index", (values) => {
+    const categories = indexedCache("cat", 2, [
+      [0, "A"],
+      [1, "B"],
+    ]);
+    expect(preview(chart("barChart", `<c:ser>${categories}${values}</c:ser>`))).toBeNull();
+  });
+
   test("pie sectors start at twelve o'clock and use proportional angles", () => {
     const shapes = preview(chart("pieChart", series([1, 1, 2])))?.preview?.shapes ?? [];
     expect(shapes.map((shape) => (shape.type === "polygon" ? shape.points.at(0) : null))).toEqual([
@@ -191,6 +251,17 @@ describe("chart previews", () => {
     expect(preview(chart("barChart", series(["Infinity"])))).toBeNull();
   });
 
+  test("fails closed when chart settings produce non-finite geometry", () => {
+    expect(
+      preview(
+        chart(
+          "pieChart",
+          `${series([1, 2])}<c:firstSliceAng val="9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"/>`,
+        ),
+      ),
+    ).toBeNull();
+  });
+
   test("caps oversized cached charts", () => {
     const manySeries = Array.from({ length: 40 }, (_, index) =>
       series(Array.from({ length: 100 }, () => index + 1)),
@@ -210,26 +281,59 @@ describe("chart previews", () => {
   test("finite cached series always stay inside the extent and never throw", () => {
     fc.assert(
       fc.property(
-        fc.array(fc.double({ noNaN: true, noDefaultInfinity: true, min: -1e6, max: 1e6 }), {
+        fc.constantFrom("barChart", "lineChart", "pieChart", "doughnutChart"),
+        fc.array(fc.double({ noNaN: true, noDefaultInfinity: true }), {
           minLength: 1,
           maxLength: 32,
         }),
-        (values) => {
-          const shapes =
-            preview(chart("barChart", `<c:barDir val="col"/>${series(values)}`))?.preview?.shapes ??
-            [];
-          return shapes.every(
-            (shape) =>
-              shape.x >= 0 &&
-              shape.y >= 0 &&
-              shape.x + shape.width <= 1000.000001 &&
-              shape.y + shape.height <= 1000.000001,
+        (kind, values) => {
+          const body = `${kind === "barChart" ? '<c:barDir val="col"/><c:grouping val="stacked"/>' : ""}${series(values)}${kind === "barChart" ? series(values, "ED7D31") : ""}`;
+          const shapes = preview(chart(kind, body))?.preview?.shapes ?? [];
+          return shapes.every((shape) =>
+            shape.type === "rect"
+              ? [shape.x, shape.y, shape.width, shape.height].every(Number.isFinite) &&
+                shape.x >= 0 &&
+                shape.y >= 0 &&
+                shape.x + shape.width <= 1000.000001 &&
+                shape.y + shape.height <= 1000.000001
+              : shape.points.every(
+                  ({ x, y }) =>
+                    Number.isFinite(x) &&
+                    Number.isFinite(y) &&
+                    x >= 0 &&
+                    y >= 0 &&
+                    x <= 1000.000001 &&
+                    y <= 1000.000001,
+                ),
           );
         },
       ),
       { numRuns: 100 },
     );
   });
+
+  test.each([Number.MAX_VALUE, Number.MIN_VALUE])(
+    "keeps extreme finite values within the extent",
+    (value) => {
+      for (const [kind, body] of [
+        ["pieChart", series([value, value])],
+        ["lineChart", series([value, value / 2 || value])],
+        [
+          "barChart",
+          `<c:barDir val="col"/><c:grouping val="stacked"/>${series([value])}${series([value], "ED7D31")}`,
+        ],
+      ] as const) {
+        const shapes = preview(chart(kind, body))?.preview?.shapes ?? [];
+        expect(
+          shapes.every((shape) =>
+            shape.type === "rect"
+              ? [shape.x, shape.y, shape.width, shape.height].every(Number.isFinite)
+              : shape.points.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)),
+          ),
+        ).toBe(true);
+      }
+    },
+  );
   test("round-trips chart XML and chart relationships unchanged", async () => {
     const chartXml = chart(
       "barChart",

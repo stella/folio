@@ -31,7 +31,7 @@ const DEFAULT_COLORS = ["4472C4", "ED7D31", "A5A5A5", "FFC000", "5B9BD5", "70AD4
 const MAX_SERIES = 16;
 const MAX_POINTS = 64;
 
-type CachedSeries = { values: number[]; color: string };
+type CachedSeries = { values: (number | undefined)[]; color: string };
 
 const matches = (
   element: XmlElement,
@@ -87,19 +87,31 @@ const xmlAt = (media: Map<string, MediaFile>, path: string): XmlElement | null =
 const cacheValues = (
   reference: XmlElement | null,
   cacheName: "numCache" | "strCache",
-): string[] | null => {
+): (string | undefined)[] | null => {
   const cache = reference ? firstDescendant(reference, CHART, cacheName) : null;
   if (!cache) return null;
-  const values: string[] = [];
-  for (const point of getChildElements(cache)
-    .filter((item) => matches(item, CHART, "pt"))
-    .slice(0, MAX_POINTS)) {
+  const declaredCount = parseNumericAttribute(child(cache, "ptCount"), null, "val");
+  if (declaredCount === undefined || !Number.isInteger(declaredCount) || declaredCount <= 0)
+    return null;
+  const values = Array<string | undefined>(Math.min(declaredCount, MAX_POINTS));
+  const seen = new Set<number>();
+  for (const point of getChildElements(cache).filter((item) => matches(item, CHART, "pt"))) {
+    const index = parseNumericAttribute(point, null, "idx");
+    if (
+      index === undefined ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= declaredCount ||
+      seen.has(index)
+    )
+      return null;
+    seen.add(index);
     const value = child(point, "v");
     const text = value?.elements?.find((item) => item.type === "text")?.text;
     if (text === undefined) return null;
-    values.push(String(text));
+    if (index < values.length) values[index] = String(text);
   }
-  return values.length > 0 ? values : null;
+  return values;
 };
 
 const seriesColor = (series: XmlElement, index: number): string => {
@@ -123,8 +135,8 @@ const cachedSeries = (chart: XmlElement): CachedSeries[] | null => {
     const categories = cacheValues(categoryRef, "strCache") ?? cacheValues(categoryRef, "numCache");
     const rawValues = cacheValues(child(series, "val") ?? child(series, "yVal"), "numCache");
     if (!categories || !rawValues || categories.length !== rawValues.length) return null;
-    const values = rawValues.map(Number);
-    if (values.some((value) => !Number.isFinite(value))) return null;
+    const values = rawValues.map((value) => (value === undefined ? undefined : Number(value)));
+    if (values.some((value) => value !== undefined && !Number.isFinite(value))) return null;
     result.push({ values, color: seriesColor(series, index) });
   }
   return result;
@@ -153,15 +165,20 @@ const barShapes = (
   const stacked =
     (getAttribute(child(chart, "grouping"), null, "val") ?? "clustered") === "stacked";
   const points = series.at(0)?.values.length ?? 0;
+  const magnitude = Math.max(
+    ...series.flatMap((item) => item.values.map((value) => Math.abs(value ?? 0))),
+  );
+  if (!(magnitude > 0)) return [];
+  const normalized = series.map((item) => item.values.map((value) => value && value / magnitude));
   const positives = Array.from({ length: points }, (_, point) =>
     stacked
-      ? series.reduce((sum, item) => sum + Math.max(0, item.values[point] ?? 0), 0)
-      : Math.max(...series.map((item) => Math.max(0, item.values[point] ?? 0))),
+      ? normalized.reduce((sum, values) => sum + Math.max(0, values[point] ?? 0), 0)
+      : Math.max(...normalized.map((values) => Math.max(0, values[point] ?? 0))),
   );
   const negatives = Array.from({ length: points }, (_, point) =>
     stacked
-      ? series.reduce((sum, item) => sum + Math.min(0, item.values[point] ?? 0), 0)
-      : Math.min(...series.map((item) => Math.min(0, item.values[point] ?? 0))),
+      ? normalized.reduce((sum, values) => sum + Math.min(0, values[point] ?? 0), 0)
+      : Math.min(...normalized.map((values) => Math.min(0, values[point] ?? 0))),
   );
   const maximum = Math.max(0, ...positives);
   const minimum = Math.min(0, ...negatives);
@@ -171,7 +188,8 @@ const barShapes = (
     let positive = 0;
     let negative = 0;
     for (const [seriesIndex, item] of series.entries()) {
-      const value = item.values[point] ?? 0;
+      const value = normalized[seriesIndex]?.[point];
+      if (value === undefined) continue;
       let start = 0;
       if (stacked) start = value >= 0 ? positive : negative;
       if (value >= 0) positive += value;
@@ -214,27 +232,46 @@ const lineShapes = (
   width: number,
   height: number,
 ): PreviewShape[] => {
-  const values = series.flatMap((item) => item.values);
-  const minimum = Math.min(...values);
-  const maximum = Math.max(...values);
+  const values = series.flatMap((item) => item.values).filter((value) => value !== undefined);
+  const magnitude = Math.max(...values.map(Math.abs));
+  if (!(magnitude > 0)) return [];
+  const normalizedSeries = series.map((item) =>
+    item.values.map((value) => value && value / magnitude),
+  );
+  const normalizedValues = normalizedSeries
+    .flatMap((seriesValues) => seriesValues)
+    .filter((value) => value !== undefined);
+  const minimum = Math.min(...normalizedValues);
+  const maximum = Math.max(...normalizedValues);
   const range = maximum - minimum || 1;
   const shapes: PreviewShape[] = [];
   const seriesElements = getChildElements(chart).filter((item) => matches(item, CHART, "ser"));
   for (const [seriesIndex, item] of series.entries()) {
     const denominator = Math.max(1, item.values.length - 1);
-    const points = item.values.map((value, index) => ({
-      x: width * (0.08 + (0.84 * index) / denominator),
-      y: height * (0.9 - (0.8 * (value - minimum)) / range),
-    }));
-    pushShape(shapes, {
-      type: "polyline",
-      points,
-      color: item.color,
-      strokeWidth: Math.max(1, Math.min(width, height) * 0.008),
-    });
+    const runs: { x: number; y: number }[][] = [];
+    let points: { x: number; y: number }[] = [];
+    for (const [index, value] of (normalizedSeries[seriesIndex] ?? []).entries()) {
+      if (value === undefined) {
+        if (points.length > 0) runs.push(points);
+        points = [];
+        continue;
+      }
+      points.push({
+        x: width * (0.08 + (0.84 * index) / denominator),
+        y: height * (0.9 - (0.8 * (value - minimum)) / range),
+      });
+    }
+    if (points.length > 0) runs.push(points);
+    for (const run of runs)
+      pushShape(shapes, {
+        type: "polyline",
+        points: run,
+        color: item.color,
+        strokeWidth: Math.max(1, Math.min(width, height) * 0.008),
+      });
     if (child(seriesElements.at(seriesIndex) ?? null, "marker")) {
       const size = Math.max(1, Math.min(width, height) * 0.018);
-      for (const point of points)
+      for (const point of runs.flat())
         pushShape(shapes, {
           type: "rect",
           x: point.x - size / 2,
@@ -271,8 +308,12 @@ const pieShapes = (
   doughnut: boolean,
 ): PreviewShape[] => {
   const values = series.at(0)?.values ?? [];
-  if (values.some((value) => value < 0)) return [];
-  const total = values.reduce((sum, value) => sum + value, 0);
+  if (values.some((value) => value !== undefined && value < 0)) return [];
+  const magnitude = Math.max(...values.map((value) => Math.abs(value ?? 0)));
+  if (!(magnitude > 0)) return [];
+  const normalized = values.map((value) => value && value / magnitude);
+  let total = 0;
+  for (const value of normalized) total += value ?? 0;
   if (!(total > 0)) return [];
   const shapes: PreviewShape[] = [];
   const center = { x: width / 2, y: height / 2 };
@@ -282,8 +323,8 @@ const pieShapes = (
   let angle =
     ((parseNumericAttribute(child(chart, "firstSliceAng"), null, "val") ?? 0) * Math.PI) / 180 -
     Math.PI / 2;
-  for (const [index, value] of values.entries()) {
-    if (value === 0) continue;
+  for (const [index, value] of normalized.entries()) {
+    if (value === undefined || value === 0) continue;
     const sweep = (Math.PI * 2 * value) / total;
     const segments = Math.max(1, Math.min(32, Math.ceil((32 * value) / total)));
     const outer = arcPoints(center, radius, angle, sweep, segments);
@@ -342,6 +383,12 @@ export const parseChartPreview = (
     shapes = pieShapes(supported, series, size.width, size.height, kind === "doughnutChart");
   }
   if (shapes.length === 0) return null;
+  const finite = shapes.every((shape) =>
+    shape.type === "rect"
+      ? [shape.x, shape.y, shape.width, shape.height].every(Number.isFinite)
+      : shape.points.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)),
+  );
+  if (!finite) return null;
   return {
     type: "image",
     preview: { kind: "diagram", extent: size, shapes },
