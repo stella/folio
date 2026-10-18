@@ -207,3 +207,27 @@ test.each(["paragraph", "precedingParagraph", "tableRow", "tableCell", "tableHea
     }
   },
 );
+
+test("a removed row's unmarked descendants do not preserve comment coverage", () => {
+  const deletion = schema.marks.deletion.create({ revisionId: 11, author: "Reviewer" });
+  const comment = schema.marks.comment.create({ commentId: 3 });
+  const membership = { revisionId: 12, author: "Reviewer" };
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, [schema.text("gone", [deletion, comment])]),
+    schema.node("table", null, [
+      schema.node("tableRow", { trDel: membership }, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("removed with row", [comment])]),
+        ]),
+      ]),
+    ]),
+  ]);
+
+  expect([
+    ...resolvedCommentPoints({
+      doc,
+      removes: (node) => Boolean(deletion.isInSet(node.marks)),
+      retiresStructure: (node) => node.type.name === "tableRow",
+    }).keys(),
+  ]).toEqual([3]);
+});

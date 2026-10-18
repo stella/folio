@@ -478,6 +478,39 @@ describe("tracked text", () => {
     expect(accepted.package.document.comments).toHaveLength(1);
   });
 
+  test("accepting a deleted row does not preserve an otherwise exhausted comment range", () => {
+    const document = commentedDocument([
+      { type: "commentRangeStart", id: 40 },
+      { type: "deletion", info: stamp(9), content: [run("gone")] },
+    ]);
+    document.package.document.content.push(
+      {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            structuralChange: { type: "tableRowDeletion", info: stamp(10) },
+            cells: [
+              {
+                type: "tableCell",
+                content: [paragraph("00000002", [run("removed with row")])],
+              },
+            ],
+          },
+        ],
+      },
+      paragraph("00000003", [
+        { type: "commentRangeEnd", id: 40 },
+        { type: "commentReference", id: 40 },
+      ]),
+    );
+
+    const accepted = resolved(document, [9, 10], REVISION_DECISIONS.ACCEPT);
+
+    expect(accepted.package.document.comments).toBeUndefined();
+    expect(blocks(accepted)).toEqual([paragraph("00000001", []), paragraph("00000003", [])]);
+  });
+
   test("revisionIdDemand counts the ids a tracked operation takes past its stamp", () => {
     const withChange: ParagraphContent = {
       type: "run",

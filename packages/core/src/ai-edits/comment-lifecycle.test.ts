@@ -3,7 +3,8 @@ import fc from "fast-check";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
-import type { ParagraphContent, RunContent } from "../types/content";
+import { createDocx } from "../docx/rezip";
+import type { Document, ParagraphContent, RunContent } from "../types/document";
 import {
   openReviewer,
   paragraphsDocx,
@@ -105,6 +106,60 @@ const rejectInserted = async (survivors: readonly ParagraphContent[]) => {
 };
 
 describe("accepted deletion comment anchors", () => {
+  test("content in an accepted deleted row does not keep an otherwise exhausted range", async () => {
+    const info = { id: 19, author: "Reviewer" };
+    const document = {
+      package: {
+        document: {
+          comments: [reviewComment(COMMENT_ID)],
+          content: [
+            {
+              type: "paragraph",
+              paraId: "10000000",
+              content: [
+                { type: "commentRangeStart", id: COMMENT_ID },
+                { type: "deletion", info, content: [textRun("gone")] },
+              ],
+            },
+            {
+              type: "table",
+              rows: [
+                {
+                  type: "tableRow",
+                  structuralChange: { type: "tableRowDeletion", info: { ...info, id: 20 } },
+                  cells: [
+                    {
+                      type: "tableCell",
+                      content: [
+                        {
+                          type: "paragraph",
+                          paraId: "10000001",
+                          content: [textRun("removed with row")],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: "paragraph",
+              paraId: "10000002",
+              content: [
+                { type: "commentRangeEnd", id: COMMENT_ID },
+                { type: "commentReference", id: COMMENT_ID },
+              ],
+            },
+          ],
+        },
+      },
+    } satisfies Document;
+    const reviewer = await openReviewer(await createDocx(document));
+
+    expect(reviewer.acceptAll()).toBeGreaterThan(0);
+    expect(reviewer.getComments().some(({ id }) => id === COMMENT_ID)).toBe(false);
+  });
+
   test.each(["all", "single"] as const)(
     "a retained inline image keeps the thread after accepting %s revisions",
     async (resolution) => {

@@ -122,6 +122,7 @@ export const createResolvedCommentPointCollector = ({
 }: Omit<ResolvedCommentPointsOptions, "doc">) => {
   const points = new Map<number, number>();
   const retained = new Set<number>();
+  const removedStructures: { from: number; to: number }[] = [];
   const visit = (node: PMNode, position: number, previous?: PMNode): boolean => {
     if (node.type.name === "paragraph") {
       const mark = expectParagraphAttrs(node).pPrMark;
@@ -152,24 +153,31 @@ export const createResolvedCommentPointCollector = ({
       node.type.name === "tableRow" &&
       expectTableRowAttrs(node).trDel &&
       retiresStructure(node, position)
-    )
+    ) {
+      removedStructures.push({ from: position, to: position + node.nodeSize });
       return true;
+    }
     if (
       (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
       expectTableCellAttrs(node).cellMarker?.kind === "del" &&
       retiresStructure(node, position)
-    )
+    ) {
+      removedStructures.push({ from: position, to: position + node.nodeSize });
       return true;
+    }
     if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
       const attrs = readRangeAnchorAttrs(node);
       if (attrs.ok && attrs.value.start.type === "commentRangeStart")
         retained.add(attrs.value.start.id);
     }
     if (!node.isInline || isCommentAnchorCarrier(node)) return true;
+    const removedWithStructure = removedStructures.some(
+      ({ from, to }) => position > from && position < to,
+    );
     for (const mark of node.marks) {
       if (mark.type.name !== "comment") continue;
       const id = mark.attrs["commentId"];
-      if (!removes(node, position)) retained.add(id);
+      if (!removedWithStructure && !removes(node, position)) retained.add(id);
       else if (!points.has(id)) points.set(id, position);
     }
     return true;

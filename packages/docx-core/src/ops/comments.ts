@@ -168,7 +168,13 @@ export const commentDocumentIssue = (
       (!sameStory(start.story, end.story) || anchors.indexOf(start) > anchors.indexOf(end))
     )
       return "Comment range boundaries must be ordered in one story.";
-    if (start && end && !coverage.get(comment.id)?.survivingNonCarrierContent)
+    const rangeCoverage = coverage.get(comment.id);
+    if (
+      start &&
+      end &&
+      !rangeCoverage?.authoredAsPoint &&
+      !rangeCoverage?.survivingNonCarrierContent
+    )
       return "A comment range must cover non-carrier content.";
     const parent = comment.parentId === undefined ? undefined : byId.get(comment.parentId);
     if (!parent && own.length === 0 && allowedOrphans !== "all" && !allowedOrphans.has(comment.id))
