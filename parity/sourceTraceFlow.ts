@@ -6,7 +6,7 @@ import type {
   TableCell,
 } from "../packages/core/src/layout-engine/types";
 import { normalizeLineText } from "./textNorm";
-import { createLiteralSearch } from "./literalSearch";
+import { createLiteralSearchScope } from "./literalSearch";
 
 type TracePathSegment = number | "blocks" | "cells" | "content" | "rows";
 
@@ -163,7 +163,7 @@ const summarizeCell = ({ cell, cellIndex, blockText }: SummarizeCellOptions): Ta
 });
 
 type TraceContext = {
-  matchesText: ReturnType<typeof createLiteralSearch>;
+  matchesText: (text: string) => boolean;
   limit: number;
   matches: FlowMatch[];
   blockText: BlockTextReader;
@@ -259,7 +259,7 @@ export const traceFlowBlocks = ({ blocks, query, limit }: TraceFlowBlocksOptions
     blocks,
     path: ["blocks"],
     context: {
-      matchesText: createLiteralSearch(normalizedSearchText(query)),
+      matchesText: createLiteralSearchScope().createLiteralSearch(normalizedSearchText(query)),
       limit,
       matches,
       blockText: createBlockTextReader(),

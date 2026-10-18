@@ -10,7 +10,7 @@
 import path from "node:path";
 
 import { createFolioExtractor } from "./folioExtract";
-import { createLiteralSearch } from "./literalSearch";
+import { createLiteralSearchScope } from "./literalSearch";
 
 type InspectFlags = {
   doc?: string | undefined;
@@ -74,7 +74,7 @@ const main = async (): Promise<void> => {
   try {
     const page = await extractor.inspectPage(doc, flags.page);
     const matchesText = flags.text
-      ? createLiteralSearch(flags.text.toLocaleLowerCase())
+      ? createLiteralSearchScope().createLiteralSearch(flags.text.toLocaleLowerCase())
       : undefined;
     const lines = page.lines
       .filter((line) => matchesText === undefined || matchesText(line.text.toLocaleLowerCase()))

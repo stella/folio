@@ -11,7 +11,7 @@ import path from "node:path";
 
 import { isReferenceRendererId } from "./referenceRenderer";
 import { normalizeLineText } from "./textNorm";
-import { createLiteralSearch } from "./literalSearch";
+import { createLiteralSearchScope } from "./literalSearch";
 import type { CorpusReport, Divergence, DivergenceKind } from "./types";
 
 type Flags = {
@@ -181,7 +181,9 @@ const main = async (): Promise<void> => {
   const reportPath = path.resolve(flags.report!);
   const report = await readReport(reportPath);
   const matchesText = flags.text
-    ? createLiteralSearch(normalizeLineText(flags.text).toLocaleLowerCase())
+    ? createLiteralSearchScope().createLiteralSearch(
+        normalizeLineText(flags.text).toLocaleLowerCase(),
+      )
     : undefined;
 
   const rows = report.results

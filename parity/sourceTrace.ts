@@ -13,7 +13,7 @@ import { toFlowBlocks } from "../packages/core/src/layout-bridge/convert/toFlowB
 import { toProseDoc } from "../packages/core/src/prosemirror/conversion/toProseDoc";
 import { traceFlowBlocks } from "./sourceTraceFlow";
 import { normalizeLineText } from "./textNorm";
-import { createLiteralSearch } from "./literalSearch";
+import { createLiteralSearchScope } from "./literalSearch";
 
 type Flags = {
   doc?: string | undefined;
@@ -177,7 +177,7 @@ const main = async (): Promise<void> => {
   const flags = parseArgs(process.argv.slice(2));
   const docPath = path.resolve(flags.doc!);
   const needle = normalizedSearchText(flags.text!);
-  const matchesText = createLiteralSearch(needle);
+  const matchesText = createLiteralSearchScope().createLiteralSearch(needle);
   const parsed = await parseDocx(await Bun.file(docPath).arrayBuffer(), {
     preloadFonts: false,
     detectVariables: false,

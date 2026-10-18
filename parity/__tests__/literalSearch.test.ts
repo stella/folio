@@ -1,11 +1,30 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import ts from "typescript";
 import { assertProperty, propertyTestTimeout } from "../../test/property-testing";
 
-import { createCandidateContainment, createLiteralSearch } from "../literalSearch";
+import { createLiteralSearchScope } from "../literalSearch";
 import { normalizeLineText } from "../textNorm";
 
 describe("parity literal queries", () => {
+  test("the matcher module owns no mutable module state", async () => {
+    const source = ts.createSourceFile(
+      "literalSearch.ts",
+      await Bun.file(new URL("../literalSearch.ts", import.meta.url)).text(),
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    for (const statement of source.statements) {
+      if (ts.isImportDeclaration(statement)) continue;
+      expect(ts.isVariableStatement(statement)).toBe(true);
+      if (!ts.isVariableStatement(statement)) continue;
+      expect(statement.declarationList.flags & ts.NodeFlags.Const).toBeTruthy();
+      for (const declaration of statement.declarationList.declarations) {
+        expect(declaration.initializer && ts.isArrowFunction(declaration.initializer)).toBe(true);
+      }
+    }
+  });
+
   const fragments = [
     "",
     "a",
@@ -25,6 +44,7 @@ describe("parity literal queries", () => {
   ];
 
   test("keeps exact literals, empty queries, overlaps and both containment directions", () => {
+    const { createLiteralSearch, createCandidateContainment } = createLiteralSearchScope();
     for (const needle of fragments) {
       const search = createLiteralSearch(needle);
       const candidates = [...fragments, ...fragments.map((part) => needle + part)];
@@ -41,6 +61,7 @@ describe("parity literal queries", () => {
   });
 
   test("uses caller normalization without adding accent or case folding", () => {
+    const { createLiteralSearch } = createLiteralSearchScope();
     const query = normalizeLineText("Nováka\u00a0 ve smlouvě").toLocaleLowerCase();
     const search = createLiteralSearch(query);
     expect(search(normalizeLineText("NOVÁKA ve\t smlouvě!").toLocaleLowerCase())).toBe(true);
@@ -53,6 +74,7 @@ describe("parity literal queries", () => {
   test(
     "matches the native literal oracle for generated scalar strings",
     () => {
+      const { createLiteralSearch, createCandidateContainment } = createLiteralSearchScope();
       const scalar = fc.constantFrom("a", "b", "é", "e\u0301", "😀", "𞤀", "+", "[");
       const text = fc.array(scalar, { maxLength: 40 }).map((parts) => parts.join(""));
       const pattern = fc.array(scalar, { maxLength: 12 }).map((parts) => parts.join(""));
@@ -84,6 +106,7 @@ describe("parity literal queries", () => {
   test(
     "normalizes generated lone surrogates before matching",
     () => {
+      const { createLiteralSearch } = createLiteralSearchScope();
       const unit = fc.constantFrom("a", "😀", "\ud800", "\udc00", "\ufffd");
       const text = fc.array(unit, { maxLength: 30 }).map((parts) => parts.join(""));
       assertProperty(
