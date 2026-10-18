@@ -60,6 +60,7 @@
 
 import { Fragment, Mark, type Node as PMNode, type Schema } from "prosemirror-model";
 
+import { isCommentAnchorCarrier } from "../ai-edits/comment-anchor-carriers";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
 import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
@@ -134,7 +135,7 @@ export const createResolvedCommentPointCollector = ({
         node.descendants((inline, offset) => {
           if (
             inline.isInline &&
-            !isZeroWidthAnchor(inline) &&
+            !isCommentAnchorCarrier(inline) &&
             !removes(inline, position + 1 + offset)
           )
             survivingContent = true;
@@ -160,7 +161,7 @@ export const createResolvedCommentPointCollector = ({
       if (attrs.ok && attrs.value.start.type === "commentRangeStart")
         retained.add(attrs.value.start.id);
     }
-    if (!node.isInline || isZeroWidthAnchor(node)) return true;
+    if (!node.isInline || isCommentAnchorCarrier(node)) return true;
     for (const mark of node.marks) {
       if (mark.type.name !== "comment") continue;
       const id = mark.attrs["commentId"];

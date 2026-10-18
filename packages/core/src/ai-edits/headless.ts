@@ -155,6 +155,7 @@ import type {
   FolioWordDiffOptions,
 } from "./apply";
 import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
+import { isCommentAnchorCarrier } from "./comment-anchor-carriers";
 import { noteReferenceEditsAllowed } from "./note-references";
 import {
   anchoredCommentIdsInBlocks,
@@ -2545,8 +2546,7 @@ export class FolioDocxReviewer {
     const inspect = (doc: PMNode) => {
       doc.descendants((node) => {
         if (!node.isInline) return true;
-        // References and point anchors are carriers, not anchored content.
-        if (node.text === undefined) return undefined;
+        if (isCommentAnchorCarrier(node)) return undefined;
         const commentIds = node.marks.flatMap((mark) => {
           const commentId = mark.attrs["commentId"];
           return mark.type.name === "comment" && typeof commentId === "number" ? [commentId] : [];
