@@ -10,10 +10,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  consumerScenarioReplayFlags,
-  consumerScenarioReplay,
-} from "../../../scripts/consumer-scenario-args.ts";
+import { consumerScenarioReplayFlags, consumerScenarioReplay } from "./replay-inputs.ts";
 
 import { admit, loadCorpus, prune } from "./corpus.ts";
 import {

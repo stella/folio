@@ -12,10 +12,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 
-import {
-  consumerScenarioReplay,
-  consumerScenarioReplayFlags,
-} from "../../../scripts/consumer-scenario-args.ts";
+import { consumerScenarioReplay, consumerScenarioReplayFlags } from "../support/replay-inputs.ts";
 import {
   failureMarker,
   logFailureMarker,

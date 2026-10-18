@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { consumerScenarioReplay } from "../../../scripts/consumer-scenario-args.ts";
+import { consumerScenarioReplay } from "../support/replay-inputs.ts";
 import { readFlowDir } from "../support/corpus.ts";
 import { reportScenarioFailure } from "../support/failure-fingerprints.ts";
 import { type FlowFile, parseFlowFile } from "../support/flow-file.ts";

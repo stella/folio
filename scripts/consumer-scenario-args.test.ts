@@ -1,5 +1,6 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import path from "node:path";
 
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { shellQuote } from "../test/consumer-scenarios/support/failure-fingerprints";
@@ -12,6 +13,27 @@ import {
 } from "./consumer-scenario-args";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
+
+test("consumer scenario relative imports stay inside the copied tree", async () => {
+  const scenarioRoot = path.join(import.meta.dir, "../test/consumer-scenarios");
+  const transpiler = new Bun.Transpiler({ loader: "ts" });
+  const escapingImports: string[] = [];
+  const glob = new Bun.Glob("**/*.ts");
+
+  for await (const file of glob.scan({ cwd: scenarioRoot, onlyFiles: true })) {
+    const source = await Bun.file(path.join(scenarioRoot, file)).text();
+    for (const imported of transpiler.scanImports(source)) {
+      if (!imported.path.startsWith(".")) continue;
+      const resolved = path.resolve(scenarioRoot, path.dirname(file), imported.path);
+      const relative = path.relative(scenarioRoot, resolved);
+      if (relative === ".." || relative.startsWith(`..${path.sep}`)) {
+        escapingImports.push(`${file}: ${imported.path}`);
+      }
+    }
+  }
+
+  expect(escapingImports.sort()).toEqual([]);
+});
 
 const argvOf = (command: string): string[] =>
   [...command.matchAll(/'(?:'\\''|[^'])*'|\S+/gu)]
