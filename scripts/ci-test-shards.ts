@@ -82,8 +82,6 @@ export const assignTestShards = (files: string[]) => {
 };
 
 export const focusedTestFiles = focusedTests;
-/** @deprecated Fast selection now follows reverse imports instead of directory size. */
-export const FAST_SIBLING_TEST_CAP = 150;
 const SOURCE_FILE = /^packages\/[^/]+\/src\/.*\.[cm]?[jt]sx?$/u;
 const CODE_FILE = /\.[cm]?[jt]sx?$/u;
 const CODE_EXTENSIONS = ["", ".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"];
@@ -351,38 +349,7 @@ export const selectFastTestSuitesWithReason = ({
 };
 
 export const selectFastTestSuites = (options: FastTestSuitesOptions): TestSuite[] =>
-  options.repoRoot === undefined &&
-  options.changedFiles.some(
-    (file) => file.startsWith("packages/") && !existsSync(path.join(REPO_ROOT, file)),
-  )
-    ? selectLegacyFixtureSuites(options)
-    : selectFastTestSuitesWithReason(options).suites;
-
-// Keep synthetic callers deterministic while repository selection uses the graph above.
-const selectLegacyFixtureSuites = ({
-  suites,
-  changedFiles,
-  focusedFiles = focusedTests,
-}: FastTestSuitesOptions) => {
-  const changed = new Set(changedFiles);
-  const directories = new Set(
-    changedFiles
-      .filter((file) => SOURCE_FILE.test(file) && !TEST_FILE.test(file))
-      .map((file) => path.posix.dirname(file)),
-  );
-  const discovered = new Set(suites.flatMap(({ files }) => files));
-  const focused = new Set(focusedFiles.filter((file) => discovered.has(file)));
-  const selected = suites.map((suite) => {
-    const siblings = suite.files.filter((file) => directories.has(path.posix.dirname(file)));
-    const files =
-      suite.cwd.startsWith("packages/") && siblings.length > FAST_SIBLING_TEST_CAP
-        ? suite.files
-        : suite.files.filter((file) => changed.has(file) || siblings.includes(file));
-    return { ...suite, files: files.filter((file) => !focused.has(file)) };
-  });
-  selected.push({ cwd: ".", preloads: [], files: [...focused] });
-  return selected.filter(({ files }) => files.length > 0);
-};
+  selectFastTestSuitesWithReason(options).suites;
 
 if (import.meta.main) {
   const args = process.argv.slice(2);

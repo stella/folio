@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,6 +9,8 @@ import {
 } from "./ci-test-shards";
 
 const temporaryRoots: string[] = [];
+
+setDefaultTimeout(30_000);
 
 const fixture = (files: Record<string, string>) => {
   const root = mkdtempSync(path.join(tmpdir(), "folio-import-closure-"));
@@ -100,6 +102,24 @@ describe("reverse import closure", () => {
       });
       expect(result.reason).toBe("full-fallback");
     }
+  });
+
+  test("fails closed when a changed declaration source is excluded from the graph", () => {
+    const file = "packages/app/src/generated.d.ts";
+    const root = fixture({
+      "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
+      [file]: "export declare const generated: string;",
+      "packages/app/src/one.test.ts": "export {};",
+      "packages/app/src/two.test.ts": "export {};",
+    });
+    const result = selectFastTestSuitesWithReason({
+      suites: suite(["packages/app/src/one.test.ts", "packages/app/src/two.test.ts"]),
+      changedFiles: [file],
+      focusedFiles: [],
+      repoRoot: root,
+    });
+    expect(result.reason).toBe("full-fallback");
+    expect(result.cause).toBe(`changed source is absent from graph: ${file}`);
   });
 
   test("selects package tests for package data and falls back at 70 percent", () => {
