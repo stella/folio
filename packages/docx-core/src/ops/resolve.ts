@@ -27,6 +27,7 @@ import type {
   RunPropertyChange,
 } from "../model/document";
 import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
+import { paragraphMarkCarrier } from "./blockDeletion";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
 import {
@@ -1135,17 +1136,25 @@ const joinOps = (
   }
   // No paragraph to join: a table follows, or the paragraph ends its container.
   // A cell-ending mark describes the terminator, not a paragraph to retire.
-  const cellFinal =
-    endsItsContainer(body, location) && location.list.some((step) => step.kind === "tableCell");
-  const canGo = !cellFinal && (added || !endsItsContainer(body, location));
-  if (empty && canGo && blocks.length > 1) {
-    return Result.err(
-      refusal(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `Resolving the mark of ${paraId} removes the paragraph, which is a block operation.`,
-      ),
-    );
+  const containerFinal = endsItsContainer(body, location);
+  const cellFinal = containerFinal && location.list.some((step) => step.kind === "tableCell");
+  const canGo = !cellFinal && (added || !containerFinal);
+  if (
+    empty &&
+    canGo &&
+    !added &&
+    blocks.length > 1 &&
+    next?.type === "table" &&
+    paragraphMarkCarrier({ followingKind: next.type, endsContainer: containerFinal }) === "none"
+  ) {
+    return Result.ok([
+      {
+        type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+        story,
+        expected: [paragraph],
+        blocks: [],
+      },
+    ]);
   }
   const review = reviewFieldsOf(paragraph);
   delete review.pPrMark;

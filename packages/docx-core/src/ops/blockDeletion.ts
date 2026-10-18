@@ -28,6 +28,22 @@ type BlockDeletionOptions = {
   applyOps: ApplyOps;
 };
 
+export type ParagraphMarkCarrier = "following" | "current" | "none";
+
+type ParagraphMarkCarrierOptions = {
+  followingKind: "paragraph" | "table" | "other" | undefined;
+  endsContainer: boolean;
+};
+
+/** Selects the paragraph whose mark and properties survive deleting a paragraph break. */
+export const paragraphMarkCarrier = ({
+  followingKind,
+  endsContainer,
+}: ParagraphMarkCarrierOptions): ParagraphMarkCarrier => {
+  if (followingKind === "paragraph") return "following";
+  return endsContainer ? "current" : "none";
+};
+
 export const deleteBlocks = ({
   document,
   op,
@@ -107,7 +123,15 @@ export const deleteBlocks = ({
     { ...last.paragraph, content: previous?.content ?? [] },
     finalReview,
   );
-  const directBlocks = following?.type === "paragraph" ? [following] : [survivor];
+  let followingKind: ParagraphMarkCarrierOptions["followingKind"] = "other";
+  if (following === undefined) followingKind = undefined;
+  else if (following.type === "paragraph" || following.type === "table") {
+    followingKind = following.type;
+  }
+  const carrier = paragraphMarkCarrier({ followingKind, endsContainer: terminal });
+  let directBlocks: Paragraph[] = [];
+  if (carrier === "following" && following?.type === "paragraph") directBlocks = [following];
+  if (carrier === "current") directBlocks = [survivor];
   const direct = applyOps(document, [replacement(directBlocks)]);
   if (direct.isErr()) return refuse(direct.error.reason, direct.error.message);
   if (op.revision === undefined) {

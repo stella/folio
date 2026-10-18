@@ -10,6 +10,7 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
  */
 
 export { withBodyContent } from "./blocks";
+export { paragraphMarkCarrier, type ParagraphMarkCarrier } from "./blockDeletion";
 export { captureDocumentOp } from "./wire";
 export { compareGaps, defaultInsertionGap, inlineLeafSpans, zeroWidthLeavesAt } from "./leaves";
 export { mapTocBookmarkPosition } from "./tocIntent";
