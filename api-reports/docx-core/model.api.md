@@ -439,6 +439,9 @@ export type FieldCharContent = {
 export type FieldType = "PAGE" | "NUMPAGES" | "NUMWORDS" | "NUMCHARS" | "DATE" | "TIME" | "CREATEDATE" | "SAVEDATE" | "PRINTDATE" | "AUTHOR" | "TITLE" | "SUBJECT" | "KEYWORDS" | "COMMENTS" | "FILENAME" | "FILESIZE" | "TEMPLATE" | "DOCPROPERTY" | "DOCVARIABLE" | "REF" | "PAGEREF" | "NOTEREF" | "HYPERLINK" | "TOC" | "TOA" | "INDEX" | "SEQ" | "STYLEREF" | "AUTONUM" | "AUTONUMLGL" | "AUTONUMOUT" | "LISTNUM" | "IF" | "MERGEFIELD" | "NEXT" | "NEXTIF" | "ASK" | "SET" | "QUOTE" | "INCLUDETEXT" | "INCLUDEPICTURE" | "SYMBOL" | "ADVANCE" | "EDITTIME" | "REVNUM" | "SECTION" | "SECTIONPAGES" | "USERADDRESS" | "USERNAME" | "USERINITIALS" | "UNKNOWN";
 
 // @public
+export const finalizeParagraphFormatting: (formatting: ParagraphFormatting | undefined) => ParagraphFormatting | undefined;
+
+// @public
 export type FloatingTableProperties = {
     horzAnchor?: "margin" | "page" | "text";
     vertAnchor?: "margin" | "page" | "text";
@@ -758,6 +761,9 @@ export const isBorderNone: (style: BorderStyleValue | undefined) => boolean;
 
 // @public
 export const isBorderStyle: (value: string) => value is BorderStyle;
+
+// @public
+export const isCanonicallyEmptyParagraphFormatting: (formatting: ParagraphFormatting | undefined) => boolean;
 
 // @public
 export const isNumberingLevel: (value: number) => boolean;
@@ -1559,6 +1565,9 @@ export type SectionPropertyChange = {
 
 // @public
 export type SectionStart = "continuous" | "nextPage" | "oddPage" | "evenPage" | "nextColumn";
+
+// @public
+export const setDocumentBodyComments: (body: DocumentBody, comments: Comment_2[]) => void;
 
 // @public
 export type ShadingProperties = {

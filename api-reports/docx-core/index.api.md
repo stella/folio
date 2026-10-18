@@ -149,6 +149,9 @@ export const escapeXmlAttribute: (value: string) => string;
 export const escapeXmlText: (value: string) => string;
 
 // @public
+export const finalizeParagraphFormatting: (formatting: ParagraphFormatting | undefined) => ParagraphFormatting | undefined;
+
+// @public
 export const hasIllegalXmlCharacters: (value: string) => boolean;
 
 // @public
@@ -159,6 +162,9 @@ export class InvalidOoxmlNumericIdError extends InvalidOoxmlNumericIdError_base<
     attributeName: string;
     value: string;
 }> {}
+
+// @public
+export const isCanonicallyEmptyParagraphFormatting: (formatting: ParagraphFormatting | undefined) => boolean;
 
 // @public
 export const isOoxmlNumericIdAttributeName: (input: OoxmlNumericIdAttributeOptions) => boolean;
@@ -390,6 +396,9 @@ export const serializeDocumentToDocx: (document: Document_2, options?: Serialize
 
 // @public
 export const serializeOnOffElement: (value: boolean | undefined, name: string) => string;
+
+// @public
+export const setDocumentBodyComments: (body: DocumentBody, comments: Comment_2[]) => void;
 
 // @public
 export type Style = {

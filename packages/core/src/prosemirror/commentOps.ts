@@ -12,6 +12,7 @@ import type { Comment } from "../types/content";
 import type { CommentIdAllocator } from "./commentIdAllocator";
 import { findParagraphByParaId } from "./utils/findParagraphByParaId";
 import { findTextInPmParagraph } from "./paraText";
+import { commentTextParagraph } from "../docx/commentTextParagraph";
 
 /** Build a Comment object with a freshly-allocated ID. */
 export function createComment(
@@ -24,13 +25,7 @@ export function createComment(
     id: allocator.next(),
     author: authorName,
     date: new Date().toISOString(),
-    content: [
-      {
-        type: "paragraph",
-        formatting: {},
-        content: [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
-      },
-    ],
+    content: [commentTextParagraph(text)],
     ...(parentId !== undefined && { parentId }),
   };
 }
