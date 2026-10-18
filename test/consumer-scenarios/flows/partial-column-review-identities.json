@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "large-100-pages",
+  "mode": "tracked-changes",
+  "seed": 384894940,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2265249350,
+      "operations": [
+        {
+          "type": "insertTableColumn",
+          "blockId": "@514",
+          "position": "after",
+          "cellTexts": ["Column cell 1", "Column cell 2", "Column cell 3"]
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "accept one",
+      "seed": 1001578010
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 384894940",
+  "title": "partial column acceptance keeps remaining rejection identities stable (#1821)"
+}

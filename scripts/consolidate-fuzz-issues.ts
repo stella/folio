@@ -7,6 +7,7 @@ import path from "node:path";
 
 import {
   type CloseReason,
+  cliRepro,
   githubIssueStore,
   type IssueContent,
   mergeSeeds,
@@ -79,17 +80,18 @@ export const evidenceOf = (text: string): Evidence => {
 export const reproOf = (text: string): Repro | null => {
   const [, seed, , command] =
     /^Seed: (-?\d+)\nRepro command:\n(`{3,})\n([\s\S]*?)\n\2$/mu.exec(text) ?? [];
-  if (seed !== undefined && command !== undefined) return { seed: Number(seed), command };
+  if (seed !== undefined && command !== undefined)
+    return { seed: Number(seed), command: cliRepro(command) };
   const replay = /^### Replay\n(`{3,})sh\n([\s\S]*?)\n\1$/mu.exec(text)?.at(2);
   const replaySeed = /^\*\*Seed:\*\* `(-?\d+)`$/mu.exec(text)?.at(1);
   if (replay !== undefined && replaySeed !== undefined) {
-    return { seed: Number(replaySeed), command: replay };
+    return { seed: Number(replaySeed), command: cliRepro(replay) };
   }
   const [row] = [...text.matchAll(CLASS_ROW)];
   const [, rowSeed, rowRepro] = row ?? [];
   return rowSeed === undefined || rowRepro === undefined
     ? null
-    : { seed: Number(rowSeed), command: unescapeCell(rowRepro) };
+    : { seed: Number(rowSeed), command: cliRepro(unescapeCell(rowRepro)) };
 };
 
 const runsOf = (text: string): string[] => [...text.matchAll(RUN_URL)].map(([url]) => url);
