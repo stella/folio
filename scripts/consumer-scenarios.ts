@@ -262,7 +262,7 @@ const stageConsumer = async (
 ): Promise<string> => {
   const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-consumer-scenarios-"));
   console.log(`→ staging the consumer in ${consumerDir}`);
-  for (const entry of ["scenarios", "support", "flows", "scenario-seeds.json", "tsconfig.json"]) {
+  for (const entry of ["scenarios", "support", "flows", "seeds", "tsconfig.json"]) {
     if (!existsSync(path.join(scenarioSrc, entry))) continue;
     await cp(path.join(scenarioSrc, entry), path.join(consumerDir, entry), { recursive: true });
   }
