@@ -47,6 +47,21 @@ const documentOf = (...content: BlockContent[]): Document => ({
   package: { document: { content } },
 });
 
+const commentedDocument = (content: ParagraphContent[]): Document => ({
+  package: {
+    document: {
+      content: [paragraph("00000001", content)],
+      comments: [
+        {
+          id: 40,
+          author: "Reviewer",
+          content: [paragraph("00000040", [run("note")])],
+        },
+      ],
+    },
+  },
+});
+
 const at = (blockId: string, offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
 
 const applied = (document: Document, op: DocumentOp): AppliedDocumentOp => {
@@ -370,6 +385,52 @@ describe("tracked text", () => {
         },
       ]),
     ]);
+  });
+
+  test("accepting deletion of a comment's whole range retires it and undo restores it", () => {
+    const document = commentedDocument([
+      { type: "commentRangeStart", id: 40 },
+      run("x"),
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+      run(" remains"),
+    ]);
+    const deletion = {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at("00000001", 0),
+      to: at("00000001", 1),
+      revision: stamp(9),
+    } as const satisfies DocumentOp;
+    const tracked = applied(document, deletion);
+
+    expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.REJECT)).toStrictEqual(
+      document,
+    );
+    const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
+    expect(accepted.package.document.comments).toBeUndefined();
+    expect(blocks(accepted)).toEqual([paragraph("00000001", [run(" remains")])]);
+
+    const direct = applied(document, directly(deletion));
+    expect(direct.document).toStrictEqual(accepted);
+  });
+
+  test("accepting deletion keeps a range that still covers an inline object", () => {
+    const document = commentedDocument([
+      { type: "commentRangeStart", id: 40 },
+      run("x"),
+      { type: "run", content: [{ type: "drawing", data: "shape" }] },
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+    ]);
+    const tracked = applied(document, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at("00000001", 0),
+      to: at("00000001", 1),
+      revision: stamp(9),
+    });
+    const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
+
+    expect(accepted.package.document.comments).toHaveLength(1);
   });
 
   test("revisionIdDemand counts the ids a tracked operation takes past its stamp", () => {

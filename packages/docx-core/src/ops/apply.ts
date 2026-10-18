@@ -86,6 +86,7 @@ import {
   validateOpsDocument,
 } from "./contract";
 import { combineEdits, type DocumentEdit } from "./edits";
+import { commentRangeCoverage, commentRangeShouldRetire } from "./comments";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { freshenIdentities, rebindRetainedIdentities } from "./identity";
 import {
@@ -2505,7 +2506,41 @@ export const applyDocumentOp = (
   if (applied.isErr()) {
     return Result.err(applied.error);
   }
-  const edit = applied.value;
+  let edit = applied.value;
+  if (
+    op.type !== DOCUMENT_OP_TYPES.CREATE_COMMENT &&
+    op.type !== DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT &&
+    op.type !== DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION &&
+    op.type !== DOCUMENT_OP_TYPES.DELETE_COMMENT &&
+    op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE &&
+    op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION
+  ) {
+    const beforeCoverage = commentRangeCoverage(document);
+    const afterCoverage = commentRangeCoverage(edit.document);
+    const definedComments = new Set((document.package.document.comments ?? []).map(({ id }) => id));
+    const retire = [...beforeCoverage]
+      .filter(
+        ([id, before]) =>
+          definedComments.has(id) &&
+          commentRangeShouldRetire(
+            before,
+            afterCoverage.get(id) ?? {
+              authoredAsPoint: false,
+              survivingNonCarrierContent: false,
+            },
+          ),
+      )
+      .map(([id]) => ({
+        type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+        id,
+        scope: "thread" as const,
+      }));
+    if (retire.length > 0) {
+      const retired = applyDocumentOps(edit.document, retire);
+      if (retired.isErr()) return Result.err(retired.error);
+      edit = combineEdits(document, [edit, retired.value]);
+    }
+  }
   const beforeSections = document.package.document.sections;
   const afterSections = edit.document.package.document.sections;
   const structural =

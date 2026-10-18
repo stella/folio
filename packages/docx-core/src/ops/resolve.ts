@@ -45,6 +45,7 @@ import { canonicalDeferredGroups } from "./identity";
 import { joinParagraphSeam } from "./inline";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
+import { commentRangeCoverage, commentRangeShouldRetire } from "./comments";
 import { isAddedRevision, isTrackedWrapper, reviewFieldsOf, withMarkFormatting } from "./review";
 import {
   DOCUMENT_OP_TYPES,
@@ -1437,6 +1438,30 @@ export const resolveRevision = (
     }
     edits.push(joined.value);
     current = joined.value.document;
+  }
+  if (op.decision === REVISION_DECISIONS.ACCEPT) {
+    const beforeCoverage = commentRangeCoverage(document);
+    const afterCoverage = commentRangeCoverage(current);
+    const definedComments = new Set((current.package.document.comments ?? []).map(({ id }) => id));
+    const retired = [...beforeCoverage].filter(
+      ([id, before]) =>
+        definedComments.has(id) &&
+        commentRangeShouldRetire(
+          before,
+          afterCoverage.get(id) ?? {
+            authoredAsPoint: false,
+            survivingNonCarrierContent: false,
+          },
+        ),
+    );
+    for (const [id] of retired) {
+      const removed = applyOps(current, [
+        { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id, scope: "thread" },
+      ]);
+      if (removed.isErr()) return Result.err(removed.error);
+      edits.push(removed.value);
+      current = removed.value.document;
+    }
   }
   return Result.ok(combineEdits(document, edits));
 };

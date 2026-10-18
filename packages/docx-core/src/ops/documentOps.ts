@@ -160,4 +160,10 @@ export {
 
 export { idKey, packageParagraphIds } from "./ids";
 
-export { commentDocumentIssue, freshCommentId } from "./comments";
+export {
+  commentDocumentIssue,
+  commentRangeCoverage,
+  commentRangeShouldRetire,
+  freshCommentId,
+  type CommentRangeCoverage,
+} from "./comments";

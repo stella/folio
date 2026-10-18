@@ -75,6 +75,7 @@ import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import { carryParagraphProperties, paragraphLeftAfter } from "../paragraphPropertyCarry";
 import { runInCellPending, runParagraphIntoTable } from "../tableRunIn";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
+import { readRangeAnchorAttrs } from "../rangeAnchorAttrs";
 import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";

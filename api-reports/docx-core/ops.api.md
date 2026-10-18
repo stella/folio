@@ -99,6 +99,18 @@ export type CommentAnchor = {
 export const commentDocumentIssue: (document: Document_2, allowedOrphans?: ReadonlySet<number> | "all") => string | undefined;
 
 // @public
+export type CommentRangeCoverage = {
+    authoredAsPoint: boolean;
+    survivingNonCarrierContent: boolean;
+};
+
+// @public
+export const commentRangeCoverage: (document: Document_2) => Map<number, CommentRangeCoverage>;
+
+// @public
+export const commentRangeShouldRetire: (before: CommentRangeCoverage, after: CommentRangeCoverage) => boolean;
+
+// @public
 export type CommentState = {
     relationshipPresence: "absent" | "undefined" | "present";
     relationships: readonly {

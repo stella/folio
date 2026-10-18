@@ -61,6 +61,7 @@
  */
 
 import { Fragment, Mark, type Node as PMNode, type Schema } from "prosemirror-model";
+import { commentRangeShouldRetire } from "@stll/docx-core/ops";
 
 import { isCommentAnchorCarrier } from "../ai-edits/comment-lifecycle";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
@@ -174,7 +175,15 @@ export const createResolvedCommentPointCollector = ({
     return true;
   };
   const finish = (): Map<number, number> => {
-    for (const id of retained) points.delete(id);
+    for (const id of points.keys()) {
+      if (
+        !commentRangeShouldRetire(
+          { authoredAsPoint: false, survivingNonCarrierContent: true },
+          { authoredAsPoint: false, survivingNonCarrierContent: retained.has(id) },
+        )
+      )
+        points.delete(id);
+    }
     return points;
   };
   return { visit, finish };
