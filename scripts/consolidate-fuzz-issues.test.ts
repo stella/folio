@@ -23,7 +23,7 @@ import type { Issue } from "./fuzz-issue-classes";
 const RUN = "https://github.com/stella/folio/actions/runs/";
 const TEST = "consumer flow directNumbered / tracked-changes";
 const REPRO = (seed: number) =>
-  `FOLIO_SCENARIO_SEED=${seed} FOLIO_SCENARIO_FUZZ_STEPS=20 FOLIO_SCENARIO_FUZZ_RUNS=1 FOLIO_SCENARIO_COLLISION_RUNS=0 FOLIO_SCENARIO_SWARM=1 bun scripts/consumer-scenarios.ts --only '^fuzz run 0 \\(' -- fuzz.test.ts`;
+  `bun scripts/consumer-scenarios.ts --seed ${seed} --steps 20 --runs 1 --collision-runs 0 --swarm 1 --only '^fuzz run 0 \\(' -- fuzz.test.ts`;
 
 const fingerprintBody = (seeds: readonly number[], run: number, assertion: string) =>
   [
@@ -59,7 +59,7 @@ const classBody = (seeds: readonly number[], run: number) =>
     "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ...seeds.map(
       (seed) =>
-        `| 007e000b6c897c7d |  | deleteBlock+mergeBlockWithNext | tracked-changes | ${seed} |  | FOLIO_SCENARIO_FLOW='{"a":"b\\|c"}' bun x | ${RUN}${run} |`,
+        `| 007e000b6c897c7d |  | deleteBlock+mergeBlockWithNext | tracked-changes | ${seed} |  | bun scripts/consumer-scenarios.ts --flow '{"a":"b\\|c"}' | ${RUN}${run} |`,
     ),
   ].join("\n");
 
@@ -151,7 +151,9 @@ test("legacy bodies yield their identity, seeds and repro", () => {
   });
   expect(evidenceOf(table.body ?? "").seeds).toEqual([1026397300, 1026398879]);
   expect(reproOf(markdown.body ?? "")).toEqual({ seed: 1576446700, command: REPRO(1576446700) });
-  expect(reproOf(table.body ?? "")?.command).toBe(`FOLIO_SCENARIO_FLOW='{"a":"b|c"}' bun x`);
+  expect(reproOf(table.body ?? "")?.command).toBe(
+    `bun scripts/consumer-scenarios.ts --flow '{"a":"b|c"}'`,
+  );
 });
 
 test("consolidation keeps the oldest issue per signature and closes the rest as duplicates", async () => {
@@ -189,6 +191,7 @@ test("consolidation keeps the oldest issue per signature and closes the rest as 
   ]);
   expect(state?.occurrences).toBe(7);
   expect(state?.repro).toEqual({ seed: 740097491, command: REPRO(740097491) });
+  expect(kept?.body).not.toContain("FOLIO_SCENARIO_");
   expect(state?.assertion).toBe("Missing numbering format for displayed label (<n>)");
   expect(state?.lanes.map(({ lane, cleanRuns }) => [lane, cleanRuns])).toEqual([
     ["nightly-swarm-fuzz", 0],

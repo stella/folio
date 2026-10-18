@@ -65,6 +65,7 @@ type Numbering =
 type NumberingFacts = {
   styles: Map<string, Numbering>;
   direct: Map<string, Numbering>;
+  markerLevels: Map<number, Set<number>>;
 };
 
 /** Fold stated slots independently of the engine's numbering resolver. */
@@ -91,6 +92,39 @@ const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts =>
   const snapshot = reviewer.snapshotStory(story);
   if (!snapshot) return facts;
   const { anchors, blocks } = snapshot;
+  const pendingInsertionBlockIds = new Set<string>();
+  for (const { operation } of reviewer.exportPendingSuggestions()) {
+    if (operation.type !== "insertAfterBlock" && operation.type !== "insertBeforeBlock") continue;
+    if (operation.numbering?.kind !== "newList") continue;
+    let anchorIndex = blocks.findIndex(({ id }) => id === operation.blockId);
+    if (anchorIndex < 0) continue;
+    const direction = operation.type === "insertAfterBlock" ? 1 : -1;
+    const anchorTable = blocks[anchorIndex]?.table;
+    if (anchorTable) {
+      while (
+        blocks.at(anchorIndex + direction)?.table?.outerTableIndex === anchorTable.outerTableIndex
+      ) {
+        anchorIndex += direction;
+      }
+    }
+    const blockAt = (index: number) => (index >= 0 ? blocks.at(index) : undefined);
+    let insertedIndex = anchorIndex + direction;
+    while (pendingInsertionBlockIds.has(blockAt(insertedIndex)?.id ?? "")) {
+      insertedIndex += direction;
+    }
+    const inserted = blockAt(insertedIndex) ?? null;
+    if (
+      !inserted ||
+      inserted.kind === "diagnostic" ||
+      inserted.statedNumbering.kind !== "reference"
+    )
+      continue;
+    pendingInsertionBlockIds.add(inserted.id);
+    const level = inserted.statedNumbering.ilvl ?? 0;
+    const levels = facts.markerLevels.get(inserted.statedNumbering.numId) ?? new Set<number>();
+    levels.add(level);
+    facts.markerLevels.set(inserted.statedNumbering.numId, levels);
+  }
   for (const block of blocks) {
     if (block.kind === "diagnostic") continue;
     const anchor = anchors[block.id];
@@ -198,7 +232,46 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
   for (const parts of [document.package.footnotes, document.package.endnotes]) {
     for (const part of parts ?? []) visit(part.content);
   }
-  return { styles, direct };
+  const markerLevels = new Map<number, Set<number>>();
+  const abstractNums = document.package.numbering?.abstractNums ?? [];
+  for (const instance of document.package.numbering?.nums ?? []) {
+    let abstract = abstractNums.find(
+      (definition) => definition.abstractNumId === instance.abstractNumId,
+    );
+    // An empty definition linked to a numbering style takes its levels from the definition that style names.
+    const link = abstract?.numStyleLink;
+    if (link !== undefined && abstract?.levels.length === 0) {
+      abstract =
+        abstractNums.find(
+          (definition) => definition.styleLink === link && definition.levels.length > 0,
+        ) ?? abstract;
+    }
+    const levels = new Map((abstract?.levels ?? []).map((level) => [level.ilvl, level]));
+    for (const override of instance.levelOverrides ?? []) {
+      if (override.lvl) levels.set(override.ilvl, override.lvl);
+    }
+    markerLevels.set(
+      instance.numId,
+      new Set(
+        [...levels.values()]
+          .filter((level) => {
+            if (level.rPr?.hidden) return false;
+            // A legal level counts in decimal whatever its own format says.
+            if (level.lvlText.length === 0) return level.isLgl === true || level.numFmt !== "none";
+            // Only marker presence matters here; counter values and numbering glyphs do not.
+            return (
+              level.lvlText
+                .replace(/%([1-9])/gu, (_, slot: string) =>
+                  !level.isLgl && levels.get(Number(slot) - 1)?.numFmt === "none" ? "" : "1",
+                )
+                .trim().length > 0
+            );
+          })
+          .map((level) => level.ilvl),
+      ),
+    );
+  }
+  return { styles, direct, markerLevels };
 };
 
 export const numberingFactsOf = async (bytes: Uint8Array): Promise<NumberingFacts> => {
@@ -684,6 +757,15 @@ const numberingFields = (model: Model, styleId: string | null, row?: Row): Field
   return { listLevel: numbering?.kind === "reference" ? (numbering.ilvl ?? 0) : undefined };
 };
 
+/** A retained reference alone is not a rendered marker: its level must exist and be visible. */
+const numberingKind = (model: Model, numbering: Numbering): Fields["kind"] => {
+  if (numbering?.kind !== "reference") return "paragraph";
+  assert.ok(model.numberingFacts, "Numbering definitions are required to classify a reference");
+  return model.numberingFacts.markerLevels.get(numbering.numId)?.has(numbering.ilvl ?? 0)
+    ? "listItem"
+    : "paragraph";
+};
+
 /**
  * The fields a style id asks for on `pre` (absent: a new block, formatted
  * like `inherited`, the block it was inserted beside). A style may number its
@@ -711,10 +793,12 @@ const styleFields = (
     headingLevel = styleExample.headingLevel;
   } else if (heading && plain) headingLevel = Number(heading);
   const numberedFields = numberingFields(model, styleId, pre ?? inherited);
-  // A sample's list classification may come from its own direct numbering.
+  // A sample's classification may come from different direct numbering or marker visibility.
   let exampleKind = styleExample?.kind;
-  if (exampleKind === "listItem" && numberedFields.listLevel === undefined) {
-    exampleKind = "paragraph";
+  const numbering = requestedStyleNumbering(model, styleId, pre ?? inherited);
+  if (exampleKind !== undefined && exampleKind !== "heading" && numbering !== UNKNOWN_NUMBERING) {
+    const kind = numberingKind(model, numbering);
+    if (kind !== ANY) exampleKind = kind;
   }
   // Whether the block is a list item then depends on numbering that is not known.
   const undecided = exampleKind === "listItem" && numberedFields.listLevel === ANY;
@@ -828,7 +912,7 @@ const paragraphRequest = (
       const effective = styleNumbering;
       fields.listLevel = effective?.kind === "reference" ? (effective.ilvl ?? 0) : undefined;
       if ((pre ?? inherited) && preKind !== "heading")
-        fields.kind = effective?.kind === "reference" ? "listItem" : "paragraph";
+        fields.kind = numberingKind(model, effective);
       checks.push((row) => {
         if (effective?.kind === "reference") {
           return row.listReference?.numId === effective.numId
@@ -877,7 +961,8 @@ const paragraphRequest = (
           ? { numId: effective.numId, level: effective.ilvl ?? 0 }
           : undefined;
       fields.listLevel = reference?.level;
-      if ((pre ?? inherited) && preKind !== "heading") fields.kind = "listItem";
+      if ((pre ?? inherited) && preKind !== "heading")
+        fields.kind = numberingKind(model, effective);
       if (reference)
         checks.push((row) =>
           row.listReference?.numId === reference.numId &&
@@ -895,7 +980,8 @@ const paragraphRequest = (
           ? { numId: effective.numId, level: effective.ilvl ?? 0 }
           : undefined;
       fields.listLevel = reference?.level;
-      if (reference && (pre ?? inherited) && preKind !== "heading") fields.kind = "listItem";
+      if ((pre ?? inherited) && preKind !== "heading")
+        fields.kind = numberingKind(model, effective);
       checks.push((row) => {
         if (reference) {
           return row.listReference?.numId === reference.numId &&
@@ -1864,6 +1950,7 @@ export const assertRequestedOutcome = async (
     outcome.applied.some(
       (operation) =>
         "styleId" in operation ||
+        "numbering" in operation ||
         [
           "properties",
           "firstParagraphProperties",
@@ -1871,7 +1958,11 @@ export const assertRequestedOutcome = async (
           "mergedParagraphProperties",
         ].some((key) => {
           const properties = operation[key];
-          return properties !== null && typeof properties === "object" && "styleId" in properties;
+          return (
+            properties !== null &&
+            typeof properties === "object" &&
+            ("styleId" in properties || "numbering" in properties)
+          );
         }),
     )
   ) {

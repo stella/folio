@@ -1,3 +1,5 @@
+import { scanTestTimeout } from "../test/scan-timeout";
+
 /**
  * ZIP package entries have one write boundary. JSZip's `file()` and `folder()`
  * create parent directory entries by default; that changes a DOCX package's
@@ -6,9 +8,11 @@
  * and the ZIP date used for reproducible output.
  */
 
-import { describe, expect, test } from "bun:test";
+import { setDefaultTimeout, describe, expect, test } from "bun:test";
 import ts from "typescript";
 import path from "node:path";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES_DIR = path.join(REPOSITORY_ROOT, "packages");
@@ -325,7 +329,11 @@ describe("ZIP part writer", () => {
     ).toHaveLength(1);
   });
 
-  test("production ZIP writes use the owner helper", async () => {
-    expect(await productionViolations()).toEqual([]);
-  }, 30_000);
+  test(
+    "production ZIP writes use the owner helper",
+    async () => {
+      expect(await productionViolations()).toEqual([]);
+    },
+    scanTestTimeout(30_000),
+  );
 });

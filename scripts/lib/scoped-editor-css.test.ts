@@ -1,10 +1,14 @@
-import { expect, test } from "bun:test";
+import { scanTestTimeout } from "../../test/scan-timeout";
+
+import { setDefaultTimeout, expect, test } from "bun:test";
 import { transform } from "lightningcss";
 import { resolve } from "node:path";
 import { readdir } from "node:fs/promises";
 import { FONT_MAPPING } from "../../packages/core/src/utils/fontLoader";
 
 import { scopeEditorCss } from "./scoped-editor-css";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const authoredFamilies = new Set(Object.keys(FONT_MAPPING).map((family) => family.toLowerCase()));
 

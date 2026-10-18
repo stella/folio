@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, describe, expect, test } from "bun:test";
 import {
   existsSync,
   mkdirSync,
@@ -10,6 +12,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const repo = path.resolve(import.meta.dir, "..");
 const workflow = Bun.YAML.parse(readFileSync(path.join(repo, ".github/workflows/ci.yml"), "utf8"));
@@ -290,7 +294,12 @@ describe("shared toolchain CI selection", () => {
   // every job; this repository's own declarations must stay readable.
   test("the shared detector reads this repository's toolchain declarations", () => {
     const run = Bun.spawnSync(
-      ["bunx", "--no-install", "stll-toolchain-changed", "--since", "HEAD"],
+      [
+        process.execPath,
+        path.join(repo, "node_modules/.bin/stll-toolchain-changed"),
+        "--since",
+        "HEAD",
+      ],
       { cwd: repo },
     );
     expect(run.exitCode).toBe(0);
@@ -515,8 +524,13 @@ describe("published Node minimum", () => {
         ".github/dependabot.yml",
         ".node-version",
         "stll-toolchain.json",
+        ".agents/cloud-setup.sh",
+        ".claude/settings.json",
+        "rust-toolchain.toml",
+        "Cargo.lock",
         floor.workflow,
       ]) {
+        mkdirSync(path.dirname(path.join(directory, file)), { recursive: true });
         writeFileSync(path.join(directory, file), readFileSync(path.join(repo, file), "utf8"));
       }
       writeFileSync(
@@ -540,7 +554,11 @@ describe("published Node minimum", () => {
         ["add", "."],
       ])
         expect(Bun.spawnSync(["git", ...args], { cwd: directory }).exitCode).toBe(0);
-      expect(check().exitCode).toBe(0);
+      const initial = check();
+      expect({ status: initial.exitCode, diagnostic: initial.stderr.toString() }).toEqual({
+        status: 0,
+        diagnostic: "",
+      });
       const original = readFileSync(workflowFile, "utf8");
       const selected = Bun.YAML.parse(original).jobs[floor.job].steps.find((step) =>
         step.uses?.startsWith("actions/setup-node@"),

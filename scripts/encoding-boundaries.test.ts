@@ -1,12 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, describe, expect, test } from "bun:test";
 import path from "node:path";
 import ts from "typescript";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const PACKAGES = path.resolve(import.meta.dir, "../packages");
 const OWNER = "utf8-boundaries/src/encoding.ts";
 const GENERATED = ["docx-core/src/generated/docx_kernel.js", "core/src/generated/text_shaper.js"];
 const EXTENSIONS = ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs", "vue"];
 const SOURCE_GLOB = `*/src/**/*.{${EXTENSIONS.join(",")}}`;
+const SOURCE_FILES = [...new Bun.Glob(SOURCE_GLOB).scanSync({ cwd: PACKAGES })];
 
 type Violation = { line: number; reason: string };
 
@@ -453,8 +458,7 @@ const sourceViolations = (file: string, source: string): string[] => {
 describe("production text encoding boundaries", () => {
   test("every production package and source extension rejects local codecs and chunk decoding", async () => {
     const packages = new Set<string>();
-    for await (const file of new Bun.Glob(SOURCE_GLOB).scan({ cwd: PACKAGES }))
-      packages.add(file.split("/")[0]!);
+    for (const file of SOURCE_FILES) packages.add(file.split("/")[0]!);
     const bad = [
       "new TextEncoder().encode(text)",
       "const Codec = TextDecoder; new Codec().decode(chunk)",
@@ -539,12 +543,16 @@ describe("production text encoding boundaries", () => {
     }
   });
 
-  test("production encodings flow through the owner", async () => {
-    const offenders: string[] = [];
-    for await (const file of new Bun.Glob(SOURCE_GLOB).scan({ cwd: PACKAGES })) {
-      const source = await Bun.file(path.join(PACKAGES, file)).text();
-      for (const reason of sourceViolations(file, source)) offenders.push(`${file}:${reason}`);
-    }
-    expect(offenders).toEqual([]);
-  }, 30_000);
+  test(
+    "production encodings flow through the owner",
+    async () => {
+      const offenders: string[] = [];
+      for (const file of SOURCE_FILES) {
+        const source = await Bun.file(path.join(PACKAGES, file)).text();
+        for (const reason of sourceViolations(file, source)) offenders.push(`${file}:${reason}`);
+      }
+      expect(offenders).toEqual([]);
+    },
+    scanTestTimeout(30_000),
+  );
 });
