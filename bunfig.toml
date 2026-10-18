@@ -25,6 +25,13 @@ minimumReleaseAge = 432_000
 minimumReleaseAgeExcludes = [
   # Keep Bun's compiler contract aligned with the runtime during this upgrade.
   "@stll/agent-input",
+  "@stll/aho-corasick",
+  "@stll/aho-corasick-darwin-arm64",
+  "@stll/aho-corasick-darwin-x64",
+  "@stll/aho-corasick-linux-arm64-gnu",
+  "@stll/aho-corasick-linux-x64-gnu",
+  "@stll/aho-corasick-wasm32-wasi",
+  "@stll/aho-corasick-win32-x64-msvc",
   "@stll/conditions",
   "@stll/country-codes",
   "@stll/docx-utils",
