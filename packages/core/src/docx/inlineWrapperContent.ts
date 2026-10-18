@@ -62,7 +62,10 @@ export const TRACKED_CHANGE_WRAPPER_CONTENT = {
   simpleField: true,
   commentRangeEnd: true,
   commentRangeStart: true,
-  commentReference: false,
+  // The model lifts w:commentReference out of its w:r carrier. Keeping the
+  // record here writes that carrier within CT_RunTrackChange at the same
+  // position.
+  commentReference: true,
   moveFromRangeEnd: true,
   moveFromRangeStart: true,
   moveToRangeEnd: true,

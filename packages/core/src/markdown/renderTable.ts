@@ -423,6 +423,7 @@ function renderHtmlChildren(
         case "bookmarkEnd":
         case "commentRangeStart":
         case "commentRangeEnd":
+        case "commentReference":
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":

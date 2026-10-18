@@ -18,7 +18,11 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 
-import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+  resolveAllChangesInHeadlessState,
+} from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
@@ -45,6 +49,15 @@ const parseParagraphXml = (xml: string): Paragraph => {
   return parseParagraph(element, null, null, null, null, null);
 };
 
+const REVISION_ATTRIBUTES = 'w:id="7" w:author="Reviewer"';
+const COMMENT_REFERENCE =
+  '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="5"/></w:r>';
+
+const serializeInnerXml = (inner: string): string =>
+  serializeParagraph(
+    parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${inner}</w:p>`),
+  ).replace(/^<w:p>|<\/w:p>$/g, "");
+
 const wrapParagraph = (paragraph: Paragraph): Document => ({
   package: {
     document: {
@@ -58,7 +71,11 @@ const markerTypes = (document: Document): string[] => {
   const paragraph = document.package.document.content.at(0);
   if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
   return paragraph.content.flatMap((item) =>
-    item.type === "commentRangeStart" || item.type === "commentRangeEnd" ? [item.type] : [],
+    item.type === "commentRangeStart" ||
+    item.type === "commentRangeEnd" ||
+    item.type === "commentReference"
+      ? [item.type]
+      : [],
   );
 };
 
@@ -121,6 +138,59 @@ const markedText = (document: ReturnType<typeof toProseDoc>, commentId: number):
 };
 
 describe("comment-range boundaries inside tracked changes", () => {
+  for (const { name, xml } of [
+    {
+      name: "w:commentRangeStart inside w:ins and the closing range markup outside it",
+      xml:
+        `<w:ins ${REVISION_ATTRIBUTES}><w:r><w:t>X</w:t></w:r>` +
+        '<w:commentRangeStart w:id="5"/><w:r><w:t>Y</w:t></w:r></w:ins>' +
+        `<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}`,
+    },
+    {
+      name: "a following w:ins after the closing range markup",
+      xml:
+        `<w:ins ${REVISION_ATTRIBUTES}><w:r><w:t>X</w:t></w:r>` +
+        '<w:commentRangeStart w:id="5"/><w:r><w:t>Y</w:t></w:r></w:ins>' +
+        `<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}` +
+        `<w:ins ${REVISION_ATTRIBUTES}><w:r><w:t>W</w:t></w:r></w:ins>`,
+    },
+    {
+      name: "w:ins before w:commentRangeStart",
+      xml:
+        `<w:ins ${REVISION_ATTRIBUTES}><w:r><w:t>Z</w:t></w:r></w:ins>` +
+        '<w:commentRangeStart w:id="5"/><w:r><w:t>beta</w:t></w:r>' +
+        `<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}`,
+    },
+    {
+      name: "range markup and w:commentReference in one w:del",
+      xml:
+        `<w:del ${REVISION_ATTRIBUTES}><w:r><w:delText>b</w:delText></w:r>` +
+        '<w:commentRangeStart w:id="5"/><w:r><w:delText>et</w:delText></w:r>' +
+        `<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}` +
+        "<w:r><w:delText>a</w:delText></w:r></w:del>",
+    },
+    {
+      name: "closing range markup between two w:del elements",
+      xml:
+        `<w:del ${REVISION_ATTRIBUTES}><w:r><w:delText>b</w:delText></w:r>` +
+        '<w:commentRangeStart w:id="5"/><w:r><w:delText>et</w:delText></w:r></w:del>' +
+        `<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}` +
+        `<w:del ${REVISION_ATTRIBUTES}><w:r><w:delText>a</w:delText></w:r></w:del>`,
+    },
+  ]) {
+    test(`${name} survives parse, projection, and serialization`, () => {
+      const parsed = parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`);
+      const reopened = fromProseDoc(toProseDoc(wrapParagraph(parsed)), wrapParagraph(parsed), {
+        stylesheetSource: { type: "package" },
+      });
+      const paragraph = reopened.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+
+      expect(serializeInnerXml(xml)).toBe(xml);
+      expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
+    });
+  }
+
   test(
     "random marker offsets keep live and reopened anchor text equal across nested revisions",
     () => {
@@ -317,6 +387,48 @@ describe("comment-range boundaries inside tracked changes", () => {
     }
   }
 
+  for (const fixture of [
+    { tag: "ins", type: "insertion", removingDecision: "reject" },
+    { tag: "del", type: "deletion", removingDecision: "accept" },
+  ] as const) {
+    for (const decision of ["accept", "reject"] as const) {
+      test(`${decision} of w:${fixture.tag} resolves its complete comment range`, () => {
+        const paragraph = parseParagraphXml(
+          `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}"><w:${fixture.tag} ${REVISION_ATTRIBUTES}>` +
+            `<w:r><w:${fixture.tag === "del" ? "delText" : "t"}>b</w:${fixture.tag === "del" ? "delText" : "t"}></w:r>` +
+            '<w:commentRangeStart w:id="5"/>' +
+            `<w:r><w:${fixture.tag === "del" ? "delText" : "t"}>et</w:${fixture.tag === "del" ? "delText" : "t"}></w:r>` +
+            `<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}</w:${fixture.tag}></w:p>`,
+        );
+        const input = wrapParagraph(paragraph);
+        const operation = applyDocumentOps(input, [
+          {
+            type: "resolveRevision",
+            story: OP_STORIES.MAIN,
+            decision: decision === "accept" ? REVISION_DECISIONS.ACCEPT : REVISION_DECISIONS.REJECT,
+            revisionIds: [7],
+          },
+        ]);
+        if (operation.isErr()) throw operation.error;
+
+        const state = resolveAllChangesInHeadlessState(
+          EditorState.create({ schema, doc: toProseDoc(input) }),
+          decision,
+        );
+        const editor = fromProseDoc(state.doc, input, {
+          stylesheetSource: { type: "package" },
+        });
+        const expected =
+          decision === fixture.removingDecision
+            ? []
+            : ["commentRangeStart", "commentRangeEnd", "commentReference"];
+
+        expect(markerTypes(operation.value.document)).toEqual(expected);
+        expect(markerTypes(editor)).toEqual(expected);
+      });
+    }
+  }
+
   for (const wrapper of TRACKED_WRAPPERS) {
     for (const decision of ["accept", "reject"] as const) {
       test(`${decision} ${wrapper.type} agrees across resolution paths and retains marker order`, () => {
@@ -324,7 +436,7 @@ describe("comment-range boundaries inside tracked changes", () => {
           `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}"><w:${wrapper.tag} w:id="7" w:author="Reviewer">` +
             `<w:r><w:t>before</w:t></w:r><w:commentRangeStart w:id="5"/>` +
             `<w:r><w:t>covered</w:t></w:r><w:commentRangeEnd w:id="5"/>` +
-            `<w:r><w:t>after</w:t></w:r></w:${wrapper.tag}></w:p>`,
+            `${COMMENT_REFERENCE}<w:r><w:t>after</w:t></w:r></w:${wrapper.tag}></w:p>`,
         );
         const input = wrapParagraph(paragraph);
 
@@ -347,11 +459,12 @@ describe("comment-range boundaries inside tracked changes", () => {
           stylesheetSource: { type: "package" },
         });
 
-        const expected = ["commentRangeStart", "commentRangeEnd"];
-        expect(markerTypes(operation.value.document)).toEqual(expected);
-        const removesInsertedContent =
-          decision === "reject" && (wrapper.type === "insertion" || wrapper.type === "moveTo");
-        expect(markerTypes(editor)).toEqual(removesInsertedContent ? [] : expected);
+        const expected = ["commentRangeStart", "commentRangeEnd", "commentReference"];
+        const removesContent =
+          (decision === "reject" && (wrapper.type === "insertion" || wrapper.type === "moveTo")) ||
+          (decision === "accept" && (wrapper.type === "deletion" || wrapper.type === "moveFrom"));
+        expect(markerTypes(operation.value.document)).toEqual(removesContent ? [] : expected);
+        expect(markerTypes(editor)).toEqual(removesContent ? [] : expected);
       });
     }
   }

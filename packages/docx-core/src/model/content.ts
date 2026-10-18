@@ -1627,6 +1627,7 @@ export type TrackedRunContent =
   | BookmarkEnd
   | CommentRangeStart
   | CommentRangeEnd
+  | CommentReference
   | MoveFromRangeStart
   | MoveFromRangeEnd
   | MoveToRangeStart

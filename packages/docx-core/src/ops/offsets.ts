@@ -200,7 +200,7 @@ const TRACKED_CHILD_TYPES = {
   deletion: true,
   moveFrom: true,
   moveTo: true,
-} as const satisfies Record<TrackedRunContent["type"], true>;
+} as const satisfies Record<Exclude<TrackedRunContent["type"], "commentReference">, true>;
 
 const INLINE_SDT_CHILD_TYPES = {
   run: true,
@@ -227,7 +227,9 @@ const isHyperlinkChild = (item: ParagraphContent): item is HyperlinkChild =>
   Object.hasOwn(HYPERLINK_CHILD_TYPES, item.type);
 
 /** Whether a tracked change (`w:ins`, `w:del`, a move) can hold the record. */
-export const isTrackedChild = (item: ParagraphContent): item is TrackedRunContent =>
+export const isTrackedChild = (
+  item: ParagraphContent,
+): item is Exclude<TrackedRunContent, { type: "commentReference" }> =>
   Object.hasOwn(TRACKED_CHILD_TYPES, item.type);
 
 const isInlineSdtChild = (item: ParagraphContent): item is InlineSdtChild =>

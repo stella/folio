@@ -1294,6 +1294,8 @@ function convertTrackedChange(
       openCommentIds.add(item.id);
     } else if (item.type === "commentRangeEnd") {
       openCommentIds.delete(item.id);
+    } else if (item.type === "commentReference") {
+      itemNodes.push(schema.node("commentReference", { commentId: item.id }));
     } else if (item.type === "run") {
       itemNodes.push(
         ...convertRun(

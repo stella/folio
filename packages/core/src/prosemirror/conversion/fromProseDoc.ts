@@ -3203,8 +3203,19 @@ function extractParagraphContent(
     // holds it, right after the range ends `syncCommentRanges` just wrote.
     if (node.type.name === "commentReference") {
       flushCurrentInline();
-      currentTrackedChange = undefined;
-      content.push({ type: "commentReference", id: expectCommentReferenceAttrs(node).commentId });
+      const reference = {
+        type: "commentReference" as const,
+        id: expectCommentReferenceAttrs(node).commentId,
+      };
+      if (
+        currentTrackedChange &&
+        node.marks.some((mark) => mark.type.name === "insertion" || mark.type.name === "deletion")
+      ) {
+        currentTrackedChange.wrapper.content.push(reference);
+      } else {
+        currentTrackedChange = undefined;
+        content.push(reference);
+      }
       return;
     }
 

@@ -590,6 +590,56 @@ const retainedCommentAnchors = (nodes: readonly InlineNode[]): InlineNode[] =>
     return children === undefined ? [] : retainedCommentAnchors(children);
   });
 
+/** Comment ids whose complete range belongs to selected content being removed. */
+const removedCommentRangeIds = (
+  nodes: readonly InlineNode[],
+  resolution: Resolution,
+): ReadonlySet<number> => {
+  const ids = new Set<number>();
+  const visit = (items: readonly InlineNode[]): void => {
+    for (const node of items) {
+      if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
+        if (removesContent(node, resolution.decision)) {
+          const starts = new Set<number>();
+          const ends = new Set<number>();
+          const scan = (children: readonly InlineNode[]): void => {
+            for (const child of children) {
+              if (child.type === "commentRangeStart") starts.add(child.id);
+              if (child.type === "commentRangeEnd") ends.add(child.id);
+              scan(childNodes(child) ?? []);
+            }
+          };
+          scan(node.content);
+          for (const id of starts) if (ends.has(id)) ids.add(id);
+        }
+      }
+      visit(childNodes(node) ?? []);
+    }
+  };
+  visit(nodes);
+  return ids;
+};
+
+const withoutCommentAnchors = (
+  nodes: readonly InlineNode[],
+  removedIds: ReadonlySet<number>,
+): readonly InlineNode[] => {
+  if (removedIds.size === 0) return nodes;
+  return nodes.flatMap((node) => {
+    if (
+      (node.type === "commentRangeStart" ||
+        node.type === "commentRangeEnd" ||
+        node.type === "commentReference") &&
+      removedIds.has(node.id)
+    )
+      return [];
+    const children = childNodes(node);
+    if (children === undefined) return [node];
+    const filtered = withoutCommentAnchors(children, removedIds);
+    return [filtered === children ? node : rebuildNode(node, filtered)];
+  });
+};
+
 /**
  * A list with its tracked changes resolved. Where a change was resolved,
  * the records left meeting are merged as far as they are alike.
@@ -1314,16 +1364,18 @@ export const resolveRevision = (
     const paraId = paragraph.paraId ?? "";
     const prepared = prepareDeferredRemovals(paragraph.content, resolution);
     const resolved = resolveList(prepared, resolution);
-    resolvedContents.set(idKey(paraId), resolved.nodes);
+    const removedCommentIds = removedCommentRangeIds(prepared, resolution);
+    const resolvedNodes = withoutCommentAnchors(resolved.nodes, removedCommentIds);
+    resolvedContents.set(idKey(paraId), resolvedNodes);
     if (resolved.edges !== undefined) resolvedCutEdges.set(idKey(paraId), resolved.edges);
     if (resolved.changed || prepared !== paragraph.content) {
-      emptiedEnds.set(idKey(paraId), emptiedEndsOf(resolved.nodes, resolution.emptied));
+      emptiedEnds.set(idKey(paraId), emptiedEndsOf(resolvedNodes, resolution.emptied));
       inline.push({
         type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
         story: op.story,
         blockId: paraId,
         expected: paragraph.content,
-        content: asParagraphContent(resolved.nodes),
+        content: asParagraphContent(resolvedNodes),
       });
     }
   }
