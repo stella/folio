@@ -38,7 +38,6 @@ import {
   mergeLists,
   rebuildNode,
   sameOwnFields,
-  isCommentAnchor,
 } from "./leaves";
 import { paragraphLength } from "./offsets";
 import { identitySlots, withInlineIdentity } from "./slots";
@@ -160,6 +159,8 @@ type Resolution = {
   acceptedClosed: Record<"first" | "last", WeakSet<InlineNode>>;
   /** Unconsumed source-cut edges on the actual rebuilt container. */
   cutEdges: WeakMap<InlineNode, CutEdges>;
+  /** Comment ranges whose other boundary survives outside a removed wrapper. */
+  commentRangeIds: ReadonlySet<number>;
 };
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
@@ -582,13 +583,34 @@ const prepareDeferredRemovals = (
 type CutEdges = { first?: number; last?: number };
 type ResolvedList = { nodes: InlineNode[]; changed: boolean; edges?: CutEdges };
 
-/** Comment boundaries are positions, not revision payload, so removing a wrapper retains them. */
-const retainedCommentAnchors = (nodes: readonly InlineNode[]): InlineNode[] =>
+/** Comment range boundaries are positions, not revision payload, so removing a wrapper retains them. */
+const retainedCommentAnchors = (
+  nodes: readonly InlineNode[],
+  rangeIds: ReadonlySet<number>,
+): InlineNode[] =>
   nodes.flatMap((node) => {
-    if (isCommentAnchor(node)) return [node];
+    if (
+      (node.type === "commentRangeStart" || node.type === "commentRangeEnd") &&
+      rangeIds.has(node.id)
+    )
+      return [node];
     const children = childNodes(node);
-    return children === undefined ? [] : retainedCommentAnchors(children);
+    return children === undefined ? [] : retainedCommentAnchors(children, rangeIds);
   });
+
+const pairedCommentRangeIds = (nodes: readonly InlineNode[]): ReadonlySet<number> => {
+  const starts = new Set<number>();
+  const ends = new Set<number>();
+  const visit = (items: readonly InlineNode[]): void => {
+    for (const node of items) {
+      if (node.type === "commentRangeStart") starts.add(node.id);
+      if (node.type === "commentRangeEnd") ends.add(node.id);
+      visit(childNodes(node) ?? []);
+    }
+  };
+  visit(nodes);
+  return new Set([...starts].filter((id) => ends.has(id)));
+};
 
 /** Comment ids whose complete range belongs to selected content being removed. */
 const removedCommentRangeIds = (
@@ -681,7 +703,7 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
           out.splice(0, out.length, ...prepared.slice(0, prefixLength));
           pending.splice(index + 1, pending.length - index - 1, ...prepared.slice(prefixLength));
         }
-        out.push(...retainedCommentAnchors(node.content));
+        out.push(...retainedCommentAnchors(node.content, resolution.commentRangeIds));
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else recordSourceSeam(out.length, node.resolutionJoins.remove);
         continue;
@@ -1297,6 +1319,7 @@ export const resolveRevision = (
     emptied: new WeakSet(),
     acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
     cutEdges: new WeakMap(),
+    commentRangeIds: new Set(),
   };
   const paragraphs = storyParagraphs(storyBody(document, op.story));
   const reachable = new Set([
@@ -1363,6 +1386,7 @@ export const resolveRevision = (
   for (const { paragraph } of paragraphs) {
     const paraId = paragraph.paraId ?? "";
     const prepared = prepareDeferredRemovals(paragraph.content, resolution);
+    resolution.commentRangeIds = pairedCommentRangeIds(prepared);
     const resolved = resolveList(prepared, resolution);
     const removedCommentIds = removedCommentRangeIds(prepared, resolution);
     const resolvedNodes = withoutCommentAnchors(resolved.nodes, removedCommentIds);

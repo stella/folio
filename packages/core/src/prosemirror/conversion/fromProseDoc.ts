@@ -3196,6 +3196,55 @@ function extractParagraphContent(
     }
     leadingRenderedPageBreakPending = false;
     enterWrapperGroup(node);
+
+    // Establish the node's revision owner before range boundaries at this
+    // position choose where they belong. A boundary can be the first content
+    // in a revision, so there may be no preceding run to establish it.
+    const boundaryInsertionMark = node.marks.find((mark) => mark.type.name === "insertion");
+    const boundaryDeletionMark = node.marks.find((mark) => mark.type.name === "deletion");
+    const boundaryChangeMark = boundaryDeletionMark ?? boundaryInsertionMark;
+    if (boundaryChangeMark && !node.marks.some((mark) => mark.type.name === "hyperlink")) {
+      flushCurrentInline();
+      const changeAttrs = expectTrackedChangeMarkAttrs(boundaryChangeMark);
+      const info: TrackedChangeInfo = {
+        id: changeAttrs.revisionId,
+        author: changeAttrs.author || "Unknown",
+        ...(changeAttrs.date ? { date: changeAttrs.date } : {}),
+        ...(changeAttrs.utcDate
+          ? { utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: changeAttrs.utcDate } }
+          : {}),
+        ...(changeAttrs.initials ? { initials: changeAttrs.initials } : {}),
+      };
+      let type: TrackedRunWrapper["type"];
+      if (boundaryInsertionMark) {
+        type = changeAttrs.moveKind === "moveTo" ? "moveTo" : "insertion";
+      } else {
+        type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
+      }
+      const revisionAncestors = enclosingInsertionAncestors({
+        insertionMark: boundaryDeletionMark ? boundaryInsertionMark : undefined,
+        ancestors: changeAttrs._docxRevisionAncestors ?? [],
+        node,
+      });
+      const outerWrapperCount =
+        changeAttrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length;
+      const trackedChangeKey = `${type}:${JSON.stringify(info)}:${outerWrapperCount}:${JSON.stringify(revisionAncestors)}:${JSON.stringify(changeAttrs._docxResolutionJoins ?? undefined)}`;
+      if (
+        !currentTrackedChange ||
+        currentTrackedChange.type !== "direct" ||
+        currentTrackedChange.key !== trackedChangeKey
+      ) {
+        const wrapper = createTrackedRunWrapper({
+          type,
+          info,
+          resolutionJoins: changeAttrs._docxResolutionJoins ?? undefined,
+        });
+        revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
+        revisionAncestorsByWrapper.set(wrapper, revisionAncestors);
+        content.push(wrapper);
+        currentTrackedChange = { type: "direct", key: trackedChangeKey, wrapper };
+      }
+    }
     syncCommentRanges(node, offset);
 
     // A comment reference is paragraph content in the model, so it never joins
@@ -3225,9 +3274,16 @@ function extractParagraphContent(
     // record with it.
     if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
       flushCurrentInline();
-      currentTrackedChange = undefined;
       const { start, end } = expectRangeAnchorAttrs(node);
-      content.push({ ...start }, { ...end });
+      if (
+        currentTrackedChange &&
+        node.marks.some((mark) => mark.type.name === "insertion" || mark.type.name === "deletion")
+      ) {
+        currentTrackedChange.wrapper.content.push({ ...start }, { ...end });
+      } else {
+        currentTrackedChange = undefined;
+        content.push({ ...start }, { ...end });
+      }
       return;
     }
 

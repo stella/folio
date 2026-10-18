@@ -22,7 +22,10 @@
  *
  * A run whose payload another pass will supply is the one case the model
  * cannot answer alone: between `parseParagraphContents` and
- * `enrichParagraphTextBoxes` the carrier run is legitimately empty.
+ * `enrichParagraphTextBoxes` the carrier run is legitimately empty. That
+ * exception belongs to the keep rule, which has the source element to read,
+ * and not here — which is why the consolidator, reading the model only, must
+ * not re-decide what the keep rule already decided about such a run.
  */
 
 import type { Run } from "../types/document";

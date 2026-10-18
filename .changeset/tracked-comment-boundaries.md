@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-Keep comment range markers, payload carriers, and authored run boundaries at their source positions.
+Keep comment range markers and references inside tracked changes at their source positions.

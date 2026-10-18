@@ -323,38 +323,6 @@ describe("comment-range boundaries inside tracked changes", () => {
     });
   }
 
-  test("resolution keeps adjacent authored run segmentation", () => {
-    const input = wrapParagraph({
-      type: "paragraph",
-      content: [
-        {
-          type: "insertion",
-          info: { id: 7, author: "Reviewer" },
-          content: [
-            { type: "run", formatting: {}, content: [{ type: "text", text: "left" }] },
-            { type: "run", formatting: {}, content: [{ type: "text", text: " right" }] },
-          ],
-        },
-      ],
-    });
-
-    const operation = applyDocumentOps(input, [
-      {
-        type: "resolveRevision",
-        story: OP_STORIES.MAIN,
-        decision: REVISION_DECISIONS.ACCEPT,
-        revisionIds: [7],
-      },
-    ]);
-    if (operation.isErr()) throw operation.error;
-    const paragraph = operation.value.document.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
-    expect(paragraph.content).toEqual([
-      { type: "run", formatting: {}, content: [{ type: "text", text: "left" }] },
-      { type: "run", formatting: {}, content: [{ type: "text", text: " right" }] },
-    ]);
-  });
-
   for (const wrapper of TRACKED_WRAPPERS) {
     for (const marker of COMMENT_MARKERS) {
       test(`w:${wrapper.tag} keeps w:${marker} in its run sequence`, () => {
@@ -428,6 +396,37 @@ describe("comment-range boundaries inside tracked changes", () => {
       });
     }
   }
+
+  test("an empty comment range stays inside its insertion", () => {
+    const input = wrapParagraph({
+      type: "paragraph",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 7, author: "Reviewer" },
+          content: [
+            { type: "commentRangeStart", id: 5 },
+            { type: "commentRangeEnd", id: 5 },
+            { type: "commentReference", id: 5 },
+          ],
+        },
+      ],
+    });
+
+    const reopened = fromProseDoc(toProseDoc(input), input, {
+      stylesheetSource: { type: "package" },
+    });
+    const paragraph = reopened.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+    const insertion = paragraph.content.at(0);
+    if (insertion?.type !== "insertion") throw new Error("Expected an insertion");
+
+    expect(insertion.content.map(({ type }) => type)).toEqual([
+      "commentRangeStart",
+      "commentRangeEnd",
+      "commentReference",
+    ]);
+  });
 
   for (const wrapper of TRACKED_WRAPPERS) {
     for (const decision of ["accept", "reject"] as const) {

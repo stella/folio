@@ -355,8 +355,6 @@ function isMergeableContent(content: RunContent): boolean {
  * Check if a run can be merged with another run
  * Runs with breaks, tabs, images, fields, etc. act as merge boundaries
  */
-const runHoldsPayload = (run: Run): boolean => run.content.length > 0;
-
 function canMergeRun(run: Run): boolean {
   // A run-property revision owns an exact text range. Merging either boundary
   // would discard that range because a consolidated run can carry only one
@@ -365,10 +363,10 @@ function canMergeRun(run: Run): boolean {
     return false;
   }
 
-  // A run holding no payload is a parser carrier whose payload may be supplied
-  // by a later enrichment pass. It remains a boundary at every normalization
-  // depth rather than being merged away before that pass can find it.
-  if (!runHoldsPayload(run)) {
+  // A run holding no payload never reaches a merge: `consolidateRuns` flushes
+  // at it and keeps it whole, because the payload a later pass will put in it
+  // is not this pass's to merge away.
+  if (run.content.length === 0) {
     return false;
   }
 

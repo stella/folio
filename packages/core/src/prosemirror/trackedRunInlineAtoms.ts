@@ -30,9 +30,8 @@ export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   noteMarker: "carry",
   pageBreakRun: "page-break-carrier",
   preservedXml: "carry",
-  // An empty comment range remains paragraph-level; move ranges use the
-  // dedicated boundary atom above and can stay inside a revision.
-  rangeAnchor: "transparent",
+  // A zero-width range owns its authored position inside the revision.
+  rangeAnchor: "carry",
   renderedPageBreak: "carry",
   shape: "carry",
   structuredField: "carry",
