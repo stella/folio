@@ -9,6 +9,7 @@ import type { Issue } from "./fuzz-issue-classes";
 import {
   failureMarker,
   failureRecord,
+  shellQuote,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
@@ -42,6 +43,7 @@ import {
   TITLE_PREFIX,
   TITLE_FORMAT,
   cliRepro,
+  shellWords,
 } from "./fuzz-failure-issues";
 
 const marker = (seed: number, message = "step 3: no comment") =>
@@ -644,9 +646,50 @@ test("every legacy filer replay template is converted to CLI flags", () => {
 });
 
 const replayArgv = (command: string): string[] =>
-  [...command.matchAll(/'(?:'\\''|[^'])*'|\S+/gu)]
-    .map(([token]) => (token.startsWith("'") ? token.slice(1, -1).replaceAll("'\\''", "'") : token))
-    .slice(2);
+  (shellWords(command) ?? []).map(({ value }) => value).slice(2);
+
+test("legacy replay conversion follows shell quoting rules", () => {
+  const doubleQuoted = cliRepro(
+    'FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only "^fuzz \\("',
+  );
+  expect(parseConsumerArgs(replayArgv(doubleQuoted), "/repo").only).toBe("^fuzz \\(");
+
+  const quoted = cliRepro(
+    "FOLIO_SCENARIO_SEED='1' bun scripts/consumer-scenarios.ts --only one\\ two --flow pre' literal 'mid\" quoted\"post",
+  );
+  expect(parseConsumerArgs(replayArgv(quoted), "/repo")).toMatchObject({
+    seed: "1",
+    only: "one two",
+    flow: "pre literal mid quotedpost",
+  });
+});
+
+test("legacy replay conversion preserves unsupported shell commands", () => {
+  const commands = [
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only $(pattern)",
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only `pattern`",
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only 'pattern",
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only pattern && echo done",
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only pattern; echo done",
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only pattern | echo done",
+  ];
+  for (const command of commands) expect(cliRepro(command)).toBe(command);
+});
+
+test(
+  "scenario shell quoting decodes every generated word",
+  () => {
+    assertProperty(
+      fc.property(fc.array(fc.string(), { maxLength: 20 }), (values) => {
+        expect(shellWords(values.map(shellQuote).join(" "))?.map(({ value }) => value)).toEqual(
+          values,
+        );
+      }),
+      { numRuns: 500, id: "scenario shell quoting round trips" },
+    );
+  },
+  propertyTestTimeout(5_000),
+);
 
 test("legacy replay conversion merges environment and CLI inputs with CLI precedence", () => {
   const converted = cliRepro(

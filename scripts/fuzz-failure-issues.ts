@@ -387,43 +387,102 @@ export type SignatureState = {
 const ISSUE_BODY_LIMIT = 65_535;
 const LANE_TABLE_HEADER = ["| Lane | Last run | Clean scheduled runs |", "| --- | --- | --- |"];
 
-const shellWordValue = (raw: string): string => {
-  if (raw.startsWith("'")) return raw.slice(1, -1).replaceAll("'\\''", "'");
-  if (raw.startsWith('"')) return JSON.parse(raw);
-  return raw;
+type ShellWord = { raw: string; value: string };
+
+/** Decode the shell syntax emitted by scenario replay commands. */
+export const shellWords = (command: string): ShellWord[] | null => {
+  const words: ShellWord[] = [];
+  let index = 0;
+  while (index < command.length) {
+    while (command[index] === " " || command[index] === "\t") index += 1;
+    if (index === command.length) break;
+    const start = index;
+    let value = "";
+    while (index < command.length && command[index] !== " " && command[index] !== "\t") {
+      const character = command[index] ?? "";
+      if (character === "'") {
+        const end = command.indexOf("'", index + 1);
+        if (end === -1) return null;
+        value += command.slice(index + 1, end);
+        index = end + 1;
+        continue;
+      }
+      if (character === '"') {
+        index += 1;
+        let closed = false;
+        while (index < command.length) {
+          const quoted = command[index] ?? "";
+          if (quoted === '"') {
+            index += 1;
+            closed = true;
+            break;
+          }
+          if (quoted === "`" || quoted === "$" || quoted === "\n") return null;
+          if (quoted !== "\\") {
+            value += quoted;
+            index += 1;
+            continue;
+          }
+          const escaped = command[index + 1];
+          if (escaped === undefined) return null;
+          if (escaped === "$" || escaped === "`" || escaped === '"' || escaped === "\\") {
+            value += escaped;
+          } else if (escaped !== "\n") {
+            value += `\\${escaped}`;
+          }
+          index += 2;
+        }
+        if (!closed) return null;
+        continue;
+      }
+      if (character === "\\") {
+        const escaped = command[index + 1];
+        if (escaped === undefined) return null;
+        if (escaped !== "\n") value += escaped;
+        index += 2;
+        continue;
+      }
+      if (character === "\n" || /[;|&<>()`$]/u.test(character)) return null;
+      value += character;
+      index += 1;
+    }
+    words.push({ raw: command.slice(start, index), value });
+  }
+  return words;
 };
 
 /** Convert old environment-prefixed scenario replays before they reach public issue text. */
 export const cliRepro = (command: string): string => {
+  const words = shellWords(command);
+  if (words === null) return command;
   const inputs: Record<string, string> = {};
-  let rest = command.trim();
-  while (true) {
-    const match = /^(FOLIO_SCENARIO_[A-Z_]+)=('(?:'\\''|[^'])*'|"(?:\\.|[^"])*"|\S+)\s*/u.exec(
-      rest,
-    );
-    if (match === null) break;
-    const [, name = "", raw = ""] = match;
+  let index = 0;
+  while (index < words.length) {
+    const word = words[index];
+    const assignment = /^(FOLIO_SCENARIO_[A-Z_]+)=(.*)$/su.exec(word?.value ?? "");
+    if (assignment === null) break;
+    const [, name = "", value = ""] = assignment;
     const flag = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ env }) => env === name)?.flag;
     if (flag === undefined) break;
     const option = flag
       .slice(2)
       .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
-    inputs[option] = shellWordValue(raw);
-    rest = rest.slice(match[0].length);
+    inputs[option] = value;
+    index += 1;
   }
   if (Object.keys(inputs).length === 0) return command;
-  const executable = "bun scripts/consumer-scenarios.ts";
-  if (!rest.startsWith(executable)) return command;
-  const suffix = rest.slice(executable.length).trim();
-  const words = [...suffix.matchAll(/'(?:'\\''|[^'])*'|"(?:\\.|[^"])*"|\S+/gu)].map(([raw]) => ({
-    raw,
-    value: shellWordValue(raw),
-  }));
+  if (
+    words[index]?.value !== "bun" ||
+    words[index + 1]?.value !== "scripts/consumer-scenarios.ts"
+  ) {
+    return command;
+  }
+  const suffix = words.slice(index + 2);
   const flags: string[] = [];
-  for (let index = 0; index < words.length; index += 1) {
-    const word = words[index];
+  for (let suffixIndex = 0; suffixIndex < suffix.length; suffixIndex += 1) {
+    const word = suffix[suffixIndex];
     if (word?.value === "--") {
-      flags.push(...words.slice(index).map(({ raw }) => raw));
+      flags.push(...suffix.slice(suffixIndex).map(({ raw }) => raw));
       break;
     }
     const replayInput = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ flag }) => flag === word?.value);
@@ -431,13 +490,13 @@ export const cliRepro = (command: string): string => {
       flags.push(word?.raw ?? "");
       continue;
     }
-    const value = words[index + 1];
+    const value = suffix[suffixIndex + 1];
     if (value === undefined) return command;
     const option = replayInput.flag
       .slice(2)
       .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
     inputs[option] = value.value;
-    index += 1;
+    suffixIndex += 1;
   }
   return consumerScenarioReplay({ inputs, flags: [flags.join(" ")] });
 };
