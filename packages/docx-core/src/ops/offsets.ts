@@ -184,6 +184,8 @@ const TRACKED_CHILD_TYPES = {
   hyperlink: true,
   bookmarkStart: true,
   bookmarkEnd: true,
+  commentRangeStart: true,
+  commentRangeEnd: true,
   moveFromRangeStart: true,
   moveFromRangeEnd: true,
   moveToRangeStart: true,

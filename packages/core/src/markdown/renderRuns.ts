@@ -609,6 +609,8 @@ function renderTrackedWrapper(
       // as bytes: a capture is not read, so it has no words to render.
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":

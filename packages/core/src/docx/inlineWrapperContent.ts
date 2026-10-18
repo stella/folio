@@ -40,9 +40,10 @@ type AdmissionMap<Admitted extends ParagraphContent> = {
  * Neither says anything about the revision, so lifting one out of a revision
  * takes its text out of the revision with it.
  *
- * Move-range markers stay inside the revision that owns their authored
- * position. Comment ranges remain paragraph-level because the editor projects
- * them as marks over content rather than as boundary atoms.
+ * Range markers stay inside the revision that owns their authored position.
+ * Comment range markers are positions even though the editor projects their
+ * extent as marks; lifting a marker changes which side of the tracked content
+ * owns that position when the revision is resolved.
  */
 export const TRACKED_CHANGE_WRAPPER_CONTENT = {
   inlineWrapper: true,
@@ -59,8 +60,8 @@ export const TRACKED_CHANGE_WRAPPER_CONTENT = {
   preservedInline: true,
   run: true,
   simpleField: true,
-  commentRangeEnd: false,
-  commentRangeStart: false,
+  commentRangeEnd: true,
+  commentRangeStart: true,
   commentReference: false,
   moveFromRangeEnd: true,
   moveFromRangeStart: true,

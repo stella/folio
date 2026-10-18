@@ -1278,6 +1278,7 @@ function convertTrackedChange(
   const nodes: PMNode[] = [];
   const getTrackedRunFormatting =
     markType === "deletion" ? runFormattingResolvers.historical : runFormattingResolvers.current;
+  const openCommentIds = new Set<number>();
   // A wrapper or move-range boundary the revision holds stays inside it:
   // lifting either out changes what accepting or rejecting the revision owns.
   // Comment boundaries remain marks over the projected content.
@@ -1290,7 +1291,11 @@ function convertTrackedChange(
       continue;
     }
     const itemNodes: PMNode[] = [];
-    if (item.type === "run") {
+    if (item.type === "commentRangeStart") {
+      openCommentIds.add(item.id);
+    } else if (item.type === "commentRangeEnd") {
+      openCommentIds.delete(item.id);
+    } else if (item.type === "run") {
       itemNodes.push(
         ...convertRun(
           item,
@@ -1398,7 +1403,7 @@ function convertTrackedChange(
       const unsupported: never = item;
       panic(`Unsupported tracked-run content: ${JSON.stringify(unsupported)}`);
     }
-    nodes.push(...withInlineWrapperMark(itemNodes, stack));
+    nodes.push(...applyCommentMarks(withInlineWrapperMark(itemNodes, stack), openCommentIds));
   }
 
   // SAFETY: markType is "insertion" | "deletion", both registered in schema

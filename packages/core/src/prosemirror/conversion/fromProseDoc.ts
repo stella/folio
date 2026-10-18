@@ -3133,14 +3133,18 @@ function extractParagraphContent(
     }
 
     flushCurrentInline();
-    currentTrackedChange = undefined;
+    const trackedBoundaryOwner =
+      node.marks.some((mark) => mark.type.name === "insertion" || mark.type.name === "deletion") &&
+      currentTrackedChange
+        ? currentTrackedChange.wrapper.content
+        : content;
 
     for (const commentId of byCommentId(toClose)) {
-      content.push({ type: "commentRangeEnd", id: commentId });
+      trackedBoundaryOwner.push({ type: "commentRangeEnd", id: commentId });
       openedComments.delete(commentId);
     }
     for (const commentId of byCommentId(toOpen)) {
-      content.push({ type: "commentRangeStart", id: commentId });
+      trackedBoundaryOwner.push({ type: "commentRangeStart", id: commentId });
       openedComments.add(commentId);
     }
   };

@@ -38,6 +38,7 @@ import {
   mergeLists,
   rebuildNode,
   sameOwnFields,
+  isCommentAnchor,
 } from "./leaves";
 import { paragraphLength } from "./offsets";
 import { identitySlots, withInlineIdentity } from "./slots";
@@ -581,6 +582,14 @@ const prepareDeferredRemovals = (
 type CutEdges = { first?: number; last?: number };
 type ResolvedList = { nodes: InlineNode[]; changed: boolean; edges?: CutEdges };
 
+/** Comment boundaries are positions, not revision payload, so removing a wrapper retains them. */
+const retainedCommentAnchors = (nodes: readonly InlineNode[]): InlineNode[] =>
+  nodes.flatMap((node) => {
+    if (isCommentAnchor(node)) return [node];
+    const children = childNodes(node);
+    return children === undefined ? [] : retainedCommentAnchors(children);
+  });
+
 /**
  * A list with its tracked changes resolved. Where a change was resolved,
  * the records left meeting are merged as far as they are alike.
@@ -622,6 +631,7 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
           out.splice(0, out.length, ...prepared.slice(0, prefixLength));
           pending.splice(index + 1, pending.length - index - 1, ...prepared.slice(prefixLength));
         }
+        out.push(...retainedCommentAnchors(node.content));
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else recordSourceSeam(out.length, node.resolutionJoins.remove);
         continue;
