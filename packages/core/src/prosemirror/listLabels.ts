@@ -113,6 +113,9 @@ export const listLabelAttrsFromRendering = (
 type VisibleListLabel = {
   kind: "none" | "markerless" | "marker";
   label: string | undefined;
+  /** The current paragraph's reference, independent of tracked formatting selected for display. */
+  structuralReference: Extract<ResolvedParagraphNumbering, { kind: "reference" }> | undefined;
+  /** The revision-selected reference whose marker was counted for display. */
   numbering: Extract<ResolvedParagraphNumbering, { kind: "reference" }> | undefined;
 };
 
@@ -209,7 +212,12 @@ export const createListLabelCounter = (
     const { counterAttrs, marker } = advanceVisibleListMarker(counterInput, streams);
     const projectedLabel = visibleLabel(counterAttrs, marker);
     if (readsProjectedStreams && projectedLabel !== undefined) {
-      return { kind: "marker", label: projectedLabel, numbering: effective };
+      return {
+        kind: "marker",
+        label: projectedLabel,
+        structuralReference: list.reference,
+        numbering: effective,
+      };
     }
     const countedSources = paragraphNumberingSourcesFromBoundary({
       numPr: counterAttrs.numPr,
@@ -227,13 +235,24 @@ export const createListLabelCounter = (
     );
     switch (countedList.kind) {
       case "none":
-        return { kind: "none", label: undefined, numbering: undefined };
+        return {
+          kind: "none",
+          label: undefined,
+          structuralReference: list.reference,
+          numbering: undefined,
+        };
       case "markerless":
-        return { kind: "markerless", label: undefined, numbering: countedList.reference };
+        return {
+          kind: "markerless",
+          label: undefined,
+          structuralReference: list.reference,
+          numbering: countedList.reference,
+        };
       case "marker":
         return {
           kind: "marker",
           label: projectedLabel,
+          structuralReference: list.reference,
           numbering: countedNumbering,
         };
       default: {
