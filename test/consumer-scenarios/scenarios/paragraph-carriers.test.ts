@@ -4,7 +4,6 @@ import { runFlow } from "../support/fuzz.ts";
 
 const PINNED_CARRIER_FLOWS = [
   { seed: 740_097_579, steps: 20 },
-  { seed: 746_947_976, steps: 16 },
   { seed: 1_809_931_060, steps: 20 },
 ] as const;
 

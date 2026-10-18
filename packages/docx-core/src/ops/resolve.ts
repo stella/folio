@@ -1145,8 +1145,7 @@ const joinOps = (
     followingKind,
     endsContainer: containerFinal,
     removesCurrentMark: true,
-    removesParagraph: added,
-    currentContentWasResolved: !added || emptiedEnds.has(idKey(paraId)),
+    removesParagraph: followingKind !== "table" && (added || empty),
   });
   if (canGo && blocks.length > 1 && carrier === "none") {
     if (empty && followingKind === "table") {

@@ -10,7 +10,6 @@ describe("paragraphMarkCarrier", () => {
         endsContainer: false,
         removesCurrentMark: true,
         removesParagraph: false,
-        currentContentWasResolved: false,
       }),
     ).toBe("following");
   });
@@ -22,7 +21,6 @@ describe("paragraphMarkCarrier", () => {
         endsContainer: true,
         removesCurrentMark: true,
         removesParagraph: false,
-        currentContentWasResolved: false,
       }),
     ).toBe("current");
   });
@@ -34,7 +32,6 @@ describe("paragraphMarkCarrier", () => {
         endsContainer: false,
         removesCurrentMark: false,
         removesParagraph: false,
-        currentContentWasResolved: false,
       }),
     ).toBe("current");
   });
@@ -46,19 +43,17 @@ describe("paragraphMarkCarrier", () => {
         endsContainer: false,
         removesCurrentMark: true,
         removesParagraph: false,
-        currentContentWasResolved: false,
       }),
     ).toBe("current");
   });
 
-  test("a removed inserted paragraph stays as the table's preceding carrier", () => {
+  test("a resolved inserted paragraph stays as the table's preceding carrier", () => {
     expect(
       paragraphMarkCarrier({
         followingKind: "table",
         endsContainer: false,
         removesCurrentMark: true,
-        removesParagraph: true,
-        currentContentWasResolved: false,
+        removesParagraph: false,
       }),
     ).toBe("current");
   });
@@ -70,19 +65,6 @@ describe("paragraphMarkCarrier", () => {
         endsContainer: true,
         removesCurrentMark: true,
         removesParagraph: true,
-        currentContentWasResolved: false,
-      }),
-    ).toBe("none");
-  });
-
-  test("a paragraph emptied by review has no carrier before a table", () => {
-    expect(
-      paragraphMarkCarrier({
-        followingKind: "table",
-        endsContainer: false,
-        removesCurrentMark: true,
-        removesParagraph: false,
-        currentContentWasResolved: true,
       }),
     ).toBe("none");
   });

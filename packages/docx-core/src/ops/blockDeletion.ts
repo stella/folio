@@ -35,7 +35,6 @@ type ParagraphMarkCarrierOptions = {
   endsContainer: boolean;
   removesCurrentMark: boolean;
   removesParagraph: boolean;
-  currentContentWasResolved: boolean;
 };
 
 /** Selects the paragraph whose mark and properties survive deleting a paragraph break. */
@@ -44,11 +43,10 @@ export const paragraphMarkCarrier = ({
   endsContainer,
   removesCurrentMark,
   removesParagraph,
-  currentContentWasResolved,
 }: ParagraphMarkCarrierOptions): ParagraphMarkCarrier => {
   if (followingKind === "paragraph") return "following";
   if (removesCurrentMark && removesParagraph && followingKind === undefined) return "none";
-  if (followingKind === "table") return currentContentWasResolved ? "none" : "current";
+  if (followingKind === "table") return removesParagraph ? "none" : "current";
   return endsContainer ? "current" : "none";
 };
 
@@ -140,8 +138,7 @@ export const deleteBlocks = ({
     followingKind,
     endsContainer: terminal,
     removesCurrentMark: false,
-    removesParagraph: false,
-    currentContentWasResolved: true,
+    removesParagraph: !terminal,
   });
   let directBlocks: Paragraph[] = [];
   if (carrier === "following" && following?.type === "paragraph") directBlocks = [following];
