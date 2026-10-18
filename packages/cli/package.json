@@ -54,21 +54,21 @@
     "@fontsource/cousine": "^5.2.7",
     "@fontsource/lato": "^5.2.7",
     "@fontsource/noto-sans-arabic": "^5.2.7",
-    "@fontsource/source-sans-3": "^5.2.9",
+    "@fontsource/source-sans-3": "^5.3.1",
     "@fontsource/tinos": "^5.2.7",
-    "@modelcontextprotocol/server": "2.0.0",
-    "@stll/agent-input": "0.1.0",
+    "@modelcontextprotocol/server": "2.3.1",
+    "@stll/agent-input": "0.1.4",
     "@stll/folio-agents": "workspace:^",
     "@stll/folio-core": "workspace:^",
     "@stll/fuzzy-search": "1.1.5",
     "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1",
-    "fast-xml-parser": "^5.10.1",
+    "fast-xml-parser": "^5.11.2",
     "jszip": "3.10.2"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "2.2.0",
-    "playwright-core": "1.61.1"
+    "@modelcontextprotocol/client": "2.3.1",
+    "playwright-core": "1.64.0"
   },
   "peerDependencies": {
     "playwright-core": ">=1.50.0",
