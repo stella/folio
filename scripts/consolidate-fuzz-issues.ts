@@ -2,7 +2,7 @@
 
 import { $ } from "bun";
 import { TaggedError } from "better-result";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -18,6 +18,7 @@ import {
   signatureOf,
 } from "./fuzz-failure-issues";
 import type { Issue } from "./fuzz-issue-classes";
+import { failureClass } from "./fuzz-failure-class";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const REPORTER = "./.github/workflows/fuzz-failure-report.yml";
@@ -110,6 +111,17 @@ export type ConsolidationPlan = {
 
 class ConsolidationError extends TaggedError("ConsolidationError")<{ message: string }> {}
 
+/** A GitHub budget or abuse-limit refusal pauses migration without making it a failed run. */
+export class GitHubPause extends TaggedError("GitHubPause")<{ message: string }> {}
+
+export const pauseOnGitHubRefusal = (error: unknown): never => {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/\b(?:403|429)\b|rate limit|abuse detection|secondary rate/iu.test(message)) {
+    throw new GitHubPause({ message });
+  }
+  throw error;
+};
+
 type MergeOptions = { members: readonly Member[]; lanesOfRun: (run: string) => Promise<string[]> };
 const mergeGroup = async ({ members, lanesOfRun }: MergeOptions): Promise<Group> => {
   const ordered = members.toSorted((a, b) => a.issue.number - b.issue.number);
@@ -193,7 +205,7 @@ export const planConsolidation = async (store: ConsolidationStore): Promise<Cons
       continue;
     }
     const texts = state === null ? [issue.body ?? "", ...(await store.comments(issue.number))] : [];
-    const id = state?.signature.id ?? signatureOf(identity).id;
+    const id = failureClass(identity.test, identity.assertion).key;
     const member = { issue, texts, identity, state };
     const group = members.get(id);
     if (group === undefined) members.set(id, [member]);
@@ -221,12 +233,25 @@ export const planConsolidation = async (store: ConsolidationStore): Promise<Cons
 export const applyConsolidation = async (
   plan: ConsolidationPlan,
   store: Pick<ConsolidationStore, "edit" | "close">,
+  checkpointFile?: string,
 ): Promise<void> => {
+  const completed = new Set<string>(
+    checkpointFile !== undefined && existsSync(checkpointFile)
+      ? (JSON.parse(readFileSync(checkpointFile, "utf8")) as string[])
+      : [],
+  );
+  const run = async (id: string, operation: () => Promise<void>): Promise<void> => {
+    if (completed.has(id)) return;
+    await operation();
+    completed.add(id);
+    if (checkpointFile !== undefined) writeFileSync(checkpointFile, JSON.stringify([...completed]));
+  };
   for (const { keep, duplicates, state } of plan.groups) {
     const content = renderSignatureIssue(state);
     if (content.title !== keep.title || content.body !== keep.body)
-      await store.edit(keep.number, content);
-    for (const duplicate of duplicates) await store.close(duplicate.number, "duplicate");
+      await run(`edit:${keep.number}`, () => store.edit(keep.number, content));
+    for (const duplicate of duplicates)
+      await run(`close:${duplicate.number}`, () => store.close(duplicate.number, "duplicate"));
   }
 };
 
@@ -269,8 +294,20 @@ const githubConsolidationStore = (): ConsolidationStore => {
   return {
     list: issues.list,
     comments: issues.comments,
-    edit: issues.edit,
-    close: issues.close,
+    edit: async (number, content) => {
+      try {
+        await issues.edit(number, content);
+      } catch (error) {
+        pauseOnGitHubRefusal(error);
+      }
+    },
+    close: async (number, reason) => {
+      try {
+        await issues.close(number, reason);
+      } catch (error) {
+        pauseOnGitHubRefusal(error);
+      }
+    },
     lanesOfRun: async (runUrl) => {
       const cached = cache.get(runUrl);
       if (cached !== undefined) return cached;
@@ -294,7 +331,10 @@ const githubConsolidationStore = (): ConsolidationStore => {
 
 const main = async (): Promise<void> => {
   const args = process.argv.slice(2);
-  const unknown = args.filter((arg) => arg !== "--apply");
+  const checkpointIndex = args.indexOf("--checkpoint");
+  const checkpoint = checkpointIndex < 0 ? undefined : args.at(checkpointIndex + 1);
+  const consumed = new Set(checkpointIndex < 0 ? [] : ["--checkpoint", checkpoint ?? ""]);
+  const unknown = args.filter((arg) => arg !== "--apply" && !consumed.has(arg));
   if (unknown.length > 0) {
     throw new ConsolidationError({ message: `Unknown arguments: ${unknown.join(" ")}` });
   }
@@ -305,7 +345,15 @@ const main = async (): Promise<void> => {
     console.log("\nDry run: nothing changed. Pass --apply to edit and close issues.");
     return;
   }
-  await applyConsolidation(plan, store);
+  try {
+    await applyConsolidation(plan, store, checkpoint);
+  } catch (error) {
+    if (error instanceof GitHubPause) {
+      console.log(`Paused: ${error.message}`);
+      return;
+    }
+    throw error;
+  }
 };
 
 if (import.meta.main) {

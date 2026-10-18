@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -10,6 +12,7 @@ import {
   lanesOfWorkflow,
   planConsolidation,
   reproOf,
+  pauseOnGitHubRefusal,
   summarize,
 } from "./consolidate-fuzz-issues";
 import {
@@ -69,6 +72,39 @@ const open = (number: number, title: string, body: string): Issue => ({
   body,
   state: "open",
   closedAt: null,
+});
+
+test("apply resumes from its checkpoint without repeating completed writes", async () => {
+  const issues = fixture();
+  const fake = fakeStore(issues);
+  const plan = await planConsolidation(fake.store);
+  const directory = mkdtempSync(path.join(tmpdir(), "fuzz-consolidation-"));
+  const checkpoint = path.join(directory, "checkpoint.json");
+  let calls = 0;
+  const interrupted = {
+    edit: async (number: number, content: IssueContent) => {
+      calls += 1;
+      if (calls === 2) throw new Error("simulated interruption");
+      await fake.store.edit(number, content);
+    },
+    close: fake.store.close,
+  };
+  await expect(applyConsolidation(plan, interrupted, checkpoint)).rejects.toThrow(
+    "simulated interruption",
+  );
+  const completedCalls = calls;
+  await applyConsolidation(plan, interrupted, checkpoint);
+  expect(calls).toBeGreaterThan(completedCalls);
+  expect(fake.edits.filter(({ number }) => number === plan.groups.at(0)?.keep.number)).toHaveLength(
+    1,
+  );
+  rmSync(directory, { recursive: true });
+});
+
+test("a GitHub refusal becomes a typed pause", () => {
+  expect(() => pauseOnGitHubRefusal(new Error("HTTP 429 secondary rate limit"))).toThrow(
+    "HTTP 429",
+  );
 });
 
 const fakeStore = (issues: Issue[], comments: Record<number, string[]> = {}) => {

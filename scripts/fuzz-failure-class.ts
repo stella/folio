@@ -1,5 +1,10 @@
 import { stripVTControlCharacters } from "node:util";
 
+import {
+  FAILURE_INVARIANTS,
+  invariantOfFailure,
+} from "../test/consumer-scenarios/support/failure-invariants";
+
 /** Stable reporting classes; fingerprints still identify individual replay cases. */
 export const normalizeFailureMessage = (message: string): string =>
   stripVTControlCharacters(message)
@@ -108,6 +113,19 @@ const consumerClass = (
   fixture: string,
   mode: string,
 ) => {
+  const invariant = invariantOfFailure(assertion);
+  if (invariant !== null) {
+    const title = FAILURE_INVARIANTS[invariant].title;
+    return {
+      key: JSON.stringify(["consumer-invariant", invariant]),
+      area: "Consumer invariant",
+      message: title,
+      flow: "",
+      fixture,
+      mode,
+      title: `Consumer invariant: ${title}`,
+    };
+  }
   const message = semantic?.message ?? normalizeFailureMessage(assertion);
   const area = semantic?.area ?? "Consumer flow";
   // One failure is one class wherever it shows: the fixture and the mode are
@@ -146,6 +164,23 @@ export const upgradeClassKey = (parts: readonly string[]): string => {
 
 /** Legacy automated and human titles remain discoverable until they close. */
 export const classOfTitle = (title: string): FailureClass | null => {
+  const invariantTitle = /^Consumer invariant: (.*)$/u.exec(title)?.at(1);
+  if (invariantTitle !== undefined) {
+    const invariant = Object.entries(FAILURE_INVARIANTS)
+      .find(([, value]) => value.title === invariantTitle)
+      ?.at(0);
+    if (invariant !== undefined) {
+      return {
+        key: JSON.stringify(["consumer-invariant", invariant]),
+        area: "Consumer invariant",
+        message: invariantTitle,
+        flow: "",
+        fixture: "",
+        mode: "all",
+        title,
+      };
+    }
+  }
   const automated = /^Fuzz failure \[[0-9a-f]{16}\]: (consumer flow .+? \/ [^:]+): (.*)$/u.exec(
     title,
   );

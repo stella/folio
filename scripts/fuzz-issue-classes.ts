@@ -38,6 +38,7 @@ export type IssueStore = {
   edit: (number: number, body: string) => Promise<void>;
   /** Reopen with a comment saying why; a reopen is never silent. */
   reopen: (number: number, comment: string) => Promise<void>;
+  close?: (number: number) => Promise<void>;
 };
 
 /** A run found more new classes than the reporter may open issues for. */
@@ -55,7 +56,9 @@ type SeedRow = {
   evidence: string;
   firstSeenRun: string;
 };
-type ClassState = { key: string; runs: string[]; seeds: SeedRow[] };
+type LaneState = { lane: string; lastRun: string; cleanRuns: number };
+type SignatureState = { fingerprint: string; lanes: LaneState[] };
+type ClassState = { key: string; runs: string[]; seeds: SeedRow[]; signatures: SignatureState[] };
 const STATE_MARKER = "fuzz-class-state";
 const REOPEN_WINDOW_MS = 14 * 24 * 60 * 60 * 1_000;
 export const MAX_NEW_ISSUES = 5;
@@ -106,10 +109,30 @@ const readClassState = (body: string | null, key: string): ClassState | null => 
     !Array.isArray(value["runs"]) ||
     !value["runs"].every((run: unknown) => typeof run === "string") ||
     !Array.isArray(value["seeds"]) ||
-    !value["seeds"].every(isSeedRow)
+    !value["seeds"].every(isSeedRow) ||
+    (value["signatures"] !== undefined &&
+      (!Array.isArray(value["signatures"]) ||
+        !value["signatures"].every(
+          (signature: unknown) =>
+            isRecord(signature) &&
+            typeof signature["fingerprint"] === "string" &&
+            Array.isArray(signature["lanes"]) &&
+            signature["lanes"].every(
+              (lane: unknown) =>
+                isRecord(lane) &&
+                typeof lane["lane"] === "string" &&
+                typeof lane["lastRun"] === "string" &&
+                typeof lane["cleanRuns"] === "number",
+            ),
+        )))
   )
     return null;
-  return { key, runs: [...new Set(value["runs"])], seeds: value["seeds"] };
+  return {
+    key,
+    runs: [...new Set(value["runs"])],
+    seeds: value["seeds"],
+    signatures: (value["signatures"] as SignatureState[] | undefined) ?? [],
+  };
 };
 
 const markedKey = (issue: Issue): string | undefined => {
@@ -341,11 +364,7 @@ export const fileClasses = async ({
   const run = context.runUrl ?? `${context.source}:${context.sha ?? context.date}`;
   const filed = new Map<string, Set<string>>();
   const groups = new Map<string, ClassGroup>();
-  const hasUntracked = findings.some(
-    ({ record: { marker } }) =>
-      !known.has(marker.fingerprint) && !known.has(marker.primary ?? marker.fingerprint),
-  );
-  const issues = hasUntracked ? await store.list() : [];
+  const issues = await store.list();
   for (const finding of findings) {
     const fingerprint = finding.record.marker.fingerprint;
     const tracked =
@@ -410,7 +429,7 @@ export const fileClasses = async ({
             ?.match(/<details><summary>Legacy report<\/summary>\n\n([\s\S]*?)\n\n<\/details>/u)
             ?.at(1) ?? null;
     }
-    const state = previousState ?? { key: signature.key, runs: [], seeds: [] };
+    const state = previousState ?? { key: signature.key, runs: [], seeds: [], signatures: [] };
     let changed = false;
     if (!state.runs.includes(run)) {
       state.runs.push(run);
@@ -431,6 +450,23 @@ export const fileClasses = async ({
       identities.set(identity, row);
       state.seeds.push(row);
       changed = true;
+    }
+    for (const fingerprint of fingerprints) {
+      let tracked = state.signatures.find((item) => item.fingerprint === fingerprint);
+      if (tracked === undefined) {
+        tracked = { fingerprint, lanes: [] };
+        state.signatures.push(tracked);
+        changed = true;
+      }
+      if (context.trigger === "scheduled") {
+        const lane = tracked.lanes.find((item) => item.lane === context.lane);
+        if (lane === undefined)
+          tracked.lanes.push({ lane: context.lane, lastRun: run, cleanRuns: 0 });
+        else if (lane.lastRun !== run || lane.cleanRuns !== 0) {
+          lane.lastRun = run;
+          lane.cleanRuns = 0;
+        }
+      }
     }
     const oldNote = reused?.body
       ?.split("\n")
@@ -505,6 +541,34 @@ export const fileClasses = async ({
   for (const { title, body, fingerprints } of pending) {
     const issue = await store.create(title, body);
     file(fingerprints, issue.number);
+  }
+  if (context.trigger === "scheduled") {
+    const activeKeys = new Set(groups.keys());
+    for (const issue of issues) {
+      if (issue.state !== "open") continue;
+      const key = markedKey(issue);
+      if (key === undefined || activeKeys.has(key)) continue;
+      const state = readClassState(issue.body, key);
+      if (state === null || state.signatures.length === 0) continue;
+      let changed = false;
+      for (const signature of state.signatures) {
+        const lane = signature.lanes.find((item) => item.lane === context.lane);
+        if (lane === undefined || lane.lastRun === run) continue;
+        lane.lastRun = run;
+        lane.cleanRuns += 1;
+        changed = true;
+      }
+      if (!changed) continue;
+      const signature = failureClass("Consumer flow", issue.title.replace(/^.*?: /u, ""));
+      await store.edit(
+        issue.number,
+        classBody({ signature: { ...signature, key }, state, note: null, legacyReport: null }),
+      );
+      const resolved = state.signatures.every(
+        ({ lanes }) => lanes.length > 0 && lanes.every(({ cleanRuns }) => cleanRuns >= 7),
+      );
+      if (resolved) await store.close?.(issue.number);
+    }
   }
   return [...filed].flatMap(([fingerprint, references]) =>
     [...references].map((issue) => ({ fingerprint, issue })),

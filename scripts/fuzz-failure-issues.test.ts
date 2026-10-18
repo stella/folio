@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { extractFailureMarkers } from "./failure-fingerprints";
 import type { Issue } from "./fuzz-issue-classes";
+import { fileClasses, type IssueStore } from "./fuzz-issue-classes";
 
 import {
   failureMarker,
@@ -197,6 +198,55 @@ test("failure records retain the deepest comparison diff without terminal stylin
   expect(record.error).toContain("- Expected field: before");
   expect(record.error).toContain("+ Received field: after");
   expect(record.error).not.toContain("\u001b");
+});
+
+test("a second signature in one invariant edits the open class issue", async () => {
+  const issues: Issue[] = [];
+  const created: number[] = [];
+  const edited: number[] = [];
+  const store = {
+    list: async () => issues,
+    create: async (title: string, body: string) => {
+      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      issues.push(issue);
+      created.push(issue.number);
+      return issue;
+    },
+    edit: async (number: number, body: string) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.body = body;
+      edited.push(number);
+    },
+    reopen: async () => {},
+  } satisfies IssueStore;
+  const make = (seed: number, testName: string): Finding => {
+    const error = new Error(
+      `step ${seed}: comment ${JSON.stringify(testName)} outlived the block it anchored`,
+    );
+    const record = failureRecord(
+      failureMarker({ test: testName, seed, repro: `bun replay.ts ${seed}`, failure: error }),
+      error,
+    );
+    return { record, records: [record], seeds: [seed] };
+  };
+  const classContext = runContext(800);
+  await fileClasses({
+    findings: [make(1, "consumer flow comments / direct")],
+    context: classContext,
+    store,
+    known: new Map(),
+  });
+  await fileClasses({
+    findings: [make(2, "consumer flow tables / tracked-changes")],
+    context: classContext,
+    store,
+    known: new Map(),
+  });
+  expect(created).toEqual([1]);
+  expect(edited).toEqual([1]);
+  expect(issues.at(0)?.body).toContain("| comments |");
+  expect(issues.at(0)?.body).toContain("| tables |");
 });
 
 const fixtureLog = readFileSync(new URL("./fixtures/fuzz-failures.log", import.meta.url), "utf8");

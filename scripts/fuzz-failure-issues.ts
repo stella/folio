@@ -13,13 +13,18 @@ import type {
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { CONSUMER_SCENARIO_REPLAY_INPUTS, consumerScenarioReplay } from "./consumer-scenario-args";
 import { extractFailureMarkers } from "./failure-fingerprints";
-import { failureClass } from "./fuzz-failure-class";
-import { type ClosedIssueDisposition, type Issue, type IssueStore } from "./fuzz-issue-classes";
+import { normalizeFailureMessage } from "./fuzz-failure-class";
+import {
+  type ClosedIssueDisposition,
+  fileClasses,
+  type Issue,
+  type IssueStore,
+} from "./fuzz-issue-classes";
 
 export const LABEL = {
   name: "fuzz-failure",
   color: "b60205",
-  description: "A failure a fuzz run found, one issue per signature",
+  description: "A failure a fuzz run found, one issue per invariant class",
 };
 
 export const TITLE_PREFIX = "Fuzz failure";
@@ -330,6 +335,22 @@ export const githubIssueStore = () =>
       parseCommentPages(await ghPages(`repos/{owner}/{repo}/issues/${number}/comments`)),
   }) satisfies SignatureIssueStore & { comments: (number: number) => Promise<string[]> };
 
+const githubClassIssueStore = (): IssueStore => {
+  const issues = githubIssueStore();
+  return {
+    list: issues.list,
+    create: issues.create,
+    edit: async (number, body) => {
+      await $`gh issue edit ${number} --body-file ${writeBody(body)}`.quiet();
+    },
+    reopen: async (number, comment) => {
+      await issues.reopen(number);
+      await $`gh issue comment ${number} --body ${comment}`.quiet();
+    },
+    close: (number) => issues.close(number, "completed"),
+  };
+};
+
 class MissingFailuresError extends TaggedError("MissingFailuresError")<{ message: string }> {}
 
 export const requireFindings = (findings: readonly Finding[]): void => {
@@ -365,8 +386,22 @@ const code = (value: string, limit = FIELD_LIMIT): string => {
 
 export type Signature = { id: string; test: string; failure: string };
 
+const legacySignatureFailure = (assertion: string): string => {
+  if (/^Missing numbering format for displayed label/u.test(assertion))
+    return "Missing numbering format for displayed label";
+  if (/listLevel is .*expected/u.test(assertion)) return "listLevel mismatch";
+  if (/\[directTracked\]/u.test(assertion))
+    return "accepted tracked batches differ from direct batches";
+  if (/\[rejectAll\]/u.test(assertion)) return "rejected tracked batches differ from fixture";
+  if (/\[batchSequential\]/u.test(assertion)) return "batch differs from sequential operations";
+  if (/\[readerStability\]/u.test(assertion)) return "content reads differ after save";
+  if (/\[saveIdempotent\]/u.test(assertion)) return "saving reopened package changes XML";
+  if (/^block texts differ/u.test(assertion)) return "block texts differ";
+  return normalizeFailureMessage(assertion);
+};
+
 export const signatureOf = ({ test, assertion }: Pick<FailureMarker, "test" | "assertion">) => {
-  const failure = failureClass(test, assertion).message;
+  const failure = legacySignatureFailure(assertion);
   const id = createHash("sha256").update(`${test}\0${failure}`).digest("hex").slice(0, 16);
   return { id, test, failure } satisfies Signature;
 };
@@ -735,21 +770,6 @@ export const readFindings = (logs: readonly string[], records: readonly string[]
       .flatMap((log) => extractFailureMarkers(readFileSync(log, "utf8"))),
   );
 
-const dryRunStore = (): SignatureIssueStore => {
-  let number = 0;
-  return {
-    list: () => Promise.resolve([]),
-    create: (title, body) => {
-      console.log(`=== ${title}\n${body}\n`);
-      number += 1;
-      return Promise.resolve({ number, title, body, state: "open", closedAt: null });
-    },
-    edit: () => Promise.resolve(),
-    reopen: () => Promise.resolve(),
-    close: () => Promise.resolve(),
-  };
-};
-
 const main = async (): Promise<void> => {
   const options = parseArgs(process.argv.slice(2));
   const artifacts =
@@ -769,15 +789,26 @@ const main = async (): Promise<void> => {
     lane: options.lane,
     trigger: options.trigger,
   };
-  const { filed, closed } = await fileFindings({
+  const filed = await fileClasses({
     findings,
     context,
-    ...(options.dryRun && { store: dryRunStore() }),
+    store: options.dryRun
+      ? {
+          list: () => Promise.resolve([]),
+          create: (title, body) => {
+            console.log(`=== ${title}\n${body}\n`);
+            return Promise.resolve({ number: 1, title, body, state: "open", closedAt: null });
+          },
+          edit: () => Promise.resolve(),
+          reopen: () => Promise.resolve(),
+          close: () => Promise.resolve(),
+        }
+      : githubClassIssueStore(),
+    known: new Map(),
   });
   for (const { fingerprint, issue } of filed) {
     console.log(`${fingerprint}: ${issue ?? "not filed"}`);
   }
-  for (const number of closed) console.log(`closed #${number}: not reproduced`);
 };
 
 if (import.meta.main) {
