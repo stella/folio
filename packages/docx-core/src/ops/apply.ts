@@ -185,6 +185,7 @@ import {
   type ParagraphReviewFields,
   type ReplaceBlocksOp,
   type ReplaceInlineOp,
+  type RetiredCommentState,
   type RevisionStamp,
   type SetParagraphPropsOp,
   type SetParagraphReviewOp,
@@ -2463,6 +2464,19 @@ type ApplyDocumentOpOptions = {
   retiringCommentIds?: ReadonlySet<number>;
 };
 
+/** Restore retired comment state before the first inverse that still expects its anchors. */
+const prependRetiredCommentStates = (
+  inverse: readonly DocumentOp[],
+  states: readonly RetiredCommentState[],
+): readonly DocumentOp[] => {
+  const first = inverse.at(0);
+  if (first === undefined) panic("A comment-retiring edit produced no inverse.");
+  return [
+    { ...first, retiredCommentStates: [...(first.retiredCommentStates ?? []), ...states] },
+    ...inverse.slice(1),
+  ];
+};
+
 const applyDocumentOpInternal = (
   document: Document,
   input: DocumentOp,
@@ -2511,30 +2525,34 @@ const applyDocumentOpInternal = (
   if (badStamp !== undefined) {
     return Result.err(badStamp);
   }
-  const applied = dispatch(document, op, retiringCommentIds);
+  let inputDocument = document;
+  const restorations: DocumentEdit[] = [];
+  if (op.retiredCommentStates !== undefined) {
+    for (const state of op.retiredCommentStates) {
+      const definitions = new Set(
+        (inputDocument.package.document.comments ?? []).map(({ id }) => id),
+      );
+      if (state.ids.every((id) => definitions.has(id))) continue;
+      const restoredComment = applyCommentOp(
+        inputDocument,
+        restoreRetiredCommentState(inputDocument, state),
+        applyDocumentOps,
+      );
+      if (restoredComment.isErr()) return Result.err(restoredComment.error);
+      inputDocument = restoredComment.value.document;
+      restorations.push(restoredComment.value);
+    }
+  }
+  const applied = dispatch(inputDocument, op, retiringCommentIds);
   if (applied.isErr()) {
     return Result.err(applied.error);
   }
   let edit = applied.value;
-  if (op.retiredCommentStates !== undefined) {
-    let current = edit.document;
-    const restorations: DocumentEdit[] = [];
-    for (const state of op.retiredCommentStates) {
-      const definitions = new Set((current.package.document.comments ?? []).map(({ id }) => id));
-      if (state.ids.every((id) => definitions.has(id))) continue;
-      const restoredComment = applyCommentOp(
-        current,
-        restoreRetiredCommentState(current, state),
-        applyDocumentOps,
-      );
-      if (restoredComment.isErr()) return Result.err(restoredComment.error);
-      current = restoredComment.value.document;
-      restorations.push(restoredComment.value);
-    }
-    const combined = combineEdits(document, [edit, ...restorations]);
+  if (restorations.length > 0) {
+    const combined = combineEdits(document, [...restorations, edit]);
     edit = {
       ...combined,
-      inverse: [...edit.inverse, ...restorations.flatMap(({ inverse }) => inverse)],
+      inverse: [...edit.inverse, ...restorations.toReversed().flatMap(({ inverse }) => inverse)],
     };
   }
   if (
@@ -2586,11 +2604,9 @@ const applyDocumentOpInternal = (
           ? [{ ids: inverse.ids, state: inverse.state }]
           : [],
       );
-      const last = edit.inverse.at(-1);
-      if (last === undefined) panic("A comment-retiring edit produced no inverse.");
       edit = {
         ...combineEdits(document, [edit, retired]),
-        inverse: [...edit.inverse.slice(0, -1), { ...last, retiredCommentStates: states }],
+        inverse: prependRetiredCommentStates(edit.inverse, states),
       };
     }
   }
@@ -2746,14 +2762,9 @@ const retireExhaustedComments = (
         : [],
     ),
   );
-  const last = edit.inverse.at(-1);
-  if (last === undefined) panic("A comment-retiring edit produced no inverse.");
   return Result.ok({
     ...combineEdits(before, [edit, ...retirements]),
-    inverse: [
-      ...edit.inverse.slice(0, -1),
-      { ...last, retiredCommentStates: [...(last.retiredCommentStates ?? []), ...states] },
-    ],
+    inverse: prependRetiredCommentStates(edit.inverse, states),
     revisions: edit.revisions,
   });
 };
