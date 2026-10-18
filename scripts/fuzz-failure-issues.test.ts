@@ -283,6 +283,48 @@ test("an absent class keeps its regression note and legacy report", async () => 
   expect(/^Failure: .*$/mu.exec(issue.body ?? "")?.at(0)).toBe(failure);
 });
 
+test("a class filed before signatures were tracked closes after 7 clean scheduled runs", async () => {
+  const issues: Issue[] = [];
+  const store = {
+    list: async () => issues,
+    create: async (title: string, body: string) => {
+      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      issues.push(issue);
+      return issue;
+    },
+    edit: async (number: number, body: string) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.body = body;
+    },
+    reopen: async () => {},
+    close: async (number: number) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.state = "closed";
+    },
+  } satisfies IssueStore;
+  await fileClasses({
+    findings: [flowFinding(1, "deleteBlock")],
+    context,
+    store,
+    known: new Map(),
+  });
+  const issue = issues.at(0);
+  if (issue === undefined || issue.body === null) throw new Error("missing issue body");
+  issue.body = issue.body.replace(/<!-- fuzz-class-state (\{[^\n]*\}) -->/u, (_, json: string) => {
+    const { signatures: _signatures, ...legacy } = JSON.parse(json) as Record<string, unknown>;
+    return `<!-- fuzz-class-state ${JSON.stringify(legacy)} -->`;
+  });
+
+  for (let run = 200; run < 206; run += 1) {
+    await fileClasses({ findings: [], context: runContext(run), store, known: new Map() });
+  }
+  expect(issue.state).toBe("open");
+  await fileClasses({ findings: [], context: runContext(206), store, known: new Map() });
+  expect(issue.state).toBe("closed");
+});
+
 const fixtureLog = readFileSync(new URL("./fixtures/fuzz-failures.log", import.meta.url), "utf8");
 const fixtureMarkers = extractFailureMarkers(fixtureLog);
 const fixtureFindings = collectFindings([], fixtureMarkers);
