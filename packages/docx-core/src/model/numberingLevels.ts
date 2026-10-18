@@ -93,8 +93,8 @@ export const numberingLevelEntries = (definitions: NumberingDefinitions): Number
 
 /**
  * Whether the resolved level paints a non-blank marker. ECMA-376 §17.3.2.41
- * hides vanished runs; §17.9.11, §17.9.14 and §17.9.23 define legal,
- * `none`, and placeholder rendering respectively.
+ * hides vanished runs; §17.9.11, §17.9.14 and §17.9.23 define the
+ * current level's legal-numbering mode, `none`, and placeholder rendering.
  */
 export const levelShowsMarker = (
   definitions: NumberingDefinitions,
@@ -109,7 +109,7 @@ export const levelShowsMarker = (
   const rendered = level.lvlText.replace(/%([1-9])/gu, (_placeholder, ordinal: string) => {
     const referenced = resolveNumberingLevel(definitions, numId, Number.parseInt(ordinal, 10) - 1);
     if (referenced.kind === "undefined") return "";
-    return referenced.level.isLgl === true || referenced.level.numFmt !== "none" ? "x" : "";
+    return level.isLgl === true || referenced.level.numFmt !== "none" ? "x" : "";
   });
   return rendered.trim().length > 0;
 };

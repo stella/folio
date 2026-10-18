@@ -124,4 +124,24 @@ describe("levelShowsMarker", () => {
       ),
     ).toBe(expected);
   });
+
+  test("the current level's legal mode renders cross-level placeholders as decimal", () => {
+    expect(
+      levelShowsMarker(
+        definitions({
+          abstractNums: [
+            {
+              abstractNumId: 1,
+              levels: [
+                level(0, { numFmt: "none", lvlText: "%1" }),
+                level(1, { isLgl: true, lvlText: "%1" }),
+              ],
+            },
+          ],
+        }),
+        1,
+        1,
+      ),
+    ).toBe(true);
+  });
 });

@@ -64,6 +64,31 @@ const levelOwnerViolations = (source: string): string[] => {
   return found;
 };
 
+const cachedRenderingDecisionViolations = (source: string): string[] => {
+  if (!source.includes("resolveParagraphList") || !source.includes("listRendering")) return [];
+  const file = ts.createSourceFile("fixture.ts", source, ts.ScriptTarget.Latest, true);
+  const found: string[] = [];
+  const decisionScope = (node: ts.Node): ts.Node => {
+    let scope = node.parent;
+    while (scope && !ts.isFunctionLike(scope) && !ts.isSourceFile(scope)) scope = scope.parent;
+    return scope ?? file;
+  };
+  const visit = (node: ts.Node): void => {
+    if (
+      ((ts.isPropertyAccessExpression(node) && node.name.text === "listRendering") ||
+        (ts.isElementAccessExpression(node) &&
+          ts.isStringLiteral(node.argumentExpression) &&
+          node.argumentExpression.text === "listRendering")) &&
+      decisionScope(node).getText(file).includes("resolveParagraphList(")
+    ) {
+      found.push(node.getText(file));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+};
+
 /** Follow local aliases so membership cannot accidentally read only the authored slot. */
 const violations = (source: string): string[] => {
   // Files without either a source slot or a membership reader cannot cross
@@ -253,6 +278,31 @@ test("numbering level decisions stay in explicitly owned bridges", () => {
     );
   const found = files.flatMap((file) =>
     levelOwnerViolations(readFileSync(path.join(ROOT, file), "utf8")).map(
+      (entry) => `${file}: ${entry}`,
+    ),
+  );
+  expect(found).toEqual([]);
+});
+
+test("paragraph list readers do not decide rendering from the cached projection", () => {
+  expect(
+    cachedRenderingDecisionViolations(
+      "const list = resolveParagraphList(sources, numbering); return paragraph.listRendering;",
+    ),
+  ).toHaveLength(1);
+  expect(
+    cachedRenderingDecisionViolations(
+      "const list = resolveParagraphList(sources, numbering); return list.rendering;",
+    ),
+  ).toEqual([]);
+
+  const files = execFileSync("git", ["ls-files", "packages/core/src"], { cwd: ROOT })
+    .toString()
+    .trim()
+    .split("\n")
+    .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"));
+  const found = files.flatMap((file) =>
+    cachedRenderingDecisionViolations(readFileSync(path.join(ROOT, file), "utf8")).map(
       (entry) => `${file}: ${entry}`,
     ),
   );

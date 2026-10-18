@@ -57,7 +57,12 @@ export function renderParagraphBlock(
   const inherited = ctx.paragraphNumbering(para.formatting?.styleId);
   const numPrFromStyle = inherited ?? para.formatting?.numPrFromStyle;
   const numbering = pkg?.numbering ? getCachedNumberingMap(pkg.numbering) : null;
-  const counterAttrs = listLabelAttrsFromRendering(para.listRendering, {
+  const resolvedList = resolveParagraphList(
+    { numPr: para.formatting?.numPr, numPrFromStyle },
+    numbering,
+  );
+  const resolvedRendering = resolvedList.kind === "marker" ? resolvedList.rendering : undefined;
+  const counterAttrs = listLabelAttrsFromRendering(resolvedRendering, {
     numPr: para.formatting?.numPr,
     numPrFromStyle,
   });
@@ -119,7 +124,7 @@ export function renderParagraphBlock(
     };
   }
 
-  const visibleList = para.listRendering ?? originalList;
+  const visibleList = resolvedRendering ?? originalList;
   if (visibleList && label !== undefined) {
     return renderListItem(ctx, visibleList, label, inline);
   }

@@ -66,6 +66,13 @@ const definitionsArb: fc.Arbitrary<NumberingDefinitions> = fc
         return abstract;
       }),
       { abstractNumId: 90, levels: [] },
+      {
+        abstractNumId: 91,
+        levels: [
+          { ilvl: 0, numFmt: "none", lvlText: "%1" },
+          { ilvl: 1, numFmt: "decimal", lvlText: "%1", isLgl: true },
+        ],
+      },
     ],
     nums: [
       ...nums.map(({ numId, abstractNumId, override }) => ({
@@ -76,6 +83,7 @@ const definitionsArb: fc.Arbitrary<NumberingDefinitions> = fc
           : { levelOverrides: [{ ilvl: override.ilvl, lvl: override }] }),
       })),
       { numId: 90, abstractNumId: 90 },
+      { numId: 91, abstractNumId: 91 },
     ],
   }));
 
@@ -124,45 +132,58 @@ const assertReaders = (reviewer: FolioDocxReviewer, expected: Expected[]): void 
 describe("paragraph list reader agreement", () => {
   test("all readers and save/reopen follow the numbering-level owner", async () => {
     await assertProperty(
-      fc.asyncProperty(definitionsArb, async (definitions) => {
-        const references = [
-          ...definitions.nums.map(({ numId }, index) => ({ numId, ilvl: index % 10 })),
-          { numId: 90, ilvl: 8 },
-        ];
-        const document = fromMarkdown("seed");
-        document.package.numbering = definitions;
-        document.package.document.content = references.map(({ numId, ilvl }, index) =>
-          paragraph(`P${index}`, numId, ilvl),
-        );
-        const numbering = createNumberingMap(definitions);
-        const expected = references.map(({ numId, ilvl }, index): Expected => {
-          const resolved = resolveParagraphList(
-            { numPr: paragraphNumberingReference({ numId, ilvl }), numPrFromStyle: undefined },
-            numbering,
+      fc.asyncProperty(
+        definitionsArb,
+        fc.array(fc.boolean(), { maxLength: 5 }),
+        async (definitions, includeCachedRendering) => {
+          const references = [
+            ...definitions.nums.map(({ numId }, index) => ({ numId, ilvl: index % 10 })),
+            { numId: 90, ilvl: 8 },
+            { numId: 91, ilvl: 1 },
+          ];
+          const document = fromMarkdown("seed");
+          document.package.numbering = definitions;
+          const numbering = createNumberingMap(definitions);
+          const expected = references.map(({ numId, ilvl }, index): Expected => {
+            const resolved = resolveParagraphList(
+              { numPr: paragraphNumberingReference({ numId, ilvl }), numPrFromStyle: undefined },
+              numbering,
+            );
+            return {
+              text: `P${index}`,
+              kind: resolved.kind === "marker" ? "listItem" : "paragraph",
+              marker: resolved.kind === "marker",
+            };
+          });
+          document.package.document.content = references.map(({ numId, ilvl }, index) => {
+            const candidate = paragraph(`P${index}`, numId, ilvl);
+            const resolved = resolveParagraphList(
+              { numPr: candidate.formatting?.numPr, numPrFromStyle: undefined },
+              numbering,
+            );
+            if (includeCachedRendering[index] === true && resolved.kind === "marker") {
+              candidate.listRendering = resolved.rendering;
+            }
+            return candidate;
+          });
+
+          const source = await createDocx(document);
+          const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer" });
+          assertReaders(reviewer, expected);
+          const saved = await reviewer.toBuffer();
+          const reopened = await FolioDocxReviewer.fromBuffer(saved, { author: "Reviewer" });
+          assertReaders(reopened, expected);
+
+          const undefinedLevels = references.filter(
+            ({ numId, ilvl }) =>
+              !numberingLevelEntries(definitions).some(
+                (entry) => entry.numId === numId && entry.ilvl === ilvl,
+              ),
           );
-          return {
-            text: `P${index}`,
-            kind: resolved.kind === "marker" ? "listItem" : "paragraph",
-            marker: resolved.kind === "marker",
-          };
-        });
-
-        const source = await createDocx(document);
-        const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer" });
-        assertReaders(reviewer, expected);
-        const saved = await reviewer.toBuffer();
-        const reopened = await FolioDocxReviewer.fromBuffer(saved, { author: "Reviewer" });
-        assertReaders(reopened, expected);
-
-        const undefinedLevels = references.filter(
-          ({ numId, ilvl }) =>
-            !numberingLevelEntries(definitions).some(
-              (entry) => entry.numId === numId && entry.ilvl === ilvl,
-            ),
-        );
-        if (undefinedLevels.length > 0)
-          expect(await numPrXml(saved)).toEqual(await numPrXml(source));
-      }),
+          if (undefinedLevels.length > 0)
+            expect(await numPrXml(saved)).toEqual(await numPrXml(source));
+        },
+      ),
       { numRuns: 25, id: "all numbering readers agree" },
     );
   });
