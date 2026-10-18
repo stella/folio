@@ -19,6 +19,7 @@ import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../ap
 import { contractViolation, normalizeForOps } from "../contract";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import { removedParagraphMarkSectionDestination } from "../resolve";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -1320,4 +1321,28 @@ test("a new first split half records its own review without moving the surviving
     },
   ]);
   expect(second?.type === "paragraph" && second.propertyChanges).toEqual([pending]);
+});
+
+describe("removedParagraphMarkSectionDestination", () => {
+  const nextPage = { type: "nextPage", pageSize: { width: 11906, height: 16838 } };
+
+  test("an existing preceding boundary keeps the removed mark's section, even when equal", () => {
+    expect(
+      removedParagraphMarkSectionDestination({
+        removedSectionProperties: nextPage,
+        precedingSectionProperties: { ...nextPage },
+        hasPrecedingParagraph: true,
+      }),
+    ).toEqual({ type: "retained" });
+  });
+
+  test("a preceding paragraph without a boundary takes the section", () => {
+    expect(
+      removedParagraphMarkSectionDestination({
+        removedSectionProperties: nextPage,
+        precedingSectionProperties: undefined,
+        hasPrecedingParagraph: true,
+      }),
+    ).toEqual({ type: "preceding" });
+  });
 });

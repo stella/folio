@@ -28,7 +28,6 @@ import type {
 } from "../model/document";
 import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
-import { structurallyEqual } from "./equality";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
 import {
   alikeDepth,
@@ -89,7 +88,8 @@ type RemovedParagraphMarkSectionOptions = {
 
 /**
  * Chooses a lossless carrier for the section ending at a removed paragraph mark.
- * An existing preceding boundary cannot carry a second section, so the marked
+ * An existing preceding boundary cannot carry a second section, even one with
+ * equal properties (two equal sections are still two sections), so the marked
  * paragraph must remain as the adjacent boundary.
  */
 export const removedParagraphMarkSectionDestination = ({
@@ -99,11 +99,7 @@ export const removedParagraphMarkSectionDestination = ({
 }: RemovedParagraphMarkSectionOptions): RemovedParagraphMarkSectionDestination => {
   if (removedSectionProperties === undefined) return { type: "none" };
   if (!hasPrecedingParagraph) return { type: "refuse" };
-  if (
-    precedingSectionProperties === undefined ||
-    structurallyEqual(removedSectionProperties, precedingSectionProperties)
-  )
-    return { type: "preceding" };
+  if (precedingSectionProperties === undefined) return { type: "preceding" };
   return { type: "retained" };
 };
 
