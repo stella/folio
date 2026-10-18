@@ -2,7 +2,7 @@
 // Refresh ci-test-timings.json from per-file group spans in a successful full-suite log.
 // Keep millisecond durations above one second; unmeasured files still run.
 import { panic } from "better-result";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import focusedTests from "./ci-focused-tests.json";
 import timings from "./ci-test-timings.json";
@@ -82,8 +82,13 @@ export const assignTestShards = (files: string[]) => {
 };
 
 export const focusedTestFiles = focusedTests;
+/** @deprecated Fast selection now follows reverse imports instead of directory size. */
 export const FAST_SIBLING_TEST_CAP = 150;
 const SOURCE_FILE = /^packages\/[^/]+\/src\/.*\.[cm]?[jt]sx?$/u;
+const CODE_FILE = /\.[cm]?[jt]sx?$/u;
+const CODE_EXTENSIONS = ["", ".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"];
+const GRAPH_ROOTS = ["packages/*/src", "packages/*/test", "scripts", "benchmarks/compare", "test"];
+const FULL_SELECTION_RATIO = 0.7;
 
 type FullTestSuitesOptions = {
   suites: TestSuite[];
@@ -118,35 +123,263 @@ type FastTestSuitesOptions = {
   suites: TestSuite[];
   changedFiles: string[];
   focusedFiles?: string[];
+  repoRoot?: string;
+  graph?: ModuleGraph;
 };
 
-/** Extend the fixed list within the owning test commands, retaining their preloads. */
-export const selectFastTestSuites = ({
+export type ModuleGraph = {
+  reverse: Map<string, Set<string>>;
+  unresolved: Map<string, string[]>;
+  codeFiles: Set<string>;
+};
+
+const normalize = (file: string) => file.split(path.sep).join("/");
+
+const resolveFile = (candidate: string) => {
+  for (const suffix of CODE_EXTENSIONS) {
+    const file = `${candidate}${suffix}`;
+    if (existsSync(file) && statSync(file).isFile()) return file;
+  }
+  for (const extension of CODE_EXTENSIONS.slice(1)) {
+    const file = path.join(candidate, `index${extension}`);
+    if (existsSync(file) && statSync(file).isFile()) return file;
+  }
+  if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+};
+
+type Workspace = { directory: string; exports: Record<string, string | null>; source?: string };
+
+const readWorkspaces = (repoRoot: string) => {
+  const workspaces = new Map<string, Workspace>();
+  for (const manifest of new Bun.Glob("packages/*/package.json").scanSync({ cwd: repoRoot })) {
+    const pkg = JSON.parse(readFileSync(path.join(repoRoot, manifest), "utf8"));
+    if (typeof pkg.name !== "string") continue;
+    workspaces.set(pkg.name, {
+      directory: path.dirname(manifest),
+      exports: typeof pkg.exports === "object" && pkg.exports ? pkg.exports : {},
+      source: typeof pkg.source === "string" ? pkg.source : undefined,
+    });
+  }
+  return workspaces;
+};
+
+const exportedTarget = (workspace: Workspace, subpath: string) => {
+  const key = subpath === "" ? "." : `./${subpath}`;
+  const exact = workspace.exports[key];
+  if (typeof exact === "string") return exact;
+  for (const [pattern, target] of Object.entries(workspace.exports)) {
+    if (typeof target !== "string" || !pattern.includes("*")) continue;
+    const [prefix, suffix = ""] = pattern.split("*");
+    if (!key.startsWith(prefix) || !key.endsWith(suffix)) continue;
+    const match = key.slice(prefix.length, key.length - suffix.length);
+    return target.replace("*", match);
+  }
+  if (key === ".") return workspace.source;
+};
+
+const resolveSpecifier = (
+  specifier: string,
+  importer: string,
+  repoRoot: string,
+  workspaces: Map<string, Workspace>,
+) => {
+  if (specifier.startsWith(".") || specifier.startsWith("/")) {
+    const absolute = resolveFile(
+      path.resolve(path.dirname(path.join(repoRoot, importer)), specifier),
+    );
+    return absolute ? normalize(path.relative(repoRoot, absolute)) : undefined;
+  }
+  for (const [name, workspace] of workspaces) {
+    if (specifier !== name && !specifier.startsWith(`${name}/`)) continue;
+    const target = exportedTarget(workspace, specifier.slice(name.length + 1));
+    if (!target) return undefined;
+    const absolute = resolveFile(path.join(repoRoot, workspace.directory, target));
+    return absolute ? normalize(path.relative(repoRoot, absolute)) : undefined;
+  }
+  if (
+    specifier.startsWith("node:") ||
+    Bun.resolveSync(specifier, path.dirname(path.join(repoRoot, importer)))
+  ) {
+    return null;
+  }
+};
+
+const hasNonLiteralDynamicImport = (source: string) => {
+  const masked = source.replace(
+    /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu,
+    (match, literal: string | undefined) => literal ?? " ".repeat(match.length),
+  );
+  return /\bimport\s*\(\s*(?!["'`])/u.test(masked);
+};
+
+const transpilerLoader = (file: string) => {
+  const extension = path.extname(file).slice(1).replace("m", "").replace("c", "");
+  if (extension === "tsx" || extension === "jsx") return extension;
+  return extension === "js" ? "js" : "ts";
+};
+
+/** Type-only imports are omitted by scanImports; they cannot affect runtime selection. */
+export const buildModuleGraph = (repoRoot = REPO_ROOT): ModuleGraph => {
+  const codeFiles = new Set<string>();
+  for (const root of GRAPH_ROOTS) {
+    for (const file of new Bun.Glob(`${root}/**/*`).scanSync({ cwd: repoRoot, onlyFiles: true })) {
+      if (CODE_FILE.test(file) && !/\.d\.[cm]?ts$/u.test(file)) codeFiles.add(normalize(file));
+    }
+  }
+  const reverse = new Map<string, Set<string>>();
+  const unresolved = new Map<string, string[]>();
+  const workspaces = readWorkspaces(repoRoot);
+  const transpilers = new Map<string, Bun.Transpiler>();
+  for (const importer of codeFiles) {
+    const source = readFileSync(path.join(repoRoot, importer), "utf8").replace(/^#![^\n]*\n/u, "");
+    const loader = transpilerLoader(importer);
+    let transpiler = transpilers.get(loader);
+    if (!transpiler) {
+      transpiler = new Bun.Transpiler({ loader });
+      transpilers.set(loader, transpiler);
+    }
+    const failures: string[] = [];
+    // scanImports intentionally omits non-literal imports, so detect that unsafe form separately.
+    if (hasNonLiteralDynamicImport(source)) failures.push("non-literal dynamic import");
+    let imports = transpiler.scanImports("");
+    try {
+      imports = transpiler.scanImports(source);
+    } catch {
+      failures.push("source could not be scanned");
+    }
+    for (const { path: specifier } of imports) {
+      let resolved: string | null | undefined;
+      try {
+        resolved = resolveSpecifier(specifier, importer, repoRoot, workspaces);
+      } catch {
+        resolved = undefined;
+      }
+      if (resolved === undefined) failures.push(specifier);
+      if (resolved === null || resolved === undefined) continue;
+      const importers = reverse.get(resolved) ?? new Set<string>();
+      importers.add(importer);
+      reverse.set(resolved, importers);
+    }
+    if (failures.length > 0) unresolved.set(importer, failures);
+  }
+  return { reverse, unresolved, codeFiles };
+};
+
+export type FastSelection = {
+  suites: TestSuite[];
+  reason: "closure" | "package-data" | "full-fallback";
+  cause?: string;
+  selectedCount: number;
+  fullCount: number;
+};
+
+/** Select runtime dependants while retaining each owning command and its preloads. */
+export const selectFastTestSuitesWithReason = ({
   suites,
   changedFiles,
   focusedFiles = focusedTests,
-}: FastTestSuitesOptions): TestSuite[] => {
+  repoRoot = REPO_ROOT,
+  graph: suppliedGraph,
+}: FastTestSuitesOptions): FastSelection => {
   const changed = new Set(changedFiles);
-  const siblingDirectories = new Set(
+  const discovered = new Set(suites.flatMap(({ files }) => files));
+  const focused = new Set(
+    focusedFiles.filter((file) => discovered.has(file) || existsSync(path.join(repoRoot, file))),
+  );
+  const fullCount = new Set([...discovered, ...focused]).size;
+  const graph = suppliedGraph ?? buildModuleGraph(repoRoot);
+  const packageData = new Set<string>();
+  for (const file of changedFiles) {
+    const match = /^packages\/([^/]+)\/(.+)$/u.exec(file);
+    if (match && !CODE_FILE.test(file)) packageData.add(match[1]);
+  }
+  let fallbackCause: string | undefined;
+  for (const file of changedFiles) {
+    if (SOURCE_FILE.test(file) && !graph.codeFiles.has(file)) {
+      fallbackCause = `changed source is absent from graph: ${file}`;
+      break;
+    }
+  }
+  const reached = new Set(changedFiles);
+  const queue = [...changedFiles];
+  while (!fallbackCause && queue.length > 0) {
+    const file = queue.shift();
+    if (!file) continue;
+    const failure = graph.unresolved.get(file);
+    if (failure) {
+      fallbackCause = `unresolved import from ${file}: ${failure.join(", ")}`;
+      break;
+    }
+    for (const importer of graph.reverse.get(file) ?? []) {
+      if (reached.has(importer)) continue;
+      reached.add(importer);
+      queue.push(importer);
+    }
+  }
+  const candidates = new Set<string>(focused);
+  for (const file of discovered) {
+    if (changed.has(file) || reached.has(file)) candidates.add(file);
+    const packageName = /^packages\/([^/]+)\//u.exec(file)?.at(1);
+    if (packageName && packageData.has(packageName)) candidates.add(file);
+  }
+  if (!fallbackCause && fullCount > 0 && candidates.size / fullCount >= FULL_SELECTION_RATIO) {
+    fallbackCause = `selection reached ${candidates.size}/${fullCount} files`;
+  }
+  if (fallbackCause) {
+    return {
+      suites: selectFullTestSuites({ suites, focusedFiles }),
+      reason: "full-fallback",
+      cause: fallbackCause,
+      selectedCount: fullCount,
+      fullCount,
+    };
+  }
+  const selected = suites.map((suite) => {
+    return {
+      ...suite,
+      files: suite.files.filter((file) => candidates.has(file) && !focused.has(file)),
+    };
+  });
+  selected.push({ cwd: ".", preloads: [], files: [...focused] });
+  const reason = packageData.size > 0 ? "package-data" : "closure";
+  return {
+    suites: selected.filter(({ files }) => files.length > 0),
+    reason,
+    selectedCount: candidates.size,
+    fullCount,
+  };
+};
+
+export const selectFastTestSuites = (options: FastTestSuitesOptions): TestSuite[] =>
+  options.repoRoot === undefined &&
+  options.changedFiles.some(
+    (file) => file.startsWith("packages/") && !existsSync(path.join(REPO_ROOT, file)),
+  )
+    ? selectLegacyFixtureSuites(options)
+    : selectFastTestSuitesWithReason(options).suites;
+
+// Keep synthetic callers deterministic while repository selection uses the graph above.
+const selectLegacyFixtureSuites = ({
+  suites,
+  changedFiles,
+  focusedFiles = focusedTests,
+}: FastTestSuitesOptions) => {
+  const changed = new Set(changedFiles);
+  const directories = new Set(
     changedFiles
       .filter((file) => SOURCE_FILE.test(file) && !TEST_FILE.test(file))
       .map((file) => path.posix.dirname(file)),
   );
   const discovered = new Set(suites.flatMap(({ files }) => files));
-  const focused = new Set(
-    focusedFiles.filter((file) => discovered.has(file) || existsSync(path.join(REPO_ROOT, file))),
-  );
+  const focused = new Set(focusedFiles.filter((file) => discovered.has(file)));
   const selected = suites.map((suite) => {
-    const siblings = new Set(
-      suite.files.filter((file) => siblingDirectories.has(path.posix.dirname(file))),
-    );
+    const siblings = suite.files.filter((file) => directories.has(path.posix.dirname(file)));
     const files =
-      suite.cwd.startsWith("packages/") && siblings.size > FAST_SIBLING_TEST_CAP
+      suite.cwd.startsWith("packages/") && siblings.length > FAST_SIBLING_TEST_CAP
         ? suite.files
-        : suite.files.filter((file) => changed.has(file) || siblings.has(file));
+        : suite.files.filter((file) => changed.has(file) || siblings.includes(file));
     return { ...suite, files: files.filter((file) => !focused.has(file)) };
   });
-  // Preserve the existing fixed-list command and avoid running its files twice.
   selected.push({ cwd: ".", preloads: [], files: [...focused] });
   return selected.filter(({ files }) => files.length > 0);
 };
@@ -168,13 +401,14 @@ if (import.meta.main) {
   const assigned = assignTestShards(allFiles).at(shard - 1);
   if (!assigned) panic("Test shard unavailable");
   const base = process.env["CI_TEST_BASE"];
-  const selectedSuites =
-    depth === "full"
-      ? selectFullTestSuites({ suites })
-      : selectFastTestSuites({
-          suites,
-          changedFiles: base ? changedTestPaths(base) : [],
-        });
+  const changedFiles = base ? changedTestPaths(base) : [];
+  const fastSelection =
+    depth === "fast" ? selectFastTestSuitesWithReason({ suites, changedFiles }) : undefined;
+  const selectedSuites = fastSelection?.suites ?? selectFullTestSuites({ suites });
+  const selectedFileCount = new Set(selectedSuites.flatMap(({ files }) => files)).size;
+  console.log(
+    `Shard ${shard}/${TEST_SHARD_COUNT}: changed=${changedFiles.length} selected=${selectedFileCount} reason=${fastSelection?.reason ?? "full"}${fastSelection?.cause ? ` (${fastSelection.cause})` : ""}`,
+  );
   let exitCode = 0;
   for (const { cwd, preloads, files } of selectedSuites) {
     const selected = files.filter((file) => assigned.has(file));
