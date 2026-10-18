@@ -31,10 +31,9 @@
  * the parent and forget the children and the parent installs while every binary
  * is quarantined — and because they are optional, bun skips them without a
  * word. The package then resolves, imports cleanly, and throws on first use, on
- * every platform. folio ships no napi package today (`crates/docx-kernel` is
- * compiled to WebAssembly and committed inside `@stll/docx-core`), so the rule
- * reads the lockfile rather than a list: platform subpackages appear there as
- * ordinary entries and become required the day one arrives.
+ * every platform. The rule reads the lockfile rather than a list: platform
+ * subpackages appear there as ordinary entries and become required when a
+ * native dependency arrives.
  *
  * Bun matches these entries EXACTLY. A `@stll/*` glob is accepted and silently
  * ignored, which is why this cannot be solved by pattern and needs a guard.

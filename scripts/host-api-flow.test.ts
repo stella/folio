@@ -223,11 +223,15 @@ test("random host flow is isolated to a bounded scheduled lane with preserved fi
     "fuzz-artifacts/host-api\nfuzz-playwright/host-api\n",
   );
   const report = requireRecord(jobs["report-host-api"]);
-  expect(report["if"]).toContain("outputs.host_api_findings == 'true'");
-  expect(report["if"]).toContain("github.ref == 'refs/heads/main'");
+  expect(report["if"]).toBe(
+    "always() && github.ref == 'refs/heads/main' && (needs.browser-input-fuzzer.outputs.host_api_outcome == 'failure' || (needs.browser-input-fuzzer.outputs.host_api_outcome == 'success' && github.event_name == 'schedule'))",
+  );
+  expect(requireRecord(job["outputs"])["host_api_outcome"]).toBe("${{ steps.host-api.outcome }}");
   expect(report["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
   expect(report["with"]).toEqual({
     "artifact-pattern": "host-api-fuzz",
     "log-pattern": "**/fuzz-artifacts/host-api/*.log",
+    lane: "nightly-host-api",
+    result: "${{ needs.browser-input-fuzzer.outputs.host_api_outcome }}",
   });
 });

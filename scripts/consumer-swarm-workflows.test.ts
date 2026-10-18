@@ -54,10 +54,16 @@ test("nightly swarm findings use a separate serialized main-only write token", (
   expect(execute["timeout-minutes"]).toBeLessThanOrEqual(45);
   const report = job(jobs, "report");
   expect(report["needs"]).toEqual(["swarm"]);
-  expect(report["if"]).toBe("failure() && github.ref == 'refs/heads/main'");
+  expect(report["if"]).toBe(
+    "${{ !cancelled() && github.ref == 'refs/heads/main' && (failure() || github.event_name == 'schedule') }}",
+  );
   expect(report["permissions"]).toEqual({ contents: "read", issues: "write" });
   expect(report["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
-  expect(report["with"]).toEqual({ "artifact-pattern": "swarm-fuzz" });
+  expect(report["with"]).toEqual({
+    "artifact-pattern": "swarm-fuzz",
+    lane: "nightly-swarm-fuzz",
+    result: "${{ needs.swarm.result }}",
+  });
   const shared = readWorkflow("fuzz-failure-report.yml");
   const sharedReport = job(shared.jobs, "report");
   expect(sharedReport["concurrency"]).toEqual({
@@ -65,7 +71,11 @@ test("nightly swarm findings use a separate serialized main-only write token", (
     queue: "max",
     "cancel-in-progress": false,
   });
-  expect(JSON.stringify(sharedReport["steps"])).toContain(
-    "--artifact-root fuzz-results --require-failures",
-  );
+  const sharedSteps = sharedReport["steps"];
+  if (!Array.isArray(sharedSteps)) return panic("missing reporter steps");
+  const commands = sharedSteps.filter(isRecord).map((step) => String(step["run"] ?? ""));
+  expect(
+    commands.some((run) => run.includes('--lane "$LANE" --result "$RESULT" --trigger "$TRIGGER"')),
+  ).toBe(true);
+  expect(commands.join("\n")).not.toContain("--require-failures");
 });

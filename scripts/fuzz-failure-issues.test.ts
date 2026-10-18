@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,21 +10,32 @@ import {
   failureMarker,
   failureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
+  AUTO_CLOSE_CLEAN_RUNS,
+  type CloseReason,
   collectFindings,
+  type Context,
+  type Finding,
+  type IssueContent,
+  MAX_LISTED_SEEDS,
   parseCommentPages,
   parseFailureRecord,
   parseIssuePages,
   parseIssueResponse,
+  parseSignatureState,
   fileFindings,
   readFindings,
+  renderSignatureIssue,
   requireFindings,
   artifactInputs,
-  type FingerprintIssueStore,
+  RUN_TRIGGER,
+  type SignatureIssueStore,
+  type SignatureState,
+  signatureOf,
   LABEL,
   TITLE_PREFIX,
   TITLE_FORMAT,
-  MAX_RUN_SEEDS,
 } from "./fuzz-failure-issues";
 
 const marker = (seed: number, message = "step 3: no comment") =>
@@ -189,157 +201,340 @@ test("failure records retain the deepest comparison diff without terminal stylin
 const fixtureLog = readFileSync(new URL("./fixtures/fuzz-failures.log", import.meta.url), "utf8");
 const fixtureMarkers = extractFailureMarkers(fixtureLog);
 const fixtureFindings = collectFindings([], fixtureMarkers);
-const context = {
-  runUrl: "https://github.com/example/project/actions/runs/123",
+const RUN = "https://github.com/example/project/actions/runs/";
+const runContext = (
+  run: number,
+  overrides: Partial<Pick<Context, "lane" | "trigger">> = {},
+): Context => ({
+  runUrl: `${RUN}${run}`,
   sha: null,
   source: "test",
   date: "",
-};
+  lane: overrides.lane ?? "nightly-swarm-fuzz",
+  trigger: overrides.trigger ?? RUN_TRIGGER.scheduled,
+});
+const context = runContext(123);
+
+const CLOSED_AS = {
+  completed: { type: "fixed" },
+  not_planned: { type: "superseded" },
+  duplicate: { type: "duplicate" },
+} as const satisfies Record<CloseReason, { type: string }>;
 
 const fakeClient = (initial: Issue[] = []) => {
   const issues = [...initial];
-  const creates: { title: string; body: string }[] = [];
+  const creates: IssueContent[] = [];
+  const edits: { number: number; content: IssueContent }[] = [];
   const reopens: number[] = [];
-  const comments: { number: number; body: string }[] = [];
+  const closes: { number: number; reason: CloseReason }[] = [];
+  const replace = (number: number, update: (issue: Issue) => Issue): void => {
+    const index = issues.findIndex((issue) => issue.number === number);
+    const issue = issues.at(index);
+    if (issue === undefined) throw new Error(`Unknown issue #${number}`);
+    issues[index] = update(issue);
+  };
   const store = {
-    list: () => Promise.resolve(issues),
+    list: () => Promise.resolve(issues.map((issue) => ({ ...issue }))),
     create: (title, body) => {
       const issue = {
-        number: initial.length + creates.length + 1,
+        number: issues.length + 1,
         title,
         body,
         state: "open",
         closedAt: null,
       } satisfies Issue;
       creates.push({ title, body });
-      // fileFindings owns its fetched list; return the new issue without mutating it twice.
+      issues.push(issue);
       return Promise.resolve(issue);
+    },
+    edit: (number, content) => {
+      edits.push({ number, content });
+      replace(number, (issue) => ({ ...issue, ...content }));
+      return Promise.resolve();
     },
     reopen: (number) => {
       reopens.push(number);
+      replace(number, ({ title, body }) => ({
+        number,
+        title,
+        body,
+        state: "open",
+        closedAt: null,
+      }));
       return Promise.resolve();
     },
-    comment: (number, body) => {
-      comments.push({ number, body });
+    close: (number, reason) => {
+      closes.push({ number, reason });
+      replace(number, ({ title, body }) => ({
+        number,
+        title,
+        body,
+        state: "closed",
+        closedAt: "2026-10-17T00:00:00Z",
+        disposition: CLOSED_AS[reason],
+      }));
       return Promise.resolve();
     },
-  } satisfies FingerprintIssueStore;
-  return { store, creates, reopens, comments };
+  } satisfies SignatureIssueStore;
+  return { store, issues, creates, edits, reopens, closes };
 };
 
-test("all 18 fixture fingerprints file exactly once, despite duplicate markers", async () => {
-  expect(fixtureMarkers.length).toBeGreaterThan(18);
-  expect(new Set(fixtureMarkers.map(({ fingerprint }) => fingerprint)).size).toBe(18);
+const stateOf = (issue: Issue | undefined) => {
+  if (issue === undefined) throw new Error("Missing issue");
+  const state = parseSignatureState(issue);
+  if (state === null) throw new Error(`Issue #${issue.number} has no signature state`);
+  return state;
+};
+
+const flowFinding = (seed: number, flow: string, message = "step 3: no comment") => {
+  const failure = new Error(message);
+  const record = failureRecord(
+    failureMarker({
+      test: "consumer flow comments / suggested",
+      seed,
+      repro: `FOLIO_SCENARIO_SEED=${seed} bun scripts/consumer-scenarios.ts`,
+      failure,
+      flow,
+    }),
+    failure,
+  );
+  return { record, seeds: [seed], records: [record] } satisfies Finding;
+};
+
+test("a new signature opens one issue for every fingerprint and seed that share it", async () => {
+  const findings = [
+    flowFinding(1, "deleteBlock"),
+    flowFinding(2, "deleteBlock+insertAfterBlock"),
+    flowFinding(3, "commentOnBlock > accept all"),
+  ];
+  expect(new Set(findings.map(({ record }) => record.marker.fingerprint)).size).toBe(3);
   const fake = fakeClient();
-  const filed = await fileFindings({ findings: fixtureFindings, context, store: fake.store });
-  expect(fake.creates).toHaveLength(18);
-  expect(fake.comments).toHaveLength(0);
-  expect(fake.reopens).toHaveLength(0);
-  expect(new Set(filed.map(({ issue }) => issue)).size).toBe(18);
+  const { filed, closed } = await fileFindings({ findings, context, store: fake.store });
+  expect(fake.creates).toHaveLength(1);
+  expect(fake.edits).toHaveLength(0);
+  expect(closed).toEqual([]);
+  expect(filed.map(({ issue }) => issue)).toEqual(["#1", "#1", "#1"]);
+  const first = findings.at(0);
+  if (first === undefined) throw new Error("Missing finding");
+  const signature = signatureOf(first.record.marker);
+  expect(fake.creates.at(0)?.title).toBe(
+    `Fuzz failure [${signature.id}]: consumer flow comments / suggested: no comment`,
+  );
+  const state = stateOf(fake.issues.at(0));
+  expect(state.signature).toEqual(signature);
+  expect(state.occurrences).toBe(3);
+  expect(state.seeds).toEqual([1, 2, 3]);
+  expect(state.lanes).toEqual([{ lane: "nightly-swarm-fuzz", lastRun: `${RUN}123`, cleanRuns: 0 }]);
+  expect(state.lastSeen).toEqual({ lane: "nightly-swarm-fuzz", run: `${RUN}123` });
+  expect(state.repro.command).toContain("FOLIO_SCENARIO_SEED=");
+});
+
+test("signatures split by flow, mode and failure class, never by seed or label text", () => {
+  const of = (name: string, assertion: string) => signatureOf({ test: name, assertion }).id;
+  const flow = "consumer flow directNumbered / tracked-changes";
+  expect(of(flow, "Missing numbering format for displayed label (<n>)")).toBe(
+    of(flow, "Missing numbering format for displayed label •"),
+  );
+  expect(of(flow, "[batchSequential] the batch (direct: deleteBlock) leaves otherwise")).toBe(
+    of(flow, "[batchSequential] the batch (direct: replaceBlock, insertTableRow) leaves otherwise"),
+  );
+  expect(of(flow, "block texts differ:")).not.toBe(of(flow, "comment"));
+  expect(of(flow, "comment")).not.toBe(of("consumer flow directNumbered / direct", "comment"));
+  expect(of(flow, "comment")).not.toBe(of("consumer flow lists / tracked-changes", "comment"));
+  const fixtureSignatures = new Set(fixtureMarkers.map((item) => signatureOf(item).id));
+  expect(fixtureSignatures.size).toBeLessThanOrEqual(
+    new Set(fixtureMarkers.map(({ fingerprint }) => fingerprint)).size,
+  );
+});
+
+test("fixture findings file one issue per signature, each exactly once", async () => {
+  const fake = fakeClient();
+  const { filed } = await fileFindings({ findings: fixtureFindings, context, store: fake.store });
+  const signatures = new Set(fixtureMarkers.map((item) => signatureOf(item).id));
+  expect(fake.creates).toHaveLength(signatures.size);
+  expect(new Set(fake.issues.map((issue) => stateOf(issue).signature.id))).toEqual(signatures);
   expect(new Set(filed.map(({ fingerprint }) => fingerprint))).toEqual(
     new Set(fixtureMarkers.map(({ fingerprint }) => fingerprint)),
   );
-  for (const finding of fixtureFindings) {
-    const created = fake.creates.find(({ title }) =>
-      title.includes(finding.record.marker.fingerprint),
-    );
-    expect(created?.body).toContain(context.runUrl);
-    expect(created?.body).toContain(`Fingerprint: ${finding.record.marker.fingerprint}`);
-    expect(created?.body).toContain(`Test: ${finding.record.marker.test}`);
-    expect(created?.body).toContain(`Seed: ${finding.record.marker.seed}`);
-    expect(created?.body).toContain(finding.record.marker.assertion);
-    expect(created?.body).toContain(finding.record.marker.repro);
-    expect(fake.creates.map(({ title }) => title)).toContain(
-      `Fuzz failure [${finding.record.marker.fingerprint}]: ${finding.record.marker.test}`,
-    );
-  }
+  const again = await fileFindings({ findings: fixtureFindings, context, store: fake.store });
+  expect(fake.creates).toHaveLength(signatures.size);
+  expect(fake.edits).toHaveLength(0);
+  expect(again.filed).toEqual(filed);
 });
 
-test("open and closed fixture issues receive exactly one run comment each; all closed reasons reopen", async () => {
-  const initial = fixtureFindings.map(({ record: { marker: item } }, index) => {
-    const disposition = (["superseded", "duplicate", "fixed"] as const).at(index % 3);
-    if (disposition === undefined) throw new Error("Missing closed-issue fixture disposition");
-    const fields = {
-      number: index + 1,
-      title: `Fuzz failure [${item.fingerprint}]: ${item.test}`,
-      body: "x".repeat(100_000),
-    };
-    return index % 2 === 0
-      ? ({ ...fields, state: "open", closedAt: null } satisfies Issue)
-      : ({
-          ...fields,
-          state: "closed",
-          closedAt: "2000-01-01",
-          disposition: {
-            type: disposition,
-          },
-        } satisfies Issue);
+test("a repeat signature updates its issue in place with the run's seeds and count", async () => {
+  const fake = fakeClient();
+  await fileFindings({
+    findings: [flowFinding(1, "deleteBlock"), flowFinding(2, "replaceBlock")],
+    context,
+    store: fake.store,
   });
-  const fake = fakeClient(initial);
-  // New seeds for the same fingerprints must reach the run comment, not another issue.
-  const findings = collectFindings(
-    [],
-    [...fixtureMarkers, ...fixtureMarkers.map((item) => ({ ...item, seed: item.seed + 1000 }))],
-  );
-  const filed = await fileFindings({ findings, context, store: fake.store });
-  expect(fake.creates).toHaveLength(0);
-  expect(fake.reopens).toEqual(
-    initial.filter(({ state }) => state === "closed").map(({ number }) => number),
-  );
-  expect(fake.comments).toHaveLength(18);
-  expect(new Set(fake.comments.map(({ number }) => number)).size).toBe(18);
-  expect(new Set(filed.map(({ issue }) => issue)).size).toBe(18);
-  for (const [index, finding] of findings.entries()) {
-    const comment = fake.comments.at(index)?.body;
-    expect(comment).toContain(context.runUrl);
-    for (const seed of finding.seeds) expect(comment).toContain(String(seed));
-    expect(comment).toContain(finding.record.marker.fingerprint);
-    expect(initial.at(index)?.body).toHaveLength(100_000);
-  }
+  await fileFindings({
+    findings: [flowFinding(2, "replaceBlock"), flowFinding(5, "insertAfterBlock")],
+    context: runContext(124, { trigger: RUN_TRIGGER.manual, lane: "continuous-fuzz" }),
+    store: fake.store,
+  });
+  expect(fake.creates).toHaveLength(1);
+  expect(fake.edits.map(({ number }) => number)).toEqual([1]);
+  expect(fake.reopens).toEqual([]);
+  const state = stateOf(fake.issues.at(0));
+  expect(state.occurrences).toBe(4);
+  expect(state.seeds).toEqual([1, 2, 5]);
+  expect(state.lastSeen).toEqual({ lane: "continuous-fuzz", run: `${RUN}124` });
+  expect(state.lanes.map(({ lane }) => lane)).toEqual(["nightly-swarm-fuzz"]);
+  await fileFindings({
+    findings: [flowFinding(5, "insertAfterBlock")],
+    context: runContext(124, { trigger: RUN_TRIGGER.manual, lane: "continuous-fuzz" }),
+    store: fake.store,
+  });
+  expect(fake.edits).toHaveLength(1);
 });
 
-test("creation and recurrence share run evidence for distinct seeds, duplicates, and capped runs", async () => {
-  for (const count of [1, 3, MAX_RUN_SEEDS, MAX_RUN_SEEDS + 901]) {
-    const markers = Array.from({ length: count }, (_, index) => marker(3000 + index));
-    const findings = collectFindings([], [...markers, ...markers]);
-    const finding = findings.at(0);
-    if (!finding) throw new Error("Missing finding");
-    expect(findings).toHaveLength(1);
-    const fresh = fakeClient();
-    await fileFindings({ findings, context, store: fresh.store });
-    expect(fresh.creates).toHaveLength(1);
-    expect(fresh.comments).toHaveLength(0);
-    const created = fresh.creates.at(0);
-    if (!created) throw new Error("Missing created issue");
-    const existing = fakeClient([
-      { number: 1, title: created.title, body: created.body, state: "open", closedAt: null },
+test("a fixed signature reopens when it recurs; one closed without a fix only records it", async () => {
+  for (const [disposition, reopened] of [
+    ["fixed", true],
+    ["superseded", false],
+    ["duplicate", false],
+  ] as const) {
+    const created = fakeClient();
+    await fileFindings({ findings: [flowFinding(1, "a")], context, store: created.store });
+    const issue = created.issues.at(0);
+    if (issue === undefined) throw new Error("Missing issue");
+    const fake = fakeClient([
+      { ...issue, state: "closed", closedAt: "2026-10-10", disposition: { type: disposition } },
     ]);
-    await fileFindings({ findings, context, store: existing.store });
-    expect(existing.creates).toHaveLength(0);
-    expect(existing.comments).toHaveLength(1);
-    expect(existing.comments.at(0)?.body).toBe(created.body);
-    expect(created.body).toContain(context.runUrl);
-    const displayed = created.body
-      .match(/^Seeds: (.*)$/mu)
-      ?.at(1)
-      ?.split(", ")
-      .map(Number);
-    expect(displayed).toEqual(finding.seeds.slice(0, MAX_RUN_SEEDS));
-    for (const item of markers.slice(0, MAX_RUN_SEEDS)) {
-      expect(created.body).toContain(`Seed: ${item.seed}\n`);
-      expect(created.body).toContain(item.repro);
-    }
-    if (count <= MAX_RUN_SEEDS) {
-      expect(displayed).toEqual(finding.seeds);
-      expect(created.body).not.toContain("more seeds");
-      continue;
-    }
-    expect(created.body).toContain(`${count - MAX_RUN_SEEDS} more seeds; see run artifacts.`);
-    expect(created.body.length).toBeLessThan(65_536);
+    await fileFindings({
+      findings: [flowFinding(9, "b")],
+      context: runContext(200),
+      store: fake.store,
+    });
+    expect(fake.creates).toHaveLength(0);
+    expect(fake.reopens).toEqual(reopened ? [1] : []);
+    expect(stateOf(fake.issues.at(0)).seeds).toEqual([1, 9]);
   }
 });
 
-test("bodies and run comments remain bounded for large evidence and seed sets", async () => {
+test(`a signature closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean scheduled runs`, async () => {
+  const fake = fakeClient();
+  await fileFindings({ findings: [flowFinding(1, "a")], context, store: fake.store });
+  const clean = (run: number, overrides: Partial<Pick<Context, "lane" | "trigger">> = {}) =>
+    fileFindings({ findings: [], context: runContext(run, overrides), store: fake.store });
+  for (let run = 1; run < AUTO_CLOSE_CLEAN_RUNS; run += 1) {
+    expect((await clean(1000 + run)).closed).toEqual([]);
+    await clean(1000 + run);
+    await clean(2000 + run, { trigger: RUN_TRIGGER.manual });
+    await clean(3000 + run, { lane: "nightly-property-test" });
+  }
+  expect(stateOf(fake.issues.at(0)).lanes.at(0)?.cleanRuns).toBe(AUTO_CLOSE_CLEAN_RUNS - 1);
+  expect(fake.issues.at(0)?.state).toBe("open");
+  await fileFindings({
+    findings: [flowFinding(2, "b")],
+    context: runContext(4000),
+    store: fake.store,
+  });
+  expect(stateOf(fake.issues.at(0)).lanes.at(0)?.cleanRuns).toBe(0);
+  for (let run = 1; run < AUTO_CLOSE_CLEAN_RUNS; run += 1) await clean(5000 + run);
+  expect(fake.closes).toEqual([]);
+  expect((await clean(6000)).closed).toEqual([1]);
+  expect(fake.closes).toEqual([{ number: 1, reason: "completed" }]);
+  expect(fake.issues.at(0)?.state).toBe("closed");
+  await fileFindings({
+    findings: [flowFinding(3, "c")],
+    context: runContext(7000),
+    store: fake.store,
+  });
+  expect(fake.reopens).toEqual([1]);
+  expect(fake.creates).toHaveLength(1);
+});
+
+test("a signature seen by several lanes closes only once every lane ran clean", async () => {
+  const fake = fakeClient();
+  await fileFindings({ findings: [flowFinding(1, "a")], context, store: fake.store });
+  const other = { lane: "nightly-property-test" };
+  await fileFindings({
+    findings: [flowFinding(2, "a")],
+    context: runContext(124, other),
+    store: fake.store,
+  });
+  const clean = (run: number, lane: string) =>
+    fileFindings({ findings: [], context: runContext(run, { lane }), store: fake.store });
+  for (let run = 0; run < AUTO_CLOSE_CLEAN_RUNS; run += 1)
+    await clean(1000 + run, "nightly-swarm-fuzz");
+  expect(fake.closes).toEqual([]);
+  for (let run = 0; run < AUTO_CLOSE_CLEAN_RUNS; run += 1) await clean(2000 + run, other.lane);
+  expect(fake.closes).toEqual([{ number: 1, reason: "completed" }]);
+});
+
+test("only scheduled runs register a lane; a merge-group repro never blocks closing", async () => {
+  const fake = fakeClient();
+  await fileFindings({
+    findings: [flowFinding(1, "a")],
+    context: runContext(1, { trigger: RUN_TRIGGER.mergeGroup, lane: "merge-queue-replay" }),
+    store: fake.store,
+  });
+  expect(stateOf(fake.issues.at(0)).lanes).toEqual([]);
+  for (let run = 0; run < AUTO_CLOSE_CLEAN_RUNS * 2; run += 1) {
+    await fileFindings({ findings: [], context: runContext(100 + run), store: fake.store });
+  }
+  expect(fake.closes).toEqual([]);
+  expect(fake.edits).toHaveLength(0);
+});
+
+const word = fc.stringMatching(/^[A-Za-z0-9<>()•.[\]/-]{1,8}$/u);
+const sentence = fc.array(word, { minLength: 1, maxLength: 6 }).map((words) => words.join(" "));
+const lane = fc.stringMatching(/^[a-z0-9][a-z0-9-]{0,12}$/u);
+const run = fc.stringMatching(/^[a-z]{1,5}:[A-Za-z0-9/.-]{1,20}$/u);
+const signatureState = fc
+  .record({
+    test: sentence,
+    failure: sentence,
+    occurrences: fc.nat(),
+    seeds: fc.uniqueArray(fc.integer({ min: -(2 ** 31), max: 2 ** 31 }), {
+      maxLength: MAX_LISTED_SEEDS,
+    }),
+    lastSeen: fc.record({ lane, run }),
+    lanes: fc.uniqueArray(fc.record({ lane, lastRun: run, cleanRuns: fc.nat({ max: 99 }) }), {
+      selector: ({ lane: name }) => name,
+      maxLength: 4,
+    }),
+    assertion: fc.oneof(
+      fc.string({ maxLength: 120 }),
+      fc
+        .tuple(lane, run, fc.nat({ max: 99 }), fc.string({ maxLength: 40 }))
+        .map(([name, at, count, tail]) => `| ${name} | ${at} | ${count} |\n${tail}`),
+    ),
+    seed: fc.integer({ min: -(2 ** 31), max: 2 ** 31 }),
+    command: fc.string({ minLength: 1, maxLength: 120 }),
+  })
+  .map(
+    ({ test: name, failure, occurrences, seeds, lastSeen, lanes, assertion, seed, command }) =>
+      ({
+        signature: signatureOf({ test: name, assertion: failure }),
+        occurrences,
+        seeds,
+        lastSeen,
+        lanes,
+        assertion,
+        repro: { seed, command },
+      }) satisfies SignatureState,
+  );
+
+test(
+  "a signature issue body round-trips its state",
+  () => {
+    assertProperty(
+      fc.property(signatureState, (state) => {
+        const { body } = renderSignatureIssue(state);
+        expect(parseSignatureState({ number: 1, body })).toEqual(state);
+        expect(body.length).toBeLessThan(65_536);
+      }),
+      { numRuns: 200, id: "a signature issue body round-trips its state" },
+    );
+  },
+  propertyTestTimeout(5_000),
+);
+
+test("bodies stay bounded for large evidence and seed sets", async () => {
   const original = fixtureMarkers.at(0);
   if (!original) throw new Error("Missing fixture marker");
   const markers = Array.from({ length: 1001 }, (_, seed) => ({
@@ -349,25 +544,27 @@ test("bodies and run comments remain bounded for large evidence and seed sets", 
     repro: "`".repeat(100_000),
     test: "x".repeat(100_000),
   }));
-  const findings = collectFindings([], markers);
-  const fake = fakeClient([
-    {
-      number: 1,
-      title: `Fuzz failure [${original.fingerprint}]: test`,
-      body: "standing body",
-      state: "open",
-      closedAt: null,
-    },
-  ]);
+  const fake = fakeClient();
   await fileFindings({
-    findings,
+    findings: collectFindings([], markers),
     context: { ...context, runUrl: "x".repeat(100_000) },
     store: fake.store,
   });
-  expect(fake.comments).toHaveLength(1);
-  for (const { body } of fake.comments) expect(body.length).toBeLessThan(65_536);
-  expect(fake.comments.at(0)?.body).toContain(
-    `${1001 - MAX_RUN_SEEDS} more seeds; see run artifacts.`,
+  const issue = fake.issues.at(0);
+  expect(issue?.body?.length).toBeLessThan(65_536);
+  expect(issue?.title.length).toBeLessThanOrEqual(240);
+  const state = stateOf(issue);
+  expect(state.occurrences).toBe(1001);
+  expect(state.seeds).toHaveLength(MAX_LISTED_SEEDS);
+  expect(state.seeds.at(-1)).toBe(1000);
+});
+
+test("a malformed signature body fails instead of opening a duplicate", async () => {
+  const fake = fakeClient([
+    { number: 1, title: "x", body: "Signature: 0123456789abcdef\n", state: "open", closedAt: null },
+  ]);
+  await expect(fileFindings({ findings: [], context, store: fake.store })).rejects.toThrow(
+    "Issue #1 has a malformed",
   );
 });
 
@@ -416,7 +613,19 @@ test("artifact discovery keeps matrix logs separate and scopes shared browser ar
     const empty = path.join(root, "empty.log");
     writeFileSync(empty, "failed before emitting a marker");
     const cli = Bun.spawnSync(
-      ["bun", "scripts/fuzz-failure-issues.ts", "--log", empty, "--require-failures", "--dry-run"],
+      [
+        "bun",
+        "scripts/fuzz-failure-issues.ts",
+        "--log",
+        empty,
+        "--lane",
+        "nightly-swarm-fuzz",
+        "--result",
+        "failure",
+        "--trigger",
+        "scheduled",
+        "--dry-run",
+      ],
       { cwd: path.resolve(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" },
     );
     expect(cli.exitCode).not.toBe(0);
@@ -426,8 +635,8 @@ test("artifact discovery keeps matrix logs separate and scopes shared browser ar
   }
 });
 
-test("fingerprint issue routing label and title format stay stable", () => {
+test("signature issue routing label and title format stay stable", () => {
   expect(LABEL.name).toBe("fuzz-failure");
   expect(TITLE_PREFIX).toBe("Fuzz failure");
-  expect(TITLE_FORMAT).toBe("Fuzz failure [<fingerprint>]: <test>");
+  expect(TITLE_FORMAT).toBe("Fuzz failure [<signature>]: <test>: <failure>");
 });

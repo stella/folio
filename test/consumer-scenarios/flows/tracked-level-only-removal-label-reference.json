@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 740097491,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 740097491,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "3CEFFC83",
+          "properties": {
+            "styleId": null,
+            "numbering": {
+              "kind": "levelOnly",
+              "ilvl": 1
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 740097491",
+  "title": "a pending numbering removal labels its block with the list it shows"
+}
