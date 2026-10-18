@@ -356,6 +356,8 @@ export type DocumentBatch = {
 
 // @public
 export type DocumentOp = (CommentOp | CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
+    commentAnchorMove?: true;
+    retiredCommentStates?: readonly RetiredCommentState[];
     undefinedFields?: readonly (readonly string[])[];
 };
 

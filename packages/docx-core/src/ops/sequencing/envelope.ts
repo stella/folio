@@ -268,6 +268,7 @@ const paragraph = object({
  */
 const operationFields = {
   insertText: {
+    retiredCommentStates: absent,
     type: literal("insertText"),
     at: position,
     text: string,
@@ -276,6 +277,7 @@ const operationFields = {
     revision,
   } satisfies OperationFields<"insertText">,
   deleteRange: {
+    retiredCommentStates: absent,
     type: literal("deleteRange"),
     from: position,
     to: position,
@@ -285,6 +287,7 @@ const operationFields = {
     revision,
   } satisfies OperationFields<"deleteRange">,
   setRunProps: {
+    retiredCommentStates: absent,
     type: literal("setRunProps"),
     from: position,
     to: position,
@@ -298,6 +301,7 @@ const operationFields = {
     propertyReview: absent,
   } satisfies OperationFields<"setRunProps">,
   setParagraphProps: {
+    retiredCommentStates: absent,
     type: literal("setParagraphProps"),
     story: isOpStory,
     blockId,
@@ -307,6 +311,7 @@ const operationFields = {
     revision,
   } satisfies OperationFields<"setParagraphProps">,
   splitBlock: {
+    retiredCommentStates: absent,
     type: literal("splitBlock"),
     at: position,
     newBlockId: blockId,
@@ -319,6 +324,7 @@ const operationFields = {
     revision,
   } satisfies OperationFields<"splitBlock">,
   joinBlocks: {
+    retiredCommentStates: absent,
     type: literal("joinBlocks"),
     story: isOpStory,
     blockId,
@@ -333,6 +339,7 @@ const operationFields = {
     revision,
   } satisfies OperationFields<"joinBlocks">,
   insertBlocks: {
+    retiredCommentStates: absent,
     type: literal("insertBlocks"),
     story: isOpStory,
     at: blockAnchor,
@@ -341,6 +348,7 @@ const operationFields = {
     revision,
   } satisfies OperationFields<"insertBlocks">,
   deleteBlocks: {
+    retiredCommentStates: absent,
     type: literal("deleteBlocks"),
     story: isOpStory,
     blockIds: array(blockId),
@@ -348,12 +356,14 @@ const operationFields = {
     revision,
   } satisfies OperationFields<"deleteBlocks">,
   resolveRevision: {
+    retiredCommentStates: absent,
     type: literal("resolveRevision"),
     story: isOpStory,
     revisionIds: array(natural),
     decision: literal("accept", "reject"),
   } satisfies OperationFields<"resolveRevision">,
   insertContent: {
+    retiredCommentStates: absent,
     type: literal("insertContent"),
     at: position,
     slice,

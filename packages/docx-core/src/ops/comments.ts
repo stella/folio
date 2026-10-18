@@ -42,6 +42,7 @@ import {
   type CreateCommentOp,
   type NewIds,
   type OpStory,
+  type RetiredCommentState,
   type RestoreCommentStateOp,
   type TextPosition,
 } from "./types";
@@ -284,6 +285,32 @@ const scaffoldDelta = (before: CommentState, after: CommentState): NewIds => {
       .map((key) => Number(key.slice(key.indexOf(":") + 1)));
   return { revision: values(IDENTITY_SPACES.REVISION), control: values(IDENTITY_SPACES.CONTROL) };
 };
+
+/** Build exact comment restoration after its owning inverse has restored content. */
+export const restoreRetiredCommentState = (
+  document: Document,
+  retired: RetiredCommentState,
+): RestoreCommentStateOp => {
+  const ids = new Set(retired.ids);
+  const expected = capture(document, ids, retired.state.anchors);
+  return {
+    type: DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
+    ids: retired.ids,
+    scaffoldIds: scaffoldDelta(expected, retired.state),
+    expected: cloneModel(expected),
+    state: cloneModel(retired.state),
+  };
+};
+
+/** Capture comment state whose anchors an inverse may remove. */
+export const captureRetiredCommentState = (
+  document: Document,
+  ids: readonly number[],
+  changedFrom: Document,
+): RetiredCommentState => ({
+  ids,
+  state: cloneModel(capture(document, new Set(ids), changedAnchors(changedFrom, document))),
+});
 
 /** Remove only owned anchors, then merge scaffolding with the shared exact field predicate. */
 const ownedSeams = (content: readonly InlineNode[], ids: ReadonlySet<number>): number[] => {

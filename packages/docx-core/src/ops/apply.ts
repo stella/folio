@@ -1,5 +1,5 @@
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
-import { applyCommentOp } from "./comments";
+import { applyCommentOp, captureRetiredCommentState, restoreRetiredCommentState } from "./comments";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { cloneModel } from "./modelClone";
 import {
@@ -2516,6 +2516,27 @@ const applyDocumentOpInternal = (
     return Result.err(applied.error);
   }
   let edit = applied.value;
+  if (op.retiredCommentStates !== undefined) {
+    let current = edit.document;
+    const restorations: DocumentEdit[] = [];
+    for (const state of op.retiredCommentStates) {
+      const definitions = new Set((current.package.document.comments ?? []).map(({ id }) => id));
+      if (state.ids.every((id) => definitions.has(id))) continue;
+      const restoredComment = applyCommentOp(
+        current,
+        restoreRetiredCommentState(current, state),
+        applyDocumentOps,
+      );
+      if (restoredComment.isErr()) return Result.err(restoredComment.error);
+      current = restoredComment.value.document;
+      restorations.push(restoredComment.value);
+    }
+    const combined = combineEdits(document, [edit, ...restorations]);
+    edit = {
+      ...combined,
+      inverse: [...edit.inverse, ...restorations.flatMap(({ inverse }) => inverse)],
+    };
+  }
   if (
     commentRetirement === "apply" &&
     op.type !== DOCUMENT_OP_TYPES.CREATE_COMMENT &&
@@ -2527,10 +2548,12 @@ const applyDocumentOpInternal = (
     const beforeCoverage = commentRangeCoverage(document);
     const afterCoverage = commentRangeCoverage(edit.document);
     const definedComments = new Set((document.package.document.comments ?? []).map(({ id }) => id));
+    const preservedComments = new Set(op.retiredCommentStates?.flatMap(({ ids }) => ids) ?? []);
     const retire = [...beforeCoverage]
       .filter(
         ([id, before]) =>
           definedComments.has(id) &&
+          !preservedComments.has(id) &&
           commentRangeShouldRetire(
             before,
             afterCoverage.get(id) ?? {
@@ -2545,9 +2568,30 @@ const applyDocumentOpInternal = (
         scope: "thread" as const,
       }));
     if (retire.length > 0) {
-      const retired = applyDocumentOps(edit.document, retire);
-      if (retired.isErr()) return Result.err(retired.error);
-      edit = combineEdits(document, [edit, retired.value]);
+      const ids = new Set(retire.map(({ id }) => id));
+      let current = edit.document;
+      const retirements: DocumentEdit[] = [];
+      for (const retirement of retire) {
+        const retired = applyDocumentOpInternal(current, retirement, {
+          commentRetirement: "defer",
+          retiringCommentIds: ids,
+        });
+        if (retired.isErr()) return Result.err(retired.error);
+        current = retired.value.document;
+        retirements.push(retired.value);
+      }
+      const retired = combineEdits(edit.document, retirements);
+      const states = retired.inverse.flatMap((inverse) =>
+        inverse.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE
+          ? [{ ids: inverse.ids, state: inverse.state }]
+          : [],
+      );
+      const last = edit.inverse.at(-1);
+      if (last === undefined) panic("A comment-retiring edit produced no inverse.");
+      edit = {
+        ...combineEdits(document, [edit, retired]),
+        inverse: [...edit.inverse.slice(0, -1), { ...last, retiredCommentStates: states }],
+      };
     }
   }
   const beforeSections = document.package.document.sections;
@@ -2610,6 +2654,31 @@ const applyDocumentOpInternal = (
   }
   meetsContract(edit.document);
   preserveParagraphPropertySnapshots({ before: document, edit });
+  const inverseRetirements = [...commentRangeCoverage(edit.document)]
+    .filter(([id, coverage]) =>
+      commentRangeShouldRetire(
+        coverage,
+        commentRangeCoverage(document).get(id) ?? {
+          authoredAsPoint: false,
+          survivingNonCarrierContent: false,
+        },
+      ),
+    )
+    .map(([id]) => id);
+  if (inverseRetirements.length > 0) {
+    const last = edit.inverse.at(-1);
+    if (last === undefined) panic("A comment-affecting edit produced no inverse.");
+    edit.inverse = [
+      ...edit.inverse.slice(0, -1),
+      {
+        ...last,
+        retiredCommentStates: [
+          ...(last.retiredCommentStates ?? []),
+          captureRetiredCommentState(document, inverseRetirements, edit.document),
+        ],
+      },
+    ];
+  }
   return Result.ok({
     ...edit,
     inverse: edit.inverse.map((inverse) =>
@@ -2670,7 +2739,23 @@ const retireExhaustedComments = (
     current = retired.value.document;
     retirements.push(retired.value);
   }
-  return Result.ok({ ...combineEdits(before, [edit, ...retirements]), revisions: edit.revisions });
+  const states = retirements.flatMap(({ inverse }) =>
+    inverse.flatMap((operation) =>
+      operation.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE
+        ? [{ ids: operation.ids, state: operation.state }]
+        : [],
+    ),
+  );
+  const last = edit.inverse.at(-1);
+  if (last === undefined) panic("A comment-retiring edit produced no inverse.");
+  return Result.ok({
+    ...combineEdits(before, [edit, ...retirements]),
+    inverse: [
+      ...edit.inverse.slice(0, -1),
+      { ...last, retiredCommentStates: [...(last.retiredCommentStates ?? []), ...states] },
+    ],
+    revisions: edit.revisions,
+  });
 };
 
 const applyDocumentOpsDuringResolution = (
