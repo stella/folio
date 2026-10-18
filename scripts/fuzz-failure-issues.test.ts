@@ -36,6 +36,7 @@ import {
   LABEL,
   TITLE_PREFIX,
   TITLE_FORMAT,
+  cliRepro,
 } from "./fuzz-failure-issues";
 
 const marker = (seed: number, message = "step 3: no comment") =>
@@ -326,7 +327,8 @@ test("a new signature opens one issue for every fingerprint and seed that share 
   expect(state.seeds).toEqual([1, 2, 3]);
   expect(state.lanes).toEqual([{ lane: "nightly-swarm-fuzz", lastRun: `${RUN}123`, cleanRuns: 0 }]);
   expect(state.lastSeen).toEqual({ lane: "nightly-swarm-fuzz", run: `${RUN}123` });
-  expect(state.repro.command).toContain("FOLIO_SCENARIO_SEED=");
+  expect(state.repro.command).toContain("--seed 1");
+  expect(state.repro.command).not.toContain("FOLIO_SCENARIO_");
 });
 
 test("signatures split by flow, mode and failure class, never by seed or label text", () => {
@@ -557,6 +559,80 @@ test("bodies stay bounded for large evidence and seed sets", async () => {
   expect(state.occurrences).toBe(1001);
   expect(state.seeds).toHaveLength(MAX_LISTED_SEEDS);
   expect(state.seeds.at(-1)).toBe(1000);
+});
+
+test("a 20 KB flow is emitted whole and its embedded JSON is unchanged", () => {
+  const flow = {
+    version: 1,
+    steps: Array.from({ length: 800 }, (_, index) => ({ index, text: `step ${index}` })),
+  };
+  const json = JSON.stringify(flow);
+  expect(json.length).toBeGreaterThan(20_000);
+  const state: SignatureState = {
+    signature: signatureOf({ test: "large flow", assertion: "failure" }),
+    occurrences: 1,
+    seeds: [41],
+    lastSeen: { lane: "nightly", run: "local:test" },
+    lanes: [],
+    assertion: "failure",
+    repro: {
+      seed: 41,
+      command: `bun scripts/consumer-scenarios.ts --seed 41 --flow '${json}' -- flow-corpus.test.ts`,
+    },
+  };
+  const { body } = renderSignatureIssue(state);
+  const embedded = /--flow '([^']+)'/u.exec(body)?.at(1);
+  expect(JSON.parse(embedded ?? "null")).toEqual(flow);
+  expect(parseSignatureState({ number: 1, body })?.repro.command).toBe(state.repro.command);
+});
+
+test("a huge assertion yields to the whole repro while the issue stays bounded", () => {
+  const state: SignatureState = {
+    signature: signatureOf({ test: "huge assertion", assertion: "failure" }),
+    occurrences: 1,
+    seeds: [42],
+    lastSeen: { lane: "nightly", run: "local:test" },
+    lanes: [],
+    assertion: "assertion ".repeat(20_000),
+    repro: {
+      seed: 42,
+      command: `bun scripts/consumer-scenarios.ts --seed 42 --flow '${"x".repeat(20_000)}'`,
+    },
+  };
+  const { body } = renderSignatureIssue(state);
+  expect(body.length).toBeLessThan(65_536);
+  expect(body).toContain(state.repro.command);
+  expect(body).toMatch(/… \(\d+ more characters\)/u);
+});
+
+test("an over-limit repro uses the flow artifact without leaking a partial command", () => {
+  const state: SignatureState = {
+    signature: signatureOf({ test: "oversized repro", assertion: "failure" }),
+    occurrences: 1,
+    seeds: [43],
+    lastSeen: { lane: "nightly", run: "local:test" },
+    lanes: [],
+    assertion: "failure",
+    repro: { seed: 43, command: "" },
+  };
+  const uniqueTail = "END-OF-OVERSIZED-REPRO";
+  state.repro = {
+    seed: 43,
+    command: `bun scripts/consumer-scenarios.ts --flow '${"x".repeat(70_000)}${uniqueTail}'`,
+  };
+  const { body } = renderSignatureIssue(state);
+  expect(body.length).toBeLessThan(65_536);
+  expect(body).toContain(`findings/${state.signature.id}-43.flow.json`);
+  expect(body).not.toContain(uniqueTail);
+  expect(body).not.toContain("x".repeat(1_000));
+});
+
+test("every legacy filer replay template is converted to CLI flags", () => {
+  const templates = [
+    "FOLIO_SCENARIO_SEED=1 FOLIO_SCENARIO_FUZZ_STEPS=2 FOLIO_SCENARIO_FUZZ_RUNS=3 FOLIO_SCENARIO_COLLISION_RUNS=4 FOLIO_SCENARIO_SWARM=1 bun scripts/consumer-scenarios.ts -- fuzz.test.ts",
+    `FOLIO_SCENARIO_FLOW='{"steps":[]}' FOLIO_SCENARIO_PUBLIC_CORPUS_DIR='/tmp/corpus' bun scripts/consumer-scenarios.ts -- flow-corpus.test.ts`,
+  ];
+  for (const template of templates) expect(cliRepro(template)).not.toContain("FOLIO_SCENARIO_");
 });
 
 test("a malformed signature body fails instead of opening a duplicate", async () => {

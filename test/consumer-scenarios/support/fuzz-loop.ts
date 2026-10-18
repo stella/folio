@@ -25,17 +25,17 @@ import { describeFlow, FlowError, type FlowRun, runFlow, runFlowFile } from "./f
 import { createRandom } from "./random.ts";
 import { shrinkFlow } from "./shrink.ts";
 
-/** The relation settings a replay needs to fail the same way, as `NAME=value` words. */
-export const relationEnv = (): string =>
+/** The relation settings a replay needs to fail the same way, as CLI flags. */
+export const relationFlags = (): string =>
   [
-    "FOLIO_SCENARIO_RELATIONS",
-    "FOLIO_SCENARIO_RELATIONS_DEPTH",
-    "FOLIO_SCENARIO_FEATURE_WEIGHTS",
-    "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR",
+    ["FOLIO_SCENARIO_RELATIONS", "--relations"],
+    ["FOLIO_SCENARIO_RELATIONS_DEPTH", "--relations-depth"],
+    ["FOLIO_SCENARIO_FEATURE_WEIGHTS", "--feature-weights"],
+    ["FOLIO_SCENARIO_PUBLIC_CORPUS_DIR", "--public-corpus-dir"],
   ]
-    .flatMap((name) => {
-      const value = process.env[name];
-      return value === undefined ? [] : [`${name}=${shellQuote(value)}`];
+    .flatMap(([name, flag]) => {
+      const value = process.env[name ?? ""];
+      return value === undefined || flag === undefined ? [] : [`${flag} ${shellQuote(value)}`];
     })
     .join(" ");
 
@@ -45,22 +45,24 @@ const words = (...parts: string[]): string => parts.filter((part) => part !== ""
 export const seedReplay = (seed: number, steps: number, kind: FlowKind): string => {
   const [runs, label] =
     kind === "random"
-      ? ["FOLIO_SCENARIO_FUZZ_RUNS=1 FOLIO_SCENARIO_COLLISION_RUNS=0", "fuzz"]
-      : ["FOLIO_SCENARIO_FUZZ_RUNS=0 FOLIO_SCENARIO_COLLISION_RUNS=1", "collision"];
+      ? ["--runs 1 --collision-runs 0", "fuzz"]
+      : ["--runs 0 --collision-runs 1", "collision"];
   return words(
-    `FOLIO_SCENARIO_SEED=${seed} FOLIO_SCENARIO_FUZZ_STEPS=${steps} ${runs}`,
-    relationEnv(),
-    process.env["FOLIO_SCENARIO_SWARM"] === "1" ? "FOLIO_SCENARIO_SWARM=1" : "",
-    `bun scripts/consumer-scenarios.ts --only '^${label} run 0 \\(' -- fuzz.test.ts`,
+    "bun scripts/consumer-scenarios.ts",
+    `--seed ${seed} --steps ${steps} ${runs}`,
+    relationFlags(),
+    process.env["FOLIO_SCENARIO_SWARM"] === "1" ? "--swarm 1" : "",
+    `--only '^${label} run 0 \\(' -- fuzz.test.ts`,
   );
 };
 
 /** The one line that replays a flow file through scenarios/flow-corpus.test.ts. */
 export const flowReplay = (flow: FlowFile): string =>
   words(
-    `FOLIO_SCENARIO_FLOW=${shellQuote(compactFlow(flow))}`,
-    relationEnv(),
-    "bun scripts/consumer-scenarios.ts --only '^replay FOLIO_SCENARIO_FLOW' -- flow-corpus.test.ts",
+    "bun scripts/consumer-scenarios.ts",
+    `--flow ${shellQuote(compactFlow(flow))}`,
+    relationFlags(),
+    "--only '^replay FOLIO_SCENARIO_FLOW' -- flow-corpus.test.ts",
   );
 
 /** The test name a flow's failures are fingerprinted under (as in fuzz.test.ts). */

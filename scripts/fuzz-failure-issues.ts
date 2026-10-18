@@ -340,9 +340,18 @@ export const requireFindings = (findings: readonly Finding[]): void => {
   }
 };
 
-// Bound each field so even a large assertion or replay stays below GitHub's body limit.
+// Bound free text so it cannot displace the complete replay from GitHub's body limit.
 const FIELD_LIMIT = 4_000;
-const field = (value: string, limit = FIELD_LIMIT): string => value.slice(0, limit);
+const field = (value: string, limit = FIELD_LIMIT): string => {
+  if (value.length <= limit) return value;
+  let kept = Math.max(0, limit - 24);
+  while (true) {
+    const marker = `… (${value.length - kept} more characters)`;
+    const next = Math.max(0, limit - marker.length);
+    if (next === kept) return `${value.slice(0, kept)}${marker}`;
+    kept = next;
+  }
+};
 const line = (value: string, limit = FIELD_LIMIT): string =>
   field(value, limit).replaceAll(/\s+/gu, " ").trim();
 const code = (value: string, limit = FIELD_LIMIT): string => {
@@ -362,7 +371,7 @@ export const signatureOf = ({ test, assertion }: Pick<FailureMarker, "test" | "a
 };
 
 type LaneRow = { lane: string; lastRun: string; cleanRuns: number };
-type Repro = { seed: number; command: string };
+type Repro = { seed: number; command: string; flowPath?: string };
 
 export type SignatureState = {
   signature: Signature;
@@ -374,33 +383,96 @@ export type SignatureState = {
   repro: Repro;
 };
 
-const REPLAY_FIELD_LIMIT = 1_000;
+const ISSUE_BODY_LIMIT = 65_535;
 const LANE_TABLE_HEADER = ["| Lane | Last run | Clean scheduled runs |", "| --- | --- | --- |"];
+
+const ENV_FLAGS = {
+  FOLIO_SCENARIO_SEED: "--seed",
+  FOLIO_SCENARIO_FUZZ_STEPS: "--steps",
+  FOLIO_SCENARIO_FUZZ_RUNS: "--runs",
+  FOLIO_SCENARIO_COLLISION_RUNS: "--collision-runs",
+  FOLIO_SCENARIO_SWARM: "--swarm",
+  FOLIO_SCENARIO_FLOW: "--flow",
+  FOLIO_SCENARIO_PUBLIC_CORPUS_DIR: "--public-corpus-dir",
+  FOLIO_SCENARIO_RELATIONS: "--relations",
+  FOLIO_SCENARIO_RELATIONS_DEPTH: "--relations-depth",
+  FOLIO_SCENARIO_FEATURE_WEIGHTS: "--feature-weights",
+  FOLIO_SCENARIO_LONG_FUZZ: "--long-fuzz",
+  FOLIO_SCENARIO_LONG_STEPS: "--long-steps",
+  FOLIO_SCENARIO_LONG_OUTPUT: "--long-output",
+  FOLIO_SCENARIO_PUBLIC_CORPUS_FUZZ: "--public-corpus-fuzz",
+  FOLIO_SCENARIO_PUBLIC_CORPUS_STEPS: "--public-corpus-steps",
+  FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT: "--public-corpus-output",
+  FOLIO_SCENARIO_PUBLIC_CORPUS_FIXTURE: "--public-corpus-fixture",
+} as const;
+
+/** Convert old environment-prefixed scenario replays before they reach public issue text. */
+export const cliRepro = (command: string): string => {
+  const values: string[] = [];
+  let rest = command.trim();
+  while (true) {
+    const match = /^(FOLIO_SCENARIO_[A-Z_]+)=('(?:'\\''|[^'])*'|"(?:\\.|[^"])*"|\S+)\s*/u.exec(
+      rest,
+    );
+    if (match === null) break;
+    const [, name = "", raw = ""] = match;
+    const flag = ENV_FLAGS[name as keyof typeof ENV_FLAGS];
+    if (flag === undefined) break;
+    values.push(`${flag} ${raw}`);
+    rest = rest.slice(match[0].length);
+  }
+  if (values.length === 0) return command;
+  const executable = "bun scripts/consumer-scenarios.ts";
+  if (!rest.startsWith(executable)) return command;
+  return `${executable} ${values.join(" ")}${rest.slice(executable.length)}`;
+};
+
+/** A complete fenced repro; this boundary deliberately has no length parameter. */
+const wholeRepro = ({ seed, command }: Repro): string =>
+  `Latest repro (seed ${seed}):\n${code(cliRepro(command), Number.POSITIVE_INFINITY)}`;
 
 export const renderSignatureIssue = (state: SignatureState): IssueContent => {
   const { signature } = state;
   const title = `${TITLE_PREFIX} [${signature.id}]: ${line(signature.test, 200)}: ${line(signature.failure, 200)}`;
+  const prefix = [
+    `Signature: ${signature.id}`,
+    `Test: ${line(signature.test)}`,
+    `Failure: ${line(signature.failure)}`,
+    `Occurrences: ${state.occurrences}`,
+    `Seeds: ${state.seeds.join(", ")}`,
+    `Last seen: ${state.lastSeen.lane} ${line(state.lastSeen.run, 500)}`,
+    "",
+    ...LANE_TABLE_HEADER,
+    ...state.lanes.map(
+      ({ lane, lastRun, cleanRuns }) => `| ${lane} | ${line(lastRun, 500)} | ${cleanRuns} |`,
+    ),
+    "",
+    `Closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean scheduled runs in every lane.`,
+    "",
+  ];
+  let repro = wholeRepro(state.repro);
+  const availableForAssertion = ISSUE_BODY_LIMIT - prefix.join("\n").length - repro.length - 24;
+  let assertion = code(
+    field(state.assertion, Math.max(0, Math.min(FIELD_LIMIT, availableForAssertion))),
+  );
+  let body = [...prefix, `Latest assertion:\n${assertion}`, "", repro].join("\n");
+  if (body.length > ISSUE_BODY_LIMIT) {
+    const artifact =
+      state.repro.flowPath ?? `findings/${signature.id}-${state.repro.seed}.flow.json`;
+    repro = [
+      `Flow artifact: ${artifact}`,
+      wholeRepro({
+        seed: state.repro.seed,
+        command: `bun scripts/consumer-scenarios.ts --seed ${state.repro.seed} --flow '${artifact}'`,
+      }),
+    ].join("\n");
+    const fallbackAvailable = ISSUE_BODY_LIMIT - prefix.join("\n").length - repro.length - 24;
+    assertion = code(field(state.assertion, Math.max(0, Math.min(FIELD_LIMIT, fallbackAvailable))));
+    body = [...prefix, `Latest assertion:\n${assertion}`, "", repro].join("\n");
+  }
   return {
     title: title.length > 240 ? `${title.slice(0, 239)}…` : title,
-    body: [
-      `Signature: ${signature.id}`,
-      `Test: ${line(signature.test)}`,
-      `Failure: ${line(signature.failure)}`,
-      `Occurrences: ${state.occurrences}`,
-      `Seeds: ${state.seeds.join(", ")}`,
-      `Last seen: ${state.lastSeen.lane} ${line(state.lastSeen.run, 500)}`,
-      "",
-      ...LANE_TABLE_HEADER,
-      ...state.lanes.map(
-        ({ lane, lastRun, cleanRuns }) => `| ${lane} | ${line(lastRun, 500)} | ${cleanRuns} |`,
-      ),
-      "",
-      `Closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean scheduled runs in every lane.`,
-      "",
-      `Latest assertion:\n${code(state.assertion)}`,
-      "",
-      `Latest repro (seed ${state.repro.seed}):\n${code(state.repro.command, REPLAY_FIELD_LIMIT)}`,
-    ].join("\n"),
+    body,
   };
 };
 
@@ -424,7 +496,7 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   const failure = fieldOf(body, "Failure");
   const occurrences = Number(fieldOf(body, "Occurrences"));
   const seeds = seedsOf(fieldOf(body, "Seeds") ?? "");
-  const lastSeen = /^Last seen: (\S+) (\S+)$/mu.exec(body);
+  const lastSeen = /^Last seen: (\S+) (.*)$/mu.exec(body);
   const evidence = /^Latest assertion:\n(`{3,})\n([\s\S]*?)\n\1$/mu.exec(body);
   const assertion = evidence?.at(2);
   const repro = /^Latest repro \(seed (-?\d+)\):\n(`{3,})\n([\s\S]*?)\n\2$/mu.exec(
@@ -445,7 +517,7 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   const end = rows.findIndex((row) => !row.startsWith("|"));
   const lanes = rows.slice(0, end < 0 ? rows.length : end).map((row) => {
     const [, lane = "", lastRun = "", cleanRuns = ""] =
-      /^\| (\S+) \| (\S+) \| (\d+) \|$/u.exec(row) ?? [];
+      /^\| (\S+) \| (.+) \| (\d+) \|$/u.exec(row) ?? [];
     if (!LANE.test(lane) || lastRun === "") throw malformed("lane table");
     return { lane, lastRun, cleanRuns: Number(cleanRuns) };
   });
@@ -527,7 +599,15 @@ export const recordReproduction = ({
     lastSeen: { lane: context.lane, run },
     lanes,
     assertion: record.marker.assertion,
-    repro: { seed: record.marker.seed, command: record.replays.at(0) ?? record.marker.repro },
+    repro: {
+      seed: record.marker.seed,
+      command: cliRepro(record.replays.at(0) ?? record.marker.repro),
+      ...(record.flow === undefined
+        ? {}
+        : {
+            flowPath: `findings/${record.marker.fingerprint}-${record.marker.seed}.flow.json`,
+          }),
+    },
   };
 };
 
