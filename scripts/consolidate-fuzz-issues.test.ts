@@ -130,6 +130,7 @@ test("a changed retry plan folds new evidence into the keeper before closing it"
   await applyConsolidation(retryPlan, interrupted, checkpoint);
 
   const keeper = issues.find(({ number }) => number === retryPlan.groups.at(0)?.keep.number);
+  if (keeper === undefined) throw new Error("The retry plan has no keeper");
   expect(parseSignatureState(keeper)?.seeds).toContain(1910);
   expect(issues.find(({ number }) => number === newDuplicate.number)?.state).toBe("closed");
   rmSync(directory, { recursive: true });
