@@ -846,14 +846,14 @@ function convertParagraph(
   // paragraph's content is the only writer, and it sets this before entering
   // the switch, so every node the switch emits gets the item's own stack.
   let wrapperStack: readonly InlineWrapperLayer[] = [];
-  const emitInlineNodes = (nodes: PMNode[]): void => {
+  const emitInlineNodes = (nodes: PMNode[], commentsAlreadyApplied = false): void => {
     if (nodes.length === 0) {
       return;
     }
-    const markedNodes = applyCommentMarks(
-      withInlineWrapperMark(nodes, wrapperStack),
-      openCommentIds,
-    );
+    const wrappedNodes = withInlineWrapperMark(nodes, wrapperStack);
+    const markedNodes = commentsAlreadyApplied
+      ? wrappedNodes
+      : applyCommentMarks(wrappedNodes, openCommentIds);
     inlineNodes.push(...markedNodes);
     for (const node of markedNodes) {
       inlineOffset += node.nodeSize;
@@ -987,7 +987,9 @@ function convertParagraph(
         moveKind,
         textBoxAnchors,
         wrapperStack,
+        openCommentIds,
       ),
+      true,
     );
   };
 
@@ -1274,11 +1276,11 @@ function convertTrackedChange(
   moveKind: "moveFrom" | "moveTo" | null = null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
   wrappedBy: readonly InlineWrapperLayer[] = [],
+  openCommentIds: Set<number> = new Set(),
 ): PMNode[] {
   const nodes: PMNode[] = [];
   const getTrackedRunFormatting =
     markType === "deletion" ? runFormattingResolvers.historical : runFormattingResolvers.current;
-  const openCommentIds = new Set<number>();
   // A wrapper or move-range boundary the revision holds stays inside it:
   // lifting either out changes what accepting or rejecting the revision owns.
   // Comment boundaries remain marks over the projected content.
@@ -1352,6 +1354,7 @@ function convertTrackedChange(
           nestedMoveKind,
           textBoxAnchors,
           [...wrappedBy, ...stack],
+          openCommentIds,
         ),
       );
     } else if (item.type === "inlineSdt") {
