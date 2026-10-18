@@ -6,7 +6,11 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "@stll/folio-core/server";
-import { orderBatchOperations } from "@stll/docx-core/ops";
+import {
+  compareBatchOrder,
+  orderBatchOperations,
+  type BatchOrderAddress,
+} from "@stll/docx-core/ops";
 
 import { openReviewer, packDocument } from "../support/documents.ts";
 import type { Row } from "../support/oracle.ts";
@@ -72,7 +76,7 @@ const compareMix = async ({ mode, order, mirrored, inserted }: MixOptions) => {
         operation.type === "mergeBlockWithNext" || operation.type === "insertAfterBlock"
           ? anchor + 1
           : anchor;
-      return { type: "content" as const, position, inputIndex };
+      return { type: "content" as const, position, rank: 1, inputIndex };
     },
   ).map(({ operation }) => [operation]);
   if (!mirrored && order.join(",") === "0,1,2") {
@@ -104,6 +108,89 @@ test("pinned adjacent insertion, merge and replacement batches replay from pre-b
   for (const mode of MODES) {
     await compareMix({ mode, order: ORDERS[0], mirrored: false, inserted: "Added 👍🏽 clause." });
   }
+});
+
+test("the batch comparator defines one total order", () => {
+  const addresses: BatchOrderAddress[] = [];
+  for (let inputIndex = 0; inputIndex < 4; inputIndex++) {
+    for (let position = 0; position < 3; position++) {
+      addresses.push({ type: "annotation", position, inputIndex });
+      for (let rank = 0; rank < 3; rank++) {
+        addresses.push({ type: "content", position, rank, inputIndex });
+      }
+      addresses.push({ type: "cell", tablePosition: position, bottom: 1, right: 2, inputIndex });
+      addresses.push({
+        type: "column",
+        tablePosition: position,
+        columnIndex: 1,
+        insertion: inputIndex % 2 === 0,
+        inputIndex,
+      });
+    }
+  }
+  const sign = (value: number) => Math.sign(value);
+  for (const left of addresses) {
+    for (const right of addresses) {
+      const comparison = compareBatchOrder(left, right);
+      const reverse = sign(compareBatchOrder(right, left));
+      assert.ok(sign(comparison) === -reverse || (comparison === 0 && reverse === 0));
+      if (comparison === 0) assert.deepEqual(left, right);
+      for (const last of addresses) {
+        if (comparison <= 0 && compareBatchOrder(right, last) <= 0) {
+          assert.ok(compareBatchOrder(left, last) <= 0);
+        }
+      }
+    }
+  }
+});
+
+test("deletion precedes a table insertion through every three-operation permutation", async () => {
+  const outcomes: ReturnType<typeof view>[] = [];
+  for (const order of ORDERS) {
+    const fixture = await packDocument(fromMarkdown("Alpha bravo."));
+    const reviewer = await openReviewer(fixture);
+    const original = reviewer.getContent() as Row[];
+    const anchor = original.at(0);
+    assert.ok(anchor);
+    const split = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [{ id: "split", type: "splitBlock", blockId: anchor.id, offset: 5 }],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    assert.deepEqual(split.skipped, []);
+    const splitAnchor = (reviewer.getContent() as Row[]).at(0);
+    assert.ok(splitAnchor);
+    const operations = [
+      {
+        id: "table",
+        type: "insertTable" as const,
+        blockId: splitAnchor.id,
+        rows: [["Term", "Value"]],
+      },
+      {
+        id: "before",
+        type: "insertBeforeBlock" as const,
+        blockId: splitAnchor.id,
+        text: "Before.",
+      },
+      { id: "delete", type: "deleteBlock" as const, blockId: splitAnchor.id },
+    ];
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: order.flatMap((index) => operations.at(index) ?? []),
+      },
+      { undefinedReferences: "refuse" },
+    );
+    assert.deepEqual(result.skipped, []);
+    reviewer.acceptAll();
+    outcomes.push(view(reviewer));
+  }
+  for (const outcome of outcomes.slice(1)) assert.deepEqual(outcome, outcomes.at(0));
 });
 
 test("generated adjacent insertion, merge and replacement mixes equal contract replay", async () => {

@@ -4222,31 +4222,26 @@ const applyFolioAIEditOperationsInternal = ({
         inputIndex: item.originalIndex,
       };
     }
+    if (ANNOTATION_OPERATION_TYPES.has(item.operation.type)) {
+      return { type: "annotation", position: item.from, inputIndex: item.originalIndex };
+    }
+    const ordersDeletedSplitBeforeTable = tableAfterDeletedSplit.has(item.blockFrom);
+    const deletesSplit = ordersDeletedSplitBeforeTable && item.operation.type === "deleteBlock";
+    const insertsTableAfterSplit =
+      ordersDeletedSplitBeforeTable &&
+      item.operation.type === "insertTable" &&
+      item.operation.position !== "before";
+    let rank = 1;
+    if (deletesSplit) rank = 0;
+    if (insertsTableAfterSplit) rank = 2;
     return {
-      type: ANNOTATION_OPERATION_TYPES.has(item.operation.type) ? "annotation" : "content",
-      position: item.from,
+      type: "content",
+      position: deletesSplit ? item.blockTo : item.from,
+      rank,
       inputIndex: item.originalIndex,
     };
   };
-  const executionOrder = orderBatchOperations(executableResolved, batchAddress).toSorted(
-    (left, right) => {
-      if (left.blockFrom === right.blockFrom && tableAfterDeletedSplit.has(left.blockFrom)) {
-        if (
-          left.operation.type === "deleteBlock" &&
-          right.operation.type === "insertTable" &&
-          right.from === left.blockTo
-        )
-          return -1;
-        if (
-          left.operation.type === "insertTable" &&
-          right.operation.type === "deleteBlock" &&
-          left.from === right.blockTo
-        )
-          return 1;
-      }
-      return 0;
-    },
-  );
+  const executionOrder = orderBatchOperations(executableResolved, batchAddress);
   for (let executionIndex = 0; executionIndex < executionOrder.length; executionIndex++) {
     const item = executionOrder[executionIndex];
     if (!item) {

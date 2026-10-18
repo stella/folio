@@ -1,12 +1,13 @@
 /**
  * The execution coordinates of an operation resolved against a batch's
  * pre-state. Positions and table coordinates are ordered from right to left;
- * equal coordinates use reverse input order. Annotations run before moving
+ * equal content coordinates use an explicit rank, then reverse input order.
+ * Annotations run before moving
  * edits, while table-shape and column edits run after ordinary content edits.
  */
 export type BatchOrderAddress =
   | { type: "annotation"; position: number; inputIndex: number }
-  | { type: "content"; position: number; inputIndex: number }
+  | { type: "content"; position: number; rank: number; inputIndex: number }
   | {
       type: "cell";
       tablePosition: number;
@@ -31,7 +32,11 @@ export const compareBatchOrder = (left: BatchOrderAddress, right: BatchOrderAddr
     (left.type === "annotation" || left.type === "content") &&
     (right.type === "annotation" || right.type === "content")
   ) {
-    return right.position - left.position || right.inputIndex - left.inputIndex;
+    return (
+      right.position - left.position ||
+      (left.type === "content" && right.type === "content" ? left.rank - right.rank : 0) ||
+      right.inputIndex - left.inputIndex
+    );
   }
   if (left.type === "cell" && right.type === "cell") {
     return (
