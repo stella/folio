@@ -627,7 +627,7 @@ const createStyleCloner = ({
       return styleId;
     }
     const numPr = styleNumPr(style, styleById);
-    if (numPr === undefined) {
+    if (numPr?.kind !== "reference") {
       return styleId;
     }
     const cloneId = `${styleId}-${suffix}`;

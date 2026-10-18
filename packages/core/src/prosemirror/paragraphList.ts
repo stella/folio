@@ -11,6 +11,7 @@ export type ParagraphList =
   | {
       kind: "markerless";
       reference: ParagraphListReference;
+      rendering?: ListRendering;
       reason:
         | "noNumbering"
         | "levelOutOfRange"
@@ -51,7 +52,13 @@ export const resolveParagraphList = (
         return { kind: "markerless", reference, reason: resolution.reason };
       }
       if (!levelShowsMarker(numbering.definitions, reference.numId, reference.ilvl)) {
-        return { kind: "markerless", reference, reason: "markerHiddenOrBlank" };
+        const rendering = computeListRendering(reference, numbering);
+        return {
+          kind: "markerless",
+          reference,
+          reason: "markerHiddenOrBlank",
+          ...(rendering === null ? {} : { rendering }),
+        };
       }
       const rendering = computeListRendering(reference, numbering);
       return rendering === null

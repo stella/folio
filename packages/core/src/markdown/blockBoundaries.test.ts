@@ -2,18 +2,55 @@ import { expect, test } from "bun:test";
 
 import { MARKDOWN_BLOCK_BOUNDARY_FIXTURES } from "../../typecheck/markdown/blockBoundaries.typecheck";
 
-import type { BlockContent, ListRendering, Paragraph } from "../types/document";
+import type {
+  BlockContent,
+  ListRendering,
+  NumberingDefinitions,
+  Paragraph,
+} from "../types/document";
 import { fromMarkdown } from "./fromMarkdown";
 import { toMarkdown } from "./index";
 
 const paragraph = (text: string, listRendering?: ListRendering): Paragraph => ({
   type: "paragraph",
   content: [{ type: "run", content: [{ type: "text", text }] }],
-  ...(listRendering === undefined ? {} : { listRendering }),
+  ...(listRendering === undefined
+    ? {}
+    : {
+        formatting: {
+          numPr: {
+            kind: "reference" as const,
+            numId: listRendering.numId,
+            ilvl: listRendering.level,
+          },
+        },
+        listRendering,
+      }),
 });
 
+const numberingFor = (content: BlockContent[]): NumberingDefinitions => {
+  const levelsByNumId = new Map<number, Map<number, ListRendering>>();
+  for (const block of content) {
+    if (block.type !== "paragraph" || block.listRendering === undefined) continue;
+    const levels = levelsByNumId.get(block.listRendering.numId) ?? new Map();
+    levels.set(block.listRendering.level, block.listRendering);
+    levelsByNumId.set(block.listRendering.numId, levels);
+  }
+  return {
+    abstractNums: [...levelsByNumId].map(([numId, levels]) => ({
+      abstractNumId: numId,
+      levels: [...levels.values()].map((rendering) => ({
+        ilvl: rendering.level,
+        numFmt: rendering.isBullet ? "bullet" : (rendering.numFmt ?? "decimal"),
+        lvlText: rendering.markerTemplate ?? rendering.marker,
+      })),
+    })),
+    nums: [...levelsByNumId.keys()].map((numId) => ({ numId, abstractNumId: numId })),
+  };
+};
+
 const render = (content: BlockContent[]): string =>
-  toMarkdown({ package: { document: { content } } });
+  toMarkdown({ package: { document: { content }, numbering: numberingFor(content) } });
 
 const listParagraph = (text: string): Paragraph =>
   paragraph(text, { marker: "-", level: 0, numId: 1, isBullet: true });

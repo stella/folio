@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import { createNumberingMap } from "../../docx/numberingParser";
 import { createListLabelCounter } from "../../prosemirror/listLabels";
 import { paragraphNumberingAttr } from "../../prosemirror/numberingAttr";
 import type { ParagraphAttrs } from "../../prosemirror/schema/nodes";
@@ -240,7 +241,14 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
   });
 
   test("reader labels count paragraphs whose numbering comes from their style", () => {
-    const nextLabel = createListLabelCounter();
+    const nextLabel = createListLabelCounter(
+      createNumberingMap({
+        abstractNums: [
+          { abstractNumId: 1, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "(%1)" }] },
+        ],
+        nums: [{ numId: 7, abstractNumId: 1 }],
+      }),
+    );
     const attrs = {
       numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 7, ilvl: 0 }),
       listMarkerTemplate: "(%1)",
@@ -249,6 +257,27 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
 
     expect(nextLabel(attrs).label).toBe("(1)");
     expect(nextLabel(attrs).label).toBe("(2)");
+  });
+
+  test("hidden parent levels advance before a visible child", () => {
+    const nextLabel = createListLabelCounter(
+      createNumberingMap({
+        abstractNums: [
+          {
+            abstractNumId: 1,
+            levels: [
+              { ilvl: 0, numFmt: "decimal", lvlText: "%1", rPr: { hidden: true } },
+              { ilvl: 1, numFmt: "decimal", lvlText: "(%1.%2)" },
+            ],
+          },
+        ],
+        nums: [{ numId: 7, abstractNumId: 1 }],
+      }),
+    );
+
+    expect(nextLabel({ numPr: { kind: "reference", numId: 7, ilvl: 0 } }).label).toBeUndefined();
+    expect(nextLabel({ numPr: { kind: "reference", numId: 7, ilvl: 0 } }).label).toBeUndefined();
+    expect(nextLabel({ numPr: { kind: "reference", numId: 7, ilvl: 1 } }).label).toBe("(2.1)");
   });
 
   test("style-sourced instances continue the shared abstract level", () => {

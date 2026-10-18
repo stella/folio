@@ -151,7 +151,9 @@ export const createListLabelCounter = (
       listMarkerSecondSlotOffsetTwips: attrs.listMarkerSecondSlotOffsetTwips,
       listFoldedMarkerSuffix: attrs.listFoldedMarkerSuffix,
     };
-    if (list.kind === "marker") Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
+    if (list.kind === "marker" || list.rendering !== undefined) {
+      Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
+    }
     Object.assign(
       counterInput,
       Object.fromEntries(Object.entries(contentDerived).filter(([, value]) => value !== undefined)),

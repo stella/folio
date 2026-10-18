@@ -464,6 +464,26 @@ describe("createBilingualDocument", () => {
     );
   });
 
+  test("keeps a style id when its numbering override has no instance reference", async () => {
+    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    source.package.styles?.styles.push({
+      styleId: "LevelOnly",
+      type: "paragraph",
+      name: "Level only",
+      basedOn: "Normal",
+      pPr: { numPr: { kind: "levelOnly", ilvl: 2 } },
+    });
+    source.package.document.content = [paragraph("Not a list", "LevelOnly")];
+    const stamped = await ensureParaIds(await createDocx(source));
+    const parsed = await parseDocx(stamped.docx, { preloadFonts: false });
+
+    const { document } = createBilingualDocument(parsed, await bilingualDocumentOptions(parsed));
+    const { right } = columnParagraphs(document);
+
+    expect(right.at(0)?.formatting?.styleId).toBe("LevelOnly");
+    expect(findStyle(document, `LevelOnly-${SUFFIX}`)).toBeUndefined();
+  });
+
   test("mints stable, unique right-column paraIds and reports them as row handles", async () => {
     const source = await buildSource();
     const options = await bilingualDocumentOptions(source);
