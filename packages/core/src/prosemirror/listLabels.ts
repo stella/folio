@@ -12,6 +12,7 @@
  */
 
 import type { ResolvedParagraphNumbering } from "@stll/docx-core/model";
+import { panic } from "better-result";
 
 import { bulletMarkerFontName, convertBulletToUnicode } from "../docx/bulletMarkers";
 import type { ListRendering } from "../types/document";
@@ -21,12 +22,15 @@ import {
   paragraphNumberingSourcesFromBoundary,
   type ParagraphNumberingSources,
 } from "./numberingAttr";
+import type { NumberingMap } from "../docx/numberingParser";
+import { resolveParagraphList } from "./paragraphList";
 import {
   advanceVisibleListMarker,
+  CLEARED_LIST_RENDERING_ATTRS,
   createListCounterState,
   type ListCounterStreams,
 } from "./listMarker";
-import { hasListRendering } from "./listRenderingAttrs";
+import { hasListRendering, listRenderingAttrPatch } from "./listRenderingAttrs";
 import type { ParagraphAttrs } from "./schema/nodes";
 
 /**
@@ -61,7 +65,7 @@ const visibleLabel = (
   counterAttrs: Readonly<ParagraphAttrs>,
   marker: string | null,
 ): string | undefined => {
-  if (counterAttrs.listMarkerHidden === true || !hasListRendering(counterAttrs)) return undefined;
+  if (counterAttrs.listMarkerHidden === true) return undefined;
   const counted = marker?.trim();
   if (counted) {
     return `${counted}${foldedFieldSuffix(counterAttrs)}`;
@@ -106,6 +110,7 @@ export const listLabelAttrsFromRendering = (
 };
 
 type VisibleListLabel = {
+  kind: "none" | "markerless" | "marker";
   label: string | undefined;
   numbering: Extract<ResolvedParagraphNumbering, { kind: "reference" }> | undefined;
 };
@@ -121,22 +126,67 @@ export type ListLabelCounter = (attrs: Readonly<ParagraphAttrs>) => VisibleListL
  * paragraph, numbered or not: whether a list continues depends on what stands
  * between its items.
  */
-export const createListLabelCounter =
-  (
-    streams: ListCounterStreams = {
-      final: createListCounterState(),
-      original: createListCounterState(),
-    },
-  ): ListLabelCounter =>
-  (attrs) => {
-    const { counterAttrs, marker } = advanceVisibleListMarker(attrs, streams);
-    return {
-      label: visibleLabel(counterAttrs, marker),
-      numbering: effectiveParagraphNumberingReference(
+export const createListLabelCounter = (
+  numberingOrStreams: NumberingMap | ListCounterStreams | null = null,
+  suppliedStreams?: ListCounterStreams,
+): ListLabelCounter => {
+  const numbering =
+    numberingOrStreams && "definitions" in numberingOrStreams ? numberingOrStreams : null;
+  const streams =
+    suppliedStreams ??
+    (numberingOrStreams && !("definitions" in numberingOrStreams)
+      ? numberingOrStreams
+      : {
+          final: createListCounterState(),
+          original: createListCounterState(),
+        });
+  return (attrs) => {
+    if (numbering === null) {
+      const { counterAttrs, marker } = advanceVisibleListMarker(attrs, streams);
+      const reference = effectiveParagraphNumberingReference(
         paragraphNumberingSourcesFromBoundary({
           numPr: counterAttrs.numPr,
           numPrFromStyle: counterAttrs.numPrFromStyle,
         }),
-      ),
+      );
+      if (!reference) return { kind: "none", label: undefined, numbering: undefined };
+      if (!hasListRendering(counterAttrs)) {
+        return { kind: "markerless", label: undefined, numbering: reference };
+      }
+      return { kind: "marker", label: visibleLabel(counterAttrs, marker), numbering: reference };
+    }
+    const sources = paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    });
+    const list = resolveParagraphList(sources, numbering);
+    const counterInput: ParagraphAttrs = { ...attrs, ...CLEARED_LIST_RENDERING_ATTRS };
+    const contentDerived = {
+      listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances,
+      listMarkerSecondSlotOffsetTwips: attrs.listMarkerSecondSlotOffsetTwips,
+      listFoldedMarkerSuffix: attrs.listFoldedMarkerSuffix,
     };
+    if (list.kind === "marker") Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
+    Object.assign(
+      counterInput,
+      Object.fromEntries(Object.entries(contentDerived).filter(([, value]) => value !== undefined)),
+    );
+    const { counterAttrs, marker } = advanceVisibleListMarker(counterInput, streams);
+    switch (list.kind) {
+      case "none":
+        return { kind: "none", label: undefined, numbering: undefined };
+      case "markerless":
+        return { kind: "markerless", label: undefined, numbering: list.reference };
+      case "marker":
+        return {
+          kind: "marker",
+          label: visibleLabel(counterAttrs, marker),
+          numbering: list.reference,
+        };
+      default: {
+        const unhandled: never = list;
+        return panic(`Unhandled paragraph list ${JSON.stringify(unhandled)}`);
+      }
+    }
   };
+};

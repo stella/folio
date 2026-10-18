@@ -22,6 +22,8 @@
 
 import { createBookmarkIdAllocator } from "../bookmarkIds";
 import { createNumberingIdAllocator } from "../numberingIds";
+import { getCachedNumberingMap, type NumberingMap } from "../numberingParser";
+import { resolveParagraphList } from "../../prosemirror/paragraphList";
 
 import { panic, TaggedError } from "better-result";
 
@@ -201,6 +203,7 @@ export function createBilingualDocument(
 
   const styles = source.package.styles;
   const numbering = source.package.numbering;
+  const numberingMap = numbering ? getCachedNumberingMap(numbering) : null;
   const styleById = new Map((styles?.styles ?? []).map((style) => [style.styleId, style]));
   const builtInStyles = createBuiltInStyleIndex(styleById.values(), styles?.docDefaults);
 
@@ -256,7 +259,7 @@ export function createBilingualDocument(
       }
       const { copy, ref } = copyParagraph(block);
       rows.push({
-        kind: classifyParagraph(block, styleById, builtInStyles),
+        kind: classifyParagraph(block, styleById, builtInStyles, numberingMap),
         rowId: ref.targetParaId,
         ...ref,
       });
@@ -419,6 +422,7 @@ const classifyParagraph = (
   paragraph: Paragraph,
   styleById: Map<string, Style>,
   builtInStyles: BuiltInStyleIndex,
+  numbering: NumberingMap | null,
 ): BilingualRowKind => {
   const formatting = paragraph.formatting;
   if (
@@ -429,32 +433,24 @@ const classifyParagraph = (
   ) {
     return "heading";
   }
-  if (effectiveNumPr(paragraph, styleById) !== undefined) {
+  const styleId = paragraph.formatting?.styleId;
+  const list = resolveParagraphList(
+    {
+      numPr: paragraph.formatting?.numPr,
+      numPrFromStyle: styleId ? styleNumPr(styleById.get(styleId), styleById) : undefined,
+    },
+    numbering,
+  );
+  if (list.kind === "marker") {
     return "listItem";
   }
   return "paragraph";
 };
 
-/**
- * The one arm that names a numbering definition after the cascade is folded.
- */
-type NumberingReference = Extract<ParagraphNumberingOverride, { kind: "reference" }>;
-
-/** The numbering a paragraph renders with after style and direct tiers fold. */
-const effectiveNumPr = (
-  paragraph: Paragraph,
-  styleById: Map<string, Style>,
-): NumberingReference | undefined => {
-  const styleId = paragraph.formatting?.styleId;
-  const inherited = styleId ? styleNumPr(styleById.get(styleId), styleById) : undefined;
-  const effective = mergeParagraphNumbering(inherited, paragraph.formatting?.numPr);
-  return effective?.kind === "reference" ? effective : undefined;
-};
-
 const styleNumPr = (
   style: Style | undefined,
   styleById: Map<string, Style>,
-): NumberingReference | undefined => {
+): ParagraphNumberingOverride | undefined => {
   const seen = new Set<string>();
   const chain: ParagraphNumberingOverride[] = [];
   let current = style;
@@ -469,7 +465,7 @@ const styleNumPr = (
   for (const stated of chain.toReversed()) {
     effective = mergeParagraphNumbering(effective, stated);
   }
-  return effective?.kind === "reference" ? effective : undefined;
+  return effective;
 };
 
 // ----------------------------------------------------------------------------
@@ -1132,6 +1128,9 @@ export function readBilingualDocument(
     styleById.values(),
     document.package.styles?.docDefaults,
   );
+  const numberingMap = document.package.numbering
+    ? getCachedNumberingMap(document.package.numbering)
+    : null;
   const rows: BilingualRow[] = [];
   let missingHandleCount = 0;
   for (const block of flattenBlocks(document.package.document.content)) {
@@ -1228,7 +1227,7 @@ export function readBilingualDocument(
         continue;
       }
       rows.push({
-        kind: classifyParagraph(source, styleById, builtInStyles),
+        kind: classifyParagraph(source, styleById, builtInStyles, numberingMap),
         rowId: target.paraId,
         sourceParaId: source.paraId,
         targetParaId: target.paraId,

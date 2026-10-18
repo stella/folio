@@ -114,6 +114,7 @@ import {
 } from "../prosemirror/plugins/documentStyles";
 import {
   createDocumentNumberingPlugin,
+  getDocumentNumbering,
   withDocumentNumbering,
 } from "../prosemirror/plugins/documentNumbering";
 import { schema, singletonManager } from "../prosemirror/schema";
@@ -898,7 +899,11 @@ const createHeadlessPlugins = (
 ];
 
 const createStateSnapshot = (state: EditorState): FolioAIEditSnapshot =>
-  createFolioAIEditSnapshotWithStyleResolver(state.doc, getDocumentStyleResolver(state));
+  createFolioAIEditSnapshotWithStyleResolver(
+    state.doc,
+    getDocumentStyleResolver(state),
+    getDocumentNumbering(state),
+  );
 
 const formatStorySnapshotForLLM = (snapshot: FolioAIEditSnapshot, annotated: boolean): string => {
   // A reading surface shows content. The snapshot also carries the document's
