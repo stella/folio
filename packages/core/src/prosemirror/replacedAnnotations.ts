@@ -14,8 +14,9 @@
  *
  * Text replacement preserves a comment's aligned coverage. Unchanged text
  * keeps its ranges; inserted text takes the comments of the replaced aligned
- * span. A range with no remaining content becomes a point at the replacement
- * start. The applier decides alignment once for direct and tracked edits.
+ * span. A comment range with no remaining covered content is removed. A
+ * comment authored as a point is unchanged. The applier decides alignment
+ * once for direct and tracked edits.
  *
  * - `comment` mark: carried over its aligned replacement span.
  * - `hyperlink` mark: the replacement carries the first link the span held, so
@@ -54,8 +55,9 @@
  * - every other mark: formatting, and left to boundary inheritance, which
  *   already gives the replacement the formatting of the text it replaces.
  *
- * Removing the owning block removes its comment. Replacing its last covered
- * text within a surviving block retains a point rather than dropping it.
+ * A comment range is retired when none of its covered non-carrier inline
+ * content survives, whether or not its paragraph survives. Its
+ * `commentReference` and range markers are carriers, not covered content.
  */
 
 import { Fragment, Mark, type Node as PMNode, type Schema } from "prosemirror-model";
@@ -99,7 +101,7 @@ const isCarried = (mark: Mark): boolean =>
   NON_INCLUSIVE_MARK_DISPOSITION[mark.type.name as keyof typeof NON_INCLUSIVE_MARK_DISPOSITION] ===
   "carry";
 
-/** One typed point for a comment whose aligned coverage has no content left. */
+/** One typed anchor for a comment authored as a point. */
 export const commentPoint = (schema: Schema, id: number): PMNode =>
   schema.node(RANGE_ANCHOR_NODE_NAME, {
     start: { type: "commentRangeStart", id },
@@ -141,7 +143,8 @@ export const createResolvedCommentPointCollector = ({
             survivingContent = true;
           return !survivingContent;
         });
-        if (!survivingContent) return false;
+        // Keep walking an emptied carrier so its ranged comments are recorded
+        // for removal along with the carrier.
       }
     }
     if (
@@ -149,13 +152,13 @@ export const createResolvedCommentPointCollector = ({
       expectTableRowAttrs(node).trDel &&
       retiresStructure(node, position)
     )
-      return false;
+      return true;
     if (
       (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
       expectTableCellAttrs(node).cellMarker?.kind === "del" &&
       retiresStructure(node, position)
     )
-      return false;
+      return true;
     if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
       const attrs = readRangeAnchorAttrs(node);
       if (attrs.ok && attrs.value.start.type === "commentRangeStart")
@@ -177,7 +180,7 @@ export const createResolvedCommentPointCollector = ({
   return { visit, finish };
 };
 
-/** Point fallback excludes comments belonging to retired blocks and table cells. */
+/** Ranged comments whose covered non-carrier content is removed by a resolution. */
 export const resolvedCommentPoints = ({
   doc,
   removes,

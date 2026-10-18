@@ -99,7 +99,7 @@ describe("surveyReplacedAnnotations", () => {
 
 // Boundary deletion can live on either adjacent physical paragraph carrier.
 test.each(["del", "moveFrom"] as const)(
-  "point comments distinguish retired %s boundaries from surviving text",
+  "ranged comments are removed with all covered content across %s boundaries",
   (kind) => {
     const deletion = schema.marks["deletion"];
     const comment = schema.marks["comment"];
@@ -123,7 +123,7 @@ test.each(["del", "moveFrom"] as const)(
           removes: (node) => deletion.isInSet(node.marks) !== undefined,
           retiresStructure: () => true,
         });
-        expect([...points.keys()]).toEqual(owner === "none" || remaining ? [3] : []);
+        expect([...points.keys()]).toEqual([3]);
       }
     }
   },
@@ -131,7 +131,7 @@ test.each(["del", "moveFrom"] as const)(
 
 // Bulk-only fixtures missed independently pending structural revisions.
 test.each(["paragraph", "precedingParagraph", "tableRow", "tableCell", "tableHeader"] as const)(
-  "accepting text alone retains a comment inside pending %s deletion",
+  "accepting text alone removes a ranged comment inside pending %s deletion",
   (owner) => {
     const deletion = schema.marks["deletion"];
     const comment = schema.marks["comment"];
@@ -191,7 +191,7 @@ test.each(["paragraph", "precedingParagraph", "tableRow", "tableCell", "tableHea
         if (attrs.ok && attrs.value.start.type === "commentRangeStart")
           points.push(attrs.value.start.id);
       });
-      expect(points).toEqual([3]);
+      expect(points).toEqual([]);
       expect(state.doc.textContent).toBe("Prefix");
       const retained = state.doc.child(1);
       if (owner === "paragraph") expect(retained.attrs["pPrMark"]).toEqual(boundary);

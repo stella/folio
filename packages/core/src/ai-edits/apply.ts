@@ -113,15 +113,12 @@ import {
   annotatedReplacement,
   commentsAcrossBlockBoundary,
   commentsForTrackedInsertion,
-  commentPoint,
   hasReplacedAnnotations,
   inheritedReplacementMarks,
   NON_INCLUSIVE_MARK_DISPOSITION,
   placeTrackedInsertion,
   surveyReplacedAnnotations,
 } from "../prosemirror/replacedAnnotations";
-import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
-import { RANGE_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/RangeAnchorExtension";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import {
   deleteTextBoxesAnchoredAt,
@@ -6899,30 +6896,6 @@ const applyAlignedReplacementComments = ({
       if (comment.isInSet(expected)) tr.addMark(from, from + 1, comment);
       else tr.removeMark(from, from + 1, comment);
     }
-  }
-  const visible = new Set<number>();
-  const points = new Set<number>();
-  tr.doc.descendants((node) => {
-    if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
-      const attrs = readRangeAnchorAttrs(node);
-      if (attrs.ok && attrs.value.start.type === "commentRangeStart")
-        points.add(attrs.value.start.id);
-    }
-    if (
-      !node.isInline ||
-      isZeroWidthAnchor(node) ||
-      node.marks.some((mark) => mark.type.name === "deletion")
-    )
-      return;
-    for (const mark of node.marks)
-      if (mark.type.name === "comment") visible.add(mark.attrs["commentId"]);
-  });
-  const at = clean.offsets[plan.spanStart];
-  if (at === undefined) panic("Replacement lost its start gap");
-  for (const comment of comments) {
-    const id = comment.attrs["commentId"];
-    if (visible.has(id) || points.has(id)) continue;
-    tr.insert(at, commentPoint(tr.doc.type.schema, id));
   }
   return tr;
 };

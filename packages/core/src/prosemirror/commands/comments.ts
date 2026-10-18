@@ -1,4 +1,4 @@
-import { commentPoint, resolvedCommentPoints } from "../replacedAnnotations";
+import { resolvedCommentPoints } from "../replacedAnnotations";
 /**
  * Comment and Track Changes Commands
  *
@@ -761,8 +761,31 @@ function resolveChange(
         if (field.type === node.type) tr.setNodeMarkup(position, undefined, node.attrs, node.marks);
         else tr.replaceWith(position, position + field.nodeSize, node);
       }
-      for (const [id, position] of [...points].toReversed()) {
-        tr.insert(tr.mapping.map(position, -1), commentPoint(tr.doc.type.schema, id));
+      // A range that loses all covered content is removed rather than
+      // converted to a point. Point-authored comments never enter `points`.
+      if (points.size > 0) {
+        const doomed = new Set(points.keys());
+        const carriers: { position: number; size: number }[] = [];
+        tr.doc.descendants((node, position) => {
+          if (node.type.name === "commentReference" && doomed.has(node.attrs["commentId"])) {
+            carriers.push({ position, size: node.nodeSize });
+            return false;
+          }
+          if (node.type.name !== "rangeAnchor") return true;
+          const attrs = readRangeAnchorAttrs(node);
+          if (
+            attrs.ok &&
+            attrs.value.start.type === "commentRangeStart" &&
+            doomed.has(attrs.value.start.id)
+          ) {
+            carriers.push({ position, size: node.nodeSize });
+            return false;
+          }
+          return true;
+        });
+        for (const carrier of carriers.toReversed()) {
+          tr.delete(carrier.position, carrier.position + carrier.size);
+        }
       }
       if (tr.steps.length > 0) {
         dispatch(tr);

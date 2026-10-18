@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import type { ParagraphContent, RunContent } from "../types/content";
 import {
@@ -98,32 +98,42 @@ describe("accepted deletion comment anchors", () => {
     expect(await deleteGone([textRun("gone"), atomContent[kind]], "tracked-changes")).toBe(true);
   });
 
-  test("a surviving block keeps a point when its last text is deleted", async () => {
-    expect(await deleteGone([textRun("gone")], "tracked-changes")).toBe(true);
+  test("a surviving block loses a range when its last covered text is deleted", async () => {
+    expect(await deleteGone([textRun("gone")], "tracked-changes")).toBe(false);
   });
 
-  test("surviving content and point fallbacks retain the thread", async () => {
-    const property = fc.asyncProperty(
-      fc.record({
-        deletedTextCount: fc.integer({ min: 1, max: 4 }),
-        survivors: fc.array(fc.constantFrom("text", "image", "field", "tab"), {
-          maxLength: 6,
-        }),
-      }),
-      async ({ deletedTextCount, survivors }) => {
-        const covered: ParagraphContent[] = [];
-        const deleted: string[] = [];
-        for (let index = 0; index < deletedTextCount; index += 1) {
-          const value = `deleted${String(index)}`;
-          covered.push(textRun(value));
-          deleted.push(value);
-        }
-        for (const [index, kind] of survivors.entries()) {
-          covered.push(kind === "text" ? textRun(`survivor${String(index)}`) : atomContent[kind]);
-        }
-        expect(await deleteGone(covered, "tracked-changes", "all", deleted)).toBe(true);
-      },
-    );
-    await fc.assert(property, propertyConfig({ numRuns: 40, seed: 1958 }));
+  test("direct deletion removes the same exhausted range", async () => {
+    expect(await deleteGone([textRun("gone")], "direct")).toBe(false);
   });
+
+  test(
+    "a range survives exactly when covered non-carrier content survives",
+    async () => {
+      const property = fc.asyncProperty(
+        fc.record({
+          deletedTextCount: fc.integer({ min: 1, max: 4 }),
+          survivors: fc.array(fc.constantFrom("text", "image", "field", "tab"), {
+            maxLength: 6,
+          }),
+        }),
+        async ({ deletedTextCount, survivors }) => {
+          const covered: ParagraphContent[] = [];
+          const deleted: string[] = [];
+          for (let index = 0; index < deletedTextCount; index += 1) {
+            const value = `deleted${String(index)}`;
+            covered.push(textRun(value));
+            deleted.push(value);
+          }
+          for (const [index, kind] of survivors.entries()) {
+            covered.push(kind === "text" ? textRun(`survivor${String(index)}`) : atomContent[kind]);
+          }
+          const expected = survivors.length > 0;
+          expect(await deleteGone(covered, "direct", "all", deleted)).toBe(expected);
+          expect(await deleteGone(covered, "tracked-changes", "all", deleted)).toBe(expected);
+        },
+      );
+      await fc.assert(property, propertyConfig({ numRuns: 40, seed: 1958 }));
+    },
+    propertyTestTimeout(60_000),
+  );
 });
