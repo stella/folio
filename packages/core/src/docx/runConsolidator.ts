@@ -15,7 +15,6 @@
 import type { Run, ParagraphContent, Paragraph, Hyperlink } from "../types/document";
 import { normalizeRunSegmentation } from "@stll/docx-core/ops";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
-import { runHoldsPayload } from "./runPayload";
 
 export { formattingEquals, isTextOnlyRun, runsMergeable } from "@stll/docx-core/ops";
 
@@ -26,25 +25,7 @@ export { formattingEquals, isTextOnlyRun, runsMergeable } from "@stll/docx-core/
  * @returns Consolidated array with fewer, larger runs
  */
 export function consolidateRuns(runs: Run[]): Run[] {
-  // Empty source carriers are parser-only placeholders. Preserve their
-  // boundary while enrichment still needs it; all payload runs use the model
-  // owner's canonical segmentation.
-  const result: Run[] = [];
-  let pending: Run[] = [];
-  const flush = (): void => {
-    result.push(...(normalizeRunSegmentation(pending) as Run[]));
-    pending = [];
-  };
-  for (const run of runs) {
-    if (!runHoldsPayload(run)) {
-      flush();
-      result.push(run);
-    } else {
-      pending.push(run);
-    }
-  }
-  flush();
-  return result;
+  return normalizeRunSegmentation(runs) as Run[];
 }
 
 /**

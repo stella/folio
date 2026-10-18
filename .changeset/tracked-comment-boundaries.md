@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-Keep comment range markers at their authored positions inside tracked changes and canonicalize adjacent run segmentation.
+Keep comment range markers and payload carriers at their authored positions while canonicalizing adjacent run segmentation.

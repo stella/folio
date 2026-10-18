@@ -27,9 +27,16 @@ const runArbitrary = fc
     formatting,
   }));
 
+const carrierRunArbitrary = formattingArbitrary.map((formatting): Run => ({
+  type: "run",
+  content: [],
+  formatting,
+}));
+
 const contentArbitrary = fc.array(
   fc.oneof(
     runArbitrary,
+    carrierRunArbitrary,
     fc
       .integer({ min: 1, max: 4 })
       .map((id): ParagraphContent => ({ type: "commentRangeStart", id })),
@@ -91,4 +98,20 @@ test("a comment range marker is a run boundary", () => {
   ]);
 
   expect(normalized.map(({ type }) => type)).toEqual(["run", "commentRangeStart", "run"]);
+});
+
+test("a payload-pending carrier is a run boundary", () => {
+  const formatting = { bold: true };
+  const carrier = { type: "run", formatting, content: [] } satisfies Run;
+  const normalized = normalizeRunSegmentation([
+    { type: "run", formatting, content: [{ type: "text", text: "left" }] },
+    carrier,
+    { type: "run", formatting, content: [{ type: "text", text: "right" }] },
+  ]);
+
+  expect(normalized).toEqual([
+    { type: "run", formatting, content: [{ type: "text", text: "left" }] },
+    carrier,
+    { type: "run", formatting, content: [{ type: "text", text: "right" }] },
+  ]);
 });

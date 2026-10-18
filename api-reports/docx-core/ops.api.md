@@ -631,6 +631,9 @@ export const normalizeForOps: (document: Document_2) => Document_2;
 // @public
 export const normalizeRunSegmentation: (content: readonly ParagraphContent[]) => ParagraphContent[];
 
+// @public
+export const runHoldsPayload: (run: Run_2) => boolean;
+
 // @public (undocumented)
 export type NoteStory = {
     kind: "footnote" | "endnote";
