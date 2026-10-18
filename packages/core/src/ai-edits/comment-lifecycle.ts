@@ -27,6 +27,10 @@ import { RANGE_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/RangeAnc
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import type { BlockContent, Comment } from "../types/document";
 
+/** Whether an inline node locates a comment without being content covered by it. */
+export const isCommentAnchorCarrier = (node: PMNode): boolean =>
+  node.type.name === COMMENT_REFERENCE_NODE_NAME || node.type.name === RANGE_ANCHOR_NODE_NAME;
+
 /** Ids of the comments an editor document anchors: by mark, reference or point anchor. */
 export const anchoredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {
   const ids = new Set<number>();

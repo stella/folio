@@ -60,7 +60,7 @@
 
 import { Fragment, Mark, type Node as PMNode, type Schema } from "prosemirror-model";
 
-import { isCommentAnchorCarrier } from "../ai-edits/comment-anchor-carriers";
+import { isCommentAnchorCarrier } from "../ai-edits/comment-lifecycle";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
 import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";

@@ -98,11 +98,11 @@ describe("accepted deletion comment anchors", () => {
     expect(await deleteGone([textRun("gone"), atomContent[kind]], "tracked-changes")).toBe(true);
   });
 
-  test("a reference carrier alone does not keep a wholly deleted thread", async () => {
-    expect(await deleteGone([textRun("gone")], "tracked-changes")).toBe(false);
+  test("a surviving block keeps a point when its last text is deleted", async () => {
+    expect(await deleteGone([textRun("gone")], "tracked-changes")).toBe(true);
   });
 
-  test("survival depends on marked non-carrier content and agrees with direct deletion", async () => {
+  test("surviving content and point fallbacks retain the thread", async () => {
     const property = fc.asyncProperty(
       fc.record({
         deletedTextCount: fc.integer({ min: 1, max: 4 }),
@@ -121,10 +121,7 @@ describe("accepted deletion comment anchors", () => {
         for (const [index, kind] of survivors.entries()) {
           covered.push(kind === "text" ? textRun(`survivor${String(index)}`) : atomContent[kind]);
         }
-        const survivesDirectDeletion = survivors.length > 0;
-        expect(await deleteGone(covered, "tracked-changes", "all", deleted)).toBe(
-          survivesDirectDeletion,
-        );
+        expect(await deleteGone(covered, "tracked-changes", "all", deleted)).toBe(true);
       },
     );
     await fc.assert(property, propertyConfig({ numRuns: 40, seed: 1958 }));
