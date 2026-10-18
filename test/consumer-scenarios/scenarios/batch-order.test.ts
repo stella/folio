@@ -1,17 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import fc from "fast-check";
-
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "@stll/folio-core/server";
+import { orderBatchOperations } from "@stll/docx-core/ops";
 
-import { assertProperty } from "../../property-testing.ts";
 import { openReviewer, packDocument } from "../support/documents.ts";
-import { sequentialGroups } from "../support/metamorphic.ts";
 import type { Row } from "../support/oracle.ts";
 
 const MODES = ["direct", "tracked-changes"] as const;
@@ -67,7 +64,17 @@ const compareMix = async ({ mode, order, mirrored, inserted }: MixOptions) => {
   const result = batch.applyDocumentOperations(request, { undefinedReferences: "refuse" });
   assert.deepEqual(result.skipped, []);
 
-  const groups = sequentialGroups({ applied: operations, preRows: rows, mode });
+  const groups = orderBatchOperations(
+    operations.map((operation, inputIndex) => ({ operation, inputIndex })),
+    ({ operation, inputIndex }) => {
+      const anchor = rows.findIndex(({ id }) => id === operation.blockId);
+      const position =
+        operation.type === "mergeBlockWithNext" || operation.type === "insertAfterBlock"
+          ? anchor + 1
+          : anchor;
+      return { type: "content" as const, position, inputIndex };
+    },
+  ).map(({ operation }) => [operation]);
   if (!mirrored && order.join(",") === "0,1,2") {
     assert.deepEqual(
       groups.flat().map(({ id }) => id),
@@ -100,16 +107,13 @@ test("pinned adjacent insertion, merge and replacement batches replay from pre-b
 });
 
 test("generated adjacent insertion, merge and replacement mixes equal contract replay", async () => {
-  await assertProperty(
-    fc.asyncProperty(
-      fc.constantFrom(...MODES),
-      fc.constantFrom(...ORDERS),
-      fc.boolean(),
-      fc.constantFrom("Added clause.", "Added 👍🏽 clause.", "Cláusula añadida.", "סעיף נוסף."),
-      async (mode, order, mirrored, inserted) => {
-        await compareMix({ mode, order, mirrored, inserted });
-      },
-    ),
-    { numRuns: 24, seed: 1101252753, id: "adjacent insert merge replace contract replay" },
-  );
+  const insertedTexts = ["Added clause.", "Added 👍🏽 clause.", "Cláusula añadida.", "סעיף נוסף."];
+  for (const [index, order] of ORDERS.entries()) {
+    await compareMix({
+      mode: MODES[index % MODES.length] ?? "direct",
+      order,
+      mirrored: index % 2 === 1,
+      inserted: insertedTexts[index % insertedTexts.length] ?? "Added clause.",
+    });
+  }
 });

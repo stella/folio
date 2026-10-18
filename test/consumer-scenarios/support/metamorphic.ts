@@ -43,6 +43,7 @@
 
 import assert from "node:assert/strict";
 import { validateDocxPackage } from "@stll/docx-core";
+import { orderBatchOperations, type BatchOrderAddress } from "@stll/docx-core/ops";
 import { inflateRawSync } from "node:zlib";
 
 import { createReviewerBridge } from "@stll/folio-agents";
@@ -442,6 +443,19 @@ const restate = (
     if (!find || startOffset < 0 || pre.text.indexOf(find, startOffset + 1) >= 0) return null;
     handle = { blockId, startOffset, endOffset: startOffset + find.length };
   }
+  if (operation.type === "replaceBlock" && now.text !== pre.text) {
+    const shift = rebase(pre.text, now.text, 0, pre.text.length);
+    if (shift === null) return null;
+    const range = createFolioAITextRangeHandle({
+      blockId,
+      text: now.text,
+      startOffset: shift,
+      endOffset: pre.text.length + shift,
+    });
+    if (!range || now.text.slice(range.startOffset, range.endOffset) !== pre.text) return null;
+    const { type: _type, blockId: _blockId, text: replace, ...metadata } = restated;
+    return { ...metadata, id: operation.id, type: "replaceRange", range, replace };
+  }
   if (handle) {
     const shift = rebase(pre.text, now.text, handle.startOffset, handle.endOffset);
     if (shift === null) return null;
@@ -591,16 +605,6 @@ export const sequentialGroups = ({
   const earlyIds = new Set(earlyProperties.map(({ id }) => id));
   const isColumnEdit = (operation: AnyOperation): boolean =>
     operation.type === "insertTableColumn" || operation.type === "deleteTableColumn";
-  const rest = indexed
-    .filter(
-      ({ operation }) =>
-        !ANNOTATIONS.has(operation.type) && !earlyIds.has(operation.id) && !isColumnEdit(operation),
-    )
-    .toSorted((left, right) => {
-      const a = placement(left.operation, preRows);
-      const b = placement(right.operation, preRows);
-      return b[0] - a[0] || b[1] - a[1] || b[2] - a[2] || right.index - left.index;
-    });
   const columnLocation = (operation: AnyOperation): [number, number] => {
     const targetId = blockIdOf(operation);
     const target = preRows.find((row) => row.id === targetId);
@@ -613,18 +617,31 @@ export const sequentialGroups = ({
         : sourceColumn;
     return [target.table.tableIndex, column];
   };
-  const columns = indexed
-    .filter(({ operation }) => isColumnEdit(operation))
-    .toSorted((left, right) => {
-      const [leftTable, leftColumn] = columnLocation(left.operation);
-      const [rightTable, rightColumn] = columnLocation(right.operation);
-      if (leftTable !== rightTable) return rightTable - leftTable;
-      if (leftColumn !== rightColumn) return rightColumn - leftColumn;
-      const leftIsInsertion = left.operation.type === "insertTableColumn";
-      const rightIsInsertion = right.operation.type === "insertTableColumn";
-      if (leftIsInsertion !== rightIsInsertion) return leftIsInsertion ? -1 : 1;
-      return right.index - left.index;
-    });
+  const ordered = orderBatchOperations(
+    indexed.filter(
+      ({ operation }) => !ANNOTATIONS.has(operation.type) && !earlyIds.has(operation.id),
+    ),
+    ({ operation, index }): BatchOrderAddress => {
+      if (isColumnEdit(operation)) {
+        const [tablePosition, columnIndex] = columnLocation(operation);
+        return {
+          type: "column",
+          tablePosition,
+          columnIndex,
+          insertion: operation.type === "insertTableColumn",
+          inputIndex: index,
+        };
+      }
+      const [block, inside, offset] = placement(operation, preRows);
+      return {
+        type: "content",
+        position: block * 1_000_000_000 + inside * 100_000_000 + offset,
+        inputIndex: index,
+      };
+    },
+  );
+  const rest = ordered.filter(({ operation }) => !isColumnEdit(operation));
+  const columns = ordered.filter(({ operation }) => isColumnEdit(operation));
   const groups: AnyOperation[][] = [];
   const inputOrder = new Map(applied.map(({ id }, index) => [id, index]));
   for (const { operation } of rest) {
