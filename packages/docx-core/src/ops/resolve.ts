@@ -28,6 +28,7 @@ import type {
 } from "../model/document";
 import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
+import { structurallyEqual } from "./equality";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
 import {
   alikeDepth,
@@ -73,6 +74,38 @@ const removesContent = (node: InlineNode, decision: RevisionDecision): boolean =
 /** Whether a mark of this kind recorded a break being added. */
 const markWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
   kind === "ins" || kind === "moveTo";
+
+export type RemovedParagraphMarkSectionDestination =
+  | { type: "none" }
+  | { type: "preceding" }
+  | { type: "retained" }
+  | { type: "refuse" };
+
+type RemovedParagraphMarkSectionOptions = {
+  removedSectionProperties: unknown;
+  precedingSectionProperties: unknown;
+  hasPrecedingParagraph: boolean;
+};
+
+/**
+ * Chooses a lossless carrier for the section ending at a removed paragraph mark.
+ * An existing preceding boundary cannot carry a second section, so the marked
+ * paragraph must remain as the adjacent boundary.
+ */
+export const removedParagraphMarkSectionDestination = ({
+  removedSectionProperties,
+  precedingSectionProperties,
+  hasPrecedingParagraph,
+}: RemovedParagraphMarkSectionOptions): RemovedParagraphMarkSectionDestination => {
+  if (removedSectionProperties === undefined) return { type: "none" };
+  if (!hasPrecedingParagraph) return { type: "refuse" };
+  if (
+    precedingSectionProperties === undefined ||
+    structurallyEqual(removedSectionProperties, precedingSectionProperties)
+  )
+    return { type: "preceding" };
+  return { type: "retained" };
+};
 
 type PropertyChange = RunPropertyChange | ParagraphPropertyChange;
 
@@ -1113,8 +1146,36 @@ const joinOps = (
     ends.set(nextId, emptiedEndsOf(merged, emptied));
     const survivor: Paragraph = { ...next, content: asParagraphContent(merged) };
     const previous = blocks.at(location.index - 1);
+    const sectionDestination = removedParagraphMarkSectionDestination({
+      removedSectionProperties: added ? paragraph.sectionProperties : undefined,
+      precedingSectionProperties:
+        previous?.type === "paragraph" ? previous.sectionProperties : undefined,
+      hasPrecedingParagraph: previous?.type === "paragraph",
+    });
+    if (sectionDestination.type === "refuse") {
+      return Result.err(
+        refusal(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          `The section ending at ${paraId} has no preceding paragraph to carry its boundary.`,
+        ),
+      );
+    }
+    if (sectionDestination.type === "retained") {
+      const review = reviewFieldsOf(paragraph);
+      delete review.pPrMark;
+      return Result.ok([
+        {
+          type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+          story,
+          blockId: paraId,
+          expected: reviewFieldsOf(paragraph),
+          review,
+        },
+      ]);
+    }
     const restoredCarrier =
-      added && paragraph.sectionProperties !== undefined && previous?.type === "paragraph"
+      sectionDestination.type === "preceding" && previous?.type === "paragraph"
         ? {
             source: previous,
             paragraph: { ...previous, sectionProperties: paragraph.sectionProperties },

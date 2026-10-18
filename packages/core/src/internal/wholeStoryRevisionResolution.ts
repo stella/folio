@@ -1,5 +1,6 @@
 import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
+import { removedParagraphMarkSectionDestination } from "@stll/docx-core/ops";
 import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 import { Mapping, StepMap, ReplaceStep, Transform, type Step } from "prosemirror-transform";
 import {
@@ -457,9 +458,32 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       });
       restoredSectionProperties = undefined;
     }
-    const marker = expectParagraphAttrs(paragraph).pPrMark;
+    const paragraphAttrs = expectParagraphAttrs(paragraph);
+    const marker = paragraphAttrs.pPrMark;
     const markWasAdded = marker?.kind === "ins" || marker?.kind === "moveTo";
-    const joins = marker && markWasAdded !== (context.mode === "accept");
+    let joins = marker && markWasAdded !== (context.mode === "accept");
+    let sectionDestination: ReturnType<typeof removedParagraphMarkSectionDestination> = {
+      type: "none",
+    };
+    if (joins && markWasAdded && paragraphAttrs._sectionProperties !== undefined) {
+      const preceding = entries.at(index - 1)?.node;
+      const precedingAttrs =
+        preceding?.type.name === "paragraph" ? expectParagraphAttrs(preceding) : undefined;
+      const precedingMarkWasAdded =
+        precedingAttrs?.pPrMark?.kind === "ins" || precedingAttrs?.pPrMark?.kind === "moveTo";
+      const precedingJoins =
+        precedingAttrs?.pPrMark && precedingMarkWasAdded !== (context.mode === "accept");
+      sectionDestination = removedParagraphMarkSectionDestination({
+        removedSectionProperties: paragraphAttrs._sectionProperties,
+        precedingSectionProperties: precedingJoins ? undefined : precedingAttrs?._sectionProperties,
+        hasPrecedingParagraph: preceding?.type.name === "paragraph",
+      });
+      if (sectionDestination.type === "refuse") {
+        context.failed = true;
+        return null;
+      }
+      if (sectionDestination.type === "retained") joins = false;
+    }
     if (joins && chain) {
       const boundaries = pendingBookmarks.toReversed();
       let bookmarks = Fragment.empty;
@@ -490,9 +514,8 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
         closing: entry.position + paragraph.nodeSize - 1,
         bookmarks,
       });
-      const sectionProperties = expectParagraphAttrs(paragraph)._sectionProperties;
-      if (markWasAdded && sectionProperties !== undefined) {
-        restoredSectionProperties = sectionProperties;
+      if (sectionDestination.type === "preceding") {
+        restoredSectionProperties = paragraphAttrs._sectionProperties;
       } else {
         removedEndpoint(paragraph, context);
       }

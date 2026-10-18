@@ -17,6 +17,10 @@ export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
 export { registerParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
 export {
+  removedParagraphMarkSectionDestination,
+  type RemovedParagraphMarkSectionDestination,
+} from "./resolve";
+export {
   applyDocumentOpEnvelope,
   applyDocumentOp,
   applyDocumentOps,

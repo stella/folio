@@ -1168,6 +1168,27 @@ describe("section-aware tracked editor joins", () => {
     );
   });
 
+  test("rejecting an added adjacent boundary retains both sections", () => {
+    const first = { pageWidth: 10_000 };
+    const second = { pageWidth: 12_000 };
+    const document = documentOf(
+      paragraph("00000001", [run("before")], { sectionProperties: first }),
+      paragraph("00000002", [], {
+        sectionProperties: second,
+        pPrMark: { kind: "ins", info: stamp(1) },
+      }),
+      paragraph("00000003", [run("after")]),
+    );
+
+    expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
+      documentOf(
+        paragraph("00000001", [run("before")], { sectionProperties: first }),
+        paragraph("00000002", [], { sectionProperties: second }),
+        paragraph("00000003", [run("after")]),
+      ),
+    );
+  });
+
   test("explicit section removal is tracked until resolution and every inverse preserves both sections", () => {
     const document = documentOf(
       paragraph("00000001", [run("a")], { sectionProperties: { pageWidth: 10000 } }),

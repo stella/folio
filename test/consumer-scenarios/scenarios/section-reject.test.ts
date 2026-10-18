@@ -3,7 +3,12 @@ import { test } from "node:test";
 
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
 
-import { openReviewer, randomMultiSectionDocument, storiesDocument } from "../support/documents.ts";
+import {
+  adjacentSectionRevisionDocument,
+  openReviewer,
+  randomMultiSectionDocument,
+  storiesDocument,
+} from "../support/documents.ts";
 import { saveAndReopen } from "../support/invariants.ts";
 import { createRandom } from "../support/random.ts";
 
@@ -20,6 +25,18 @@ const sectionPropertiesOf = (reviewer: Reviewer) => {
     { paraId: "body", properties: document.finalSectionProperties },
   ];
 };
+
+test("rejecting an added adjacent boundary keeps both sections after save and reopen", async () => {
+  const reviewer = await openReviewer(await adjacentSectionRevisionDocument());
+
+  reviewer.rejectAll();
+  const { reopened } = await saveAndReopen(reviewer, "rejected adjacent section boundary");
+
+  assert.deepEqual(
+    sectionPropertiesOf(reopened).map(({ properties }) => properties.pageWidth),
+    [10_000, 12_000, 14_000],
+  );
+});
 
 test("seed 1346488347: rejecting a deleted section boundary survives save and reopen", async () => {
   const reviewer = await openReviewer(await storiesDocument());

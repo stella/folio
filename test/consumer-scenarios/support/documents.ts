@@ -448,7 +448,8 @@ export const randomMultiSectionDocument = (
   );
   const paragraphs = document.package.document.content.filter(isParagraph);
   for (let section = 0; section < sectionCount - 1; section += 1) {
-    const carrier = paragraphs.at(section * 2 + 1);
+    const adjacent = seed % 2 === 1;
+    const carrier = paragraphs.at(adjacent ? section : section * 2 + 1);
     if (carrier === undefined)
       throw new TypeError("A generated section needs its boundary paragraph.");
     carrier.sectionProperties = {
@@ -459,6 +460,26 @@ export const randomMultiSectionDocument = (
   document.package.document.finalSectionProperties = {
     pageWidth: 12_000 + (seed % 2_000),
   };
+  return packFixture(document);
+};
+
+/** An added empty paragraph whose section immediately follows another boundary. */
+export const adjacentSectionRevisionDocument = (): Promise<Uint8Array> => {
+  const document = fromMarkdown("First section.\n\nFollowing section.");
+  document.package.document.content.splice(1, 0, paragraph([]));
+  const paragraphs = document.package.document.content.filter(isParagraph);
+  const preceding = paragraphs.at(0);
+  const added = paragraphs.at(1);
+  if (preceding === undefined || added === undefined) {
+    throw new TypeError("The adjacent-section fixture needs two boundary paragraphs.");
+  }
+  preceding.sectionProperties = { pageWidth: 10_000 };
+  added.sectionProperties = { pageWidth: 12_000 };
+  added.pPrMark = {
+    kind: "ins",
+    info: { id: 1, author: AUTHOR, date: "2026-10-18T00:00:00Z" },
+  };
+  document.package.document.finalSectionProperties = { pageWidth: 14_000 };
   return packFixture(document);
 };
 
