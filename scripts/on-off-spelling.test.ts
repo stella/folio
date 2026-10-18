@@ -1,3 +1,5 @@
+import { scanTestTimeout } from "../test/scan-timeout";
+
 /**
  * One spelling of an `ST_OnOff` value per polarity, across every serializer.
  *
@@ -13,8 +15,10 @@
  * parser's documentation of the lexical space is not a violation of it.
  */
 
-import { describe, expect, test } from "bun:test";
+import { setDefaultTimeout, describe, expect, test } from "bun:test";
 import path from "node:path";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const PACKAGES_DIR = path.resolve(import.meta.dir, "..", "packages");
 
