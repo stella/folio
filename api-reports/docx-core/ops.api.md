@@ -776,6 +776,20 @@ export const reconcileDocumentPartRelationships: (document: Document_2) => Docum
 export const registerParagraphPropertySnapshot: (input: RegisterParagraphPropertySnapshotOptions) => void;
 
 // @public (undocumented)
+export type RemovedParagraphMarkSectionDestination = {
+    type: "none";
+} | {
+    type: "preceding";
+} | {
+    type: "retained";
+} | {
+    type: "refuse";
+};
+
+// @public
+export const removedParagraphMarkSectionDestination: (input: RemovedParagraphMarkSectionOptions) => RemovedParagraphMarkSectionDestination;
+
+// @public (undocumented)
 export type RemoveHeaderFooterOp = {
     type: typeof DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER;
     sectionIndex: number;
