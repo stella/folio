@@ -101,6 +101,40 @@ test("apply resumes from its checkpoint without repeating completed writes", asy
   rmSync(directory, { recursive: true });
 });
 
+test("a changed retry plan folds new evidence into the keeper before closing it", async () => {
+  const issues = fixture();
+  const fake = fakeStore(issues);
+  const originalPlan = await planConsolidation(fake.store);
+  const directory = mkdtempSync(path.join(tmpdir(), "fuzz-consolidation-"));
+  const checkpoint = path.join(directory, "checkpoint.json");
+  let closes = 0;
+  const interrupted = {
+    edit: fake.store.edit,
+    close: async (number: number, reason: CloseReason) => {
+      closes += 1;
+      if (closes === 1) throw new Error("simulated interruption");
+      await fake.store.close(number, reason);
+    },
+  };
+  await expect(applyConsolidation(originalPlan, interrupted, checkpoint)).rejects.toThrow(
+    "simulated interruption",
+  );
+
+  const newDuplicate = open(
+    1910,
+    `Fuzz failure [1910191019101910]: ${TEST}`,
+    fingerprintBody([1910], 31, "Missing numbering format for displayed label <n>"),
+  );
+  issues.push(newDuplicate);
+  const retryPlan = await planConsolidation(fake.store);
+  await applyConsolidation(retryPlan, interrupted, checkpoint);
+
+  const keeper = issues.find(({ number }) => number === retryPlan.groups.at(0)?.keep.number);
+  expect(parseSignatureState(keeper)?.seeds).toContain(1910);
+  expect(issues.find(({ number }) => number === newDuplicate.number)?.state).toBe("closed");
+  rmSync(directory, { recursive: true });
+});
+
 test("a GitHub refusal becomes a typed pause", () => {
   expect(() => pauseOnGitHubRefusal(new Error("HTTP 429 secondary rate limit"))).toThrow(
     "HTTP 429",

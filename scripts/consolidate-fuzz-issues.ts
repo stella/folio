@@ -3,6 +3,7 @@
 import { $ } from "bun";
 import { TaggedError } from "better-result";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 import {
@@ -248,10 +249,13 @@ export const applyConsolidation = async (
   };
   for (const { keep, duplicates, state } of plan.groups) {
     const content = renderSignatureIssue(state);
+    const contentHash = createHash("sha256").update(JSON.stringify(content)).digest("hex");
     if (content.title !== keep.title || content.body !== keep.body)
-      await run(`edit:${keep.number}`, () => store.edit(keep.number, content));
+      await run(`edit:${keep.number}:${contentHash}`, () => store.edit(keep.number, content));
     for (const duplicate of duplicates)
-      await run(`close:${duplicate.number}`, () => store.close(duplicate.number, "duplicate"));
+      await run(`close:${duplicate.number}:${contentHash}`, () =>
+        store.close(duplicate.number, "duplicate"),
+      );
   }
 };
 

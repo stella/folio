@@ -249,6 +249,37 @@ test("a second signature in one invariant edits the open class issue", async () 
   expect(issues.at(0)?.body).toContain("| tables |");
 });
 
+test("an absent class keeps its regression note and legacy report", async () => {
+  const issues: Issue[] = [];
+  const store = {
+    list: async () => issues,
+    create: async (title: string, body: string) => {
+      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      issues.push(issue);
+      return issue;
+    },
+    edit: async (number: number, body: string) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.body = body;
+    },
+    reopen: async () => {},
+  } satisfies IssueStore;
+  const finding = flowFinding(1, "deleteBlock");
+  await fileClasses({ findings: [finding], context, store, known: new Map() });
+  const issue = issues.at(0);
+  if (issue === undefined || issue.body === null) throw new Error("missing issue body");
+  issue.body = `${issue.body.replace(
+    "\n\n| Fingerprint",
+    "\nRegressed: preserved regression evidence.\n\n| Fingerprint",
+  )}\n\n<details><summary>Legacy report</summary>\n\nPreserved reproduction evidence.\n\n</details>`;
+
+  await fileClasses({ findings: [], context: runContext(124), store, known: new Map() });
+
+  expect(issue.body).toContain("Regressed: preserved regression evidence.");
+  expect(issue.body).toContain("Preserved reproduction evidence.");
+});
+
 const fixtureLog = readFileSync(new URL("./fixtures/fuzz-failures.log", import.meta.url), "utf8");
 const fixtureMarkers = extractFailureMarkers(fixtureLog);
 const fixtureFindings = collectFindings([], fixtureMarkers);

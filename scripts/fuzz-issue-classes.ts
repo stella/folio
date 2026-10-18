@@ -263,6 +263,19 @@ type ClassBodyOptions = {
   note: string | null;
   legacyReport: string | null;
 };
+const preservedBodyFields = (
+  body: string | null,
+): Pick<ClassBodyOptions, "note" | "legacyReport"> => ({
+  note:
+    body
+      ?.split("\n")
+      .find((line) => line.startsWith("Regressed:") || line.startsWith("Previous occurrence:")) ??
+    null,
+  legacyReport:
+    body
+      ?.match(/<details><summary>Legacy report<\/summary>\n\n([\s\S]*?)\n\n<\/details>/u)
+      ?.at(1) ?? null,
+});
 const classBody = ({ signature, state, note, legacyReport }: ClassBodyOptions): string => {
   const rows = state.seeds.map(
     (row) =>
@@ -423,11 +436,7 @@ export const fileClasses = async ({
     let legacyReport: string | null = null;
     if (reused !== null) {
       if (previousState === null) legacyReport = reused.body;
-      else
-        legacyReport =
-          reused.body
-            ?.match(/<details><summary>Legacy report<\/summary>\n\n([\s\S]*?)\n\n<\/details>/u)
-            ?.at(1) ?? null;
+      else legacyReport = preservedBodyFields(reused.body).legacyReport;
     }
     const state = previousState ?? { key: signature.key, runs: [], seeds: [], signatures: [] };
     let changed = false;
@@ -468,9 +477,7 @@ export const fileClasses = async ({
         }
       }
     }
-    const oldNote = reused?.body
-      ?.split("\n")
-      .find((line) => line.startsWith("Regressed:") || line.startsWith("Previous occurrence:"));
+    const oldNote = preservedBodyFields(reused?.body ?? null).note;
     let note: string | null;
     switch (recurrence.type) {
       case "create":
@@ -480,7 +487,7 @@ export const fileClasses = async ({
             : `Previous occurrence: #${recurrence.previous.number}.`;
         break;
       case "update":
-        note = oldNote ?? null;
+        note = oldNote;
         break;
       case "reopen":
         note = `Regressed: this class recurred in ${run}.`;
@@ -560,9 +567,10 @@ export const fileClasses = async ({
       }
       if (!changed) continue;
       const signature = failureClass("Consumer flow", issue.title.replace(/^.*?: /u, ""));
+      const preserved = preservedBodyFields(issue.body);
       await store.edit(
         issue.number,
-        classBody({ signature: { ...signature, key }, state, note: null, legacyReport: null }),
+        classBody({ signature: { ...signature, key }, state, ...preserved }),
       );
       const resolved = state.signatures.every(
         ({ lanes }) => lanes.length > 0 && lanes.every(({ cleanRuns }) => cleanRuns >= 7),
