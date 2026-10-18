@@ -56,6 +56,41 @@ const markerTypes = (document: Document): string[] => {
 };
 
 describe("comment-range boundaries inside tracked changes", () => {
+  test("resolution returns canonical adjacent run segmentation", () => {
+    const input = wrapParagraph({
+      type: "paragraph",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 7, author: "Reviewer" },
+          content: [
+            { type: "run", formatting: {}, content: [{ type: "text", text: "left" }] },
+            { type: "run", formatting: {}, content: [{ type: "text", text: " right" }] },
+          ],
+        },
+      ],
+    });
+
+    const operation = applyDocumentOps(input, [
+      {
+        type: "resolveRevision",
+        story: OP_STORIES.MAIN,
+        decision: REVISION_DECISIONS.ACCEPT,
+        revisionIds: [7],
+      },
+    ]);
+    if (operation.isErr()) throw operation.error;
+    const paragraph = operation.value.document.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+    expect(paragraph.content).toEqual([
+      {
+        type: "run",
+        formatting: {},
+        content: [{ type: "text", text: "left right" }],
+      },
+    ]);
+  });
+
   for (const wrapper of TRACKED_WRAPPERS) {
     for (const marker of COMMENT_MARKERS) {
       test(`w:${wrapper.tag} keeps w:${marker} in its run sequence`, () => {

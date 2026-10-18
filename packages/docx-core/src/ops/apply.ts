@@ -68,6 +68,7 @@ import {
   type RunPropertyChange,
 } from "../model/document";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+import { normalizeRunSegmentation } from "./runNormalization";
 import { deleteBlocks } from "./blockDeletion";
 import { insertBlocks } from "./blockInsertion";
 import {
@@ -521,12 +522,20 @@ const withContent = (
 ): Paragraph =>
   content === paragraph.content ? paragraph : { ...paragraph, content: [...content] };
 
+const withCanonicalRuns = (paragraph: Paragraph): Paragraph => {
+  const content = normalizeRunSegmentation(paragraph.content);
+  return structurallyEqual(content, paragraph.content)
+    ? paragraph
+    : withContent(paragraph, content);
+};
+
 /** An edit of one paragraph, committed, with the inverse built from the paragraph it became. */
 const editOne = (
   commitOptions: Omit<Commit, "before" | "after"> & { paragraph: Paragraph },
   inverseOf: (result: Paragraph) => Result<readonly DocumentOp[], DocumentOpRefusal>,
 ): Applied => {
-  const { paragraph, at, document } = commitOptions;
+  const { at, document } = commitOptions;
+  const paragraph = withCanonicalRuns(commitOptions.paragraph);
   if (paragraph === at.paragraph) {
     return unchanged(document);
   }
@@ -2060,7 +2069,7 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
       `${op.blockId} holds other content than expected.`,
     );
   }
-  const content = cloneModel(op.content);
+  const content = normalizeRunSegmentation(cloneModel(op.content));
   if (holdsEmptyRecord(content)) {
     return refuse(
       op,

@@ -23,6 +23,7 @@ export {
   type AppliedDocumentOp,
 } from "./apply";
 export { formattingEquals, isTextOnlyRun, runsMergeable, mergeRunContent } from "./runMerge";
+export { normalizeRunSegmentation } from "./runNormalization";
 export {
   compileEditorIntent,
   createEditorIntentIdAllocator,

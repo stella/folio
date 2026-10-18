@@ -18,6 +18,7 @@ import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
 
 import { panic, TaggedError } from "better-result";
 import { DRAWING_RAW_XML_MODES, relationshipIdOf } from "@stll/docx-core/model";
+import { normalizeRunSegmentation } from "@stll/docx-core/ops";
 import {
   assertNoteReferenceOccurrences,
   coalesceNoteReferenceOccurrences,
@@ -2055,7 +2056,7 @@ function convertPMParagraph(
 
   const paragraph: Paragraph = {
     type: "paragraph",
-    content,
+    content: normalizeRunSegmentation(content),
   };
   if (attrs.paraId) {
     paragraph.paraId = attrs.paraId;

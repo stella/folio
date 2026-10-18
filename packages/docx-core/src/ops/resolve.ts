@@ -13,6 +13,7 @@
 
 import { INSERTION_SEAM_POLICIES } from "../model/content";
 import { runsMergeable } from "./runMerge";
+import { normalizeRunSegmentation } from "./runNormalization";
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
 import { panic, Result } from "better-result";
 
@@ -1323,7 +1324,7 @@ export const resolveRevision = (
         story: op.story,
         blockId: paraId,
         expected: paragraph.content,
-        content: asParagraphContent(resolved.nodes),
+        content: normalizeRunSegmentation(asParagraphContent(resolved.nodes)),
       });
     }
   }
