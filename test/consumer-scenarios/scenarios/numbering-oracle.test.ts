@@ -28,6 +28,7 @@ import {
   emojiDocument,
   toArrayBuffer,
   styleNumberedDocument,
+  tableDocument,
 } from "../support/documents.ts";
 import {
   applyChecked,
@@ -39,6 +40,12 @@ import {
   rowsOf,
   type Row,
 } from "../support/oracle.ts";
+
+const slowTest = (name: string, fn: () => Promise<void>) => test(name, { timeout: 30_000 }, fn);
+const MARKER_VISIBILITY_TEST =
+  "numbering kind follows marker visibility, independently of the retained reference";
+const HIDDEN_LEVELS_TEST =
+  "undefined and hidden numbering levels keep provenance without becoming list items";
 
 test("style numbering comes from definitions, preserves direct overrides, and catches missing numbering", async () => {
   for (const fixture of [directNumberedDocument, styleNumberedDocument]) {
@@ -186,11 +193,11 @@ test("style inheritance folds independent numbering slots and cancellation", asy
   assert.deepEqual(facts.styles.get("CancelledList"), { kind: "none" });
 });
 
-test("markerless numbering regression seed 1339716102", async () => {
+slowTest("markerless numbering regression seed 1339716102", async () => {
   await runFlow(1339716102, 20, "collisions", { generation: "targeted", swarm: "enabled" });
 });
 
-test("numbering kind follows marker visibility, independently of the retained reference", async () => {
+slowTest(MARKER_VISIBILITY_TEST, async () => {
   for (const marker of [
     "visible",
     "missing",
@@ -575,6 +582,52 @@ test("direct heading insertion beside a newly authored bullet keeps its direct n
   assert.equal(second.applied.length, 1);
 });
 
+test("a reference resolves a list created by an earlier suggested insertion", async () => {
+  const reviewer = await openReviewer(await tableDocument());
+  const anchors = rowsOf(reviewer).filter((row) => row.text.length > 0);
+  const firstAnchor = anchors.at(0);
+  const secondAnchor = anchors.at(1);
+  assert.ok(firstAnchor);
+  assert.ok(secondAnchor);
+
+  const created = await applyChecked(
+    reviewer,
+    [
+      {
+        type: "insertAfterBlock",
+        blockId: firstAnchor.id,
+        text: "Created bullet.",
+        numbering: { kind: "newList", format: "bullet" },
+      },
+    ],
+    "suggested",
+    "create a pending list",
+  );
+  assert.equal(created.applied.length, 1);
+  const bullet = rowsOf(reviewer).find((row) => row.text === "Created bullet.");
+  assert.ok(bullet);
+  assert.deepEqual(bullet.listReference, { numId: 1, level: 0 });
+
+  const referenced = await applyChecked(
+    reviewer,
+    [
+      {
+        type: "insertAfterBlock",
+        blockId: secondAnchor.id,
+        text: "Referenced bullet.",
+        numbering: { kind: "reference", numId: 1, ilvl: 0 },
+      },
+    ],
+    "suggested",
+    "reference a pending list",
+  );
+  assert.equal(referenced.applied.length, 1);
+  const result = rowsOf(reviewer).find((row) => row.text === "Referenced bullet.");
+  assert.ok(result);
+  assert.equal(result.kind, "listItem");
+  assert.equal(result.displayLabel, "•");
+});
+
 type PendingRecord = ReturnType<
   Awaited<ReturnType<typeof openReviewer>>["exportPendingSuggestions"]
 >[number];
@@ -846,7 +899,7 @@ test("package numbering provenance covers allocated paragraph identities in ever
   }
 });
 
-test("undefined and hidden numbering levels keep provenance without becoming list items", async () => {
+slowTest(HIDDEN_LEVELS_TEST, async () => {
   for (const definitionSource of ["abstract", "override", "styleLink"] as const) {
     const document = fromMarkdown(
       Array.from({ length: 9 }, (_, level) => `Anchor level ${level}.`).join("\n\n"),

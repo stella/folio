@@ -92,6 +92,22 @@ const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts =>
   const snapshot = reviewer.snapshotStory(story);
   if (!snapshot) return facts;
   const { anchors, blocks } = snapshot;
+  for (const { operation } of reviewer.exportPendingSuggestions()) {
+    if (operation.type !== "insertAfterBlock" && operation.type !== "insertBeforeBlock") continue;
+    if (operation.numbering?.kind !== "newList") continue;
+    for (const block of blocks) {
+      if (
+        block.kind === "diagnostic" ||
+        block.text !== operation.text ||
+        block.statedNumbering.kind !== "reference"
+      )
+        continue;
+      const level = block.statedNumbering.ilvl ?? 0;
+      const levels = facts.markerLevels.get(block.statedNumbering.numId) ?? new Set<number>();
+      levels.add(level);
+      facts.markerLevels.set(block.statedNumbering.numId, levels);
+    }
+  }
   for (const block of blocks) {
     if (block.kind === "diagnostic") continue;
     const anchor = anchors[block.id];
