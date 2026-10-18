@@ -1,7 +1,7 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty } from "../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { shellQuote } from "../test/consumer-scenarios/support/failure-fingerprints";
 import {
   CONSUMER_SCENARIO_REPLAY_INPUTS,
@@ -10,6 +10,8 @@ import {
   consumerScenarioReplayFlags,
   parseConsumerArgs,
 } from "./consumer-scenario-args";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const argvOf = (command: string): string[] =>
   [...command.matchAll(/'(?:'\\''|[^'])*'|\S+/gu)]
