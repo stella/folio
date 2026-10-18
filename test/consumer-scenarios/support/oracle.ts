@@ -23,6 +23,7 @@ import type { FolioContentStatedNumbering } from "@stll/folio-core/compare/conte
 
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
+  getFolioDocumentOperationRemovedBlockIds,
   type FolioDocumentOperationType,
   type FolioDocumentStoryHandle,
   inspectDocumentStylesFromDocx,
@@ -1876,7 +1877,54 @@ export const assertRequestedOutcome = async (
   model.inTextBox = pre.targets.inTextBox;
   model.mode = pre.mode;
   model.story = pre.resolvedStory;
-  for (const operation of outcome.applied) expectOperation(model, operation);
+  const removedBlocksBy = new Map<string, string>();
+  for (const [index, operation] of outcome.applied.entries()) {
+    const range = operation["range"];
+    const targetBlockId =
+      typeof range === "object" && range !== null && "blockId" in range
+        ? range.blockId
+        : operation["blockId"];
+    const targetsBesideBlock = [
+      "insertAfterBlock",
+      "insertBeforeBlock",
+      "insertSignatureTable",
+      "insertTable",
+    ].includes(operation.type);
+    if (
+      !targetsBesideBlock &&
+      typeof targetBlockId === "string" &&
+      removedBlocksBy.has(targetBlockId)
+    ) {
+      throw new Error(
+        `applied an operation on block ${targetBlockId}, which an earlier one of the batch removed`,
+      );
+    }
+    expectOperation(model, operation);
+
+    const blockId = operation["blockId"];
+    if (typeof blockId !== "string") continue;
+    const removal = (() => {
+      switch (operation.type) {
+        case "deleteBlock":
+        case "mergeBlockWithNext":
+        case "deleteTable":
+        case "deleteTableRow":
+        case "deleteTableColumn":
+          return getFolioDocumentOperationRemovedBlockIds(pre.rows, {
+            id: `oracle-${String(index)}`,
+            type: operation.type,
+            blockId,
+          });
+        default:
+          return [];
+      }
+    })();
+    for (const removedBlockId of removal) {
+      if (!removedBlocksBy.has(removedBlockId)) {
+        removedBlocksBy.set(removedBlockId, String(operation["id"] ?? index));
+      }
+    }
+  }
   // An operation the oracle cannot model changes the document in a way it
   // cannot predict; the rest of the batch is not compared either.
   const predictable = model.unmodelled.length === 0;

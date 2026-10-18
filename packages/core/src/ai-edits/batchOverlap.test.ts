@@ -1214,7 +1214,8 @@ describe("a merge retracting an inserted break before the last paragraph the bat
               ["direct", direct],
             ] as const) {
               const operations = batchOf(extra, setup);
-              // The batch retires B's final break after its property edit.
+              // The batch refuses an edit of B because the merge removes B's
+              // identity; replay only the operations the batch accepted.
               for (const id of ["b", "delete", "merge"]) {
                 const operation = operations.find((candidate) => candidate.id === id);
                 if (!operation || !appliedIds.has(id)) continue;
@@ -1231,10 +1232,13 @@ describe("a merge retracting an inserted break before the last paragraph the bat
             // alignments occupy C's slot; the old standalone merge appended a
             // second receipt there. Equal B/C alignments allocate no receipt.
             const deletionOccupiesSurvivor = alignments.at(-2) !== alignments.at(-1);
-            const refused =
-              extra === "mergedProperties" && (alignedA === "tracked" || deletionOccupiesSurvivor)
+            const refused = [
+              ...(extra === "propertiesOnB" ? ["b"] : []),
+              ...(extra === "mergedProperties" &&
+              (alignedA === "tracked" || deletionOccupiesSurvivor)
                 ? ["merge"]
-                : [];
+                : []),
+            ];
             if (extra === "mergedProperties" && alignedA === "direct" && deletionOccupiesSurvivor) {
               const sequential = await prepare("tracked-changes", origin, alignedA, alignments);
               const operations = batchOf(extra, sequential);

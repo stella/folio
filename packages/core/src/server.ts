@@ -40,6 +40,7 @@ export {
   normalizeFolioAIBlockText,
 } from "./ai-edits/snapshot";
 export { getFolioDocumentOutline, readFolioDocumentSection } from "./ai-edits/scoped-reading";
+export { getFolioDocumentOperationRemovedBlockIds } from "./ai-edits/removed-blocks";
 export {
   deriveBlockId,
   getFolioParaIdFromBlockId,

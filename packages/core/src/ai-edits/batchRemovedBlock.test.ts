@@ -80,4 +80,39 @@ describe("a batch that removes a block and then formats it", () => {
     ).toBe(false);
     await reviewer.toBuffer();
   });
+
+  test.each(["direct", "tracked-changes"] as const)(
+    "refuses an edit of the block an earlier merge removes (%s)",
+    async (mode) => {
+      const reviewer = await buildReviewer();
+      const [first, second] = reviewer.getContent();
+      if (!first || !second) throw new Error("the fixture paragraphs are missing");
+
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
+            {
+              id: "format-removed",
+              type: "setBlockParagraphProperties",
+              blockId: second.id,
+              properties: { alignment: "center" },
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+
+      expect(result.applied.map(({ id }) => id)).toEqual(["merge"]);
+      expect(result.skipped).toEqual([
+        {
+          id: "format-removed",
+          reason: "overlappingOperation",
+          message: 'operation "merge", earlier in this batch, already claims its target.',
+        },
+      ]);
+    },
+  );
 });

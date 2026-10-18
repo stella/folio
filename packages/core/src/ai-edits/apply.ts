@@ -153,6 +153,7 @@ import type {
 } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { type BatchClaim, BatchClaims, compareBatchTieOrder } from "./batch-claims";
+import { getFolioDocumentOperationRemovedBlockIds } from "./removed-blocks";
 import { type CharacterBoundaryStrictness, describeCharacterSplit } from "./character-boundaries";
 import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
 import { separateRevisionStretches } from "./revisionStretches";
@@ -3907,6 +3908,7 @@ const applyFolioAIEditOperationsInternal = ({
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
   const batchClaims = new BatchClaims();
+  const removedBlocksBy = new Map<string, string>();
   const diffText: ReturnType<typeof createWordDiffSession>["diff"] =
     wordDiffMode === "coarse" ? coarseWordDiff : wordDiffSessionFromOptions(wordDiff).diff;
 
@@ -4022,6 +4024,22 @@ const applyFolioAIEditOperationsInternal = ({
       }
     }
 
+    const targetBlockId = "range" in operation ? operation.range.blockId : operation.blockId;
+    const targetsBesideBlock =
+      operation.type === "insertAfterBlock" ||
+      operation.type === "insertBeforeBlock" ||
+      operation.type === "insertSignatureTable" ||
+      operation.type === "insertTable";
+    const removedBy = targetsBesideBlock ? undefined : removedBlocksBy.get(targetBlockId);
+    if (removedBy !== undefined) {
+      skipped.push({
+        id: operation.id,
+        reason: "overlappingOperation",
+        message: `operation ${JSON.stringify(removedBy)}, earlier in this batch, already claims its target.`,
+      });
+      continue;
+    }
+
     // Every operation resolved against the document as it was read; one whose
     // target an earlier operation of the batch deletes, rewrites, splits,
     // merges or overlaps would be applied to positions that operation already
@@ -4041,6 +4059,12 @@ const applyFolioAIEditOperationsInternal = ({
       continue;
     }
     batchClaims.add(operation.id, claim);
+    for (const removedBlockId of getFolioDocumentOperationRemovedBlockIds(
+      snapshot.blocks,
+      operation,
+    )) {
+      if (!removedBlocksBy.has(removedBlockId)) removedBlocksBy.set(removedBlockId, operation.id);
+    }
     if (deletion) {
       claimedTableRows.add(`${deletion.tablePosition}:${deletion.rowIndex}`);
     }
