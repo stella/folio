@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
-import { BODY_TEXT_OUTLINE_LEVEL } from "@stll/docx-core/model";
+import { BODY_TEXT_OUTLINE_LEVEL, finalizeParagraphFormatting } from "@stll/docx-core/model";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { createStellaStyleDocumentPreset } from "../../style-sets/stellaStyle";
@@ -34,14 +34,18 @@ const paragraph = (
   text: string,
   styleId?: string,
   numPr?: ParagraphNumberingOverride,
-): Paragraph => ({
-  type: "paragraph",
-  formatting: {
+): Paragraph => {
+  const formatting = finalizeParagraphFormatting({
     ...(styleId !== undefined && { styleId }),
     ...(numPr !== undefined && { numPr }),
-  },
-  content: text === "" ? [] : [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
-});
+  });
+  return {
+    type: "paragraph",
+    ...(formatting !== undefined && { formatting }),
+    content:
+      text === "" ? [] : [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
+  };
+};
 
 const cell = (content: (Paragraph | Table)[]): TableCell => ({ type: "tableCell", content });
 
