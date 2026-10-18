@@ -1594,8 +1594,12 @@ export const compareComments = (
     // own the whole range. Splits and joins can move the surviving part of a
     // range to another paragraph before this batch deletes the old locator.
     // In that case the comment is still anchored and must survive. A thread
-    // left on the deleted locator is the orphan this check is meant to catch.
-    if (survivor && survivor.blockId === entry.blockId) {
+    // left on the deleted locator, or moved to another block the batch also
+    // deleted, is the orphan this check is meant to catch.
+    if (
+      survivor &&
+      (survivor.blockId === entry.blockId || model.deletedBlockIds.has(survivor.blockId))
+    ) {
       problems.push(`comment ${JSON.stringify(entry)} outlived the block it anchored`);
     }
   }

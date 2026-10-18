@@ -15,6 +15,19 @@ test("a comment range moved off a deleted paragraph remains anchored", () => {
   assert.match(compareComments(model, [before], [before]).join("\n"), /outlived/u);
 });
 
+test("a comment moved onto another deleted paragraph is still an orphan", () => {
+  const model = modelOf([row("first", "Anchor"), row("second", "gone"), row("third", "survives")]);
+  expectOperation(model, { type: "deleteBlock", blockId: "first" });
+  expectOperation(model, { type: "deleteBlock", blockId: "second" });
+  const before = { id: 1, text: "review", anchor: "Anchor", blockId: "first" };
+
+  assert.match(
+    compareComments(model, [before], [{ ...before, blockId: "second" }]).join("\n"),
+    /outlived/u,
+  );
+  assert.deepEqual(compareComments(model, [before], [{ ...before, blockId: "third" }]), []);
+});
+
 test("migrated comment ranges are distinguished from orphans over generated ids", () => {
   for (let deleted = 0; deleted < 8; deleted += 1) {
     for (let destination = 0; destination < 8; destination += 1) {
