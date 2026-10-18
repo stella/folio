@@ -99,16 +99,12 @@ const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts =>
     const anchorIndex = blocks.findIndex(({ id }) => id === operation.blockId);
     if (anchorIndex < 0) continue;
     const direction = operation.type === "insertAfterBlock" ? 1 : -1;
+    const blockAt = (index: number) => (index >= 0 ? blocks.at(index) : undefined);
     let insertedIndex = anchorIndex + direction;
-    while (
-      insertedIndex >= 0 &&
-      insertedIndex < blocks.length &&
-      pendingInsertionBlockIds.has(blocks[insertedIndex].id)
-    ) {
+    while (pendingInsertionBlockIds.has(blockAt(insertedIndex)?.id ?? "")) {
       insertedIndex += direction;
     }
-    const inserted =
-      insertedIndex >= 0 && insertedIndex < blocks.length ? blocks[insertedIndex] : null;
+    const inserted = blockAt(insertedIndex) ?? null;
     if (
       !inserted ||
       inserted.kind === "diagnostic" ||
