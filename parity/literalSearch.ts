@@ -23,12 +23,14 @@ export const createLiteralSearchScope = () => {
 
   /** Both containment directions give an inspector candidate full similarity. */
   const createCandidateContainment = (query: string, candidates: readonly string[]) => {
-    const matcher = literalMatcher(candidates.filter((candidate) => candidate.length > 0));
-    const contained = new Set(
-      matcher.findOverlappingIter(query.toWellFormed()).map(({ text }) => text),
-    );
-    contained.add("");
-    const matchesQuery = createLiteralSearch(query);
+    const wellFormedQuery = query.toWellFormed();
+    const distinctCandidates = new Set(candidates.map((candidate) => candidate.toWellFormed()));
+    const contained = new Set([""]);
+    // Each candidate needs one first-occurrence check, irrespective of repetitions.
+    for (const candidate of distinctCandidates) {
+      if (candidate.length > 0 && wellFormedQuery.includes(candidate)) contained.add(candidate);
+    }
+    const matchesQuery = createLiteralSearch(wellFormedQuery);
     return (text: string) => matchesQuery(text) || contained.has(text.toWellFormed());
   };
 

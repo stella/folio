@@ -363,8 +363,8 @@ describe("attributeDivergences", () => {
       }
     };
     const references = processDocuments();
-    // Two constructions per document (dictionary and query), despite two matching calls.
-    expect(references).toHaveLength(documentCount * 2);
+    // One query construction per document, despite two matching calls.
+    expect(references).toHaveLength(documentCount);
     // WeakRef construction keeps targets alive until the current task finishes.
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     Bun.gc(true);

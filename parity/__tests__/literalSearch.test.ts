@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { AhoCorasick } from "@stll/aho-corasick";
 import fc from "fast-check";
 import ts from "typescript";
 import { assertProperty, propertyTestTimeout } from "../../test/property-testing";
@@ -70,6 +71,59 @@ describe("parity literal queries", () => {
     expect(createLiteralSearch("a+b[0]")("a+b[0]!")).toBe(true);
     expect(createLiteralSearch("a+b[0]")("aaab0")).toBe(false);
   });
+
+  test("candidate membership never enumerates repetitive occurrences", () => {
+    const overlapping = spyOn(AhoCorasick.prototype, "findOverlappingIter");
+    const nonOverlapping = spyOn(AhoCorasick.prototype, "findIter");
+    try {
+      const { createCandidateContainment } = createLiteralSearchScope();
+      const query = "\ufffd".repeat(48);
+      const candidates = ["\ud800", "\udc00", "\ufffd", ""].flatMap((unit) =>
+        Array.from({ length: 12 }, () => unit.repeat(6)),
+      );
+      const contains = createCandidateContainment(query, candidates);
+      for (const candidate of candidates) expect(contains(candidate)).toBe(true);
+      expect(contains("\ufffd")).toBe(false);
+      expect(contains("not a candidate")).toBe(false);
+      expect(overlapping).not.toHaveBeenCalled();
+      expect(nonOverlapping).not.toHaveBeenCalled();
+    } finally {
+      overlapping.mockRestore();
+      nonOverlapping.mockRestore();
+    }
+  });
+
+  test(
+    "membership is independent of duplicate candidates and occurrence counts",
+    () => {
+      const unit = fc.constantFrom("a", "😀", "é", "e\u0301", "\ud800", "\udc00", "\ufffd");
+      assertProperty(
+        fc.property(
+          unit,
+          fc.integer({ min: 1, max: 40 }),
+          fc.array(fc.integer({ min: 1, max: 20 }), { minLength: 1, maxLength: 12 }),
+          fc.integer({ min: 1, max: 30 }),
+          (fragment, occurrences, widths, duplicates) => {
+            const query = fragment.repeat(occurrences);
+            const candidates = widths.flatMap((width) =>
+              Array.from({ length: duplicates }, () => fragment.repeat(width)),
+            );
+            const scope = createLiteralSearchScope();
+            const contains = scope.createCandidateContainment(query, candidates);
+            const wellFormedQuery = query.toWellFormed();
+            for (const candidate of candidates) {
+              const normalized = candidate.toWellFormed();
+              expect(contains(candidate)).toBe(
+                normalized.includes(wellFormedQuery) || wellFormedQuery.includes(normalized),
+              );
+            }
+          },
+        ),
+        { id: "candidate membership ignores duplicate and repetitive occurrences", numRuns: 100 },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
 
   test(
     "matches the native literal oracle for generated scalar strings",
