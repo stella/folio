@@ -1,10 +1,28 @@
-import { levelShowsMarker, resolveNumberingLevel } from "@stll/docx-core/model";
+import {
+  levelShowsMarker,
+  paragraphNumberingReference,
+  resolveNumberingLevel,
+  type ResolvedParagraphNumbering,
+} from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { computeListRendering, type NumberingMap } from "../docx/numberingParser";
 import type { ListRendering } from "../types/document";
 import { effectiveParagraphNumbering, type ParagraphNumberingSources } from "./numberingAttr";
 
-type ParagraphListReference = { kind: "reference"; numId: number; ilvl: number };
+type ParagraphListReference = Extract<ResolvedParagraphNumbering, { kind: "reference" }>;
+
+const standaloneList = (
+  reference: ParagraphListReference,
+  rendering: ListRendering,
+): ParagraphList =>
+  rendering.markerHidden === true || rendering.marker.trim().length === 0
+    ? {
+        kind: "markerless",
+        reference,
+        rendering,
+        reason: "markerHiddenOrBlank",
+      }
+    : { kind: "marker", reference, rendering };
 
 export type ParagraphList =
   | { kind: "none" }
@@ -31,18 +49,30 @@ export type ParagraphList =
 export const resolveParagraphList = (
   sources: ParagraphNumberingSources,
   numbering: NumberingMap | null,
+  standaloneRendering?: ListRendering,
 ): ParagraphList => {
   const effective = effectiveParagraphNumbering(sources);
   switch (effective.kind) {
-    case "none":
+    case "none": {
+      // A package-free canonical model can carry its list projection directly.
+      // Package-backed documents must instead resolve the authored reference
+      // against their definitions, so this path cannot mask stale rendering.
+      if (numbering === null && standaloneRendering !== undefined) {
+        const reference = paragraphNumberingReference({
+          numId: standaloneRendering.numId,
+          ilvl: standaloneRendering.level,
+        });
+        return standaloneList(reference, standaloneRendering);
+      }
       return { kind: "none" };
+    }
     case "reference": {
-      const reference: ParagraphListReference = {
-        kind: "reference",
-        numId: effective.numId,
-        ilvl: effective.ilvl,
-      };
-      if (numbering === null) return { kind: "markerless", reference, reason: "noNumbering" };
+      const reference = effective;
+      if (numbering === null) {
+        return standaloneRendering === undefined
+          ? { kind: "markerless", reference, reason: "noNumbering" }
+          : standaloneList(reference, standaloneRendering);
+      }
       const resolution = resolveNumberingLevel(
         numbering.definitions,
         reference.numId,

@@ -24,6 +24,9 @@ import type { RenderContext } from "./types";
 /** Markdown has six heading levels; Word has nine. */
 const MAX_MARKDOWN_HEADING_LEVEL = 6;
 
+/** Explicit projection carried by canonical models that are not attached to a package. */
+const standaloneListRendering = (para: Paragraph): ListRendering | undefined => para.listRendering;
+
 /**
  * Render a paragraph and return the block text. No surrounding blank line: the
  * caller joins blocks.
@@ -60,6 +63,7 @@ export function renderParagraphBlock(
   const resolvedList = resolveParagraphList(
     { numPr: para.formatting?.numPr, numPrFromStyle },
     numbering,
+    standaloneListRendering(para),
   );
   const resolvedRendering = resolvedList.kind === "marker" ? resolvedList.rendering : undefined;
   const counterAttrs = listLabelAttrsFromRendering(resolvedRendering, {
@@ -101,7 +105,7 @@ export function renderParagraphBlock(
       },
     );
   }
-  const { label } = ctx.nextListLabel(counterAttrs);
+  const { label } = ctx.nextListLabel(counterAttrs, resolvedRendering);
   const inline = renderParagraphInline(ctx, pkg, para.content, para.paraId);
   const styleId = para.formatting?.styleId;
 
