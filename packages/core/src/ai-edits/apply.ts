@@ -18,7 +18,12 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canSplit } from "prosemirror-transform";
 import { panic } from "better-result";
-import { contentRank, orderBatchOperations, type BatchOrderAddress } from "@stll/docx-core/ops";
+import {
+  contentRank,
+  groupInsertionRuns,
+  orderBatchOperations,
+  type BatchOrderAddress,
+} from "@stll/docx-core/ops";
 import {
   claimRevisionIds,
   nextRevisionId as peekRevisionId,
@@ -4234,10 +4239,13 @@ const applyFolioAIEditOperationsInternal = ({
     };
   };
   const executionOrder = orderBatchOperations(executableResolved, batchAddress);
-  for (let executionIndex = 0; executionIndex < executionOrder.length; executionIndex++) {
-    const item = executionOrder[executionIndex];
+  const executionGroups = groupInsertionRuns(executionOrder, (candidate) =>
+    isBatchableParagraphInsertion(candidate, mode) ? candidate.from : null,
+  );
+  for (const insertionRun of executionGroups) {
+    const item = insertionRun.at(0);
     if (!item) {
-      panic("The operation execution index exceeded the resolved plan", { executionIndex });
+      panic("The operation execution group was empty");
     }
     continueSharedRevisionIds();
     if (mode === "tracked-changes" && writesParagraphPropertyChange(item)) {
@@ -4269,64 +4277,49 @@ const applyFolioAIEditOperationsInternal = ({
         continue;
       }
     }
-    if (isBatchableParagraphInsertion(item, mode)) {
-      const insertionRun: ResolvedOperation[] = [item];
-      for (let lookahead = executionIndex + 1; lookahead < executionOrder.length; lookahead++) {
-        const candidate = executionOrder[lookahead];
-        if (
-          !candidate ||
-          candidate.from !== item.from ||
-          !isBatchableParagraphInsertion(candidate, mode)
-        ) {
-          break;
-        }
-        insertionRun.push(candidate);
+    if (insertionRun.length > 1) {
+      const nodeGroups: PMNode[][] = [];
+      const runApplied: FolioAIEditAppliedOperation[] = [];
+      for (const insertion of insertionRun) {
+        const insertionSuggestionId = isSuggested
+          ? (insertion.operation.suggestionId ?? insertion.operation.id)
+          : null;
+        const built = buildInsertedParagraphs({
+          item: insertion,
+          schema: view.state.schema,
+          formattingFromStyle: formattingFromStyleForInsertion(insertion),
+          mode,
+          author,
+          date,
+          initials,
+          commentMark: null,
+          suggestionId: insertionSuggestionId,
+          revisionSeed,
+          isPairedMove,
+          numbering,
+          styleResolver,
+        });
+        revisionSeed = built.nextRevisionId;
+        claimSharedRevisionIds(revisionSeed);
+        nodeGroups.push(built.nodes);
+        runApplied.push({
+          id: insertion.operation.id,
+          ...(built.revisionIds[0] !== undefined && {
+            revisionId: built.revisionIds[0],
+            revisionIds: built.revisionIds,
+          }),
+          ...(insertionSuggestionId !== null && { suggestionId: insertionSuggestionId }),
+        });
       }
-      if (insertionRun.length > 1) {
-        const nodeGroups: PMNode[][] = [];
-        const runApplied: FolioAIEditAppliedOperation[] = [];
-        for (const insertion of insertionRun) {
-          const insertionSuggestionId = isSuggested
-            ? (insertion.operation.suggestionId ?? insertion.operation.id)
-            : null;
-          const built = buildInsertedParagraphs({
-            item: insertion,
-            schema: view.state.schema,
-            formattingFromStyle: formattingFromStyleForInsertion(insertion),
-            mode,
-            author,
-            date,
-            initials,
-            commentMark: null,
-            suggestionId: insertionSuggestionId,
-            revisionSeed,
-            isPairedMove,
-            numbering,
-            styleResolver,
-          });
-          revisionSeed = built.nextRevisionId;
-          claimSharedRevisionIds(revisionSeed);
-          nodeGroups.push(built.nodes);
-          runApplied.push({
-            id: insertion.operation.id,
-            ...(built.revisionIds[0] !== undefined && {
-              revisionId: built.revisionIds[0],
-              revisionIds: built.revisionIds,
-            }),
-            ...(insertionSuggestionId !== null && { suggestionId: insertionSuggestionId }),
-          });
+      const nodes: PMNode[] = [];
+      for (const group of nodeGroups.toReversed()) {
+        for (const node of group) {
+          nodes.push(node);
         }
-        const nodes: PMNode[] = [];
-        for (const group of nodeGroups.toReversed()) {
-          for (const node of group) {
-            nodes.push(node);
-          }
-        }
-        tr = tr.insert(item.from, nodes);
-        applied.push(...runApplied);
-        executionIndex += insertionRun.length - 1;
-        continue;
       }
+      tr = tr.insert(item.from, nodes);
+      applied.push(...runApplied);
+      continue;
     }
     const provisionalCommentId =
       item.commentText !== undefined ? reserveProvisionalCommentId() : undefined;

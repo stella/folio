@@ -56,6 +56,7 @@ export { createClient } from "./sequencing/client";
 export {
   compareBatchOrder,
   contentRank,
+  groupInsertionRuns,
   orderBatchOperations,
   type BatchOrderAddress,
 } from "./batchOrder";

@@ -43,7 +43,12 @@
 
 import assert from "node:assert/strict";
 import { validateDocxPackage } from "@stll/docx-core";
-import { contentRank, orderBatchOperations, type BatchOrderAddress } from "@stll/docx-core/ops";
+import {
+  contentRank,
+  groupInsertionRuns,
+  orderBatchOperations,
+  type BatchOrderAddress,
+} from "@stll/docx-core/ops";
 import { inflateRawSync } from "node:zlib";
 
 import { createReviewerBridge } from "@stll/folio-agents";
@@ -417,7 +422,7 @@ const rebase = (before: string, after: string, start: number, end: number): numb
  * `operation`, made against `preRows`, restated against `rows`: the same
  * block, the same words. Null when what it names is no longer there.
  */
-const restate = (
+export const restate = (
   operation: AnyOperation,
   preRows: readonly Row[],
   rows: readonly Row[],
@@ -444,6 +449,9 @@ const restate = (
     handle = { blockId, startOffset, endOffset: startOffset + find.length };
   }
   if (operation.type === "replaceBlock" && now.text !== pre.text) {
+    if (operation["styleId"] !== undefined || operation["preserveFormatting"] === false) {
+      return null;
+    }
     const shift = rebase(pre.text, now.text, 0, pre.text.length);
     if (shift === null) return null;
     const range = createFolioAITextRangeHandle({
@@ -663,33 +671,21 @@ export const sequentialGroups = ({
   );
   const rest = ordered.filter(({ operation }) => !isColumnEdit(operation));
   const columns = ordered.filter(({ operation }) => isColumnEdit(operation));
-  const groups: AnyOperation[][] = [];
   const inputOrder = new Map(applied.map(({ id }, index) => [id, index]));
-  for (const { operation } of rest) {
-    if (!INSERTIONS.has(operation.type)) {
-      groups.push([operation]);
-      continue;
-    }
-    const at = placement(operation, preRows);
-    const existing = groups.find((group) => {
-      const first = group.at(0);
-      return (
-        first !== undefined &&
-        group.every((candidate) => INSERTIONS.has(candidate.type)) &&
-        placement(first, preRows).every((part, index) => part === at[index])
-      );
-    });
-    if (existing) {
-      existing.push(operation);
-      existing.sort(
-        (left, right) =>
-          (inputOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
-          (inputOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
-      );
-    } else {
-      groups.push([operation]);
-    }
-  }
+  const groups = groupInsertionRuns(
+    rest.map(({ operation }) => operation),
+    (operation) => {
+      if (!INSERTIONS.has(operation.type)) return null;
+      const [block, inside, offset] = placement(operation, preRows);
+      return block * 1_000_000_000 + inside * 100_000_000 + offset;
+    },
+  ).map((group) =>
+    group.toSorted(
+      (left, right) =>
+        (inputOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+        (inputOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+    ),
+  );
   return [
     ...applied.filter((operation) => ANNOTATIONS.has(operation.type)).map((one) => [one]),
     // A tracked batch retires final breaks only after admissible property edits.

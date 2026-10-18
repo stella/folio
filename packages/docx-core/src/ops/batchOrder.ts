@@ -82,3 +82,30 @@ export const orderBatchOperations = <T>(
   addressOf: (operation: T) => BatchOrderAddress,
 ): T[] =>
   operations.toSorted((left, right) => compareBatchOrder(addressOf(left), addressOf(right)));
+
+/**
+ * Partition an ordered batch into execution runs. Only consecutive insertions
+ * at the same position share a run; every other operation remains a singleton.
+ */
+export const groupInsertionRuns = <T>(
+  operations: readonly T[],
+  insertionPositionOf: (operation: T) => number | null,
+): T[][] => {
+  const groups: T[][] = [];
+  for (const operation of operations) {
+    const position = insertionPositionOf(operation);
+    const previous = groups.at(-1);
+    const first = previous?.at(0);
+    if (
+      position !== null &&
+      previous !== undefined &&
+      first !== undefined &&
+      insertionPositionOf(first) === position
+    ) {
+      previous.push(operation);
+      continue;
+    }
+    groups.push([operation]);
+  }
+  return groups;
+};

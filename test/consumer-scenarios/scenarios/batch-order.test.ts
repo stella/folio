@@ -13,7 +13,7 @@ import {
 } from "@stll/docx-core/ops";
 
 import { openReviewer, packDocument } from "../support/documents.ts";
-import { sequentialGroups } from "../support/metamorphic.ts";
+import { restate, sequentialGroups } from "../support/metamorphic.ts";
 import type { Row } from "../support/oracle.ts";
 
 const MODES = ["direct", "tracked-changes"] as const;
@@ -49,17 +49,19 @@ const compareMix = async ({ mode, order, mirrored, inserted }: MixOptions) => {
     assert.ok(found);
     return found;
   };
-  const mix: FolioDocumentOperation[] = mirrored
-    ? [
-        { id: "insert", type: "insertAfterBlock", blockId: block(2).id, text: inserted },
-        { id: "merge", type: "mergeBlockWithNext", blockId: block(0).id, separator: " " },
-        { id: "replace", type: "replaceBlock", blockId: block(3).id, text: "Replaced delta." },
-      ]
-    : [
-        { id: "insert", type: "insertAfterBlock", blockId: block(0).id, text: inserted },
-        { id: "merge", type: "mergeBlockWithNext", blockId: block(2).id, separator: " " },
-        { id: "replace", type: "replaceBlock", blockId: block(1).id, text: "Replaced bravo." },
-      ];
+  const mix = (
+    mirrored
+      ? [
+          { id: "insert", type: "insertAfterBlock", blockId: block(2).id, text: inserted },
+          { id: "merge", type: "mergeBlockWithNext", blockId: block(0).id, separator: " " },
+          { id: "replace", type: "replaceBlock", blockId: block(3).id, text: "Replaced delta." },
+        ]
+      : [
+          { id: "insert", type: "insertAfterBlock", blockId: block(0).id, text: inserted },
+          { id: "merge", type: "mergeBlockWithNext", blockId: block(2).id, separator: " " },
+          { id: "replace", type: "replaceBlock", blockId: block(1).id, text: "Replaced bravo." },
+        ]
+  ) satisfies FolioDocumentOperation[];
   const operations = order.flatMap((index) => mix.at(index) ?? []);
   const request = {
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -109,6 +111,57 @@ test("pinned adjacent insertion, merge and replacement batches replay from pre-b
   for (const mode of MODES) {
     await compareMix({ mode, order: ORDERS[0], mirrored: false, inserted: "Added 👍🏽 clause." });
   }
+});
+
+test("insertions separated by a merge stay in separate replay runs in every input order", async () => {
+  for (const order of ORDERS) {
+    const fixture = await packDocument(fromMarkdown("Alpha.\n\nBravo.\n\nCharlie."));
+    const batch = await openReviewer(fixture);
+    const sequential = await openReviewer(fixture);
+    const rows = batch.getContent() as Row[];
+    const anchor = rows.at(0);
+    assert.ok(anchor);
+    const operations: FolioDocumentOperation[] = [
+      { id: "insert-a", type: "insertAfterBlock", blockId: anchor.id, text: "Inserted A." },
+      { id: "merge", type: "mergeBlockWithNext", blockId: anchor.id, separator: " " },
+      { id: "insert-b", type: "insertAfterBlock", blockId: anchor.id, text: "Inserted B." },
+    ];
+    const ordered = order.flatMap((index) => operations.at(index) ?? []);
+    const request = {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct" as const,
+      operations: ordered,
+    };
+    const allGroups = sequentialGroups({ applied: ordered, preRows: rows, mode: "direct" });
+    if (order === ORDERS[0]) {
+      assert.deepEqual(
+        allGroups.map((group) => group.map(({ id }) => id)),
+        [["insert-b"], ["merge"], ["insert-a"]],
+      );
+    }
+    const result = batch.applyDocumentOperations(request, { undefinedReferences: "refuse" });
+    const appliedIds = new Set(result.applied.map(({ id }) => id));
+    const applied = ordered.filter(({ id }) => appliedIds.has(id));
+    for (const group of sequentialGroups({ applied, preRows: rows, mode: "direct" })) {
+      const replayed = sequential.applyDocumentOperations(
+        { ...request, operations: group as FolioDocumentOperation[] },
+        { undefinedReferences: "refuse" },
+      );
+      assert.deepEqual(replayed.skipped, []);
+    }
+    assert.deepEqual(view(sequential), view(batch));
+  }
+});
+
+test("restate refuses replaceBlock forms whose formatting semantics cannot become a range", () => {
+  const preRows = [{ id: "block", text: "Original." }] as Row[];
+  const rows = [{ id: "block", text: "Prefix Original." }] as Row[];
+  const base = { id: "replace", type: "replaceBlock", blockId: "block", text: "Replacement." };
+  const textHashOf = () => undefined;
+
+  assert.equal(restate({ ...base, styleId: "Heading1" }, preRows, rows, textHashOf), null);
+  assert.equal(restate({ ...base, preserveFormatting: false }, preRows, rows, textHashOf), null);
+  assert.equal(restate(base, preRows, rows, textHashOf)?.type, "replaceRange");
 });
 
 test("the batch comparator defines one total order", () => {
