@@ -154,8 +154,7 @@ export const createListLabelCounter = (
     const effective = effectiveParagraphNumberingReference(sources);
     const projectedRendering =
       standaloneRendering ??
-      (numbering === null &&
-      (attrs.listMarker != null || attrs.listIsBullet === true || attrs.listNumFmt != null)
+      (attrs.listMarker != null || attrs.listIsBullet === true || attrs.listNumFmt != null
         ? listRenderingFromAttrs({ attrs, numId: effective?.numId ?? 1 })
         : undefined);
     const list = resolveParagraphList(sources, numbering, projectedRendering);
@@ -170,11 +169,43 @@ export const createListLabelCounter = (
       Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
     } else if (list.kind === "markerless" && list.rendering !== undefined) {
       Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
+    } else if (list.kind === "markerless" && projectedRendering?.markerHidden === true) {
+      Object.assign(counterInput, listRenderingAttrPatch(projectedRendering));
     }
     Object.assign(
       counterInput,
       Object.fromEntries(Object.entries(contentDerived).filter(([, value]) => value !== undefined)),
     );
+    if (counterInput._propertyChanges) {
+      counterInput._propertyChanges = counterInput._propertyChanges.map((change) => {
+        const previous = change.previousFormatting;
+        if (!previous) return change;
+        const previousSources = paragraphNumberingSourcesFromBoundary({
+          numPr: previous.numPr,
+          numPrFromStyle: previous.numPrFromStyle,
+        });
+        const previousReference = effectiveParagraphNumberingReference(previousSources);
+        const previousProjected =
+          previous.listMarker != null ||
+          previous.listIsBullet === true ||
+          previous.listNumFmt != null
+            ? listRenderingFromAttrs({ attrs: previous, numId: previousReference?.numId ?? 1 })
+            : undefined;
+        const previousList = resolveParagraphList(previousSources, numbering, previousProjected);
+        const previousFormatting = { ...previous };
+        Object.assign(previousFormatting, CLEARED_LIST_RENDERING_ATTRS);
+        if (
+          previousList.kind === "marker" ||
+          (previousList.kind === "markerless" && previousList.rendering !== undefined)
+        ) {
+          const rendering = previousList.rendering;
+          if (rendering) Object.assign(previousFormatting, listRenderingAttrPatch(rendering));
+        } else if (previousProjected?.markerHidden === true) {
+          Object.assign(previousFormatting, listRenderingAttrPatch(previousProjected));
+        }
+        return { ...change, previousFormatting };
+      });
+    }
     const { counterAttrs, marker } = advanceVisibleListMarker(counterInput, streams);
     const projectedLabel = visibleLabel(counterAttrs, marker);
     if (readsProjectedStreams && projectedLabel !== undefined) {
@@ -184,8 +215,16 @@ export const createListLabelCounter = (
       numPr: counterAttrs.numPr,
       numPrFromStyle: counterAttrs.numPrFromStyle,
     });
-    const countedList = resolveParagraphList(countedSources, numbering, projectedRendering);
     const countedNumbering = effectiveParagraphNumberingReference(countedSources);
+    const revisionSelectedRendering =
+      counterInput._propertyChanges?.length && counterAttrs !== counterInput && numbering === null
+        ? listRenderingFromAttrs({ attrs: counterAttrs, numId: countedNumbering?.numId ?? 1 })
+        : undefined;
+    const countedList = resolveParagraphList(
+      countedSources,
+      numbering,
+      revisionSelectedRendering ?? projectedRendering,
+    );
     switch (countedList.kind) {
       case "none":
         return { kind: "none", label: undefined, numbering: undefined };

@@ -17,8 +17,8 @@ import {
 } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { createListLabelCounter } from "../prosemirror/listLabels";
-import type { NumberingMap } from "../docx/numberingParser";
 import { getDocumentNumberingForDoc } from "../prosemirror/plugins/documentNumbering";
+import type { NumberingMap } from "../docx/numberingParser";
 import { paragraphNumberingAttr, readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
 import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";

@@ -2,19 +2,11 @@
 
 import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, type EditorState, type Transaction } from "prosemirror-state";
-import {
-  AddMarkStep,
-  DocAttrStep,
-  RemoveMarkStep,
-  ReplaceAroundStep,
-  ReplaceStep,
-  type Step,
-} from "prosemirror-transform";
+import { Plugin, type EditorState } from "prosemirror-state";
 
 import { getCachedNumberingMap, type NumberingMap } from "../../docx/numberingParser";
 import type { NumberingDefinitions } from "../../types/document";
-import { completeNumberingForDoc, paragraphListReferences } from "../listInstanceReferences";
+import { completeNumberingForDoc } from "../listInstanceReferences";
 
 /**
  * The package's own definitions (`null` when it has no numbering part) and
@@ -37,53 +29,6 @@ const completedState = (
   return { definitions, map: completed ? getCachedNumberingMap(completed) : null };
 };
 
-/** Steps that can change a paragraph's attrs or bring paragraphs in, by what they replace. */
-const isReplace = (step: Step): step is ReplaceStep | ReplaceAroundStep =>
-  step instanceof ReplaceStep || step instanceof ReplaceAroundStep;
-
-/** Steps that change nothing a numbering reference lives in. */
-const leavesParagraphAttrs = (step: Step): boolean =>
-  step instanceof AddMarkStep || step instanceof RemoveMarkStep || step instanceof DocAttrStep;
-
-/**
- * Whether `tr` may have introduced a reference `map` does not define. Only the
- * ranges its steps replaced are read, so typing costs one paragraph, not the
- * document. A step that changes attrs in place (not by replacement) is not
- * localised and answers yes.
- */
-const mayReferenceUnknownInstance = (tr: Transaction, map: NumberingMap | null): boolean => {
-  const ranges: { from: number; to: number }[] = [];
-  for (const [index, step] of tr.steps.entries()) {
-    if (leavesParagraphAttrs(step)) {
-      continue;
-    }
-    if (!isReplace(step)) {
-      return true;
-    }
-    const later = tr.mapping.slice(index + 1);
-    step.getMap().forEach((_oldStart, _oldEnd, newStart, newEnd) => {
-      ranges.push({ from: later.map(newStart, -1), to: later.map(newEnd, 1) });
-    });
-  }
-  const size = tr.doc.content.size;
-  const isUnknown = (numId: number): boolean => !(map?.hasNumbering(numId) ?? false);
-  return ranges.some(({ from, to }) => {
-    let unknown = false;
-    const start = Math.min(Math.max(0, from), size);
-    tr.doc.nodesBetween(start, Math.min(Math.max(start, to), size), (node) => {
-      if (unknown) {
-        return false;
-      }
-      if (node.type.name !== "paragraph") {
-        return true;
-      }
-      unknown = paragraphListReferences(node).some(isUnknown);
-      return false;
-    });
-    return unknown;
-  });
-};
-
 export const createDocumentNumberingPlugin = (
   definitions: NumberingDefinitions | null | undefined,
 ): Plugin =>
@@ -92,9 +37,7 @@ export const createDocumentNumberingPlugin = (
     state: {
       init: (_config, state) => completedState(definitions ?? null, state.doc),
       apply: (tr, current, _oldState, state) =>
-        tr.docChanged && mayReferenceUnknownInstance(tr, current.map)
-          ? completedState(current.definitions, state.doc)
-          : current,
+        tr.docChanged ? completedState(current.definitions, state.doc) : current,
     },
   });
 
