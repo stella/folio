@@ -16,8 +16,11 @@ import { paintPreview } from "./previewPrimitives";
 const BOX: DisplayRect = { xPx: 100, yPx: 50, widthPx: 400, heightPx: 200 };
 const EXTENT = { width: 4_000_000, height: 2_000_000 };
 
-const descriptorOf = (shapes: readonly PreviewShape[]): PreviewDescriptor => ({
-  kind: "diagram",
+const descriptorOf = (
+  shapes: readonly PreviewShape[],
+  kind: PreviewDescriptor["kind"] = "diagram",
+): PreviewDescriptor => ({
+  kind,
   extent: EXTENT,
   shapes,
 });
@@ -31,6 +34,10 @@ const rectsOf = (primitives: readonly DisplayPrimitive[]) =>
   });
 
 describe("a preview is drawn", () => {
+  test.each(["chart", "diagram"] as const)("draws a %s descriptor", (kind) => {
+    expect(paintPreview(descriptorOf([], kind), BOX)).toHaveLength(1);
+  });
+
   test("the backdrop is the first mark and fills the box", () => {
     const [backdrop] = rectsOf(paintPreview(descriptorOf([]), BOX));
 
@@ -41,6 +48,7 @@ describe("a preview is drawn", () => {
 
   test("a shape covers the fraction of the box it covers of the extent", () => {
     const shape = {
+      type: "rect",
       x: EXTENT.width / 4,
       y: EXTENT.height / 2,
       width: EXTENT.width / 2,
@@ -60,6 +68,7 @@ describe("a preview is drawn", () => {
 
   test("shapes are drawn in the order the drawing lists them", () => {
     const at = (x: number, color: string): PreviewShape => ({
+      type: "rect",
       x,
       y: 0,
       width: EXTENT.width / 8,
@@ -82,6 +91,7 @@ describe("a preview is drawn", () => {
       paintPreview(
         descriptorOf([
           {
+            type: "rect",
             x: -EXTENT.width,
             y: EXTENT.height / 2,
             width: EXTENT.width * 3,
@@ -104,7 +114,14 @@ describe("a preview is drawn", () => {
   test("a shape wholly outside the extent draws nothing", () => {
     const outside = paintPreview(
       descriptorOf([
-        { x: EXTENT.width, y: 0, width: EXTENT.width, height: EXTENT.height, color: "70AD47" },
+        {
+          type: "rect",
+          x: EXTENT.width,
+          y: 0,
+          width: EXTENT.width,
+          height: EXTENT.height,
+          color: "70AD47",
+        },
       ]),
       BOX,
     );
@@ -121,7 +138,9 @@ describe("a preview is drawn", () => {
   test("a channel of zero is a channel of zero", () => {
     const [, drawn] = rectsOf(
       paintPreview(
-        descriptorOf([{ x: 0, y: 0, width: EXTENT.width, height: EXTENT.height, color: "FF0000" }]),
+        descriptorOf([
+          { type: "rect", x: 0, y: 0, width: EXTENT.width, height: EXTENT.height, color: "FF0000" },
+        ]),
         BOX,
       ),
     );
@@ -132,7 +151,9 @@ describe("a preview is drawn", () => {
   test("a colour the drawing did not state falls back to the preview fill", () => {
     const [, drawn] = rectsOf(
       paintPreview(
-        descriptorOf([{ x: 0, y: 0, width: EXTENT.width, height: EXTENT.height, color: "" }]),
+        descriptorOf([
+          { type: "rect", x: 0, y: 0, width: EXTENT.width, height: EXTENT.height, color: "" },
+        ]),
         BOX,
       ),
     );
@@ -145,7 +166,7 @@ describe("a preview is drawn", () => {
       {
         kind: "diagram",
         extent: { width: 0, height: 0 },
-        shapes: [{ x: 0, y: 0, width: 10, height: 10, color: "70AD47" }],
+        shapes: [{ type: "rect", x: 0, y: 0, width: 10, height: 10, color: "70AD47" }],
       },
       BOX,
     );
