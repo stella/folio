@@ -11,7 +11,7 @@
  * - w:lvl - Level definition with start, format, text pattern, etc.
  */
 
-import { isNumberingLevel } from "@stll/docx-core/model";
+import { resolveNumberingLevel } from "@stll/docx-core/model";
 import type {
   NumberingDefinitions,
   AbstractNumbering,
@@ -649,59 +649,8 @@ export function createNumberingMap(definitions: NumberingDefinitions): Numbering
     definitions,
 
     getLevel(numId: number, ilvl: number): ListLevel | null {
-      // A `w:abstractNum` defines at most nine levels, so an `ilvl` outside 0
-      // through 8 names none however the part spells it. The refusal lives
-      // here rather than in the reader so a definition folio cannot resolve is
-      // still a definition it carries.
-      if (!isNumberingLevel(ilvl)) {
-        return null;
-      }
-      const num = numMap.get(numId);
-      if (!num) {
-        return null;
-      }
-
-      // Check for level override first
-      if (num.levelOverrides) {
-        const override = num.levelOverrides.find((o) => o.ilvl === ilvl);
-        if (override) {
-          if (override.lvl) {
-            // Full level redefinition
-            return override.lvl;
-          }
-          // Start override - need to get base level and modify
-          const abstractNum = abstractMap.get(num.abstractNumId);
-          if (abstractNum) {
-            const baseLevel = abstractNum.levels.find((l) => l.ilvl === ilvl);
-            if (baseLevel && override.startOverride !== undefined) {
-              return {
-                ...baseLevel,
-                start: override.startOverride,
-              };
-            }
-          }
-        }
-      }
-
-      // Get from abstract numbering
-      let abstractNum = abstractMap.get(num.abstractNumId);
-      if (!abstractNum) {
-        return null;
-      }
-
-      // Follow numStyleLink: when an abstractNum has numStyleLink instead of
-      // defining levels directly, find the abstractNum that owns that style
-      // (has matching styleLink) and use its levels. Per ECMA-376 §17.9.21/22.
-      if (abstractNum.numStyleLink && abstractNum.levels.length === 0) {
-        for (const candidate of abstractMap.values()) {
-          if (candidate.styleLink === abstractNum.numStyleLink && candidate.levels.length > 0) {
-            abstractNum = candidate;
-            break;
-          }
-        }
-      }
-
-      return abstractNum.levels.find((l) => l.ilvl === ilvl) ?? null;
+      const resolution = resolveNumberingLevel(definitions, numId, ilvl);
+      return resolution.kind === "level" ? resolution.level : null;
     },
 
     getAbstractNumId(numId: number): number | null {

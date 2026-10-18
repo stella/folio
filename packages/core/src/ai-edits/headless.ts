@@ -118,7 +118,7 @@ import {
 } from "../prosemirror/plugins/documentNumbering";
 import { schema, singletonManager } from "../prosemirror/schema";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
-import { REVIEW_CARRIERS } from "@stll/docx-core/model";
+import { numberingLevelEntries, REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
 import type { Comment } from "../types/content";
 import type {
@@ -668,29 +668,16 @@ const numberingLevelsOf = (
   numbering: NumberingDefinitions | null | undefined,
 ): FolioNumberingLevel[] => {
   if (!numbering) return [];
-  const levelsByAbstractId = new Map(
-    numbering.abstractNums.map((abstractNum) => [abstractNum.abstractNumId, abstractNum.levels]),
-  );
-  const levels: FolioNumberingLevel[] = [];
-  for (const instance of numbering.nums) {
-    const overrides = new Map(
-      (instance.levelOverrides ?? []).map((override) => [override.ilvl, override]),
-    );
-    for (const level of levelsByAbstractId.get(instance.abstractNumId) ?? []) {
-      const override = overrides.get(level.ilvl);
-      const resolved = override?.lvl ?? level;
-      levels.push({
-        numId: instance.numId,
-        level: resolved.ilvl,
-        format: resolved.numFmt,
-        levelText: resolved.lvlText,
-        ...((override?.startOverride ?? resolved.start) !== undefined
-          ? { start: override?.startOverride ?? resolved.start }
-          : {}),
-      });
-    }
-  }
-  return levels;
+  return numberingLevelEntries(numbering).map(({ numId, ilvl, level }) => {
+    const entry: FolioNumberingLevel = {
+      numId,
+      level: ilvl,
+      format: level.numFmt,
+      levelText: level.lvlText,
+    };
+    if (level.start !== undefined) entry.start = level.start;
+    return entry;
+  });
 };
 
 type ReferencedNumberingLevelsOptions = {

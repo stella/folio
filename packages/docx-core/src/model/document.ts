@@ -184,6 +184,13 @@ export type {
   ListRendering,
   NumberingDefinitions,
 } from "./lists";
+export {
+  levelShowsMarker,
+  numberingLevelEntries,
+  resolveNumberingLevel,
+  type NumberingLevelEntry,
+  type NumberingLevelResolution,
+} from "./numberingLevels";
 
 // Content Model — shared values
 export {
