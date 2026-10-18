@@ -1,10 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { setDocumentBodyComments } from "@stll/docx-core/model";
 import type { BlockContent } from "@stll/docx-core/model";
 import fc from "fast-check";
 
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Document } from "../types/document";
 import { validateFolioDocumentModel } from "./modelValidation";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const documentWith = (body: Document["package"]["document"]): Document => ({
   package: { document: body },
@@ -246,6 +249,7 @@ describe("canonical Folio document model validation", () => {
 
         expect(() => validateFolioDocumentModel(document)).not.toThrow();
       }),
+      propertyConfig(),
     );
   });
 
