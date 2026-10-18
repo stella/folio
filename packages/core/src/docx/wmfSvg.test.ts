@@ -362,7 +362,9 @@ describe("renderWmfSvg", () => {
   test("enforces record, point, dimension, state-depth, and SVG-output caps", () => {
     expect(
       renderWmfSvg(
-        vectorWmf({ records: Array.from({ length: 10_001 }, () => wmfRecord(META.saveDc)) }),
+        vectorWmf({
+          records: Array.from({ length: 10_000 }, () => wmfRecord(META.setBackgroundMode, [1])),
+        }),
       ),
     ).toBeNull();
     expect(
@@ -375,8 +377,8 @@ describe("renderWmfSvg", () => {
     expect(
       renderWmfSvg(
         vectorWmf({
-          placeable: false,
-          records: mappingRecords({ x: 0, y: 0 }, { x: 100_001, y: 1 }),
+          bounds: { left: -32_768, top: -32_768, right: 32_767, bottom: 32_767 },
+          records: [wmfRecord(META.rectangle, [32_767, 32_767, 0x8000, 0x8000])],
         }),
       ),
     ).toBeNull();
@@ -385,20 +387,23 @@ describe("renderWmfSvg", () => {
         vectorWmf({ records: Array.from({ length: 257 }, () => wmfRecord(META.saveDc)) }),
       ),
     ).toBeNull();
-    const verboseRectangles = Array.from({ length: 9_990 }, () =>
-      wmfRecord(META.rectangle, [32_000, 32_000, 0x8300, 0x8300]),
-    );
-    expect(
-      renderWmfSvg(
-        vectorWmf({
-          bounds: { left: -32_000, top: -32_000, right: 32_000, bottom: 32_000 },
-          records: [
-            ...mappingRecords({ x: -32_000, y: -32_000 }, { x: 64_000, y: 64_000 }),
-            ...verboseRectangles,
-          ],
-        }),
-      ),
-    ).toBeNull();
+    const paintedRectangles = (count: number) =>
+      vectorWmf({
+        bounds: { left: -16_000, top: -16_000, right: 16_000, bottom: 16_000 },
+        records: [
+          ...mappingRecords({ x: -16_000, y: -16_000 }, { x: 32_000, y: 32_000 }),
+          wmfRecord(META.createPenIndirect, [0, 32_000, 0, ...colorWords(0x00ff_ffff)]),
+          wmfRecord(META.createBrushIndirect, [0, ...colorWords(0x00ff_ffff), 0]),
+          wmfRecord(META.selectObject, [0]),
+          wmfRecord(META.selectObject, [1]),
+          ...Array.from({ length: count }, () =>
+            wmfRecord(META.rectangle, [16_000, 16_000, 0xc180, 0xc180]),
+          ),
+        ],
+      });
+
+    expect(renderWmfSvg(paintedRectangles(10))).not.toBeNull();
+    expect(renderWmfSvg(paintedRectangles(9_992))).toBeNull();
   });
 
   test("never throws for well-formed polygon WMFs and preserves their window viewBox", () => {
@@ -423,10 +428,9 @@ describe("renderWmfSvg", () => {
               ],
             }),
           );
-          expect(
-            result === null ||
-              (result.endsWith("</svg>") && result.includes(`viewBox="0 0 ${width} ${height}"`)),
-          ).toBeTrue();
+          expect(result).not.toBeNull();
+          expect(result).toEndWith("</svg>");
+          expect(result).toContain(`viewBox="0 0 ${width} ${height}"`);
         },
       ),
       { numRuns: 200 },
