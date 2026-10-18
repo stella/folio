@@ -10,7 +10,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { consumerScenarioReplayFlags, consumerScenarioReplay } from "./replay-inputs.ts";
+import { consumerScenarioReplay, consumerScenarioReplayInputs } from "./replay-inputs.ts";
 
 import { admit, loadCorpus, prune } from "./corpus.ts";
 import {
@@ -18,7 +18,6 @@ import {
   failureRecord,
   type FailureRecord,
   logFailureMarker,
-  shellQuote,
   writeFailureRecord,
 } from "./failure-fingerprints.ts";
 import { compactFlow, type FlowFile, flowId, type FlowKind, flowShape } from "./flow-file.ts";
@@ -27,21 +26,22 @@ import { describeFlow, FlowError, type FlowRun, runFlow, runFlowFile } from "./f
 import { createRandom } from "./random.ts";
 import { shrinkFlow } from "./shrink.ts";
 
-/** The environment settings a replay needs to fail the same way, as CLI flags. */
-export const relationFlags = (): string => consumerScenarioReplayFlags(process.env, shellQuote);
+/** The environment settings a replay needs to fail the same way. */
+export const relationInputs = (): Readonly<Record<string, string>> =>
+  consumerScenarioReplayInputs(process.env);
 
 /** The one line that replays a seeded flow through scenarios/fuzz.test.ts. */
 export const seedReplay = (seed: number, steps: number, kind: FlowKind): string => {
-  const [runs, label] =
-    kind === "random"
-      ? ["--runs 1 --collision-runs 0", "fuzz"]
-      : ["--runs 0 --collision-runs 1", "collision"];
+  const label = kind === "random" ? "fuzz" : "collision";
   return consumerScenarioReplay({
-    flags: [
-      relationFlags(),
-      `--seed ${seed} --steps ${steps} ${runs}`,
-      `--only '^${label} run 0 \\('`,
-    ],
+    inputs: {
+      ...relationInputs(),
+      seed: String(seed),
+      steps: String(steps),
+      runs: kind === "random" ? "1" : "0",
+      collisionRuns: kind === "random" ? "0" : "1",
+    },
+    flags: [`--only '^${label} run 0 \\('`],
     files: ["fuzz.test.ts"],
   });
 };
@@ -49,11 +49,8 @@ export const seedReplay = (seed: number, steps: number, kind: FlowKind): string 
 /** The one line that replays a flow file through scenarios/flow-corpus.test.ts. */
 export const flowReplay = (flow: FlowFile): string =>
   consumerScenarioReplay({
-    flags: [
-      relationFlags(),
-      `--flow ${shellQuote(compactFlow(flow))}`,
-      "--only '^replay FOLIO_SCENARIO_FLOW'",
-    ],
+    inputs: { ...relationInputs(), flow: compactFlow(flow) },
+    flags: ["--only '^replay FOLIO_SCENARIO_FLOW'"],
     files: ["flow-corpus.test.ts"],
   });
 

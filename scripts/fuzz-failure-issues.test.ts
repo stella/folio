@@ -327,7 +327,7 @@ test("a new signature opens one issue for every fingerprint and seed that share 
   expect(state.seeds).toEqual([1, 2, 3]);
   expect(state.lanes).toEqual([{ lane: "nightly-swarm-fuzz", lastRun: `${RUN}123`, cleanRuns: 0 }]);
   expect(state.lastSeen).toEqual({ lane: "nightly-swarm-fuzz", run: `${RUN}123` });
-  expect(state.repro.command).toContain("--seed 1");
+  expect(state.repro.command).toContain("--seed '1'");
   expect(state.repro.command).not.toContain("FOLIO_SCENARIO_");
 });
 

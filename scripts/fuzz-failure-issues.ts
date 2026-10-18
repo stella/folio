@@ -389,7 +389,7 @@ const LANE_TABLE_HEADER = ["| Lane | Last run | Clean scheduled runs |", "| --- 
 
 /** Convert old environment-prefixed scenario replays before they reach public issue text. */
 export const cliRepro = (command: string): string => {
-  const values: string[] = [];
+  const inputs: Record<string, string> = {};
   let rest = command.trim();
   while (true) {
     const match = /^(FOLIO_SCENARIO_[A-Z_]+)=('(?:'\\''|[^'])*'|"(?:\\.|[^"])*"|\S+)\s*/u.exec(
@@ -399,14 +399,20 @@ export const cliRepro = (command: string): string => {
     const [, name = "", raw = ""] = match;
     const flag = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ env }) => env === name)?.flag;
     if (flag === undefined) break;
-    values.push(`${flag} ${raw}`);
+    const option = flag
+      .slice(2)
+      .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
+    let value = raw;
+    if (raw.startsWith("'")) value = raw.slice(1, -1).replaceAll("'\\''", "'");
+    else if (raw.startsWith('"')) value = JSON.parse(raw);
+    inputs[option] = value;
     rest = rest.slice(match[0].length);
   }
-  if (values.length === 0) return command;
+  if (Object.keys(inputs).length === 0) return command;
   const executable = "bun scripts/consumer-scenarios.ts";
   if (!rest.startsWith(executable)) return command;
   const suffix = rest.slice(executable.length).trim();
-  return consumerScenarioReplay({ flags: [...values, suffix] });
+  return consumerScenarioReplay({ inputs, flags: [suffix] });
 };
 
 const flowArtifactReplay = (command: string, seed: number, artifact: string): string => {
@@ -416,7 +422,7 @@ const flowArtifactReplay = (command: string, seed: number, artifact: string): st
     `$1'${artifact}'`,
   );
   return substituted === replay
-    ? consumerScenarioReplay({ flags: [`--seed ${seed}`, `--flow '${artifact}'`] })
+    ? consumerScenarioReplay({ inputs: { seed: String(seed), flow: artifact } })
     : substituted;
 };
 
