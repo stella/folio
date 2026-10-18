@@ -1139,22 +1139,40 @@ const joinOps = (
   const containerFinal = endsItsContainer(body, location);
   const cellFinal = containerFinal && location.list.some((step) => step.kind === "tableCell");
   const canGo = !cellFinal && (added || !containerFinal);
-  if (
-    empty &&
-    canGo &&
-    !added &&
-    blocks.length > 1 &&
-    next?.type === "table" &&
-    paragraphMarkCarrier({ followingKind: next.type, endsContainer: containerFinal }) === "none"
-  ) {
-    return Result.ok([
-      {
-        type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-        story,
-        expected: [paragraph],
-        blocks: [],
-      },
-    ]);
+  let followingKind: "table" | "other" | undefined;
+  if (next !== undefined) followingKind = next.type === "table" ? "table" : "other";
+  const carrier = paragraphMarkCarrier({
+    followingKind,
+    endsContainer: containerFinal,
+  });
+  if (canGo && blocks.length > 1 && carrier === "none") {
+    if (empty) {
+      const previous = blocks.at(location.index - 1);
+      if (previous?.type !== "paragraph") {
+        return Result.err(
+          refusal(
+            op,
+            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            `Resolving the mark of ${paraId} cannot anchor the inverse paragraph insertion.`,
+          ),
+        );
+      }
+      return Result.ok([
+        {
+          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+          story,
+          expected: [previous, paragraph],
+          blocks: [previous],
+        },
+      ]);
+    }
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        `Resolving the mark of ${paraId} has content without a paragraph carrier.`,
+      ),
+    );
   }
   const review = reviewFieldsOf(paragraph);
   delete review.pPrMark;
