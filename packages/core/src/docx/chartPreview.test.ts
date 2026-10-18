@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import type { MediaFile } from "../types/document";
 import { MAX_PREVIEW_POINTS, MAX_PREVIEW_SHAPES } from "./diagramPreview";
 import { parseChartPreview } from "./chartPreview";
@@ -9,6 +10,8 @@ import { parseRelationships } from "./relsParser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 import { parseRun } from "./runParser";
 import { parseXmlDocument } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const NS = "http://schemas.openxmlformats.org/drawingml/2006/chart";
 const drawingXml = (namespace = NS) =>
@@ -322,7 +325,7 @@ describe("chart previews", () => {
           );
         },
       ),
-      { numRuns: 100 },
+      propertyConfig({ numRuns: 100 }),
     );
   });
 
