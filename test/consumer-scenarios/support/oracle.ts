@@ -1355,17 +1355,26 @@ const applyEdits = (text: string, edits: readonly TextEdit[], splits: ModelRow["
 const materialize = (model: Model): Expected[] => {
   if (model.story === "removed") return [];
   const out: Expected[] = [];
-  let joinNext: string | undefined;
-  const push = (entry: Expected) => {
+  type Container = TableLocation | undefined;
+  let joinNext: { separator: string; container: Container } | undefined;
+  const sameContainer = (left: Container, right: Container): boolean =>
+    left === undefined
+      ? right === undefined
+      : right !== undefined &&
+        left.tableIndex === right.tableIndex &&
+        left.rowIndex === right.rowIndex &&
+        left.cellIndex === right.cellIndex;
+  const push = (entry: Expected, container: Container) => {
     if (joinNext !== undefined) {
       const previous = out.at(-1);
-      if (previous) {
-        previous.text = `${previous.text}${joinNext}${entry.text}`;
+      if (previous && sameContainer(joinNext.container, container)) {
+        previous.text = `${previous.text}${joinNext.separator}${entry.text}`;
         // A join keeps the first paragraph's properties; formatting offsets no longer hold.
         previous.formats = [];
         joinNext = undefined;
         return;
       }
+      if (previous) previous.text += joinNext.separator;
       joinNext = undefined;
     }
     out.push(entry);
@@ -1373,24 +1382,24 @@ const materialize = (model: Model): Expected[] => {
   const emit = (row: ModelRow) => {
     for (const inserted of row.before) emit(inserted);
     const gone = row.removed || (row.pendingDeletion === true && row.edits.length === 0);
-    if (gone && joinNext !== undefined) {
-      const previous = out.at(-1);
-      if (previous) previous.text += joinNext;
-      joinNext = undefined;
-    }
     if (!gone) {
       const segments = applyEdits(row.text, row.edits, row.splits);
       const whole = untouchedText(row);
       segments.forEach((segment, index) =>
-        push({
-          text: segment.text,
-          fields: index === 0 ? row.fields : (segment.split?.second ?? row.fields),
-          checks: row.checks,
-          formats: whole ? row.formats : [],
-          ...(whole && row.pre ? { pre: row.pre } : {}),
-        }),
+        push(
+          {
+            text: segment.text,
+            fields: index === 0 ? row.fields : (segment.split?.second ?? row.fields),
+            checks: row.checks,
+            formats: whole ? row.formats : [],
+            ...(whole && row.pre ? { pre: row.pre } : {}),
+          },
+          row.pre?.table,
+        ),
       );
-      if (row.mergeSeparator !== undefined) joinNext = row.mergeSeparator;
+      if (row.mergeSeparator !== undefined) {
+        joinNext = { separator: row.mergeSeparator, container: row.pre?.table };
+      }
     }
     for (const inserted of row.after) emit(inserted);
   };

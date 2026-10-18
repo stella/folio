@@ -1,0 +1,10 @@
+{
+  "partial tracked table-column review round trip": [
+    {
+      "seed": 384894940,
+      "path": "0:0",
+      "note": "Issue #1821: partially rejecting a deleted table column exposed unstable repeated resolution of blank cell paragraph IDs.",
+      "date": "2026-10-16"
+    }
+  ]
+}
