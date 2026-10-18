@@ -1103,6 +1103,8 @@ export class FolioDocxReviewer {
   private readonly importedFooters = new Map<string, HeaderFooter>();
   private readonly resolvedStoryExpectations = new Map<string, FolioResolvedStoryExpectation>();
   private readonly createdComments: Comment[] = [];
+  /** Comment ranges consumed when their last tracked text was accepted. */
+  private readonly acceptedDeletedCommentIds = new Set<number>();
   /** Comments the body anchored when it was loaded, read as the editor projects it. */
   private readonly loadedMainCommentIds: ReadonlySet<number>;
   private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] = [];
@@ -2423,8 +2425,13 @@ export class FolioDocxReviewer {
    * revision is no longer present (already resolved, or never existed).
    */
   acceptChange(target: FolioReviewChange | number): boolean {
-    return this.resolveWithSectionReferenceHistory(() =>
-      this.withNotesFollowingReferences(() => this.acceptChangeInternal(target)),
+    const revisionIds = new Set(
+      getTrackedChangeGroupIdsFromDoc(this.state.doc, revisionIdOf(target)),
+    );
+    return this.withAcceptedCommentAnchorHistory(revisionIds, () =>
+      this.resolveWithSectionReferenceHistory(() =>
+        this.withNotesFollowingReferences(() => this.acceptChangeInternal(target)),
+      ),
     );
   }
 
@@ -2516,9 +2523,56 @@ export class FolioDocxReviewer {
    * document still carries a redline nobody can see from the body.
    */
   acceptAll(): number {
-    return this.resolveWithSectionReferenceHistory(
-      () => this.resolveEveryStory("accept") + this.resolveEveryFinalSectionChange("accept"),
+    return this.withAcceptedCommentAnchorHistory(undefined, () =>
+      this.resolveWithSectionReferenceHistory(
+        () => this.resolveEveryStory("accept") + this.resolveEveryFinalSectionChange("accept"),
+      ),
     );
+  }
+
+  /**
+   * Remember a non-empty comment range whose accepted deletion collapsed it
+   * to a point. The point is a serialization carrier for the old range, not
+   * an authored point comment; the thread goes with its last anchored
+   * content, as direct deletion does (see `comment-lifecycle.ts`).
+   */
+  private withAcceptedCommentAnchorHistory<T>(
+    revisionIds: ReadonlySet<number> | undefined,
+    resolve: () => T,
+  ): T {
+    const whollyDeleted = new Set<number>();
+    const partlyKept = new Set<number>();
+    const inspect = (doc: PMNode) => {
+      doc.descendants((node) => {
+        if (!node.isInline) return true;
+        // References and point anchors are carriers, not anchored content.
+        if (node.text === undefined) return undefined;
+        const commentIds = node.marks.flatMap((mark) => {
+          const commentId = mark.attrs["commentId"];
+          return mark.type.name === "comment" && typeof commentId === "number" ? [commentId] : [];
+        });
+        if (commentIds.length === 0) return undefined;
+        const deleted = node.marks.some(
+          (mark) =>
+            mark.type.name === "deletion" &&
+            typeof mark.attrs["revisionId"] === "number" &&
+            (revisionIds === undefined || revisionIds.has(mark.attrs["revisionId"])),
+        );
+        for (const id of commentIds) {
+          (deleted ? whollyDeleted : partlyKept).add(id);
+        }
+        return undefined;
+      });
+    };
+    inspect(this.state.doc);
+    for (const { state } of this.secondaryStoryStates.values()) inspect(state.doc);
+    const result = resolve();
+    for (const id of whollyDeleted) {
+      if (!partlyKept.has(id)) {
+        this.acceptedDeletedCommentIds.add(id);
+      }
+    }
+    return result;
   }
 
   /** Reject every tracked change in the package. See {@link acceptAll}. */
@@ -3531,7 +3585,11 @@ export class FolioDocxReviewer {
             ),
       );
     }
-    return withoutLostCommentThreads(comments, { anchoredBefore, anchoredNow });
+    return withoutLostCommentThreads(comments, { anchoredBefore, anchoredNow }).filter(
+      ({ id, parentId }) =>
+        !this.acceptedDeletedCommentIds.has(id) &&
+        (parentId === undefined || !this.acceptedDeletedCommentIds.has(parentId)),
+    );
   }
 
   /**
