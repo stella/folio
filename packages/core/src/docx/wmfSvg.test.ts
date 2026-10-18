@@ -1,14 +1,18 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { renderEmfSvg } from "./metafileSvg";
 import { parseDocx } from "./parser";
 import { repackDocx } from "./rezip";
 import { renderWmfSvg } from "./wmfSvg";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const FIXTURE = resolve(import.meta.dir, "__fixtures__/header-vml-emf.docx");
 
@@ -433,7 +437,7 @@ describe("renderWmfSvg", () => {
           expect(result).toContain(`viewBox="0 0 ${width} ${height}"`);
         },
       ),
-      { numRuns: 200 },
+      propertyConfig({ numRuns: 200 }),
     );
   });
 
@@ -460,7 +464,7 @@ describe("renderWmfSvg", () => {
           expect(svg).toContain(`<rect x="0" y="0" width="${viewWidth}" height="${viewHeight}"`);
         },
       ),
-      { numRuns: 200 },
+      propertyConfig({ numRuns: 200 }),
     );
   });
 
@@ -499,7 +503,7 @@ describe("renderWmfSvg", () => {
           }
         },
       ),
-      { numRuns: 200 },
+      propertyConfig({ numRuns: 200 }),
     );
   });
 });
