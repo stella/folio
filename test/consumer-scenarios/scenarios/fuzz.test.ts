@@ -12,7 +12,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 
-import { consumerScenarioReplay } from "../../../scripts/consumer-scenario-args.ts";
+import {
+  consumerScenarioReplay,
+  consumerScenarioReplayFlags,
+} from "../../../scripts/consumer-scenario-args.ts";
 import {
   failureMarker,
   logFailureMarker,
@@ -52,17 +55,7 @@ const saveSample = async (
   await writeFile(path.join(SAMPLE_DIR, `${fingerprint}-${seed}.docx`), bytes);
 };
 
-const relationRepro = [
-  ["FOLIO_SCENARIO_RELATIONS", "--relations"],
-  ["FOLIO_SCENARIO_RELATIONS_DEPTH", "--relations-depth"],
-  ["FOLIO_SCENARIO_SWARM", "--swarm"],
-  ["FOLIO_SCENARIO_FEATURE_WEIGHTS", "--feature-weights"],
-]
-  .flatMap(([name, flag]) => {
-    const value = process.env[name ?? ""];
-    return value === undefined || flag === undefined ? [] : [`${flag} ${shellQuote(value)}`];
-  })
-  .join(" ");
+const replayEnvironment = consumerScenarioReplayFlags(process.env, shellQuote);
 
 const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
   const { fixture, mode } = describeFlow(seed, kind);
@@ -81,8 +74,8 @@ const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
   const label = kind === "random" ? "fuzz" : "collision";
   const repro = consumerScenarioReplay({
     flags: [
+      replayEnvironment,
       `--seed ${SEED} --steps ${STEPS} ${runs}`,
-      relationRepro,
       `--only '^${label} run ${run} \\('`,
     ],
   });
@@ -138,8 +131,8 @@ for (const flow of PINNED_SCENARIO_FLOWS) {
         const { fixture, mode } = describeFlow(flow.seed, flow.kind);
         const repro = consumerScenarioReplay({
           flags: [
+            replayEnvironment,
             `--seed ${flow.seed} --runs 0 --collision-runs 0`,
-            relationRepro,
             `--only '^${flow.kind} flow with seed ${flow.seed} \\('`,
           ],
         });

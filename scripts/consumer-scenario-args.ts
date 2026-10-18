@@ -16,24 +16,46 @@ export const consumerScenarioReplay = ({
     ...(files.length === 0 ? [] : ["--", ...files]),
   ].join(" ");
 
-const REPLAY_ENV_FLAGS = {
-  FOLIO_SCENARIO_RELATIONS: "--relations",
-  FOLIO_SCENARIO_RELATIONS_DEPTH: "--relations-depth",
-  FOLIO_SCENARIO_FEATURE_WEIGHTS: "--feature-weights",
-  FOLIO_SCENARIO_PUBLIC_CORPUS_DIR: "--public-corpus-dir",
-} as const;
+export const CONSUMER_SCENARIO_REPLAY_INPUTS = [
+  { flag: "--seed", env: "FOLIO_SCENARIO_SEED", kind: "value" },
+  { flag: "--steps", env: "FOLIO_SCENARIO_FUZZ_STEPS", kind: "value" },
+  { flag: "--runs", env: "FOLIO_SCENARIO_FUZZ_RUNS", kind: "value" },
+  { flag: "--collision-runs", env: "FOLIO_SCENARIO_COLLISION_RUNS", kind: "value" },
+  { flag: "--swarm", env: "FOLIO_SCENARIO_SWARM", kind: "value" },
+  { flag: "--flow", env: "FOLIO_SCENARIO_FLOW", kind: "value" },
+  { flag: "--public-corpus-dir", env: "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR", kind: "path" },
+  { flag: "--relations", env: "FOLIO_SCENARIO_RELATIONS", kind: "value" },
+  { flag: "--relations-depth", env: "FOLIO_SCENARIO_RELATIONS_DEPTH", kind: "value" },
+  { flag: "--feature-weights", env: "FOLIO_SCENARIO_FEATURE_WEIGHTS", kind: "path" },
+  { flag: "--long-fuzz", env: "FOLIO_SCENARIO_LONG_FUZZ", kind: "value" },
+  { flag: "--long-steps", env: "FOLIO_SCENARIO_LONG_STEPS", kind: "value" },
+  { flag: "--long-output", env: "FOLIO_SCENARIO_LONG_OUTPUT", kind: "path" },
+  { flag: "--public-corpus-fuzz", env: "FOLIO_SCENARIO_PUBLIC_CORPUS_FUZZ", kind: "value" },
+  { flag: "--public-corpus-steps", env: "FOLIO_SCENARIO_PUBLIC_CORPUS_STEPS", kind: "value" },
+  { flag: "--public-corpus-output", env: "FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT", kind: "path" },
+  {
+    flag: "--public-corpus-fixture",
+    env: "FOLIO_SCENARIO_PUBLIC_CORPUS_FIXTURE",
+    kind: "value",
+  },
+] as const satisfies readonly {
+  flag: `--${string}`;
+  env: `FOLIO_SCENARIO_${string}`;
+  kind: "value" | "path";
+}[];
 
-/** Render relation-dependent environment inputs as replay flags. */
-export const consumerScenarioRelationFlags = (
+const optionForFlag = (flag: `--${string}`): string =>
+  flag.slice(2).replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
+
+/** Render environment replay inputs as CLI flags. */
+export const consumerScenarioReplayFlags = (
   environment: Readonly<Record<string, string | undefined>>,
   quote: (value: string) => string,
 ): string =>
-  Object.entries(REPLAY_ENV_FLAGS)
-    .flatMap(([name, flag]) => {
-      const value = environment[name];
-      return value === undefined ? [] : [`${flag} ${quote(value)}`];
-    })
-    .join(" ");
+  CONSUMER_SCENARIO_REPLAY_INPUTS.flatMap(({ env, flag }) => {
+    const value = environment[env];
+    return value === undefined ? [] : [`${flag} ${quote(value)}`];
+  }).join(" ");
 
 export type ConsumerArgs = {
   tarballs: string | null;
@@ -101,50 +123,22 @@ export const parseConsumerArgs = (argv: readonly string[], repoRoot: string): Co
     else if (arg === "--only") args.only = value();
     else if (arg === "--coverage-out") args.coverageOut = path.resolve(value());
     else if (arg === "--feature-coverage-out") args.featureCoverageOut = path.resolve(value());
-    else if (arg === "--seed") args.seed = value();
-    else if (arg === "--steps") args.steps = value();
-    else if (arg === "--runs") args.runs = value();
-    else if (arg === "--collision-runs") args.collisionRuns = value();
-    else if (arg === "--swarm") args.swarm = value();
-    else if (arg === "--flow") args.flow = value();
-    else if (arg === "--public-corpus-dir") args.publicCorpusDir = path.resolve(value());
-    else if (arg === "--relations") args.relations = value();
-    else if (arg === "--relations-depth") args.relationsDepth = value();
-    else if (arg === "--feature-weights") args.featureWeights = path.resolve(value());
-    else if (arg === "--long-fuzz") args.longFuzz = value();
-    else if (arg === "--long-steps") args.longSteps = value();
-    else if (arg === "--long-output") args.longOutput = path.resolve(value());
-    else if (arg === "--public-corpus-fuzz") args.publicCorpusFuzz = value();
-    else if (arg === "--public-corpus-steps") args.publicCorpusSteps = value();
-    else if (arg === "--public-corpus-output") args.publicCorpusOutput = path.resolve(value());
-    else if (arg === "--public-corpus-fixture") args.publicCorpusFixture = value();
-    else if (arg === "--") args.files.push(...argv.slice(index + 1));
-    else if (arg !== undefined && !arg.startsWith("-")) args.files.push(arg);
-    else panic(`consumer-scenarios: unknown argument ${arg}`);
+    else if (arg !== undefined) {
+      const input = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ flag }) => flag === arg);
+      if (input !== undefined) {
+        const inputValue = value();
+        Object.assign(args, {
+          [optionForFlag(input.flag)]:
+            input.kind === "path" ? path.resolve(inputValue) : inputValue,
+        });
+      } else if (arg === "--") args.files.push(...argv.slice(index + 1));
+      else if (!arg.startsWith("-")) args.files.push(arg);
+      else panic(`consumer-scenarios: unknown argument ${arg}`);
+    }
     if (arg === "--") break;
   }
   return args;
 };
-
-const INPUT_ENV = {
-  seed: "FOLIO_SCENARIO_SEED",
-  steps: "FOLIO_SCENARIO_FUZZ_STEPS",
-  runs: "FOLIO_SCENARIO_FUZZ_RUNS",
-  collisionRuns: "FOLIO_SCENARIO_COLLISION_RUNS",
-  swarm: "FOLIO_SCENARIO_SWARM",
-  flow: "FOLIO_SCENARIO_FLOW",
-  publicCorpusDir: "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR",
-  relations: "FOLIO_SCENARIO_RELATIONS",
-  relationsDepth: "FOLIO_SCENARIO_RELATIONS_DEPTH",
-  featureWeights: "FOLIO_SCENARIO_FEATURE_WEIGHTS",
-  longFuzz: "FOLIO_SCENARIO_LONG_FUZZ",
-  longSteps: "FOLIO_SCENARIO_LONG_STEPS",
-  longOutput: "FOLIO_SCENARIO_LONG_OUTPUT",
-  publicCorpusFuzz: "FOLIO_SCENARIO_PUBLIC_CORPUS_FUZZ",
-  publicCorpusSteps: "FOLIO_SCENARIO_PUBLIC_CORPUS_STEPS",
-  publicCorpusOutput: "FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT",
-  publicCorpusFixture: "FOLIO_SCENARIO_PUBLIC_CORPUS_FIXTURE",
-} as const;
 
 /** Resolve replay inputs with CLI flags taking precedence over CI environment variables. */
 export const consumerScenarioInputs = (
@@ -152,11 +146,11 @@ export const consumerScenarioInputs = (
   environment: Readonly<Record<string, string | undefined>>,
 ) =>
   Object.fromEntries(
-    Object.entries(INPUT_ENV).map(([option, name]) => [
-      option,
-      args[option as keyof typeof INPUT_ENV] ?? environment[name] ?? null,
+    CONSUMER_SCENARIO_REPLAY_INPUTS.map(({ flag, env }) => [
+      optionForFlag(flag),
+      args[optionForFlag(flag) as keyof ConsumerArgs] ?? environment[env] ?? null,
     ]),
-  ) as Record<keyof typeof INPUT_ENV, string | null>;
+  );
 
 if (import.meta.main) {
   console.log(JSON.stringify(parseConsumerArgs(process.argv.slice(2), process.cwd())));

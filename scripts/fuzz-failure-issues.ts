@@ -11,7 +11,7 @@ import type {
   FailureMarker,
   FailureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
-import { consumerScenarioReplay } from "./consumer-scenario-args";
+import { CONSUMER_SCENARIO_REPLAY_INPUTS, consumerScenarioReplay } from "./consumer-scenario-args";
 import { extractFailureMarkers } from "./failure-fingerprints";
 import { failureClass } from "./fuzz-failure-class";
 import { type ClosedIssueDisposition, type Issue, type IssueStore } from "./fuzz-issue-classes";
@@ -387,26 +387,6 @@ export type SignatureState = {
 const ISSUE_BODY_LIMIT = 65_535;
 const LANE_TABLE_HEADER = ["| Lane | Last run | Clean scheduled runs |", "| --- | --- | --- |"];
 
-const ENV_FLAGS = {
-  FOLIO_SCENARIO_SEED: "--seed",
-  FOLIO_SCENARIO_FUZZ_STEPS: "--steps",
-  FOLIO_SCENARIO_FUZZ_RUNS: "--runs",
-  FOLIO_SCENARIO_COLLISION_RUNS: "--collision-runs",
-  FOLIO_SCENARIO_SWARM: "--swarm",
-  FOLIO_SCENARIO_FLOW: "--flow",
-  FOLIO_SCENARIO_PUBLIC_CORPUS_DIR: "--public-corpus-dir",
-  FOLIO_SCENARIO_RELATIONS: "--relations",
-  FOLIO_SCENARIO_RELATIONS_DEPTH: "--relations-depth",
-  FOLIO_SCENARIO_FEATURE_WEIGHTS: "--feature-weights",
-  FOLIO_SCENARIO_LONG_FUZZ: "--long-fuzz",
-  FOLIO_SCENARIO_LONG_STEPS: "--long-steps",
-  FOLIO_SCENARIO_LONG_OUTPUT: "--long-output",
-  FOLIO_SCENARIO_PUBLIC_CORPUS_FUZZ: "--public-corpus-fuzz",
-  FOLIO_SCENARIO_PUBLIC_CORPUS_STEPS: "--public-corpus-steps",
-  FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT: "--public-corpus-output",
-  FOLIO_SCENARIO_PUBLIC_CORPUS_FIXTURE: "--public-corpus-fixture",
-} as const;
-
 /** Convert old environment-prefixed scenario replays before they reach public issue text. */
 export const cliRepro = (command: string): string => {
   const values: string[] = [];
@@ -417,7 +397,7 @@ export const cliRepro = (command: string): string => {
     );
     if (match === null) break;
     const [, name = "", raw = ""] = match;
-    const flag = ENV_FLAGS[name as keyof typeof ENV_FLAGS];
+    const flag = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ env }) => env === name)?.flag;
     if (flag === undefined) break;
     values.push(`${flag} ${raw}`);
     rest = rest.slice(match[0].length);

@@ -11,7 +11,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
-  consumerScenarioRelationFlags,
+  consumerScenarioReplayFlags,
   consumerScenarioReplay,
 } from "../../../scripts/consumer-scenario-args.ts";
 
@@ -30,8 +30,8 @@ import { describeFlow, FlowError, type FlowRun, runFlow, runFlowFile } from "./f
 import { createRandom } from "./random.ts";
 import { shrinkFlow } from "./shrink.ts";
 
-/** The relation settings a replay needs to fail the same way, as CLI flags. */
-export const relationFlags = (): string => consumerScenarioRelationFlags(process.env, shellQuote);
+/** The environment settings a replay needs to fail the same way, as CLI flags. */
+export const relationFlags = (): string => consumerScenarioReplayFlags(process.env, shellQuote);
 
 /** The one line that replays a seeded flow through scenarios/fuzz.test.ts. */
 export const seedReplay = (seed: number, steps: number, kind: FlowKind): string => {
@@ -41,9 +41,8 @@ export const seedReplay = (seed: number, steps: number, kind: FlowKind): string 
       : ["--runs 0 --collision-runs 1", "collision"];
   return consumerScenarioReplay({
     flags: [
-      `--seed ${seed} --steps ${steps} ${runs}`,
       relationFlags(),
-      process.env["FOLIO_SCENARIO_SWARM"] === "1" ? "--swarm 1" : "",
+      `--seed ${seed} --steps ${steps} ${runs}`,
       `--only '^${label} run 0 \\('`,
     ],
     files: ["fuzz.test.ts"],
@@ -54,8 +53,8 @@ export const seedReplay = (seed: number, steps: number, kind: FlowKind): string 
 export const flowReplay = (flow: FlowFile): string =>
   consumerScenarioReplay({
     flags: [
-      `--flow ${shellQuote(compactFlow(flow))}`,
       relationFlags(),
+      `--flow ${shellQuote(compactFlow(flow))}`,
       "--only '^replay FOLIO_SCENARIO_FLOW'",
     ],
     files: ["flow-corpus.test.ts"],
