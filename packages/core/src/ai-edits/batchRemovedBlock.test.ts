@@ -12,6 +12,7 @@ import { paragraph } from "../docx/server/build";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
+import { getFolioDocumentOperationRemovedBlockIds } from "./removed-blocks";
 
 const buildReviewer = async (): Promise<FolioDocxReviewer> => {
   const document = createEmptyDocument();
@@ -115,4 +116,26 @@ describe("a batch that removes a block and then formats it", () => {
       ]);
     },
   );
+});
+
+describe("getFolioDocumentOperationRemovedBlockIds", () => {
+  const blocks = [{ id: "A" }, { id: "B" }, { id: "C" }];
+
+  test("a merge removes the block after its anchor", () => {
+    expect([
+      ...getFolioDocumentOperationRemovedBlockIds(blocks, {
+        type: "mergeBlockWithNext",
+        blockId: "A",
+      } as never),
+    ]).toEqual(["B"]);
+  });
+
+  test("a merge with an unknown anchor removes nothing", () => {
+    expect([
+      ...getFolioDocumentOperationRemovedBlockIds(blocks, {
+        type: "mergeBlockWithNext",
+        blockId: "missing",
+      } as never),
+    ]).toEqual([]);
+  });
 });

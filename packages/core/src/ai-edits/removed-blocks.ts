@@ -24,7 +24,8 @@ export const getFolioDocumentOperationRemovedBlockIds = (
       removed.add(operation.blockId);
       break;
     case "mergeBlockWithNext": {
-      const next = blocks[anchorIndex + 1];
+      // An unknown anchor removes nothing; index -1 must not select the first block.
+      const next = anchorIndex < 0 ? undefined : blocks[anchorIndex + 1];
       if (next !== undefined) removed.add(next.id);
       break;
     }
