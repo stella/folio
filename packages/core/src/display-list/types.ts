@@ -316,6 +316,13 @@ export type DisplayPolygon = {
   readonly fill: DisplayColor;
 };
 
+/** An open, stroked path through two or more points. */
+export type DisplayPolyline = {
+  readonly kind: "polyline";
+  readonly points: readonly { readonly xPx: number; readonly yPx: number }[];
+  readonly stroke: DisplayStroke;
+};
+
 export type DisplayImagePrimitive = {
   readonly kind: "image";
   readonly image: DisplayImageRef;
@@ -374,6 +381,7 @@ export type DisplayPrimitive =
   | DisplayRectPrimitive
   | DisplayLine
   | DisplayPolygon
+  | DisplayPolyline
   | DisplayImagePrimitive
   | DisplayClipGroup
   | DisplayRotateGroup

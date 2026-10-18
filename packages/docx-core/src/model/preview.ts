@@ -19,7 +19,8 @@ export type PreviewPoint = { readonly x: number; readonly y: number };
 
 export type PreviewShape =
   | {
-      readonly type: "rect";
+      /** Absent on diagram rectangles produced before previews supported paths. */
+      readonly type?: "rect";
       readonly x: number;
       readonly y: number;
       readonly width: number;

@@ -58,6 +58,7 @@ import type {
   DisplayImageRef,
   DisplayImageSource,
   DisplayLine,
+  DisplayPolyline,
   DisplayLink,
   DisplayLinkTarget,
   DisplayModelRange,
@@ -336,6 +337,25 @@ const paintLineSegment = (line: DisplayLine, context: PaintContext) => {
   }
 
   context.parent.append(element);
+};
+
+const paintPolyline = ({ points, stroke }: DisplayPolyline, context: PaintContext) => {
+  for (let index = 1; index < points.length; index += 1) {
+    const from = points[index - 1];
+    const to = points[index];
+    if (from === undefined || to === undefined) continue;
+    paintLineSegment(
+      {
+        kind: "line",
+        x1Px: from.xPx,
+        y1Px: from.yPx,
+        x2Px: to.xPx,
+        y2Px: to.yPx,
+        stroke,
+      },
+      context,
+    );
+  }
 };
 
 /**
@@ -664,6 +684,8 @@ const paintPrimitive = (primitive: DisplayPrimitive, context: PaintContext): voi
       context.parent.append(element);
       return;
     }
+    case "polyline":
+      return paintPolyline(primitive, context);
     case "image":
       return paintImage(primitive, context);
     case "clipGroup":

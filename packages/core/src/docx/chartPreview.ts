@@ -145,11 +145,12 @@ const cachedSeries = (chart: XmlElement): CachedSeries[] | null => {
 const pushShape = (shapes: PreviewShape[], shape: PreviewShape): void => {
   if (shapes.length >= MAX_PREVIEW_SHAPES) return;
   if (
-    shape.type === "rect" &&
+    shape.type !== "polygon" &&
+    shape.type !== "polyline" &&
     (shape.x < 0 || shape.y < 0 || shape.width <= 0 || shape.height <= 0)
   )
     return;
-  if (shape.type !== "rect" && shape.points.length < 2) return;
+  if ((shape.type === "polygon" || shape.type === "polyline") && shape.points.length < 2) return;
   shapes.push(shape);
 };
 
@@ -384,14 +385,15 @@ export const parseChartPreview = (
   }
   if (shapes.length === 0) return null;
   const pointCount = shapes.reduce(
-    (total, shape) => total + (shape.type === "rect" ? 0 : shape.points.length),
+    (total, shape) =>
+      total + (shape.type === "polygon" || shape.type === "polyline" ? shape.points.length : 0),
     0,
   );
   if (pointCount > MAX_PREVIEW_POINTS) return null;
   const finite = shapes.every((shape) =>
-    shape.type === "rect"
-      ? [shape.x, shape.y, shape.width, shape.height].every(Number.isFinite)
-      : shape.points.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)),
+    shape.type === "polygon" || shape.type === "polyline"
+      ? shape.points.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))
+      : [shape.x, shape.y, shape.width, shape.height].every(Number.isFinite),
   );
   if (!finite) return null;
   return {

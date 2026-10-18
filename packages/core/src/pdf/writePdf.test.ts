@@ -485,6 +485,15 @@ const SAMPLE_BY_KIND = {
     ],
     fill: BLACK,
   },
+  polyline: {
+    kind: "polyline",
+    points: [
+      { xPx: 10, yPx: 20 },
+      { xPx: 25, yPx: 50 },
+      { xPx: 40, yPx: 20 },
+    ],
+    stroke: { color: BLACK, thicknessPx: 1, pattern: "solid" },
+  },
 } as const satisfies Record<DisplayPrimitive["kind"], DisplayPrimitive>;
 
 describe("primitive coverage", () => {

@@ -39,7 +39,7 @@ type ShapeRectOptions = {
  * clip the raster did by clamping to its own bounds.
  */
 const shapeRect = ({ shape, extent, box }: ShapeRectOptions): DisplayRect | undefined => {
-  if (shape.type !== "rect") return undefined;
+  if (shape.type === "polygon" || shape.type === "polyline") return undefined;
   const left = clampFraction(shape.x / extent.width);
   const right = clampFraction((shape.x + shape.width) / extent.width);
   const top = clampFraction(shape.y / extent.height);
@@ -101,15 +101,7 @@ export const paintPreview = (
               Math.min(box.widthPx / extent.width, box.heightPx / extent.height),
             pattern: "solid" as const,
           };
-          for (let index = 1; index < points.length; index += 1)
-            primitives.push({
-              kind: "line",
-              x1Px: points[index - 1]!.xPx,
-              y1Px: points[index - 1]!.yPx,
-              x2Px: points[index]!.xPx,
-              y2Px: points[index]!.yPx,
-              stroke,
-            });
+          primitives.push({ kind: "polyline", points, stroke });
           continue;
         }
         const rect = shapeRect({ shape, extent, box });

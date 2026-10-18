@@ -20,6 +20,7 @@ import type {
   DisplayImagePrimitive,
   DisplayPage,
   DisplayPrimitive,
+  DisplayPolyline,
   DisplayRectPrimitive,
   DisplayStroke,
 } from "../display-list/types";
@@ -178,6 +179,17 @@ const paintSegment = (context: PaintContext, stroke: DisplayStroke, segment: Seg
     }
   }
   stream.restore();
+};
+
+const paintPolyline = (context: PaintContext, primitive: DisplayPolyline) => {
+  const first = primitive.points.at(0);
+  if (first === undefined || primitive.points.length < 2) return;
+  beginPrimitive(context, context.alpha * primitive.stroke.color.a);
+  applyStrokeState(context.stream, primitive.stroke, primitive.stroke.thicknessPx);
+  context.stream.moveTo(first.xPx, first.yPx);
+  for (const point of primitive.points.slice(1)) context.stream.lineTo(point.xPx, point.yPx);
+  context.stream.stroke();
+  context.stream.restore();
 };
 
 const paintRect = (context: PaintContext, primitive: DisplayRectPrimitive) => {
@@ -486,6 +498,9 @@ const paintPrimitive = (context: PaintContext, primitive: DisplayPrimitive) => {
       context.stream.restore();
       return;
     }
+    case "polyline":
+      paintPolyline(context, primitive);
+      return;
     case "image":
       paintImage(context, primitive);
       return;
@@ -604,6 +619,7 @@ const collectPrimitive = (
     case "rect":
     case "line":
     case "polygon":
+    case "polyline":
       return null;
     case "image":
       if (primitive.image < 0 || primitive.image >= imageCount) {
