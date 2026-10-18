@@ -542,7 +542,7 @@ const assertSparseReaders = async ({
   const converted = fromProseDoc(pm, parsed, { stylesheetSource: { type: "package" } });
   expect(labels(converted)).toEqual(expected);
   const ctx = newContext({}, parsed.package.styles);
-  ctx.nextListLabel = createListLabelCounter();
+  ctx.nextListLabel = createListLabelCounter(numbering);
   converted.package.document.content.forEach((block, index) => {
     if (block.type !== "paragraph") throw new Error("Expected paragraph");
     const label = expected.at(index);

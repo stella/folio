@@ -17,7 +17,6 @@ import {
 } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { createListLabelCounter } from "../prosemirror/listLabels";
-import { getDocumentNumberingForDoc } from "../prosemirror/plugins/documentNumbering";
 import type { NumberingMap } from "../docx/numberingParser";
 import { paragraphNumberingAttr, readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
 import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
@@ -737,9 +736,7 @@ const createFolioAIEditSnapshotInternal = (
   // Labels are counted in this walk from the document as it stands, not read
   // from the markers the parser resolved at open: those go stale with the
   // first list edit.
-  const nextListLabel = createListLabelCounter(
-    numbering === undefined ? getDocumentNumberingForDoc(doc) : numbering,
-  );
+  const nextListLabel = createListLabelCounter(numbering ?? null);
   const tables: FolioStoryTable[] = [];
   const tableIndexByStart = new Map<number, number>();
   // The containers enclosing the node being visited, innermost last. Kept in
