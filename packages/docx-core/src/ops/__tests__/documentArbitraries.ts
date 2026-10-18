@@ -72,6 +72,10 @@ const preservedAttributesArbitrary: fc.Arbitrary<PreservedAttribute[]> = fc.arra
   { minLength: 1, maxLength: 2 },
 );
 
+const paragraphPreservedMarkup: NonNullable<ParagraphFormatting["preserved"]> = {
+  children: [{ index: 3, xml: "<w:suppressOverlap/>" }],
+};
+
 export const textFormattingArbitrary: fc.Arbitrary<TextFormatting> = fc.record(
   {
     bold: fc.boolean(),
@@ -91,7 +95,7 @@ const paragraphFormattingArbitrary: fc.Arbitrary<ParagraphFormatting | undefined
       keepNext: fc.boolean(),
       styleId: fc.constantFrom("Heading1", "BodyText"),
       runProperties: textFormattingArbitrary,
-      preserved: fc.constant({ children: [{ index: 3, xml: "<w:suppressOverlap/>" }] }),
+      preserved: fc.constant(paragraphPreservedMarkup),
       numPr: fc.option(fc.constant(paragraphNumberingReference({ numId: 1, ilvl: 0 })), {
         nil: undefined,
       }),
@@ -292,7 +296,14 @@ const paragraphFields = {
   listRendering: fc.constant({ marker: "1.", level: 0, numId: 1, isBullet: false }),
 };
 
-const canonicalParagraph = ({ formatting, ...paragraph }: Paragraph): Paragraph => {
+type ParagraphBeforeCanonicalization = Omit<Paragraph, "formatting"> & {
+  formatting?: ParagraphFormatting | undefined;
+};
+
+const canonicalParagraph = ({
+  formatting,
+  ...paragraph
+}: ParagraphBeforeCanonicalization): Paragraph => {
   const canonicalFormatting = finalizeParagraphFormatting(formatting);
   return canonicalFormatting === undefined
     ? paragraph
@@ -630,14 +641,21 @@ const paragraphPatchArbitrary: fc.Arbitrary<ParagraphPropsPatch> = fc.record(
   { requiredKeys: [] },
 );
 
-const newParagraphArbitrary: fc.Arbitrary<SplitParagraphFields> = fc.record(
-  {
-    formatting: paragraphFormattingArbitrary,
-    textId: fc.constant("66666666"),
-    preservedAttributes: preservedAttributesArbitrary,
-  },
-  { requiredKeys: [] },
-);
+const newParagraphArbitrary: fc.Arbitrary<SplitParagraphFields> = fc
+  .record(
+    {
+      formatting: paragraphFormattingArbitrary,
+      textId: fc.constant("66666666"),
+      preservedAttributes: preservedAttributesArbitrary,
+    },
+    { requiredKeys: [] },
+  )
+  .map(({ formatting, ...fields }): SplitParagraphFields => {
+    const canonicalFormatting = finalizeParagraphFormatting(formatting);
+    return canonicalFormatting === undefined
+      ? fields
+      : Object.assign(fields, { formatting: canonicalFormatting });
+  });
 
 const insertableContentArbitrary: fc.Arbitrary<ParagraphContent[]> = fc.array(
   fc.oneof(

@@ -27,7 +27,6 @@ import type { FolioAIEditApplyMode, FolioAIEditOperation } from "./types";
 
 const noteBody = (text: string): Paragraph => ({
   type: "paragraph",
-  formatting: {},
   content: [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
 });
 
