@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, describe, expect, test } from "bun:test";
 import {
   linkSync,
   mkdirSync,
@@ -19,6 +21,8 @@ import {
 } from "./ci-scoped-install";
 
 import { installFrozenRepositoryDependencies } from "./clean-room-install";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const root = path.resolve(import.meta.dir, "..");
 type JobSteps = { steps: { run?: string; uses?: string; with?: { "no-cache"?: unknown } }[] };

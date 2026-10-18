@@ -12,6 +12,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 
+import { consumerScenarioReplay, consumerScenarioReplayFlags } from "../support/replay-inputs.ts";
 import {
   failureMarker,
   logFailureMarker,
@@ -51,17 +52,7 @@ const saveSample = async (
   await writeFile(path.join(SAMPLE_DIR, `${fingerprint}-${seed}.docx`), bytes);
 };
 
-const relationRepro = [
-  "FOLIO_SCENARIO_RELATIONS",
-  "FOLIO_SCENARIO_RELATIONS_DEPTH",
-  "FOLIO_SCENARIO_SWARM",
-  "FOLIO_SCENARIO_FEATURE_WEIGHTS",
-]
-  .flatMap((name) => {
-    const value = process.env[name];
-    return value === undefined ? [] : [`${name}=${shellQuote(value)}`];
-  })
-  .join(" ");
+const replayEnvironment = consumerScenarioReplayFlags(process.env, shellQuote);
 
 const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
   const { fixture, mode } = describeFlow(seed, kind);
@@ -75,10 +66,16 @@ const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
   );
   const runs =
     kind === "random"
-      ? `FOLIO_SCENARIO_FUZZ_RUNS=${run + 1} FOLIO_SCENARIO_COLLISION_RUNS=0`
-      : `FOLIO_SCENARIO_FUZZ_RUNS=0 FOLIO_SCENARIO_COLLISION_RUNS=${run + 1}`;
+      ? `--runs ${run + 1} --collision-runs 0`
+      : `--runs 0 --collision-runs ${run + 1}`;
   const label = kind === "random" ? "fuzz" : "collision";
-  const repro = `FOLIO_SCENARIO_SEED=${SEED} FOLIO_SCENARIO_FUZZ_STEPS=${STEPS} ${runs} ${relationRepro} bun scripts/consumer-scenarios.ts --only '^${label} run ${run} \\('`;
+  const repro = consumerScenarioReplay({
+    flags: [
+      replayEnvironment,
+      `--seed ${SEED} --steps ${STEPS} ${runs}`,
+      `--only '^${label} run ${run} \\('`,
+    ],
+  });
   test(
     `${label} run ${run} (seed ${seed}): ${fixture} / ${mode}, ${STEPS} steps`,
     known ? { skip: `${known.reason}; runs in known-issues.test.ts` } : {},
@@ -129,7 +126,13 @@ for (const flow of PINNED_SCENARIO_FLOWS) {
         await runFlow(flow.seed, flow.steps, flow.kind, { generation: flow.generation });
       } catch (error) {
         const { fixture, mode } = describeFlow(flow.seed, flow.kind);
-        const repro = `FOLIO_SCENARIO_SEED=${flow.seed} FOLIO_SCENARIO_FUZZ_RUNS=0 FOLIO_SCENARIO_COLLISION_RUNS=0 ${relationRepro} bun scripts/consumer-scenarios.ts --only '^${flow.kind} flow with seed ${flow.seed} \\('`;
+        const repro = consumerScenarioReplay({
+          flags: [
+            replayEnvironment,
+            `--seed ${flow.seed} --runs 0 --collision-runs 0`,
+            `--only '^${flow.kind} flow with seed ${flow.seed} \\('`,
+          ],
+        });
         reportScenarioFailure({
           test: `consumer flow ${fixture} / ${mode}`,
           seed: flow.seed,

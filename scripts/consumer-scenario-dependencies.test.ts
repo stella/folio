@@ -1,9 +1,13 @@
-import { expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
 import { CONSUMER_DEPENDENCIES } from "./consumer-scenario-dependencies";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 test("every third-party import in staged scenarios has an explicit consumer install", async () => {
   const root = path.resolve(import.meta.dir, "../test/consumer-scenarios");

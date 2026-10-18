@@ -1,12 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, describe, expect, test } from "bun:test";
 import path from "node:path";
 import ts from "typescript";
 import { readFileSync } from "node:fs";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const PACKAGES = path.resolve(import.meta.dir, "../packages");
 const OWNER = "utf8-boundaries/src/sliceText.ts";
 const EXTENSIONS = ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs", "vue"];
 const SOURCE_GLOB = `*/src/**/*.{${EXTENSIONS.join(",")}}`;
+const SOURCE_FILES = [...new Bun.Glob(SOURCE_GLOB).scanSync({ cwd: PACKAGES })];
 const CAP_NAME = /max|limit|radius|preview|snippet|context|truncate|unchanged.*edge/iu;
 const TEXT_NAME =
   /^(?:text|message|name|value|json|label|description|title|raw|query|author|snippet|context)$/iu;
@@ -821,8 +826,7 @@ const violationsFor = (file: string, text: string): Violation[] => {
 describe("text truncation boundaries", () => {
   test("every production package and source extension rejects bounded text and initials", async () => {
     const packages = new Set<string>();
-    for await (const file of new Bun.Glob(SOURCE_GLOB).scan({ cwd: PACKAGES }))
-      packages.add(file.split("/")[0]!);
+    for (const file of SOURCE_FILES) packages.add(file.split("/")[0]!);
     const fixtures = [
       "function preview(text: string) { return text.slice(0, 40); }",
       "const original = '👩🏽‍⚖️'; const alias = original; alias.substring(0, MAX_PREVIEW);",
@@ -969,7 +973,7 @@ describe("text truncation boundaries", () => {
   });
   test("production bounded text passes through its owner", async () => {
     const offenders: string[] = [];
-    for await (const file of new Bun.Glob(SOURCE_GLOB).scan({ cwd: PACKAGES })) {
+    for (const file of SOURCE_FILES) {
       for (const { line, reason } of violationsFor(
         file,
         await Bun.file(path.join(PACKAGES, file)).text(),
