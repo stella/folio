@@ -6,7 +6,7 @@ import { CONSUMER_SCENARIO_REPLAY_INPUTS } from "../test/consumer-scenarios/supp
 export {
   CONSUMER_SCENARIO_REPLAY_INPUTS,
   consumerScenarioReplay,
-  consumerScenarioReplayFlags,
+  consumerScenarioReplayInputs,
 } from "../test/consumer-scenarios/support/replay-inputs";
 
 const optionForFlag = (flag: `--${string}`): string =>
@@ -68,6 +68,7 @@ export const parseConsumerArgs = (argv: readonly string[], repoRoot: string): Co
     publicCorpusOutput: null,
     publicCorpusFixture: null,
   };
+  const seenReplayFlags = new Set<string>();
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const value = (): string => argv[++index] ?? panic(`consumer-scenarios: ${arg} needs a value`);
@@ -81,6 +82,10 @@ export const parseConsumerArgs = (argv: readonly string[], repoRoot: string): Co
     else if (arg !== undefined) {
       const input = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ flag }) => flag === arg);
       if (input !== undefined) {
+        if (seenReplayFlags.has(input.flag)) {
+          panic(`consumer-scenarios: repeated replay flag ${input.flag}`);
+        }
+        seenReplayFlags.add(input.flag);
         const inputValue = value();
         Object.assign(args, {
           [optionForFlag(input.flag)]:
