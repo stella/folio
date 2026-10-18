@@ -13,6 +13,7 @@
  */
 
 export { getSingularRunPropertyChange } from "./runPropertyReview";
+export { finalizeParagraphFormatting, setDocumentBodyComments } from "./canonical";
 
 import type { DocumentBody, EndnoteProperties, Footnote, Endnote, HeaderFooter } from "./content";
 import type { NumberingDefinitions } from "./lists";

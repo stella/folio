@@ -2,6 +2,7 @@ import { validateDocumentModel } from "@stll/docx-core";
 import type { ValidateDocumentModelIssue, ValidateDocumentModelResult } from "@stll/docx-core";
 
 import type { Document } from "../types/document";
+import type { BlockContent } from "../types/document";
 
 export class DocxModelValidationError extends Error {
   readonly issues: ValidateDocumentModelIssue[];
@@ -13,8 +14,44 @@ export class DocxModelValidationError extends Error {
   }
 }
 
-export const validateFolioDocumentModel = (document: Document): ValidateDocumentModelResult =>
-  validateDocumentModel(document);
+export const validateFolioDocumentModel = (document: Document): ValidateDocumentModelResult => {
+  const result = validateDocumentModel(document);
+  const issues = [...result.issues];
+  if (document.package.document.comments?.length === 0) {
+    issues.push({
+      path: "package.document.comments",
+      message: "Empty comment lists must be absent.",
+      severity: "error",
+    });
+  }
+  const validateBlocks = (blocks: readonly BlockContent[], path: string): void => {
+    for (const [index, block] of blocks.entries()) {
+      const blockPath = `${path}[${String(index)}]`;
+      if (block.type === "paragraph") {
+        if (block.formatting !== undefined && Object.keys(block.formatting).length === 0) {
+          issues.push({
+            path: `${blockPath}.formatting`,
+            message: "Empty paragraph formatting must be absent.",
+            severity: "error",
+          });
+        }
+        continue;
+      }
+      if (block.type === "table") {
+        for (const [rowIndex, row] of block.rows.entries())
+          for (const [cellIndex, cell] of row.cells.entries())
+            validateBlocks(
+              cell.content,
+              `${blockPath}.rows[${String(rowIndex)}].cells[${String(cellIndex)}].content`,
+            );
+      } else if (block.type === "blockSdt") {
+        validateBlocks(block.content, `${blockPath}.content`);
+      }
+    }
+  };
+  validateBlocks(document.package.document.content, "package.document.content");
+  return { valid: issues.every(({ severity }) => severity !== "error"), issues };
+};
 
 export const assertValidFolioDocumentModel = (document: Document, context: string): void => {
   const validation = validateFolioDocumentModel(document);

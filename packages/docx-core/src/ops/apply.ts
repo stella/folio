@@ -64,6 +64,7 @@ import {
   type Paragraph,
   type ParagraphContent,
   type ParagraphFormatting,
+  finalizeParagraphFormatting,
   type Run,
   type RunPropertyChange,
 } from "../model/document";
@@ -1233,10 +1234,11 @@ const withParagraphFormatting = (
   formatting: ParagraphFormatting | undefined,
 ): Paragraph => {
   const next: Paragraph = { ...paragraph };
-  if (formatting === undefined) {
+  const finalized = finalizeParagraphFormatting(formatting);
+  if (finalized === undefined) {
     delete next.formatting;
   } else {
-    next.formatting = formatting;
+    next.formatting = finalized;
   }
   return next;
 };

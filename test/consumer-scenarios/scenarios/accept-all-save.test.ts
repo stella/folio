@@ -1,7 +1,5 @@
-import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { canonicalReviewModel } from "../support/review-comparison.ts";
 import { runFlow } from "../support/fuzz.ts";
 
 const GENERATED_REGRESSIONS = [
@@ -35,30 +33,8 @@ const MINIMIZED_REPLAY_SEEDS = [
   { issue: 1933, seed: 1_502_256_502 },
 ] as const;
 
-/**
- * Save/reopen omits empty optional OOXML carriers. Exercise arbitrary mixtures
- * of the two modeled carriers exposed by the minimized replay seeds; populated
- * values remain strict so this normalization cannot hide authored content.
- */
 for (const { issue, seed } of MINIMIZED_REPLAY_SEEDS) {
-  test(`#${issue} minimized seed ${seed}: empty save carriers are neutral`, () => {
-    const absent = canonicalReviewModel({ type: "paragraph", content: [] });
-    for (const formatting of [{}, { sourceXml: "<w:pPr/>" }] as const) {
-      const live = canonicalReviewModel({
-        type: "paragraph",
-        content: [],
-        formatting,
-        comments: [],
-      });
-      assert.deepEqual(live, absent);
-    }
-    assert.notDeepEqual(
-      canonicalReviewModel({ type: "paragraph", content: [], formatting: { bold: false } }),
-      absent,
-    );
-    assert.notDeepEqual(
-      canonicalReviewModel({ type: "paragraph", content: [], comments: [{ id: 1 }] }),
-      absent,
-    );
+  test(`#${issue} minimized seed ${seed}: accept-all survives save`, async () => {
+    await runFlow(seed, 16, "random");
   });
 }

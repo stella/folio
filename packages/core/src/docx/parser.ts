@@ -42,7 +42,7 @@ import {
   isTiffMimeType,
   MAX_PACKAGE_TIFF_PIXELS,
 } from "../utils/tiffConverter";
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { PARSE_WARNING_CODES, setDocumentBodyComments } from "@stll/docx-core/model";
 
 import { parseComments } from "./commentParser";
 import { type ParseContext, createParseWarningCollector } from "./parseContext";
@@ -595,7 +595,7 @@ export async function parseDocxWithPreviewBudget(
       });
     }
     if (comments.length > 0) {
-      documentBody.comments = comments;
+      setDocumentBodyComments(documentBody, comments);
     }
     normalizeDrawingIds({
       documentBody,

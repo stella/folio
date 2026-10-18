@@ -20,6 +20,7 @@ export type {
   TextContent,
 } from "./model/document";
 export { DOCX_CONFORMANCE_CLASSES } from "./model/document";
+export { finalizeParagraphFormatting, setDocumentBodyComments } from "./model/document";
 
 export {
   compileLegalSourceToDocument,

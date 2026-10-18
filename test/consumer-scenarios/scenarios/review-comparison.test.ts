@@ -309,7 +309,7 @@ test("capture-only formatting holders disappear while authored properties stay s
         canonicalReviewModel({ [key]: { ...captures, bold: false } }),
       ),
     );
-    assert.deepEqual(canonicalReviewModel({ [key]: {} }), canonicalReviewModel({}));
+    assert.notDeepEqual(canonicalReviewModel({ [key]: {} }), canonicalReviewModel({}));
     assert.notDeepEqual(
       canonicalReviewModel({ [key]: { ...captures, bold: true } }),
       canonicalReviewModel({}),
@@ -319,14 +319,6 @@ test("capture-only formatting holders disappear while authored properties stay s
       /Unclassified model capture field/,
     );
   }
-});
-
-test("empty modeled comment collections are equivalent to an absent comments part", () => {
-  assert.deepEqual(canonicalReviewModel({ comments: [] }), canonicalReviewModel({}));
-  assert.notDeepEqual(
-    canonicalReviewModel({ comments: [{ id: 1, content: [] }] }),
-    canonicalReviewModel({}),
-  );
 });
 
 test("field model comparison preserves meaning across simple and complex forms", () => {
