@@ -253,7 +253,7 @@ describe("comment-range boundaries inside tracked changes", () => {
     });
   }
 
-  test("resolution returns canonical adjacent run segmentation", () => {
+  test("resolution keeps adjacent authored run segmentation", () => {
     const input = wrapParagraph({
       type: "paragraph",
       content: [
@@ -280,11 +280,8 @@ describe("comment-range boundaries inside tracked changes", () => {
     const paragraph = operation.value.document.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
     expect(paragraph.content).toEqual([
-      {
-        type: "run",
-        formatting: {},
-        content: [{ type: "text", text: "left right" }],
-      },
+      { type: "run", formatting: {}, content: [{ type: "text", text: "left" }] },
+      { type: "run", formatting: {}, content: [{ type: "text", text: " right" }] },
     ]);
   });
 

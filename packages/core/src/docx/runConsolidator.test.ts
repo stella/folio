@@ -34,6 +34,19 @@ const runText = (run: Run): string =>
   run.content.map((content) => (content.type === "text" ? content.text : "")).join("");
 
 describe("run consolidation boundaries", () => {
+  test("parsing keeps adjacent alike source runs distinct", () => {
+    const body = parseDocumentBody(`
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body><w:p><w:r><w:t>a</w:t></w:r><w:r><w:t>a</w:t></w:r></w:p></w:body>
+      </w:document>
+    `);
+    const paragraph = body.content.at(0);
+
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") panic("Expected parsed paragraph");
+    expect(paragraph.content.filter(({ type }) => type === "run").map(runText)).toEqual(["a", "a"]);
+  });
+
   test.each([
     {
       name: "at the start",

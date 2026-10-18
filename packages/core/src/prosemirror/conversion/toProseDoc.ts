@@ -122,7 +122,7 @@ import {
   type MarkFactory,
 } from "../extensions/marks/markUtils";
 import { inlineWrapperLayer } from "../inlineWrapperStack";
-import { RUN_IDENTITY_MARK_NAME, hasRunIdentityPayload, runIdentityAttrs } from "../runIdentity";
+import { RUN_IDENTITY_MARK_NAME, runIdentityAttrs } from "../runIdentity";
 import { directionFromBidi } from "../paragraphDirection";
 import { pageBreakRunParagraphProjectionDispositionForFeatures } from "../pageBreakRunProjection";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
@@ -254,18 +254,17 @@ type RunConversionScope = {
 };
 
 /**
- * The identity mark for one authored `w:r`, or `null` when it carries nothing
- * worth a mark.
+ * The identity mark for one authored `w:r`.
  *
  * The only place the mark is minted. Both run-converting paths call it — the
  * paragraph's and the hyperlink's — so the next payload field is added once
  * rather than to whichever site the author happened to open.
  *
- * Minted when the run holds a page break or multiple content items including
- * an inline atom (the leaves have to be rejoined into one `w:r` on save), an
- * attribute remainder, a `w:rPr` sink, or an authored empty `w:rPr`.
+ * Every source run receives an identity, including an otherwise plain run.
+ * That keeps adjacent alike source runs distinct while still allowing text
+ * created by an edit, which has no source identity, to coalesce normally.
  */
-const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): Mark | null => {
+const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): Mark => {
   const payload = {
     preservedAttributes: run.preservedAttributes,
     preserved: run.formatting?.preserved,
@@ -274,9 +273,6 @@ const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): M
     emptyFormatting:
       run.formatting !== undefined && Object.keys(run.formatting).length === 0 ? true : undefined,
   };
-  if (!runHasPageBreakContent(run) && !runHasMixedContent(run) && !hasRunIdentityPayload(payload)) {
-    return null;
-  }
   return schema.mark(RUN_IDENTITY_MARK_NAME, runIdentityAttrs(nextRunIdentityId(), payload));
 };
 
@@ -3156,9 +3152,6 @@ function convertRun(
 
 const runHasPageBreakContent = (run: Run): boolean =>
   run.content.some((content) => content.type === "break" && content.breakType === "page");
-
-const runHasMixedContent = (run: Run): boolean =>
-  run.content.length > 1 && run.content.some((content) => content.type !== "text");
 
 /**
  * Whether a field's result holds an explicit page break.

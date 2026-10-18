@@ -22,14 +22,7 @@ export {
   applyDocumentOps,
   type AppliedDocumentOp,
 } from "./apply";
-export {
-  formattingEquals,
-  isTextOnlyRun,
-  runsMergeable,
-  mergeRunContent,
-  runHoldsPayload,
-} from "./runMerge";
-export { normalizeRunSegmentation } from "./runNormalization";
+export { formattingEquals, isTextOnlyRun, runsMergeable, mergeRunContent } from "./runMerge";
 export {
   compileEditorIntent,
   createEditorIntentIdAllocator,

@@ -22,7 +22,6 @@ import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import type { ParseContext } from "./parseContext";
 import type { PreviewLedger } from "./previewBudget";
-import { consolidateParagraphContent } from "./runConsolidator";
 import { captureShapeAlternateContent } from "./shapeAlternateContent";
 import type { StyleMap } from "./styleParser";
 import {
@@ -258,9 +257,6 @@ export const enrichParagraphTextBoxes = (
     parseTable,
     previews,
   });
-  // Matching consumes source w:r elements by position. Merge only after that
-  // source-dependent pass so consolidation cannot move a box to another run.
-  paragraph.content = consolidateParagraphContent(paragraph.content);
 };
 
 // ============================================================================

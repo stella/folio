@@ -355,7 +355,7 @@ function isMergeableContent(content: RunContent): boolean {
  * Check if a run can be merged with another run
  * Runs with breaks, tabs, images, fields, etc. act as merge boundaries
  */
-export const runHoldsPayload = (run: Run): boolean => run.content.length > 0;
+const runHoldsPayload = (run: Run): boolean => run.content.length > 0;
 
 function canMergeRun(run: Run): boolean {
   // A run-property revision owns an exact text range. Merging either boundary

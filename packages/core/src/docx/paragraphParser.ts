@@ -101,7 +101,6 @@ import {
   preserveRunChild,
 } from "./preservedRunContent";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
-import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun } from "./runParser";
 import { runHoldsPayload } from "./runPayload";
 import { isVmlPictParsedByRunParser } from "./vmlImageParser";
@@ -2215,11 +2214,9 @@ export function parseParagraph(
     options?.rootXmlns ?? {},
   );
 
-  // Text-box enrichment matches model runs to source w:r elements by position.
-  // Its block parsers defer this merge until that source-dependent pass ends.
-  const consolidated = (content: ParagraphContent[]): ParagraphContent[] =>
-    options?.runConsolidation === "deferred" ? content : consolidateParagraphContent(content);
-  paragraph.content = consolidated(rawContent);
+  // Source w:r boundaries are authored structure. Text created by editing has
+  // no source identity and is coalesced at the edit seam instead.
+  paragraph.content = rawContent;
 
   // Compute list rendering if this is a list item.
   //
@@ -2330,7 +2327,7 @@ export function parseParagraph(
           // its trailing tab; the fold steps over them, so the tab still
           // leaves the line and the markers stay. The field and the tab stay
           // in the content as markup that shows nothing, where they stood.
-          paragraph.content = consolidated(fold.content);
+          paragraph.content = fold.content;
           listRendering.foldedMarkerSuffix = fold.cached.join(" ");
           listRendering.marker = `${listRendering.marker}\t${listRendering.foldedMarkerSuffix}`;
           const nextLevel = numbering.getLevel(numId, ilvl + 1);

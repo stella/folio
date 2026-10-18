@@ -20,11 +20,11 @@
  * and no capture can close that, because the payload never was a run child.
  * Asking this predicate at the writer closes it for every producer at once.
  *
- * Between `parseParagraphContents` and `enrichParagraphTextBoxes`, a carrier
- * run is legitimately empty. The source-aware keep rule admits that run, and
- * the canonical normalizer treats its empty model shape as a merge boundary.
- * Re-exporting the model owner's predicate keeps parsing, normalization and
- * serialization on the same answer.
+ * A run whose payload another pass will supply is the one case the model
+ * cannot answer alone: between `parseParagraphContents` and
+ * `enrichParagraphTextBoxes` the carrier run is legitimately empty.
  */
 
-export { runHoldsPayload } from "@stll/docx-core/ops";
+import type { Run } from "../types/document";
+
+export const runHoldsPayload = (run: Run): boolean => run.content.length > 0;
