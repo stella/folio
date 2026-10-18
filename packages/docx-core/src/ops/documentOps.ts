@@ -53,7 +53,12 @@ export {
 export { transformBatch } from "./sequencing/transform";
 export { createSequencer } from "./sequencing/sequencer";
 export { createClient } from "./sequencing/client";
-export { compareBatchOrder, orderBatchOperations, type BatchOrderAddress } from "./batchOrder";
+export {
+  compareBatchOrder,
+  contentRank,
+  orderBatchOperations,
+  type BatchOrderAddress,
+} from "./batchOrder";
 export {
   allocateCommentAnchorIds,
   planTrackedDeletion,

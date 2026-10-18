@@ -43,7 +43,7 @@
 
 import assert from "node:assert/strict";
 import { validateDocxPackage } from "@stll/docx-core";
-import { orderBatchOperations, type BatchOrderAddress } from "@stll/docx-core/ops";
+import { contentRank, orderBatchOperations, type BatchOrderAddress } from "@stll/docx-core/ops";
 import { inflateRawSync } from "node:zlib";
 
 import { createReviewerBridge } from "@stll/folio-agents";
@@ -605,6 +605,21 @@ export const sequentialGroups = ({
   const earlyIds = new Set(earlyProperties.map(({ id }) => id));
   const isColumnEdit = (operation: AnyOperation): boolean =>
     operation.type === "insertTableColumn" || operation.type === "deleteTableColumn";
+  const deletedSplitTargets = new Set(
+    applied
+      .filter(
+        (operation) =>
+          mode === "tracked-changes" &&
+          operation.type === "deleteBlock" &&
+          applied.some(
+            (candidate) =>
+              candidate.type === "insertTable" &&
+              candidate["position"] !== "before" &&
+              blockIdOf(candidate) === blockIdOf(operation),
+          ),
+      )
+      .map(blockIdOf),
+  );
   const columnLocation = (operation: AnyOperation): [number, number] => {
     const targetId = blockIdOf(operation);
     const target = preRows.find((row) => row.id === targetId);
@@ -633,9 +648,15 @@ export const sequentialGroups = ({
         };
       }
       const [block, inside, offset] = placement(operation, preRows);
+      const hasDeletedSplit = deletedSplitTargets.has(blockIdOf(operation));
+      const position =
+        hasDeletedSplit && operation.type === "deleteBlock"
+          ? (block + 1) * 1_000_000_000
+          : block * 1_000_000_000 + inside * 100_000_000 + offset;
       return {
         type: "content",
-        position: block * 1_000_000_000 + inside * 100_000_000 + offset,
+        position,
+        rank: contentRank(operation, { hasDeletedSplit }),
         inputIndex: index,
       };
     },

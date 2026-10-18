@@ -18,7 +18,7 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canSplit } from "prosemirror-transform";
 import { panic } from "better-result";
-import { orderBatchOperations, type BatchOrderAddress } from "@stll/docx-core/ops";
+import { contentRank, orderBatchOperations, type BatchOrderAddress } from "@stll/docx-core/ops";
 import {
   claimRevisionIds,
   nextRevisionId as peekRevisionId,
@@ -4225,19 +4225,11 @@ const applyFolioAIEditOperationsInternal = ({
     if (ANNOTATION_OPERATION_TYPES.has(item.operation.type)) {
       return { type: "annotation", position: item.from, inputIndex: item.originalIndex };
     }
-    const ordersDeletedSplitBeforeTable = tableAfterDeletedSplit.has(item.blockFrom);
-    const deletesSplit = ordersDeletedSplitBeforeTable && item.operation.type === "deleteBlock";
-    const insertsTableAfterSplit =
-      ordersDeletedSplitBeforeTable &&
-      item.operation.type === "insertTable" &&
-      item.operation.position !== "before";
-    let rank = 1;
-    if (deletesSplit) rank = 0;
-    if (insertsTableAfterSplit) rank = 2;
+    const hasDeletedSplit = tableAfterDeletedSplit.has(item.blockFrom);
     return {
       type: "content",
-      position: deletesSplit ? item.blockTo : item.from,
-      rank,
+      position: hasDeletedSplit && item.operation.type === "deleteBlock" ? item.blockTo : item.from,
+      rank: contentRank(item.operation, { hasDeletedSplit }),
       inputIndex: item.originalIndex,
     };
   };

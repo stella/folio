@@ -13,6 +13,7 @@ import {
 } from "@stll/docx-core/ops";
 
 import { openReviewer, packDocument } from "../support/documents.ts";
+import { sequentialGroups } from "../support/metamorphic.ts";
 import type { Row } from "../support/oracle.ts";
 
 const MODES = ["direct", "tracked-changes"] as const;
@@ -178,6 +179,14 @@ test("deletion precedes a table insertion through every three-operation permutat
       },
       { id: "delete", type: "deleteBlock" as const, blockId: splitAnchor.id },
     ];
+    const orderedReplay = sequentialGroups({
+      applied: order.flatMap((index) => operations.at(index) ?? []),
+      preRows: reviewer.getContent() as Row[],
+      mode: "tracked-changes",
+    })
+      .flat()
+      .map(({ id }) => id);
+    assert.ok(orderedReplay.indexOf("delete") < orderedReplay.indexOf("table"));
     const result = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
