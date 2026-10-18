@@ -212,6 +212,12 @@ export const writeFailureRecord = (dir: string, record: FailureRecord): string =
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${record.marker.fingerprint}-${record.marker.seed}.json`);
   writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
+  if (record.flow !== undefined) {
+    writeFileSync(
+      join(dir, `${record.marker.fingerprint}-${record.marker.seed}.flow.json`),
+      `${JSON.stringify(record.flow, null, 2)}\n`,
+    );
+  }
   return file;
 };
 

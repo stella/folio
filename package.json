@@ -39,6 +39,7 @@
     "check:strict-name-tolerance": "bun scripts/check-strict-name-tolerance.ts",
     "check:identity-attributes": "bun scripts/identity-attribute-baseline.ts --check",
     "check:build-reproducibility": "bun scripts/check-build-reproducibility.ts",
+    "check:affected-packages": "bun scripts/check-affected-packages.ts",
     "check:docx-kernel": "bun --filter '@stll/docx-core' wasm:check",
     "check:shaper": "bun --filter '@stll/folio-core' wasm:check",
     "check:docx-kernel-version": "bun scripts/sync-docx-kernel-version.ts",

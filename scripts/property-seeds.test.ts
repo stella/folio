@@ -206,8 +206,10 @@ test("nightly replay fixture", () => {
       expect(output).toContain(`${relative}::nightly replay fixture`);
       expect(output).not.toContain("did not match any test files");
       const files = readdirSync(path.join(directory, "records"));
-      expect(files).toHaveLength(1);
-      const file = files.at(0);
+      const recordFiles = files.filter((file) => !file.endsWith(".flow.json"));
+      expect(recordFiles).toHaveLength(1);
+      expect(files.filter((file) => file.endsWith(".flow.json"))).toHaveLength(1);
+      const file = recordFiles.at(0);
       if (!file) throw new Error("Missing failure record");
       const persisted = parseFailureRecord(
         JSON.parse(readFileSync(path.join(directory, "records", file), "utf8")),

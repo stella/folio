@@ -1304,7 +1304,7 @@ export type PresetLineDashValue = PresetLineDashVal | UnrecognisedPresetLineDash
 
 // @public
 export type PreviewDescriptor = {
-    readonly kind: "diagram";
+    readonly kind: "chart" | "diagram";
     readonly extent: {
         readonly width: number;
         readonly height: number;
@@ -1312,13 +1312,23 @@ export type PreviewDescriptor = {
     readonly shapes: readonly PreviewShape[];
 };
 
-// @public
+// @public (undocumented)
 export type PreviewShape = {
+    readonly type?: "rect";
     readonly x: number;
     readonly y: number;
     readonly width: number;
     readonly height: number;
     readonly color: string;
+} | {
+    readonly type: "polygon";
+    readonly points: readonly PreviewPoint[];
+    readonly color: string;
+} | {
+    readonly type: "polyline";
+    readonly points: readonly PreviewPoint[];
+    readonly color: string;
+    readonly strokeWidth: number;
 };
 
 // @public

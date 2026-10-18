@@ -1071,12 +1071,14 @@ async function buildMediaMap(
     }
   }
 
-  // Diagram data is XML rather than media, but exposing the bounded extracted
+  // Diagram and chart data are XML rather than media, but exposing the bounded extracted
   // parts through the same resolver lets the run parser build a preview while
   // the original ZIP remains authoritative for save/round-trip.
   for (const [path, xml] of raw.allXml.entries()) {
     if (
-      !/^word\/diagrams\/[^/]+\.xml$/iu.test(path) ||
+      !/^word\/(?:diagrams\/[^/]+\.xml|charts\/(?:[^/]+\.xml|_rels\/[^/]+\.xml\.rels))$/iu.test(
+        path,
+      ) ||
       encodeUtf8(xml).byteLength > FOLIO_XML_RESOURCE_LIMITS.maxBytes
     ) {
       continue;
