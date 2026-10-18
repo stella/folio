@@ -198,6 +198,38 @@ test("the batch comparator defines one total order", () => {
   }
 });
 
+test("the batch comparator preserves phases within a table and visits nested tables first", () => {
+  const sameTable: BatchOrderAddress[] = [
+    { type: "column", tablePosition: 10, columnIndex: 0, insertion: false, inputIndex: 3 },
+    { type: "cell", tablePosition: 10, bottom: 1, right: 1, inputIndex: 2 },
+    { type: "content", position: 10, rank: 1, inputIndex: 1 },
+    { type: "annotation", position: 10, inputIndex: 0 },
+  ];
+  assert.deepEqual(
+    orderBatchOperations(sameTable, (address) => address).map(({ type }) => type),
+    ["annotation", "content", "cell", "column"],
+  );
+
+  const outerCell: BatchOrderAddress = {
+    type: "cell",
+    tablePosition: 10,
+    bottom: 2,
+    right: 2,
+    inputIndex: 0,
+  };
+  const nestedColumn: BatchOrderAddress = {
+    type: "column",
+    tablePosition: 20,
+    columnIndex: 0,
+    insertion: false,
+    inputIndex: 1,
+  };
+  assert.deepEqual(
+    orderBatchOperations([outerCell, nestedColumn], (address) => address),
+    [nestedColumn, outerCell],
+  );
+});
+
 test("deletion precedes a table insertion through every three-operation permutation", async () => {
   const outcomes: ReturnType<typeof view>[] = [];
   for (const order of ORDERS) {

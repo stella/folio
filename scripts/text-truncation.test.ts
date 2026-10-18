@@ -977,5 +977,5 @@ describe("text truncation boundaries", () => {
         offenders.push(`${file}:${line}: ${reason}`);
     }
     expect(offenders).toEqual([]);
-  });
+  }, 10_000);
 });

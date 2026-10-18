@@ -2,8 +2,9 @@
  * The execution coordinates of an operation resolved against a batch's
  * pre-state. Positions and table coordinates are ordered from right to left;
  * equal content coordinates use an explicit rank, then reverse input order.
- * Annotations run before moving
- * edits, while table-shape and column edits run after ordinary content edits.
+ * Annotations run before moving edits, while table-shape and column edits run
+ * after ordinary content edits. Table mutations in nested tables still run
+ * right to left before the phase order is applied within the same table.
  */
 export type BatchOrderAddress =
   | { type: "annotation"; position: number; inputIndex: number }
@@ -44,6 +45,13 @@ export const contentRank = (
 
 /** Compare two pre-batch addresses in the documented batch execution order. */
 export const compareBatchOrder = (left: BatchOrderAddress, right: BatchOrderAddress): number => {
+  if (
+    (left.type === "cell" || left.type === "column") &&
+    (right.type === "cell" || right.type === "column") &&
+    left.tablePosition !== right.tablePosition
+  ) {
+    return right.tablePosition - left.tablePosition;
+  }
   if (left.type !== right.type) return PHASE[left.type] - PHASE[right.type];
   if (
     (left.type === "annotation" || left.type === "content") &&
