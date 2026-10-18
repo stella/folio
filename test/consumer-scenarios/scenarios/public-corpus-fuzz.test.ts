@@ -10,7 +10,7 @@ import {
   shellQuote,
   writeFailureRecord,
 } from "../support/failure-fingerprints.ts";
-import { recordFailure, relationEnv } from "../support/fuzz-loop.ts";
+import { recordFailure, relationFlags } from "../support/fuzz-loop.ts";
 import { FlowError, runFlow, runFlowFile } from "../support/fuzz.ts";
 import type { FlowFile } from "../support/flow-file.ts";
 import { openReviewer } from "../support/documents.ts";
@@ -198,10 +198,11 @@ if (!ENABLED) {
       const destination = path.join(output, fixture.slice(PUBLIC_CORPUS_PREFIX.length));
       await mkdir(destination, { recursive: true });
       const repro = [
-        `FOLIO_SCENARIO_PUBLIC_CORPUS_FUZZ=1 FOLIO_SCENARIO_SEED=${seed} FOLIO_SCENARIO_PUBLIC_CORPUS_STEPS=${steps}`,
-        `FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT=test-results/public-corpus FOLIO_SCENARIO_PUBLIC_CORPUS_FIXTURE=${shellQuote(fixture)}`,
-        relationEnv(),
-        "bun scripts/consumer-scenarios.ts -- public-corpus-fuzz.test.ts",
+        "bun scripts/consumer-scenarios.ts",
+        `--public-corpus-fuzz 1 --seed ${seed} --public-corpus-steps ${steps}`,
+        `--public-corpus-output test-results/public-corpus --public-corpus-fixture ${shellQuote(fixture)}`,
+        relationFlags(),
+        "-- public-corpus-fuzz.test.ts",
       ]
         .filter(Boolean)
         .join(" ");
