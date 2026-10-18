@@ -716,6 +716,12 @@ export const paragraphLength: (paragraph: Paragraph) => number;
 // @public
 export const paragraphLogicalText: (paragraph: Paragraph) => string;
 
+// @public (undocumented)
+export type ParagraphMarkCarrier = "following" | "current" | "none";
+
+// @public
+export const paragraphMarkCarrier: (input: ParagraphMarkCarrierOptions) => ParagraphMarkCarrier;
+
 // @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
 
