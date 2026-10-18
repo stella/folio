@@ -219,6 +219,69 @@ describe("renderWmfSvg", () => {
     expect(svg?.match(/<rect x="0" y="0" width="200" height="100"/g)).toHaveLength(2);
   });
 
+  test("applies text, anisotropic, and isotropic map modes", () => {
+    const anisotropicThenText = renderWmfSvg(
+      vectorWmf({
+        placeable: false,
+        records: [
+          wmfRecord(META.setViewportExtent, [100, 200]),
+          ...mappingRecords({ x: 0, y: 0 }, { x: 100, y: 100 }),
+          wmfRecord(META.rectangle, [20, 20, 10, 10]),
+          wmfRecord(META.setMapMode, [1]),
+          wmfRecord(META.rectangle, [20, 20, 10, 10]),
+        ],
+      }),
+    );
+    const isotropic = renderWmfSvg(
+      vectorWmf({
+        placeable: false,
+        records: [
+          wmfRecord(META.setViewportExtent, [100, 200]),
+          ...mappingRecords({ x: 0, y: 0 }, { x: 100, y: 100 }),
+          wmfRecord(META.setMapMode, [7]),
+          wmfRecord(META.rectangle, [20, 20, 10, 10]),
+        ],
+      }),
+    );
+
+    expect(anisotropicThenText).toContain('<rect x="20" y="10" width="20" height="10"');
+    expect(anisotropicThenText).toContain('<rect x="10" y="10" width="10" height="10"');
+    expect(isotropic).toContain('<rect x="10" y="10" width="10" height="10"');
+    expect(
+      renderWmfSvg(
+        vectorWmf({
+          records: [
+            wmfRecord(META.setMapMode, [2]),
+            polygonRecord([
+              { x: 0, y: 0 },
+              { x: 1, y: 0 },
+              { x: 0, y: 1 },
+            ]),
+          ],
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  test("maps logical pen widths and preserves zero-width hairlines", () => {
+    const renderWithPenWidth = (width: number) =>
+      renderWmfSvg(
+        vectorWmf({
+          placeable: false,
+          records: [
+            wmfRecord(META.setViewportExtent, [100, 100]),
+            ...mappingRecords({ x: 0, y: 0 }, { x: 1_000, y: 1_000 }),
+            wmfRecord(META.createPenIndirect, [0, width, 0, ...colorWords(0)]),
+            wmfRecord(META.selectObject, [0]),
+            wmfRecord(META.rectangle, [1_000, 1_000, 0, 0]),
+          ],
+        }),
+      );
+
+    expect(renderWithPenWidth(20)).toContain('stroke-width="2"');
+    expect(renderWithPenWidth(0)).toContain('stroke-width="1"');
+  });
+
   test("renders common object, state, line, polygon, rectangle, and ellipse records", () => {
     const records = [
       ...mappingRecords(),
@@ -391,6 +454,45 @@ describe("renderWmfSvg", () => {
 
           expect(svg).toContain(`viewBox="0 0 ${viewWidth} ${viewHeight}"`);
           expect(svg).toContain(`<rect x="0" y="0" width="${viewWidth}" height="${viewHeight}"`);
+        },
+      ),
+      { numRuns: 200 },
+    );
+  });
+
+  test("emits only finite mapped values while keeping the viewport fixed", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(1, 7, 8),
+        fc.integer({ min: 1, max: 2_000 }),
+        fc.integer({ min: 1, max: 2_000 }),
+        fc.integer({ min: 1, max: 2_000 }),
+        fc.integer({ min: 1, max: 2_000 }),
+        fc.integer({ min: 0, max: 2_000 }),
+        (mode, viewWidth, viewHeight, windowWidth, windowHeight, penWidth) => {
+          const svg = renderWmfSvg(
+            vectorWmf({
+              placeable: false,
+              records: [
+                wmfRecord(META.setViewportExtent, [viewHeight, viewWidth]),
+                ...mappingRecords({ x: 0, y: 0 }, { x: windowWidth, y: windowHeight }),
+                wmfRecord(META.setMapMode, [mode]),
+                wmfRecord(META.createPenIndirect, [0, penWidth, 0, ...colorWords(0)]),
+                wmfRecord(META.selectObject, [0]),
+                wmfRecord(META.rectangle, [windowHeight, windowWidth, 0, 0]),
+              ],
+            }),
+          );
+
+          expect(svg).not.toBeNull();
+          expect(svg).toContain(`viewBox="0 0 ${viewWidth} ${viewHeight}"`);
+          expect(svg).not.toMatch(/(?:NaN|Infinity)/);
+          const rectangle = svg?.match(/<rect [^>]+/)?.at(0);
+          expect(rectangle).toBeDefined();
+          for (const value of rectangle?.matchAll(/(?:x|y|width|height|stroke-width)="([^"]+)"/g) ??
+            []) {
+            expect(Number.isFinite(Number(value[1]))).toBeTrue();
+          }
         },
       ),
       { numRuns: 200 },

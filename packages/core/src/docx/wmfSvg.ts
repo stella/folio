@@ -46,6 +46,7 @@ const META = {
 } as const;
 
 const MAP_MODE_TEXT = 1;
+const MAP_MODE_ISOTROPIC = 7;
 const MAP_MODE_ANISOTROPIC = 8;
 const POLY_FILL_ALTERNATE = 1;
 const POLY_FILL_WINDING = 2;
@@ -55,7 +56,7 @@ type Brush = { type: "brush"; fill: string | null };
 type GraphicsObject = Pen | Brush;
 type Point = { x: number; y: number };
 type State = {
-  mapMode: typeof MAP_MODE_TEXT | typeof MAP_MODE_ANISOTROPIC;
+  mapMode: typeof MAP_MODE_TEXT | typeof MAP_MODE_ISOTROPIC | typeof MAP_MODE_ANISOTROPIC;
   origin: Point;
   extent: Point | null;
   viewportOrigin: Point;
@@ -83,9 +84,29 @@ const dword = (view: DataView, offset: number, end: number): number | undefined 
   offset >= 0 && offset + 4 <= end ? view.getUint32(offset, true) : undefined;
 
 const mappedPoint = (state: State, point: Point): Point | undefined => {
+  if (state.mapMode === MAP_MODE_TEXT) {
+    return {
+      x: state.viewportOrigin.x + point.x - state.origin.x,
+      y: state.viewportOrigin.y + point.y - state.origin.y,
+    };
+  }
   const extent = state.extent;
   const viewportExtent = state.viewportExtent;
   if (!extent || !viewportExtent || extent.x === 0 || extent.y === 0) return undefined;
+  if (state.mapMode === MAP_MODE_ISOTROPIC) {
+    const scale = Math.min(
+      Math.abs(viewportExtent.x / extent.x),
+      Math.abs(viewportExtent.y / extent.y),
+    );
+    return {
+      x:
+        state.viewportOrigin.x +
+        (point.x - state.origin.x) * Math.sign(viewportExtent.x / extent.x) * scale,
+      y:
+        state.viewportOrigin.y +
+        (point.y - state.origin.y) * Math.sign(viewportExtent.y / extent.y) * scale,
+    };
+  }
   return transformMetafilePoint({
     point,
     windowOrigin: state.origin,
@@ -97,6 +118,22 @@ const mappedPoint = (state: State, point: Point): Point | undefined => {
   });
 };
 
+const mappedPenWidth = (state: State, pen: Pen | null): number | undefined => {
+  const width = pen?.width ?? 0;
+  if (width === 0) return 1;
+  if (state.mapMode === MAP_MODE_TEXT) return width;
+  const extent = state.extent;
+  const viewportExtent = state.viewportExtent;
+  if (!extent || !viewportExtent || extent.x === 0 || extent.y === 0) return undefined;
+  const xScale = Math.abs(viewportExtent.x / extent.x);
+  const yScale = Math.abs(viewportExtent.y / extent.y);
+  const scale =
+    state.mapMode === MAP_MODE_ISOTROPIC ? Math.min(xScale, yScale) : (xScale + yScale) / 2;
+  // WMF geometric pens have one logical width; average the device-axis scales for anisotropic maps.
+  const mapped = width * scale;
+  return Number.isFinite(mapped) ? mapped : undefined;
+};
+
 const pathPoint = (command: string, point: Point): string =>
   `${command}${metafileNumberText(point.x)} ${metafileNumberText(point.y)}`;
 
@@ -104,7 +141,8 @@ const paint = (state: State): string | undefined => {
   if (!state.brush && !state.pen) return undefined;
   const fill = state.brush?.fill ?? "none";
   const stroke = state.pen?.stroke ?? "none";
-  const width = state.pen?.width ?? 1;
+  const width = mappedPenWidth(state, state.pen);
+  if (width === undefined) return undefined;
   return `fill="${fill}" stroke="${stroke}" stroke-width="${metafileNumberText(width)}"`;
 };
 
@@ -234,7 +272,11 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         break;
       case META.setMapMode: {
         const mode = short(view, params, end);
-        if (size !== 8 || (mode !== MAP_MODE_TEXT && mode !== MAP_MODE_ANISOTROPIC)) return null;
+        if (
+          size !== 8 ||
+          (mode !== MAP_MODE_TEXT && mode !== MAP_MODE_ISOTROPIC && mode !== MAP_MODE_ANISOTROPIC)
+        )
+          return null;
         state.mapMode = mode;
         break;
       }
@@ -309,7 +351,7 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
           !addObject({
             type: "pen",
             stroke: (style & 0x0f) === 5 ? null : metafileColorRefToCss(color),
-            width: Math.max(1, Math.abs(width)),
+            width: Math.abs(width),
           })
         )
           return null;
@@ -361,12 +403,14 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
           const start = mappedPoint(state, state.current);
           const finish = mappedPoint(state, { x, y });
           const stroke = state.pen?.stroke;
+          const strokeWidth = mappedPenWidth(state, state.pen);
           if (
             !start ||
             !finish ||
             !stroke ||
+            strokeWidth === undefined ||
             !append(
-              `<path d="${pathPoint("M", start)} ${pathPoint("L", finish)}" fill="none" stroke="${stroke}" stroke-width="${metafileNumberText(state.pen?.width ?? 1)}"/>`,
+              `<path d="${pathPoint("M", start)} ${pathPoint("L", finish)}" fill="none" stroke="${stroke}" stroke-width="${metafileNumberText(strokeWidth)}"/>`,
             )
           )
             return null;
@@ -392,7 +436,9 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         if (fn === META.polyline) {
           const pen = state.pen;
           if (!pen?.stroke) return null;
-          shapeAttributes = `fill="none" stroke="${pen.stroke}" stroke-width="${metafileNumberText(pen.width)}"`;
+          const strokeWidth = mappedPenWidth(state, pen);
+          if (strokeWidth === undefined) return null;
+          shapeAttributes = `fill="none" stroke="${pen.stroke}" stroke-width="${metafileNumberText(strokeWidth)}"`;
         } else {
           shapeAttributes += ` fill-rule="${state.fillRule}"`;
         }
