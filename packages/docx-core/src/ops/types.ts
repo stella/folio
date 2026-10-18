@@ -1091,6 +1091,8 @@ export type DocumentOp = (
   | SetSectionEndpointOp
   | SetPackageResourcesOp
 ) & {
+  /** Primitive belongs to one atomic comment-anchor move. */
+  commentAnchorMove?: true;
   /** Own undefined fields recorded by the operation capture boundary. */
   undefinedFields?: readonly (readonly string[])[];
 };

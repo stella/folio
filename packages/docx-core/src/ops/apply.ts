@@ -2259,14 +2259,18 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
   return storyLifecycleEdit(document, next, op);
 };
 
-const dispatch = (document: Document, op: DocumentOp): Applied => {
+const dispatch = (
+  document: Document,
+  op: DocumentOp,
+  retiringCommentIds: ReadonlySet<number>,
+): Applied => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
     case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
     case DOCUMENT_OP_TYPES.DELETE_COMMENT:
     case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
-      return applyCommentOp(document, op, applyDocumentOps);
+      return applyCommentOp(document, op, applyDocumentOps, retiringCommentIds);
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
@@ -2456,12 +2460,13 @@ const preserveParagraphPropertySnapshots = ({
 
 type ApplyDocumentOpOptions = {
   commentRetirement: "apply" | "defer";
+  retiringCommentIds?: ReadonlySet<number>;
 };
 
 const applyDocumentOpInternal = (
   document: Document,
   input: DocumentOp,
-  { commentRetirement }: ApplyDocumentOpOptions,
+  { commentRetirement, retiringCommentIds = new Set() }: ApplyDocumentOpOptions,
 ): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   const restored = restoreDocumentOp(input);
   if (restored.isErr()) return restored;
@@ -2506,7 +2511,7 @@ const applyDocumentOpInternal = (
   if (badStamp !== undefined) {
     return Result.err(badStamp);
   }
-  const applied = dispatch(document, op);
+  const applied = dispatch(document, op, retiringCommentIds);
   if (applied.isErr()) {
     return Result.err(applied.error);
   }
@@ -2607,7 +2612,9 @@ const applyDocumentOpInternal = (
   preserveParagraphPropertySnapshots({ before: document, edit });
   return Result.ok({
     ...edit,
-    inverse: edit.inverse.map(captureDocumentOp),
+    inverse: edit.inverse.map((inverse) =>
+      captureDocumentOp(op.commentAnchorMove ? { ...inverse, commentAnchorMove: true } : inverse),
+    ),
     revisions: stamp === undefined ? [] : recordedRevisions(document, edit, stamp),
   });
 };
@@ -2616,8 +2623,55 @@ const applyDocumentOpInternal = (
 export const applyDocumentOp = (
   document: Document,
   input: DocumentOp,
-): Result<AppliedDocumentOp, DocumentOpRefusal> =>
-  applyDocumentOpInternal(document, input, { commentRetirement: "apply" });
+): Result<AppliedDocumentOp, DocumentOpRefusal> => {
+  return applyDocumentOpInternal(document, input, {
+    commentRetirement: input.commentAnchorMove ? "defer" : "apply",
+  });
+};
+
+const retireExhaustedComments = (
+  before: Document,
+  edit: AppliedDocumentOp,
+  allowOrphanRetirement = false,
+): Result<AppliedDocumentOp, DocumentOpRefusal> => {
+  const beforeCoverage = commentRangeCoverage(before);
+  const afterCoverage = commentRangeCoverage(edit.document);
+  const beforeDefined = new Set((before.package.document.comments ?? []).map(({ id }) => id));
+  const afterDefined = new Set((edit.document.package.document.comments ?? []).map(({ id }) => id));
+  const ids = new Set(
+    [...beforeCoverage]
+      .filter(
+        ([id, coverage]) =>
+          beforeDefined.has(id) &&
+          afterDefined.has(id) &&
+          commentRangeShouldRetire(
+            coverage,
+            afterCoverage.get(id) ?? {
+              authoredAsPoint: false,
+              survivingNonCarrierContent: false,
+            },
+          ),
+      )
+      .map(([id]) => id),
+  );
+  if (ids.size === 0) return Result.ok(edit);
+  let current = edit.document;
+  const retirements: DocumentEdit[] = [];
+  for (const id of ids) {
+    const retired = applyDocumentOpInternal(
+      current,
+      { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id, scope: "thread" },
+      {
+        commentRetirement: "defer",
+        ...(allowOrphanRetirement ? { retiringCommentIds: ids } : {}),
+      },
+    );
+    if (retired.isErr()) return retired;
+    current = retired.value.document;
+    retirements.push(retired.value);
+  }
+  return Result.ok({ ...combineEdits(before, [edit, ...retirements]), revisions: edit.revisions });
+};
 
 const applyDocumentOpsDuringResolution = (
   document: Document,
@@ -2661,11 +2715,14 @@ export const applyDocumentOps = (
   document: Document,
   ops: readonly DocumentOp[],
 ): Result<AppliedDocumentOp, DocumentOpRefusal> => {
+  const transfersCommentAnchors = ops.some(({ commentAnchorMove }) => commentAnchorMove);
   let current = document;
   const edits: DocumentEdit[] = [];
   const revisions: number[] = [];
   for (const op of ops) {
-    const applied = applyDocumentOp(current, op);
+    const applied = transfersCommentAnchors
+      ? applyDocumentOpInternal(current, op, { commentRetirement: "defer" })
+      : applyDocumentOp(current, op);
     if (applied.isErr()) {
       return applied;
     }
@@ -2673,5 +2730,8 @@ export const applyDocumentOps = (
     edits.push(applied.value);
     revisions.push(...applied.value.revisions);
   }
-  return Result.ok({ ...combineEdits(document, edits), revisions });
+  const combined = { ...combineEdits(document, edits), revisions };
+  return transfersCommentAnchors
+    ? retireExhaustedComments(document, combined, true)
+    : Result.ok(combined);
 };

@@ -101,7 +101,7 @@ export const TABLE_EXCLUSIVE_OP_TYPES = {
 
 type Validator = (value: unknown) => boolean;
 type Fields = Readonly<Record<string, Validator>>;
-type CommonOperationFields = Pick<DocumentOp, "undefinedFields">;
+type CommonOperationFields = Pick<DocumentOp, "commentAnchorMove" | "undefinedFields">;
 type OperationFields<Type extends DocumentOpType> = {
   [
     Key in Exclude<keyof Extract<DocumentOp, { type: Type }>, keyof CommonOperationFields>
@@ -135,6 +135,7 @@ const array =
   (value) =>
     Array.isArray(value) && value.every(check);
 const commonOperationFields = {
+  commentAnchorMove: optional(literal(true)),
   undefinedFields: optional(array(array(nonemptyString))),
 } satisfies Record<keyof CommonOperationFields, Validator>;
 const object =

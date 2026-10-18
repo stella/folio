@@ -1478,7 +1478,9 @@ export const compileEditorIntent = (
         ...(firstBlockId === undefined ? {} : { firstBlockId }),
       });
       if (inserted.isErr()) return inserted;
-      ops = [...deletionOps, ...inserted.value.ops];
+      ops = [...deletionOps, ...inserted.value.ops].map((op) =>
+        Object.assign({}, op, { commentAnchorMove: true as const }),
+      );
       selection = inserted.value.selection;
       break;
     }

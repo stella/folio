@@ -838,6 +838,7 @@ export const applyCommentOp = (
   document: Document,
   op: CommentOp,
   applyOps: ApplyOps,
+  retiringCommentIds: ReadonlySet<number> = new Set(),
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   if (op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE) {
     if (
@@ -873,7 +874,7 @@ export const applyCommentOp = (
   const comments = document.package.document.comments ?? [];
   const comment = comments.find(({ id }) => id === op.id);
   if (!comment) return fail(op, "The comment does not exist.");
-  if (orphans.has(comment.id))
+  if (orphans.has(comment.id) && !retiringCommentIds.has(comment.id))
     return fail(op, "A comment without a source anchor is preserved read-only.");
   if (op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT) {
     if (
