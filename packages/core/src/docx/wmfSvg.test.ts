@@ -23,6 +23,7 @@ const META = {
   deleteObject: 0x01f0,
   setWindowOrigin: 0x020b,
   setWindowExtent: 0x020c,
+  setViewportExtent: 0x020e,
   lineTo: 0x0213,
   moveTo: 0x0214,
   createPenIndirect: 0x02fa,
@@ -164,6 +165,60 @@ const minimalEmf = (): Uint8Array => {
 };
 
 describe("renderWmfSvg", () => {
+  test("uses the WMF stock pen, brush, and alternate polygon fill mode", () => {
+    const rectangle = renderWmfSvg(
+      vectorWmf({ records: [...mappingRecords(), wmfRecord(META.rectangle, [120, 210, 20, 10])] }),
+    );
+    const polygon = renderWmfSvg(
+      vectorWmf({
+        records: [
+          ...mappingRecords(),
+          polygonRecord([
+            { x: 10, y: 20 },
+            { x: 210, y: 120 },
+            { x: 210, y: 20 },
+            { x: 10, y: 120 },
+          ]),
+        ],
+      }),
+    );
+    const brushOnly = renderWmfSvg(
+      vectorWmf({
+        records: [
+          ...mappingRecords(),
+          wmfRecord(META.createBrushIndirect, [0, ...colorWords(0x0000_00ff), 0]),
+          wmfRecord(META.selectObject, [0]),
+          polygonRecord([
+            { x: 10, y: 20 },
+            { x: 210, y: 20 },
+            { x: 110, y: 120 },
+          ]),
+        ],
+      }),
+    );
+
+    expect(rectangle).toContain('fill="#ffffff" stroke="#000000" stroke-width="1"');
+    expect(polygon).toContain('fill-rule="evenodd"');
+    expect(brushOnly).toContain('fill="#ff0000" stroke="#000000" stroke-width="1"');
+  });
+
+  test("keeps the output viewport fixed when the window extent changes", () => {
+    const svg = renderWmfSvg(
+      vectorWmf({
+        placeable: false,
+        records: [
+          ...mappingRecords({ x: 0, y: 0 }, { x: 200, y: 100 }),
+          wmfRecord(META.rectangle, [100, 200, 0, 0]),
+          wmfRecord(META.setWindowExtent, [200, 400]),
+          wmfRecord(META.rectangle, [200, 400, 0, 0]),
+        ],
+      }),
+    );
+
+    expect(svg).toContain('viewBox="0 0 200 100"');
+    expect(svg?.match(/<rect x="0" y="0" width="200" height="100"/g)).toHaveLength(2);
+  });
+
   test("renders common object, state, line, polygon, rectangle, and ellipse records", () => {
     const records = [
       ...mappingRecords(),
@@ -309,6 +364,33 @@ describe("renderWmfSvg", () => {
             result === null ||
               (result.endsWith("</svg>") && result.includes(`viewBox="0 0 ${width} ${height}"`)),
           ).toBeTrue();
+        },
+      ),
+      { numRuns: 200 },
+    );
+  });
+
+  test("maps every full-window rectangle to the fixed viewBox", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 2_000 }),
+        fc.integer({ min: 1, max: 2_000 }),
+        fc.integer({ min: 1, max: 2_000 }),
+        fc.integer({ min: 1, max: 2_000 }),
+        (viewWidth, viewHeight, windowWidth, windowHeight) => {
+          const svg = renderWmfSvg(
+            vectorWmf({
+              placeable: false,
+              records: [
+                wmfRecord(META.setViewportExtent, [viewHeight, viewWidth]),
+                ...mappingRecords({ x: 0, y: 0 }, { x: windowWidth, y: windowHeight }),
+                wmfRecord(META.rectangle, [windowHeight, windowWidth, 0, 0]),
+              ],
+            }),
+          );
+
+          expect(svg).toContain(`viewBox="0 0 ${viewWidth} ${viewHeight}"`);
+          expect(svg).toContain(`<rect x="0" y="0" width="${viewWidth}" height="${viewHeight}"`);
         },
       ),
       { numRuns: 200 },

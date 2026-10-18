@@ -30,6 +30,8 @@ const META = {
   selectObject: 0x012d,
   setWindowOrg: 0x020b,
   setWindowExt: 0x020c,
+  setViewportOrg: 0x020d,
+  setViewportExt: 0x020e,
   lineTo: 0x0213,
   moveTo: 0x0214,
   createPenIndirect: 0x02fa,
@@ -56,6 +58,8 @@ type State = {
   mapMode: typeof MAP_MODE_TEXT | typeof MAP_MODE_ANISOTROPIC;
   origin: Point;
   extent: Point | null;
+  viewportOrigin: Point;
+  viewportExtent: Point | null;
   current: Point;
   fillRule: "evenodd" | "nonzero";
   pen: Pen | null;
@@ -66,6 +70,8 @@ const cloneState = (state: State): State => ({
   ...state,
   origin: { ...state.origin },
   extent: state.extent ? { ...state.extent } : null,
+  viewportOrigin: { ...state.viewportOrigin },
+  viewportExtent: state.viewportExtent ? { ...state.viewportExtent } : null,
   current: { ...state.current },
 });
 
@@ -78,13 +84,14 @@ const dword = (view: DataView, offset: number, end: number): number | undefined 
 
 const mappedPoint = (state: State, point: Point): Point | undefined => {
   const extent = state.extent;
-  if (!extent || extent.x === 0 || extent.y === 0) return undefined;
+  const viewportExtent = state.viewportExtent;
+  if (!extent || !viewportExtent || extent.x === 0 || extent.y === 0) return undefined;
   return transformMetafilePoint({
     point,
     windowOrigin: state.origin,
     windowExtent: extent,
-    viewportOrigin: { x: 0, y: 0 },
-    viewportExtent: { x: Math.abs(extent.x), y: Math.abs(extent.y) },
+    viewportOrigin: state.viewportOrigin,
+    viewportExtent,
     outputOrigin: { x: 0, y: 0 },
     maxCoordinate: MAX_WMF_DIMENSION * 100,
   });
@@ -171,11 +178,16 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
     mapMode: MAP_MODE_TEXT,
     origin: placeableOrigin ?? { x: 0, y: 0 },
     extent: initialExtent,
+    viewportOrigin: { x: 0, y: 0 },
+    viewportExtent: initialExtent
+      ? { x: Math.abs(initialExtent.x), y: Math.abs(initialExtent.y) }
+      : null,
     current: { x: 0, y: 0 },
-    fillRule: "nonzero",
-    pen: null,
-    brush: null,
+    fillRule: "evenodd",
+    pen: { type: "pen", stroke: "#000000", width: 1 },
+    brush: { type: "brush", fill: "#ffffff" },
   };
+  let outputExtent = state.viewportExtent;
   const stack: State[] = [];
   const objects: Array<GraphicsObject | null> = [];
   const output: string[] = [];
@@ -238,11 +250,14 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         break;
       }
       case META.setWindowOrg:
-      case META.setWindowExt: {
+      case META.setWindowExt:
+      case META.setViewportOrg:
+      case META.setViewportExt: {
         const y = short(view, params, end);
         const x = short(view, params + 2, end);
         if (size !== 10 || x === undefined || y === undefined) return null;
         if (fn === META.setWindowOrg) state.origin = { x, y };
+        else if (fn === META.setViewportOrg) state.viewportOrigin = { x, y };
         else {
           if (
             x === 0 ||
@@ -251,7 +266,13 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
             Math.abs(y) > MAX_WMF_DIMENSION
           )
             return null;
-          state.extent = { x, y };
+          if (fn === META.setWindowExt) {
+            state.extent = { x, y };
+            state.viewportExtent ??= { x: Math.abs(x), y: Math.abs(y) };
+          } else {
+            state.viewportExtent = { x, y };
+          }
+          outputExtent ??= { x: Math.abs(x), y: Math.abs(y) };
         }
         break;
       }
@@ -447,10 +468,9 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
     if (sawEof) break;
   }
 
-  const extent = state.extent;
-  if (!sawEof || !extent || output.length === 0) return null;
-  const width = Math.abs(extent.x);
-  const height = Math.abs(extent.y);
+  if (!sawEof || !outputExtent || output.length === 0) return null;
+  const width = Math.abs(outputExtent.x);
+  const height = Math.abs(outputExtent.y);
   if (width <= 0 || height <= 0 || width > MAX_WMF_DIMENSION || height > MAX_WMF_DIMENSION)
     return null;
   return assembleMetafileSvg({
