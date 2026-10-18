@@ -1347,11 +1347,6 @@ const materialize = (model: Model): Expected[] => {
   const emit = (row: ModelRow) => {
     for (const inserted of row.before) emit(inserted);
     const gone = row.removed || (row.pendingDeletion === true && row.edits.length === 0);
-    if (gone && joinNext !== undefined) {
-      const previous = out.at(-1);
-      if (previous) previous.text += joinNext;
-      joinNext = undefined;
-    }
     if (!gone) {
       const segments = applyEdits(row.text, row.edits, row.splits);
       const whole = untouchedText(row);
