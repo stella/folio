@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { AhoCorasick } from "@stll/aho-corasick";
 
 import {
   assessFontEnvironment,
@@ -326,6 +327,52 @@ describe("attributeDivergences", () => {
   const paragraph = (normText: string, features: string[]): ParagraphFeatures => ({
     normText,
     features,
+  });
+
+  test("document runs reuse their matchers and release every run-owned cache", async () => {
+    const documentCount = 100;
+    const processDocuments = () => {
+      const writes = spyOn(Map.prototype, "set");
+      try {
+        for (let index = 0; index < documentCount; index += 1) {
+          const text = `Invoice ${index} has distinct matching text`;
+          const result = attributeDivergences(
+            baseResult([
+              { kind: "missing-line", page: 1, text },
+              { kind: "extra-line", page: 1, text },
+            ]),
+            {
+              paragraphs: [
+                paragraph(`${text} with extra context`, ["table"]),
+                paragraph(`Unrelated paragraph for document ${index}`, ["field"]),
+              ],
+              docFeatures: [],
+            },
+          );
+          expect(result.attributed.map(({ features }) => features)).toEqual([["table"], ["table"]]);
+        }
+        // Keep only weak references; the spy's arguments and contexts own strong ones.
+        return writes.mock.calls.flatMap(([, value], index) => {
+          const cache = writes.mock.contexts.at(index);
+          if (!(value instanceof AhoCorasick) || !(cache instanceof Map)) return [];
+          return [{ cache: new WeakRef(cache), matcher: new WeakRef(value) }];
+        });
+      } finally {
+        writes.mockClear();
+        writes.mockRestore();
+      }
+    };
+    const references = processDocuments();
+    // Two constructions per document (dictionary and query), despite two matching calls.
+    expect(references).toHaveLength(documentCount * 2);
+    // WeakRef construction keeps targets alive until the current task finishes.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    Bun.gc(true);
+    expect(
+      references.every(
+        ({ cache, matcher }) => cache.deref() === undefined && matcher.deref() === undefined,
+      ),
+    ).toBe(true);
   });
 
   test("matches by substring: divergence text contained in a longer paragraph normText", () => {

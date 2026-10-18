@@ -10,6 +10,7 @@ import {
   propertyFiles,
   propertyFileProfile,
   runPropertyBatches,
+  ROOT_TEST_DIRS,
   selectPropertyFiles,
   shardPropertyFiles,
   touchedAreas,
@@ -30,9 +31,11 @@ const ALL = [
 ];
 
 /** Independently inventory actual calls, excluding matches in comments and strings. */
-const actualPropertyDrivers = (): string[] => {
+const actualPropertyDrivers = (
+  roots: readonly string[] = ["packages", ...ROOT_TEST_DIRS],
+): string[] => {
   const root = path.resolve(import.meta.dir, "..");
-  const files = ["packages", "scripts", "test", "parity"].flatMap((dir) =>
+  const files = roots.flatMap((dir) =>
     ts.sys.readDirectory(path.join(root, dir), [".ts", ".tsx"], ["**/node_modules/**"]),
   );
   return files
@@ -65,6 +68,23 @@ const actualPropertyDrivers = (): string[] => {
 };
 
 describe("property areas", () => {
+  test("every root with a property driver is declared", () => {
+    const root = path.resolve(import.meta.dir, "..");
+    const directories = readdirSync(root, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          !entry.name.startsWith(".") &&
+          entry.name !== "node_modules" &&
+          entry.name !== "packages",
+      )
+      .map(({ name }) => name);
+    const rootsWithDrivers = directories.filter(
+      (directory) => actualPropertyDrivers([directory]).length > 0,
+    );
+    expect(rootsWithDrivers.toSorted()).toEqual([...ROOT_TEST_DIRS].toSorted());
+  });
+
   test("the workflow matrix exercises every selected file and collects every failure", () => {
     const directory = path.resolve(import.meta.dir, "../.github/workflows");
     const workflows = readdirSync(directory)
@@ -252,6 +272,20 @@ describe("property areas", () => {
     expect(selectPropertyFiles(["scripts/container-survival-census.ts"], [rootProperty])).toEqual([
       rootProperty,
     ]);
+  });
+
+  test("parity source changes select every parity property driver", () => {
+    const inventory = propertyFiles();
+    const parityFiles = actualPropertyDrivers().filter((file) => file.startsWith("parity/"));
+    expect(parityFiles.length).toBeGreaterThan(0);
+    expect(selectPropertyFiles(["parity/textNorm.ts"], inventory).map(({ file }) => file)).toEqual(
+      parityFiles,
+    );
+    for (const repoPath of parityFiles) {
+      expect(selectPropertyFiles([repoPath], inventory).map(({ file }) => file)).toEqual([
+        repoPath,
+      ]);
+    }
   });
 });
 
