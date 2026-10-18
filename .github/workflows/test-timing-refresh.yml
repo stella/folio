@@ -1,0 +1,106 @@
+name: Test Timing Refresh
+
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: test-timing-refresh
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  TIMING_BRANCH: perf/refresh-test-timings
+  DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+jobs:
+  refresh:
+    name: Refresh measured test timings
+    if: github.repository == 'stella/folio'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: package.json
+
+      - run: bun install --frozen-lockfile
+
+      - name: Download five successful full-run timing sets
+        id: measurements
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p test-timing-artifacts
+          accepted=0
+          while read -r run_id; do
+            artifacts=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?per_page=100")
+            count=$(jq '[.artifacts[] | select(.name | startswith("test-timings-'"${run_id}"'-"))] | length' <<< "$artifacts")
+            [[ "$count" == 4 ]] || continue
+            mkdir -p "test-timing-artifacts/${run_id}"
+            while read -r artifact_id; do
+              gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "${RUNNER_TEMP}/${artifact_id}.zip"
+              unzip -q "${RUNNER_TEMP}/${artifact_id}.zip" -d "test-timing-artifacts/${run_id}"
+            done < <(jq -r '.artifacts[] | select(.name | startswith("test-timings-'"${run_id}"'-")) | .id' <<< "$artifacts")
+            accepted=$((accepted + 1))
+            [[ "$accepted" == 5 ]] && break
+          done < <(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?status=success&per_page=100" --jq '.workflow_runs[] | select(.event == "merge_group" or .event == "push") | .id')
+          if [[ "$accepted" == 0 ]]; then
+            echo "No complete timing sets are available; skipping refresh." >> "$GITHUB_STEP_SUMMARY"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mapfile -t inputs < <(find test-timing-artifacts -name 'test-timings-*.json' -type f | sort)
+          bun scripts/aggregate-ci-test-timings.ts --output scripts/ci-test-timings.json "${inputs[@]}"
+          if git diff --quiet -- scripts/ci-test-timings.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Reuse the repository's existing maintenance-app identity.
+      - name: Mint app token
+        if: steps.measurements.outputs.changed == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CHANGELOG_APP_ID }}
+          private-key: ${{ secrets.CHANGELOG_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Open or update the timing PR
+        if: steps.measurements.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          base=$(git rev-parse HEAD)
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${TIMING_BRANCH}" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${TIMING_BRANCH}" -f sha="$base" -F force=true > /dev/null
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/heads/${TIMING_BRANCH}" -f sha="$base" > /dev/null
+          fi
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg branch "$TIMING_BRANCH" --arg base "$base" \
+            --arg contents "$(base64 -w0 scripts/ci-test-timings.json)" '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: { input: { branch: { repositoryNameWithOwner: $repo, branchName: $branch }, expectedHeadOid: $base,
+                message: { headline: "perf(ci): refresh measured test timings" },
+                fileChanges: { additions: [{ path: "scripts/ci-test-timings.json", contents: $contents }] } } }
+            }' | gh api graphql --input - > /dev/null
+          if [[ -z "$(gh pr list --head "$TIMING_BRANCH" --state open --json number --jq '.[0].number // ""')" ]]; then
+            gh pr create --base "$DEFAULT_BRANCH" --head "$TIMING_BRANCH" \
+              --title "perf(ci): refresh measured test timings" \
+              --body "Refreshes per-file test duration medians from recent successful full-suite runs so shard scheduling follows current measurements."
+          fi
