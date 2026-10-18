@@ -4,15 +4,13 @@
  * A drawing with no image data used to be given one: a megapixel PNG built the
  * moment something was about to paint it, which the DOM backend showed as an
  * `<img>` and the PDF exporter embedded as a bitmap — a photograph of a
- * drawing that is nothing but flat rectangles.
+ * drawing that is vector geometry.
  *
- * The descriptor already holds those rectangles, in the drawing's own
- * coordinate space, and `rect` is a primitive both backends draw natively. So
- * the preview is drawn rather than sampled: the extent maps affinely onto the
- * image's box, every shape becomes a filled rectangle inside it, and no raster
- * exists at any point. The DOM backend paints each one as the absolutely
- * positioned div it paints every other `rect` as, and the PDF backend emits
- * `re`/`f` operators, so the drawing stays a drawing at any zoom.
+ * The descriptor already holds rectangles, polygons, and polylines in the
+ * drawing's own coordinate space, and each maps to native display-list
+ * primitives. The preview is drawn rather than sampled: the extent maps
+ * affinely onto the image's box, and no raster exists at any point, so the
+ * drawing stays a drawing at any zoom.
  */
 
 import { panic } from "better-result";
@@ -41,6 +39,7 @@ type ShapeRectOptions = {
  * clip the raster did by clamping to its own bounds.
  */
 const shapeRect = ({ shape, extent, box }: ShapeRectOptions): DisplayRect | undefined => {
+  if (shape.type === "polygon" || shape.type === "polyline") return undefined;
   const left = clampFraction(shape.x / extent.width);
   const right = clampFraction((shape.x + shape.width) / extent.width);
   const top = clampFraction(shape.y / extent.height);
@@ -65,6 +64,7 @@ export const paintPreview = (
   box: DisplayRect,
 ): readonly DisplayPrimitive[] => {
   switch (descriptor.kind) {
+    case "chart":
     case "diagram": {
       const primitives: DisplayPrimitive[] = [
         { kind: "rect", rect: box, fill: PREVIEW_BACKGROUND },
@@ -77,6 +77,33 @@ export const paintPreview = (
         return primitives;
       }
       for (const shape of descriptor.shapes) {
+        const color = parseDisplayColor(shape.color) ?? PREVIEW_SHAPE_FILL;
+        if (shape.type === "polygon") {
+          primitives.push({
+            kind: "polygon",
+            points: shape.points.map(({ x, y }) => ({
+              xPx: box.xPx + clampFraction(x / extent.width) * box.widthPx,
+              yPx: box.yPx + clampFraction(y / extent.height) * box.heightPx,
+            })),
+            fill: color,
+          });
+          continue;
+        }
+        if (shape.type === "polyline") {
+          const points = shape.points.map(({ x, y }) => ({
+            xPx: box.xPx + clampFraction(x / extent.width) * box.widthPx,
+            yPx: box.yPx + clampFraction(y / extent.height) * box.heightPx,
+          }));
+          const stroke = {
+            color,
+            thicknessPx:
+              shape.strokeWidth *
+              Math.min(box.widthPx / extent.width, box.heightPx / extent.height),
+            pattern: "solid" as const,
+          };
+          primitives.push({ kind: "polyline", points, stroke });
+          continue;
+        }
         const rect = shapeRect({ shape, extent, box });
         if (rect === undefined) {
           continue;
@@ -84,7 +111,7 @@ export const paintPreview = (
         primitives.push({
           kind: "rect",
           rect,
-          fill: parseDisplayColor(shape.color) ?? PREVIEW_SHAPE_FILL,
+          fill: color,
         });
       }
       return primitives;
