@@ -571,6 +571,28 @@ const target = (model: Model, blockId: unknown, { adjacent = false } = {}): Mode
   return row;
 };
 
+const sameParagraphContainer = (left: Row, right: Row): boolean => {
+  if (left.table === undefined || right.table === undefined) {
+    return left.table === undefined && right.table === undefined;
+  }
+  return (
+    left.table.tableIndex === right.table.tableIndex &&
+    left.table.rowIndex === right.table.rowIndex &&
+    left.table.cellIndex === right.table.cellIndex
+  );
+};
+
+const isContainerCarrier = (model: Model, row: ModelRow): boolean => {
+  const pre = row.pre;
+  if (pre === undefined) return false;
+  const index = model.rows.indexOf(row);
+  return model.rows
+    .slice(index + 1)
+    .every(
+      (candidate) => candidate.pre === undefined || !sameParagraphContainer(pre, candidate.pre),
+    );
+};
+
 const tableOf = (row: ModelRow): TableLocation => {
   const table = row.pre?.table;
   if (!table) throw new Unmodelled("the anchor is not in a table");
@@ -1119,6 +1141,10 @@ export const EXPECTATIONS = {
     if (row.pendingDeletion || next?.pendingDeletion) {
       // Whether the join keeps that paragraph's pending deletion is not modelled yet.
       throw new Unmodelled("a join with a paragraph pending deletion");
+    }
+    if (model.mode !== "direct" && next?.removed && isContainerCarrier(model, next)) {
+      next.removed = false;
+      next.edits.push({ start: 0, end: next.text.length, replace: "" });
     }
     row.mergeSeparator = typeof operation["separator"] === "string" ? operation["separator"] : "";
     const merged = operation["mergedParagraphProperties"] as ParagraphRequest | undefined;
@@ -1910,6 +1936,15 @@ export const assertRequestedOutcome = async (
     }
     expectOperation(model, operation);
 
+    if (pre.mode !== "direct" && operation.type === "mergeBlockWithNext") {
+      const anchorIndex = pre.rows.findIndex(({ id }) => id === operation["blockId"]);
+      const carrier = anchorIndex < 0 ? undefined : pre.rows[anchorIndex + 1];
+      const carrierRow = model.rows.find((row) => row.pre?.id === carrier?.id);
+      if (carrierRow !== undefined && isContainerCarrier(model, carrierRow)) {
+        removedBlocksBy.delete(carrier?.id ?? "");
+      }
+    }
+
     const blockId = operation["blockId"];
     if (typeof blockId !== "string") continue;
     const removal = (() => {
@@ -1919,7 +1954,7 @@ export const assertRequestedOutcome = async (
         case "deleteTable":
         case "deleteTableRow":
         case "deleteTableColumn":
-          return getFolioDocumentOperationRemovedBlockIds(
+          const removed = getFolioDocumentOperationRemovedBlockIds(
             pre.rows.map(({ id, table }) => ({
               id,
               ...(table !== undefined && { table: { ...table, paragraphIndex: 0 } }),
@@ -1930,6 +1965,11 @@ export const assertRequestedOutcome = async (
               blockId,
             },
           );
+          if (pre.mode === "direct" || operation.type !== "mergeBlockWithNext") return removed;
+          return [...removed].filter((removedBlockId) => {
+            const removedRow = model.rows.find((row) => row.pre?.id === removedBlockId);
+            return removedRow === undefined || !isContainerCarrier(model, removedRow);
+          });
         default:
           return [];
       }

@@ -153,7 +153,11 @@ import type {
 } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { type BatchClaim, BatchClaims, compareBatchTieOrder } from "./batch-claims";
-import { getFolioDocumentOperationRemovedBlockIds } from "./removed-blocks";
+import {
+  getFolioDocumentOperationRemovedBlockIds,
+  getTrackedFolioDocumentOperationCarrierBlockId,
+  getTrackedFolioDocumentOperationRemovedBlockIds,
+} from "./removed-blocks";
 import { type CharacterBoundaryStrictness, describeCharacterSplit } from "./character-boundaries";
 import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
 import { separateRevisionStretches } from "./revisionStretches";
@@ -4069,14 +4073,18 @@ const applyFolioAIEditOperationsInternal = ({
       continue;
     }
     batchClaims.add(operation.id, claim);
-    for (const removedBlockId of getFolioDocumentOperationRemovedBlockIds(
-      snapshot.blocks,
-      operation,
-    )) {
+    const carrierBlockId = producesTrackedChanges
+      ? getTrackedFolioDocumentOperationCarrierBlockId(snapshot.blocks, operation, removedBlocksBy)
+      : undefined;
+    const getRemovedBlockIds = producesTrackedChanges
+      ? getTrackedFolioDocumentOperationRemovedBlockIds
+      : getFolioDocumentOperationRemovedBlockIds;
+    for (const removedBlockId of getRemovedBlockIds(snapshot.blocks, operation)) {
       if (!removedBlocksBy.has(removedBlockId)) {
         removedBlocksBy.set(removedBlockId, { id: operation.id, type: operation.type });
       }
     }
+    if (carrierBlockId !== undefined) removedBlocksBy.delete(carrierBlockId);
     if (deletion) {
       claimedTableRows.add(`${deletion.tablePosition}:${deletion.rowIndex}`);
     }

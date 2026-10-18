@@ -3,6 +3,18 @@ import type { FolioAIBlock } from "./types";
 
 type BlockIdentity = Pick<FolioAIBlock, "id"> & { table?: FolioAIBlock["table"] };
 
+const blockContainerKey = ({ table }: BlockIdentity): string =>
+  table === undefined
+    ? "body"
+    : `${String(table.tableIndex)}:${String(table.rowIndex)}:${String(table.cellIndex)}`;
+
+const isContainerCarrier = (blocks: readonly BlockIdentity[], anchorIndex: number): boolean => {
+  const anchor = blocks[anchorIndex];
+  if (anchor === undefined) return false;
+  const containerKey = blockContainerKey(anchor);
+  return blocks.slice(anchorIndex + 1).every((block) => blockContainerKey(block) !== containerKey);
+};
+
 /**
  * The pre-batch block identities an operation removes from the accepted result.
  *
@@ -10,7 +22,7 @@ type BlockIdentity = Pick<FolioAIBlock, "id"> & { table?: FolioAIBlock["table"] 
  * coordinates prevents a structural operation from moving a later operation's
  * numeric position onto a different block.
  */
-export const getFolioDocumentOperationRemovedBlockIds = (
+const removedBlockIds = (
   blocks: readonly BlockIdentity[],
   operation: FolioDocumentOperation,
 ): ReadonlySet<string> => {
@@ -21,6 +33,8 @@ export const getFolioDocumentOperationRemovedBlockIds = (
 
   switch (operation.type) {
     case "deleteBlock":
+      // A deletion alone removes this target identity. A later tracked merge
+      // may establish the container's final mark as its surviving carrier.
       removed.add(operation.blockId);
       break;
     case "mergeBlockWithNext": {
@@ -66,4 +80,47 @@ export const getFolioDocumentOperationRemovedBlockIds = (
       break;
   }
   return removed;
+};
+
+/**
+ * The pre-batch block identities an operation removes from the accepted result.
+ *
+ * Batch operations all address this same block list. Keeping removal in block-id
+ * coordinates prevents a structural operation from moving a later operation's
+ * numeric position onto a different block.
+ */
+export const getFolioDocumentOperationRemovedBlockIds = (
+  blocks: readonly BlockIdentity[],
+  operation: FolioDocumentOperation,
+): ReadonlySet<string> => removedBlockIds(blocks, operation);
+
+export const getTrackedFolioDocumentOperationRemovedBlockIds = (
+  blocks: readonly BlockIdentity[],
+  operation: FolioDocumentOperation,
+): ReadonlySet<string> => removedBlockIds(blocks, operation);
+
+export const getTrackedFolioDocumentOperationCarrierBlockId = (
+  blocks: readonly BlockIdentity[],
+  operation: FolioDocumentOperation,
+  previouslyRemovedBlockIds: { has(blockId: string): boolean },
+): string | undefined => {
+  if (operation.type !== "mergeBlockWithNext") return undefined;
+  const anchorIndex = blocks.findIndex(({ id }) => id === operation.blockId);
+  const anchor = blocks[anchorIndex];
+  if (anchor === undefined) return undefined;
+  const containerKey = blockContainerKey(anchor);
+  let carrierIndex = anchorIndex + 1;
+  while (
+    blocks[carrierIndex + 1] !== undefined &&
+    blockContainerKey(blocks[carrierIndex + 1]!) === containerKey
+  ) {
+    carrierIndex++;
+  }
+  const carrier = blocks[carrierIndex];
+  if (carrier === undefined || !isContainerCarrier(blocks, carrierIndex)) return undefined;
+  return blocks
+    .slice(anchorIndex + 1, carrierIndex + 1)
+    .every(({ id }) => previouslyRemovedBlockIds.has(id))
+    ? carrier.id
+    : undefined;
 };
