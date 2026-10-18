@@ -9,7 +9,14 @@
 
 import { describe, expect, test } from "bun:test";
 import { applyDocumentOps, OP_STORIES, REVISION_DECISIONS } from "@stll/docx-core/ops";
+import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
+
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 
 import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -55,7 +62,197 @@ const markerTypes = (document: Document): string[] => {
   );
 };
 
+const textLength = (content: Paragraph["content"]): number => {
+  let length = 0;
+  for (const item of content) {
+    if (item.type === "run") {
+      for (const child of item.content) {
+        if (child.type === "text") length += child.text.length;
+      }
+      continue;
+    }
+    if (
+      item.type === "insertion" ||
+      item.type === "deletion" ||
+      item.type === "moveFrom" ||
+      item.type === "moveTo"
+    ) {
+      length += textLength(item.content);
+    }
+  }
+  return length;
+};
+
+const commentStartOffset = (content: Paragraph["content"], id: number): number | undefined => {
+  let offset = 0;
+  for (const item of content) {
+    if (item.type === "commentRangeStart" && item.id === id) return offset;
+    if (item.type === "run") {
+      offset += textLength([item]);
+      continue;
+    }
+    if (
+      item.type === "insertion" ||
+      item.type === "deletion" ||
+      item.type === "moveFrom" ||
+      item.type === "moveTo"
+    ) {
+      const nested = commentStartOffset(item.content, id);
+      if (nested !== undefined) return offset + nested;
+      offset += textLength(item.content);
+    }
+  }
+  return undefined;
+};
+
+const markedText = (document: ReturnType<typeof toProseDoc>, commentId: number): string => {
+  let text = "";
+  document.descendants((node) => {
+    if (
+      node.isText &&
+      node.marks.some(
+        (mark) => mark.type.name === "comment" && mark.attrs["commentId"] === commentId,
+      )
+    ) {
+      text += node.text ?? "";
+    }
+  });
+  return text;
+};
+
 describe("comment-range boundaries inside tracked changes", () => {
+  test(
+    "random marker offsets keep live and reopened anchor text equal across nested revisions",
+    () => {
+      assertProperty(
+        fc.property(
+          fc
+            .tuple(fc.integer({ min: 1, max: 12 }), fc.integer({ min: 2, max: 15 }))
+            .filter(([start, end]) => start < end),
+          ([start, end]) => {
+            const source = "0123456789abcdef";
+            const split = Math.min(start + 1, end);
+            const input = wrapParagraph({
+              type: "paragraph",
+              content: [
+                {
+                  type: "deletion",
+                  info: { id: 7, author: "Reviewer" },
+                  content: [
+                    {
+                      type: "insertion",
+                      info: { id: 8, author: "Reviewer" },
+                      content: [
+                        {
+                          type: "run",
+                          formatting: {},
+                          content: [{ type: "text", text: source.slice(0, start) }],
+                        },
+                        { type: "commentRangeStart", id: 5 },
+                        {
+                          type: "run",
+                          formatting: {},
+                          content: [{ type: "text", text: source.slice(start, split) }],
+                        },
+                      ],
+                    },
+                    {
+                      type: "run",
+                      formatting: {},
+                      content: [{ type: "text", text: source.slice(split, end) }],
+                    },
+                    { type: "commentRangeEnd", id: 5 },
+                    {
+                      type: "run",
+                      formatting: {},
+                      content: [{ type: "text", text: source.slice(end) }],
+                    },
+                  ],
+                },
+              ],
+            });
+            const projected = toProseDoc(input);
+            const reopened = fromProseDoc(projected, input, {
+              stylesheetSource: { type: "package" },
+            });
+
+            expect(markedText(projected, 5)).toBe(source.slice(start, end));
+            expect(markedText(toProseDoc(reopened), 5)).toBe(markedText(projected, 5));
+          },
+        ),
+        {
+          ...propertyConfig({ numRuns: 100 }),
+          id: "random marker offsets keep live and reopened anchor text equal across nested revisions",
+        },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
+  for (const fixture of [
+    {
+      name: "between identically formatted runs",
+      content: [
+        { type: "run", formatting: {}, content: [{ type: "text", text: "before" }] },
+        { type: "commentRangeStart", id: 5 },
+        { type: "run", formatting: {}, content: [{ type: "text", text: "anchor" }] },
+        { type: "commentRangeEnd", id: 5 },
+      ],
+    },
+    {
+      name: "before the second run in a deletion",
+      content: [
+        {
+          type: "deletion",
+          info: { id: 7, author: "Reviewer" },
+          content: [
+            { type: "run", formatting: {}, content: [{ type: "text", text: "before" }] },
+            { type: "commentRangeStart", id: 5 },
+            { type: "run", formatting: {}, content: [{ type: "text", text: "anchor" }] },
+            { type: "commentRangeEnd", id: 5 },
+          ],
+        },
+      ],
+    },
+    {
+      name: "at the start of an insertion",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 7, author: "Reviewer" },
+          content: [
+            { type: "commentRangeStart", id: 5 },
+            { type: "run", formatting: {}, content: [{ type: "text", text: "anchor" }] },
+            { type: "commentRangeEnd", id: 5 },
+          ],
+        },
+      ],
+    },
+  ] satisfies { name: string; content: Paragraph["content"] }[]) {
+    test(`projection keeps a range start ${fixture.name}`, () => {
+      const input = wrapParagraph({ type: "paragraph", content: fixture.content });
+      const projected = toProseDoc(input);
+      const paragraph = projected.firstChild;
+      if (!paragraph) throw new Error("Expected a projected paragraph");
+      let projectedOffset: number | undefined;
+      paragraph.forEach((node, offset) => {
+        if (node.marks.some((mark) => mark.type.name === "comment")) {
+          projectedOffset ??= offset;
+        }
+      });
+      const reopened = fromProseDoc(projected, input, {
+        stylesheetSource: { type: "package" },
+      });
+      const reopenedParagraph = reopened.package.document.content.at(0);
+      if (reopenedParagraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+
+      expect(projectedOffset).toBe(commentStartOffset(fixture.content, 5));
+      expect(commentStartOffset(reopenedParagraph.content, 5)).toBe(
+        commentStartOffset(fixture.content, 5),
+      );
+    });
+  }
+
   test("resolution returns canonical adjacent run segmentation", () => {
     const input = wrapParagraph({
       type: "paragraph",

@@ -1293,6 +1293,7 @@ function convertTrackedChange(
       continue;
     }
     const itemNodes: PMNode[] = [];
+    let commentsAlreadyApplied = false;
     if (item.type === "commentRangeStart") {
       openCommentIds.add(item.id);
     } else if (item.type === "commentRangeEnd") {
@@ -1357,6 +1358,10 @@ function convertTrackedChange(
           openCommentIds,
         ),
       );
+      // The nested conversion applies comment ranges at each marker position.
+      // Applying the parent's final open-range set to the returned nodes would
+      // move a start inside the nested revision to the revision's first node.
+      commentsAlreadyApplied = true;
     } else if (item.type === "inlineSdt") {
       // The control keeps its node where the author put it, inside the
       // revision. The node is not an inline atom, so the revision lands on the
@@ -1406,7 +1411,10 @@ function convertTrackedChange(
       const unsupported: never = item;
       panic(`Unsupported tracked-run content: ${JSON.stringify(unsupported)}`);
     }
-    nodes.push(...applyCommentMarks(withInlineWrapperMark(itemNodes, stack), openCommentIds));
+    const wrappedNodes = withInlineWrapperMark(itemNodes, stack);
+    nodes.push(
+      ...(commentsAlreadyApplied ? wrappedNodes : applyCommentMarks(wrappedNodes, openCommentIds)),
+    );
   }
 
   // SAFETY: markType is "insertion" | "deletion", both registered in schema
