@@ -60,7 +60,6 @@ import {
 } from "./note-references";
 import type {
   FolioAIBlock,
-  FolioAIParagraphBlock,
   FolioAIBlockAnchor,
   FolioAIBlockPreviewRun,
   FolioAIBlockStructuralBoundary,
@@ -867,8 +866,9 @@ const createFolioAIEditSnapshotInternal = (
     }
     usedBlockIds.add(id);
     const headingLevel = getHeadingLevel(node, builtInStyles);
-    const listLabel =
+    const visibleList =
       node.type.name === "paragraph" ? nextListLabel(expectParagraphAttrs(node)) : undefined;
+    const listLabel = visibleList?.label;
     const kind = getBlockKind(headingLevel, listLabel);
     const displayLabel = getDisplayLabel(node, listLabel, kind === "heading");
     const styleId = getStyleId(node);
@@ -876,7 +876,10 @@ const createFolioAIEditSnapshotInternal = (
       node.type.name === "paragraph"
         ? expectParagraphAttrs(node)._originalFormatting?.outlineLevel
         : undefined;
-    const listReference = getListReference(node);
+    const listReference =
+      visibleList?.numbering === undefined
+        ? undefined
+        : { numId: visibleList.numbering.numId, level: visibleList.numbering.ilvl };
     const numberingReferenceKey = getNumberingReferenceKey(node);
     if (numberingReferenceKey) {
       numberingReferenceKeys.add(numberingReferenceKey);
@@ -1028,16 +1031,6 @@ const getDisplayLabel = (
   }
 
   return undefined;
-};
-
-const getListReference = (node: PMNode): FolioAIParagraphBlock["listReference"] | undefined => {
-  const numbering = effectiveParagraphNumberingReference(
-    paragraphNumberingSourcesFromBoundary({
-      numPr: readParagraphNumberingAttr(node.attrs["numPr"]),
-      numPrFromStyle: readParagraphNumberingAttr(node.attrs["numPrFromStyle"]),
-    }),
-  );
-  return numbering ? { numId: numbering.numId, level: numbering.ilvl } : undefined;
 };
 
 const getNumberingReferenceKey = (node: PMNode): string | null => {

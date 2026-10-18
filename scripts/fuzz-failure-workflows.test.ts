@@ -28,6 +28,8 @@ type Reporter = {
   needs: string[];
   artifactPattern: string;
   logPattern: string;
+  lane: unknown;
+  result: unknown;
   condition: string;
   permissions: Record<string, unknown>;
 };
@@ -97,6 +99,8 @@ const reportersFor = (jobs: Record<string, unknown>): Reporter[] =>
         needs,
         artifactPattern: inputs["artifact-pattern"],
         logPattern: typeof inputs["log-pattern"] === "string" ? inputs["log-pattern"] : "**/*.log",
+        lane: inputs["lane"],
+        result: inputs["result"],
         condition: typeof jobValue["if"] === "string" ? jobValue["if"] : "",
         permissions: isRecord(jobValue["permissions"]) ? jobValue["permissions"] : {},
       },
@@ -240,8 +244,11 @@ test("shared reporter queues writes, preserves matrix artifacts, and requires fa
   const filing = steps.find((step) =>
     String(step["run"]).includes("scripts/fuzz-failure-issues.ts"),
   );
-  expect(filing?.["run"]).toContain("--require-failures");
+  expect(filing?.["run"]).toContain('--lane "$LANE" --result "$RESULT" --trigger "$TRIGGER"');
   expect(filing?.["run"]).toContain('--run-url "$RUN_URL"');
+  expect(record(filing?.["env"], "filing env")["TRIGGER"]).toBe(
+    "${{ github.event_name == 'schedule' && 'scheduled' || 'manual' }}",
+  );
   expect(filing?.["run"]).toContain('--log-pattern "$LOG_PATTERN"');
 });
 
@@ -255,4 +262,43 @@ test("unfamiliar nightly runners must declare reporting, and exemptions cannot h
       nonEmitter: "baseline only",
     }),
   ).toEqual(["non-emitter declaration contains a marker producer"]);
+});
+
+test("every reporter names a distinct lane, passes its fuzz result, and reports clean scheduled runs", () => {
+  const callers = readdirSync(WORKFLOWS)
+    .filter((file) => file.endsWith(".yml"))
+    .flatMap((file) => {
+      const { jobs } = parseWorkflow(readFileSync(path.join(WORKFLOWS, file), "utf8"), file);
+      return reportersFor(jobs).map(({ needs, lane, result, condition }) => ({
+        file,
+        needs,
+        lane,
+        result,
+        condition,
+      }));
+    });
+  expect(callers.length).toBeGreaterThan(5);
+  const inline = parseWorkflow(
+    readFileSync(path.join(WORKFLOWS, "continuous-fuzz.yml"), "utf8"),
+    "continuous-fuzz",
+  );
+  const inlineReport = record(inline.jobs["report"], "continuous report");
+  if (!Array.isArray(inlineReport["steps"])) throw new TypeError("Missing report steps");
+  const inlineLane = inlineReport["steps"]
+    .map((step) => String(record(step, "step")["run"] ?? ""))
+    .flatMap((run) => [...run.matchAll(/--lane (\S+)/gu)].map((match) => match[1]));
+  const lanes = [...callers.map(({ lane }) => lane), ...inlineLane];
+  for (const lane of lanes) expect(lane).toMatch(/^[a-z0-9][a-z0-9-]*$/u);
+  expect(new Set(lanes).size).toBe(lanes.length);
+  expect(inlineReport["if"]).toContain("github.event_name == 'schedule'");
+  for (const { file, needs, result, condition } of callers) {
+    expect(`${file}: ${String(result)}`).toMatch(
+      new RegExp(
+        `: \\$\\{\\{ needs\\.(?:${needs.join("|")})\\.(?:result|outputs\\.\\w+_outcome) \\}\\}$`,
+        "u",
+      ),
+    );
+    expect(`${file}: ${condition}`).toContain("github.event_name == 'schedule'");
+    expect(`${file}: ${condition}`).toContain("github.ref == 'refs/heads/main'");
+  }
 });

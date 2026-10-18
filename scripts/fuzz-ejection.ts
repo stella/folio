@@ -39,8 +39,9 @@ import { extractFailureMarkers } from "./failure-fingerprints";
 import {
   type Context,
   type Finding,
-  type FingerprintIssueStore,
+  type SignatureIssueStore,
   fileFindings,
+  RUN_TRIGGER,
   readFindings,
 } from "./fuzz-failure-issues";
 
@@ -51,6 +52,7 @@ export const LABEL = {
 };
 
 const SHA = /^[0-9a-f]{40}$/u;
+const MERGE_QUEUE_LANE = "merge-queue-replay";
 
 /** Every `*.log` under `dir`. */
 export const logsIn = (dir: string): string[] =>
@@ -341,7 +343,7 @@ type FileMainFindingsOptions = {
   findings: Finding[];
   attempts: ReplayAttempt[];
   context: Context;
-  store?: FingerprintIssueStore;
+  store?: SignatureIssueStore;
 };
 export const fileMainFindings = async ({
   findings,
@@ -353,7 +355,7 @@ export const fileMainFindings = async ({
   const reproduced = reproducedFingerprints(attempts);
   const confirmed = findings.filter(({ record }) => reproduced.has(record.marker.fingerprint));
   if (confirmed.length > 0) {
-    const filed = await fileFindings({
+    const { filed } = await fileFindings({
       findings: confirmed,
       context,
       ...(store && { store }),
@@ -420,6 +422,8 @@ const report = async (options: Options): Promise<void> => {
     sha: options.baseSha,
     source: "a merge queue run, reproduced on main",
     date: new Date().toISOString().slice(0, 10),
+    lane: MERGE_QUEUE_LANE,
+    trigger: RUN_TRIGGER.mergeGroup,
   };
   const judged = options.dryRun
     ? judgeMainFindings(findings, attempts)

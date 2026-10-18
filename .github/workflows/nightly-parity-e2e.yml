@@ -27,7 +27,7 @@ jobs:
       contents: read
 
     outputs:
-      cross_host_findings: ${{ steps.cross-host.outcome == 'failure' }}
+      cross_host_outcome: ${{ steps.cross-host.outcome }}
 
     steps:
       # persist-credentials: false — this job can be manually dispatched on any
@@ -79,7 +79,7 @@ jobs:
   cross-host-report:
     name: File four-host differential findings
     needs: parity-e2e
-    if: always() && github.ref == 'refs/heads/main' && needs.parity-e2e.outputs.cross_host_findings == 'true'
+    if: always() && github.ref == 'refs/heads/main' && (needs.parity-e2e.outputs.cross_host_outcome == 'failure' || (needs.parity-e2e.outputs.cross_host_outcome == 'success' && github.event_name == 'schedule'))
     permissions:
       contents: read
       issues: write
@@ -87,3 +87,5 @@ jobs:
     with:
       artifact-pattern: cross-host-differential-repro
       log-pattern: "**/fuzz-artifacts/cross-host/*.log"
+      lane: nightly-cross-host
+      result: ${{ needs.parity-e2e.outputs.cross_host_outcome }}
