@@ -274,17 +274,20 @@ describe("property areas", () => {
     ]);
   });
 
-  test("parity source changes select every parity property driver", () => {
+  test("source changes select every property driver in their root", () => {
     const inventory = propertyFiles();
-    const parityFiles = actualPropertyDrivers().filter((file) => file.startsWith("parity/"));
-    expect(parityFiles.length).toBeGreaterThan(0);
-    expect(selectPropertyFiles(["parity/textNorm.ts"], inventory).map(({ file }) => file)).toEqual(
-      parityFiles,
-    );
-    for (const repoPath of parityFiles) {
-      expect(selectPropertyFiles([repoPath], inventory).map(({ file }) => file)).toEqual([
-        repoPath,
-      ]);
+    const actual = actualPropertyDrivers();
+    for (const root of ROOT_TEST_DIRS) {
+      const rootFiles = actual.filter((file) => file.startsWith(`${root}/`));
+      expect(rootFiles.length).toBeGreaterThan(0);
+      expect(selectPropertyFiles([`${root}/source.ts`], inventory).map(({ file }) => file)).toEqual(
+        rootFiles,
+      );
+      for (const repoPath of rootFiles) {
+        expect(selectPropertyFiles([repoPath], inventory).map(({ file }) => file)).toEqual([
+          repoPath,
+        ]);
+      }
     }
   });
 });
