@@ -387,6 +387,12 @@ export type SignatureState = {
 const ISSUE_BODY_LIMIT = 65_535;
 const LANE_TABLE_HEADER = ["| Lane | Last run | Clean scheduled runs |", "| --- | --- | --- |"];
 
+const shellWordValue = (raw: string): string => {
+  if (raw.startsWith("'")) return raw.slice(1, -1).replaceAll("'\\''", "'");
+  if (raw.startsWith('"')) return JSON.parse(raw);
+  return raw;
+};
+
 /** Convert old environment-prefixed scenario replays before they reach public issue text. */
 export const cliRepro = (command: string): string => {
   const inputs: Record<string, string> = {};
@@ -402,17 +408,38 @@ export const cliRepro = (command: string): string => {
     const option = flag
       .slice(2)
       .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
-    let value = raw;
-    if (raw.startsWith("'")) value = raw.slice(1, -1).replaceAll("'\\''", "'");
-    else if (raw.startsWith('"')) value = JSON.parse(raw);
-    inputs[option] = value;
+    inputs[option] = shellWordValue(raw);
     rest = rest.slice(match[0].length);
   }
   if (Object.keys(inputs).length === 0) return command;
   const executable = "bun scripts/consumer-scenarios.ts";
   if (!rest.startsWith(executable)) return command;
   const suffix = rest.slice(executable.length).trim();
-  return consumerScenarioReplay({ inputs, flags: [suffix] });
+  const words = [...suffix.matchAll(/'(?:'\\''|[^'])*'|"(?:\\.|[^"])*"|\S+/gu)].map(([raw]) => ({
+    raw,
+    value: shellWordValue(raw),
+  }));
+  const flags: string[] = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    if (word?.value === "--") {
+      flags.push(...words.slice(index).map(({ raw }) => raw));
+      break;
+    }
+    const replayInput = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ flag }) => flag === word?.value);
+    if (replayInput === undefined) {
+      flags.push(word?.raw ?? "");
+      continue;
+    }
+    const value = words[index + 1];
+    if (value === undefined) return command;
+    const option = replayInput.flag
+      .slice(2)
+      .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
+    inputs[option] = value.value;
+    index += 1;
+  }
+  return consumerScenarioReplay({ inputs, flags: [flags.join(" ")] });
 };
 
 const flowArtifactReplay = (command: string, seed: number, artifact: string): string => {

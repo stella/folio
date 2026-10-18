@@ -12,6 +12,11 @@ import {
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
+  CONSUMER_SCENARIO_REPLAY_INPUTS,
+  consumerScenarioInputs,
+  parseConsumerArgs,
+} from "./consumer-scenario-args";
+import {
   AUTO_CLOSE_CLEAN_RUNS,
   type CloseReason,
   collectFindings,
@@ -637,6 +642,87 @@ test("every legacy filer replay template is converted to CLI flags", () => {
   ];
   for (const template of templates) expect(cliRepro(template)).not.toContain("FOLIO_SCENARIO_");
 });
+
+const replayArgv = (command: string): string[] =>
+  [...command.matchAll(/'(?:'\\''|[^'])*'|\S+/gu)]
+    .map(([token]) => (token.startsWith("'") ? token.slice(1, -1).replaceAll("'\\''", "'") : token))
+    .slice(2);
+
+test("legacy replay conversion merges environment and CLI inputs with CLI precedence", () => {
+  const converted = cliRepro(
+    "FOLIO_SCENARIO_SEED=1 FOLIO_SCENARIO_FUZZ_RUNS=3 bun scripts/consumer-scenarios.ts scenario.test.ts --seed 2 --only focused",
+  );
+
+  expect(converted.match(/--seed/gu)).toHaveLength(1);
+  expect(converted.match(/--runs/gu)).toHaveLength(1);
+  expect(parseConsumerArgs(replayArgv(converted), "/repo")).toMatchObject({
+    seed: "2",
+    runs: "3",
+    only: "focused",
+    files: ["scenario.test.ts"],
+  });
+});
+
+test("legacy environment-only and flags-only replays resolve through the shared renderer", () => {
+  const environmentOnly = cliRepro(
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only focused",
+  );
+  const flagsOnly = cliRepro("bun scripts/consumer-scenarios.ts --seed 2 --only focused");
+
+  expect(parseConsumerArgs(replayArgv(environmentOnly), "/repo")).toMatchObject({
+    seed: "1",
+    only: "focused",
+  });
+  expect(parseConsumerArgs(replayArgv(flagsOnly), "/repo")).toMatchObject({
+    seed: "2",
+    only: "focused",
+  });
+});
+
+test(
+  "converted legacy replays resolve to the runner's merged inputs",
+  () => {
+    const replayInputs = CONSUMER_SCENARIO_REPLAY_INPUTS.map(({ env, flag }) => ({
+      env,
+      flag,
+      option: flag.slice(2).replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase()),
+    }));
+    const options = replayInputs.map(({ option }) => option);
+    const generatedInputs = fc.dictionary(
+      fc.constantFrom(...options),
+      fc.stringMatching(/^\/[a-zA-Z0-9_-]{1,20}$/u),
+    );
+    assertProperty(
+      fc.property(generatedInputs, generatedInputs, (environmentValues, flagValues) => {
+        const environment = Object.fromEntries(
+          replayInputs.flatMap(({ env, option }) =>
+            environmentValues[option] === undefined ? [] : [[env, environmentValues[option]]],
+          ),
+        );
+        const environmentPrefix = Object.entries(environment)
+          .map(([name, value]) => `${name}=${value}`)
+          .join(" ");
+        const legacyArgv = replayInputs.flatMap(({ flag, option }) =>
+          flagValues[option] === undefined ? [] : [flag, flagValues[option]],
+        );
+        const legacy = `${environmentPrefix}${environmentPrefix === "" ? "" : " "}bun scripts/consumer-scenarios.ts --only focused ${legacyArgv.join(" ")}`;
+        const converted = cliRepro(legacy);
+        const resolvedBefore = consumerScenarioInputs(
+          parseConsumerArgs(["--only", "focused", ...legacyArgv], "/repo"),
+          environment,
+        );
+        const resolvedAfter = consumerScenarioInputs(
+          parseConsumerArgs(replayArgv(converted), "/repo"),
+          {},
+        );
+
+        expect(resolvedAfter).toEqual(resolvedBefore);
+      }),
+      { numRuns: 100, id: "converted legacy replay inputs preserve runner resolution" },
+    );
+  },
+  propertyTestTimeout(5_000),
+);
 
 test("a malformed signature body fails instead of opening a duplicate", async () => {
   const fake = fakeClient([
