@@ -58,6 +58,7 @@ import type {
   DisplayImageRef,
   DisplayImageSource,
   DisplayLine,
+  DisplayPolyline,
   DisplayLink,
   DisplayLinkTarget,
   DisplayModelRange,
@@ -336,6 +337,25 @@ const paintLineSegment = (line: DisplayLine, context: PaintContext) => {
   }
 
   context.parent.append(element);
+};
+
+const paintPolyline = ({ points, stroke }: DisplayPolyline, context: PaintContext) => {
+  for (let index = 1; index < points.length; index += 1) {
+    const from = points[index - 1];
+    const to = points[index];
+    if (from === undefined || to === undefined) continue;
+    paintLineSegment(
+      {
+        kind: "line",
+        x1Px: from.xPx,
+        y1Px: from.yPx,
+        x2Px: to.xPx,
+        y2Px: to.yPx,
+        stroke,
+      },
+      context,
+    );
+  }
 };
 
 /**
@@ -651,6 +671,21 @@ const paintPrimitive = (primitive: DisplayPrimitive, context: PaintContext): voi
       return paintRect(primitive, context);
     case "line":
       return paintLineSegment(primitive, context);
+    case "polygon": {
+      const element = context.doc.createElement("div");
+      element.style.position = "absolute";
+      element.style.inset = "0";
+      element.style.width = "100%";
+      element.style.height = "100%";
+      element.style.clipPath = `polygon(${primitive.points
+        .map(({ xPx, yPx }) => `${px(xPx - context.originXPx)} ${px(yPx - context.originYPx)}`)
+        .join(", ")})`;
+      element.style.background = cssColor(primitive.fill);
+      context.parent.append(element);
+      return;
+    }
+    case "polyline":
+      return paintPolyline(primitive, context);
     case "image":
       return paintImage(primitive, context);
     case "clipGroup":

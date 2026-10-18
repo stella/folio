@@ -112,7 +112,7 @@ export function renderParagraphBlock(
       },
     );
   }
-  const label = ctx.nextListLabel(counterAttrs);
+  const { label } = ctx.nextListLabel(counterAttrs);
   const inline = renderParagraphInline(ctx, pkg, para.content, para.paraId);
   const styleId = para.formatting?.styleId;
 

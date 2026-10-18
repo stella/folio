@@ -73,11 +73,15 @@ jobs:
         working-directory: plugins/vscode
 
       - name: Test
-        run: bun run test
+        run: bun test src test/portable-fuzzy.test.ts
         working-directory: plugins/vscode
 
       - name: Package
         run: bun run package
+        working-directory: plugins/vscode
+
+      - name: Verify the portable CLI package
+        run: bun test test/package.test.ts
         working-directory: plugins/vscode
 
       - name: Bundled CLI renders a document

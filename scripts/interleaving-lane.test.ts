@@ -38,25 +38,39 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
   const source = readFileSync(".github/workflows/nightly-browser-input-fuzzer.yml", "utf8");
   expect(source.match(/^    outputs:$/gmu)).toHaveLength(1);
   const outputs = requireRecord(job["outputs"]);
-  expect(outputs["findings"]).toBe("${{ steps.fuzz.outcome == 'failure' }}");
-  expect(outputs["interleaving_findings"]).toBe("${{ steps.interleaving.outcome == 'failure' }}");
+  expect(outputs["fuzz_outcome"]).toBe("${{ steps.fuzz.outcome }}");
+  expect(outputs["interleaving_outcome"]).toBe("${{ steps.interleaving.outcome }}");
   expect(job["permissions"]).toEqual({ contents: "read" });
   for (const [name, output] of [
-    ["report", "findings"],
-    ["interleaving-report", "interleaving_findings"],
+    ["report", "fuzz_outcome"],
+    ["interleaving-report", "interleaving_outcome"],
   ]) {
     const reporter = requireRecord(requireRecord(workflow["jobs"])[name]);
     expect(reporter["if"]).toBe(
-      `always() && github.ref == 'refs/heads/main' && needs.browser-input-fuzzer.outputs.${output} == 'true'`,
+      `always() && github.ref == 'refs/heads/main' && (needs.browser-input-fuzzer.outputs.${output} == 'failure' || (needs.browser-input-fuzzer.outputs.${output} == 'success' && github.event_name == 'schedule'))`,
     );
     expect(reporter["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
   }
   const rawSteps = job["steps"];
   if (!Array.isArray(rawSteps)) throw new Error("Workflow steps unavailable");
   const steps = rawSteps.map(requireRecord);
-  for (const [id, lane, spec, log] of [
-    ["fuzz", "browser", "browser-input-fuzz.interactions.spec.ts", "browser-fuzz.log"],
-    ["interleaving", "interleaving", file, "interleaving.log"],
+  for (const [id, lane, spec, log, reporterLane, output] of [
+    [
+      "fuzz",
+      "browser",
+      "browser-input-fuzz.interactions.spec.ts",
+      "browser-fuzz.log",
+      "nightly-browser-input",
+      "fuzz_outcome",
+    ],
+    [
+      "interleaving",
+      "interleaving",
+      file,
+      "interleaving.log",
+      "nightly-interleaving",
+      "interleaving_outcome",
+    ],
   ]) {
     const run = steps.find((step) => step["id"] === id)?.["run"];
     expect(run).toContain(`--output=fuzz-playwright/${lane}`);
@@ -69,6 +83,8 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
     expect(reporter["with"]).toEqual({
       "artifact-pattern": artifactName,
       "log-pattern": `**/fuzz-artifacts/${lane}/*.log`,
+      lane: reporterLane,
+      result: `\${{ needs.browser-input-fuzzer.outputs.${output} }}`,
     });
     const upload = steps.find(
       (step) =>
@@ -112,8 +128,8 @@ test("every scheduled fuzz step has exactly one outcome output and finding repor
   const outputs = requireRecord(job["outputs"]);
   const outputStepIds = Object.values(outputs).map((expression) => {
     if (typeof expression !== "string") throw new Error("Fuzz output expression unavailable");
-    const id = /^\$\{\{ steps\.([\w-]+)\.outcome == 'failure' \}\}$/u.exec(expression)?.at(1);
-    if (!id) throw new Error("Fuzz output must report its step failure");
+    const id = /^\$\{\{ steps\.([\w-]+)\.outcome \}\}$/u.exec(expression)?.at(1);
+    if (!id) throw new Error("Fuzz output must report its step outcome");
     return id;
   });
   expect(outputStepIds.sort()).toEqual(fuzzStepIds.sort());
@@ -124,11 +140,14 @@ test("every scheduled fuzz step has exactly one outcome output and finding repor
       const condition = reporter["if"];
       if (typeof condition !== "string") throw new Error("Reporter condition unavailable");
       const output =
-        /^always\(\) && github\.ref == 'refs\/heads\/main' && needs\.browser-input-fuzzer\.outputs\.(\w+) == 'true'$/u
+        /^always\(\) && github\.ref == 'refs\/heads\/main' && \(needs\.browser-input-fuzzer\.outputs\.(\w+_outcome) == 'failure' \|\| \(needs\.browser-input-fuzzer\.outputs\.\1 == 'success' && github\.event_name == 'schedule'\)\)$/u
           .exec(condition)
           ?.at(1);
       if (!output) throw new Error("Reporter must consume one outcome output on main");
       expect(reporter["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
+      expect(requireRecord(reporter["with"])["result"]).toBe(
+        `\${{ needs.browser-input-fuzzer.outputs.${output} }}`,
+      );
       return output;
     });
   expect(reportedOutputs.sort()).toEqual(Object.keys(outputs).sort());
