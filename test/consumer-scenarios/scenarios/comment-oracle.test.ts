@@ -13,11 +13,11 @@ test("a comment range moved onto a surviving paragraph remains anchored", () => 
   const before = { id: 1, text: "review", anchor: "Anchor", blockId: old.id };
 
   assert.deepEqual(
-    compareComments(model, [before], [{ ...before, blockId: next.id }], [before], "direct", [next]),
+    compareComments(model, [before], [{ ...before, blockId: next.id }], [next], [before], "direct"),
     [],
   );
   assert.match(
-    compareComments(model, [before], [before], [before], "direct", [next]).join("\n"),
+    compareComments(model, [before], [before], [next], [before], "direct").join("\n"),
     /outlived/u,
   );
 });
@@ -32,15 +32,25 @@ test("a comment moved onto another deleted paragraph is still an orphan", () => 
   const before = { id: 1, text: "review", anchor: "Anchor", blockId: first.id };
 
   assert.match(
-    compareComments(model, [before], [{ ...before, blockId: second.id }], [before], "direct", [
-      third,
-    ]).join("\n"),
+    compareComments(
+      model,
+      [before],
+      [{ ...before, blockId: second.id }],
+      [third],
+      [before],
+      "direct",
+    ).join("\n"),
     /outlived/u,
   );
   assert.deepEqual(
-    compareComments(model, [before], [{ ...before, blockId: third.id }], [before], "direct", [
-      third,
-    ]),
+    compareComments(
+      model,
+      [before],
+      [{ ...before, blockId: third.id }],
+      [third],
+      [before],
+      "direct",
+    ),
     [],
   );
 });
@@ -56,11 +66,11 @@ test("migrated comment ranges require a surviving destination over generated ids
       const survivor = { ...before, blockId: destinationRow.id };
 
       assert.deepEqual(
-        compareComments(model, [before], [survivor], [before], "direct", [destinationRow]),
+        compareComments(model, [before], [survivor], [destinationRow], [before], "direct"),
         [],
       );
       assert.match(
-        compareComments(model, [before], [survivor], [before], "direct", []).join("\n"),
+        compareComments(model, [before], [survivor], [], [before], "direct").join("\n"),
         /outlived/u,
       );
     }

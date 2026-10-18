@@ -1546,23 +1546,21 @@ export const compareComments = (
   model: Model,
   before: readonly Comment[],
   after: readonly Comment[],
+  afterRows: readonly Row[],
   liveBefore: readonly Comment[] = before,
   mode: Mode = "direct",
-  afterRows: readonly Row[] = model.rows.flatMap(({ pre, removed }) =>
-    pre && !removed ? [pre] : [],
-  ),
 ): string[] => {
   const problems: string[] = [];
   const remaining = [...after];
   const kept: Comment[] = [];
-  const gone: Comment[] = [];
+  const gone: { entry: Comment; located: Comment }[] = [];
   for (const entry of before) {
     const live = liveBefore.find(({ id }) => id === entry.id);
     // The accepted quote belongs to the accepted model. Use a live quote
     // only when a pending paragraph join moved its anchor to another block.
     const located = live && live.blockId !== entry.blockId ? live : entry;
     const disposition = mode === "suggested" ? "kept" : anchorDisposition(model, located);
-    if (disposition === "removed") gone.push(entry);
+    if (disposition === "removed") gone.push({ entry, located });
     else if (disposition === "kept") kept.push(entry);
   }
   for (const comment of kept) {
@@ -1601,7 +1599,7 @@ export const compareComments = (
   }
   // Only what no expectation claimed can be the removed comment itself.
   const survivingBlockIds = new Set(afterRows.map(({ id }) => id));
-  for (const entry of gone) {
+  for (const { entry, located } of gone) {
     const survivor = remaining.find(({ id }) => id === entry.id);
     // A block id locates the first paragraph containing an anchor; it does not
     // own the whole range. Splits and joins can move the surviving part of a
@@ -1610,7 +1608,12 @@ export const compareComments = (
     // left on the deleted locator, moved to another block the batch also
     // deleted, or left in no block at all, is the orphan this check is meant
     // to catch.
-    if (survivor && (survivor.blockId === null || !survivingBlockIds.has(survivor.blockId))) {
+    if (
+      survivor &&
+      (survivor.blockId === located.blockId ||
+        survivor.blockId === null ||
+        !survivingBlockIds.has(survivor.blockId))
+    ) {
       problems.push(`comment ${JSON.stringify(entry)} outlived the block it anchored`);
     }
   }
@@ -1917,7 +1920,7 @@ export const assertRequestedOutcome = async (
     ...(predictable ? compareWithModel(model, rows) : []),
     ...(model.tableGaps.length === 0 ? compareTableGeometry(model.tables, rows) : []),
     ...comparePreservedLinks({ before: pre.links, after: links, afterRows: rows }).problems,
-    ...compareComments(model, pre.comments, comments, pre.liveComments, pre.mode, rows),
+    ...compareComments(model, pre.comments, comments, rows, pre.liveComments, pre.mode),
     ...(bytes ? await compareStyles(model, bytes) : []),
   ];
   if (process.env["FOLIO_ORACLE_GAPS"] && (!predictable || model.tableGaps.length > 0)) {
