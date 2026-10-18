@@ -28,6 +28,7 @@ import type {
   TextFormatting,
   TrackedRunContent,
 } from "../../model/document";
+import { finalizeParagraphFormatting } from "../../model/canonical";
 import { paragraphNumberingReference } from "../../model/paragraphNumbering";
 import { captureDocumentOp } from "../wire";
 import { storyParagraphs, storyBody } from "../blocks";
@@ -82,20 +83,22 @@ export const textFormattingArbitrary: fc.Arbitrary<TextFormatting> = fc.record(
   { requiredKeys: [] },
 );
 
-const paragraphFormattingArbitrary: fc.Arbitrary<ParagraphFormatting> = fc.record(
-  {
-    alignment: fc.constantFrom("start", "center", "end"),
-    spaceBefore: fc.integer({ min: 0, max: 240 }),
-    keepNext: fc.boolean(),
-    styleId: fc.constantFrom("Heading1", "BodyText"),
-    runProperties: textFormattingArbitrary,
-    preserved: fc.constant({ children: [{ index: 3, xml: "<w:suppressOverlap/>" }] }),
-    numPr: fc.option(fc.constant(paragraphNumberingReference({ numId: 1, ilvl: 0 })), {
-      nil: undefined,
-    }),
-  },
-  { requiredKeys: [] },
-);
+const paragraphFormattingArbitrary: fc.Arbitrary<ParagraphFormatting | undefined> = fc
+  .record(
+    {
+      alignment: fc.constantFrom("start", "center", "end"),
+      spaceBefore: fc.integer({ min: 0, max: 240 }),
+      keepNext: fc.boolean(),
+      styleId: fc.constantFrom("Heading1", "BodyText"),
+      runProperties: textFormattingArbitrary,
+      preserved: fc.constant({ children: [{ index: 3, xml: "<w:suppressOverlap/>" }] }),
+      numPr: fc.option(fc.constant(paragraphNumberingReference({ numId: 1, ilvl: 0 })), {
+        nil: undefined,
+      }),
+    },
+    { requiredKeys: [] },
+  )
+  .map(finalizeParagraphFormatting);
 
 const ATOM_RUN_CONTENT: readonly RunContent[] = [
   { type: "tab" },
@@ -289,15 +292,29 @@ const paragraphFields = {
   listRendering: fc.constant({ marker: "1.", level: 0, numId: 1, isBullet: false }),
 };
 
+const canonicalParagraph = ({ formatting, ...paragraph }: Paragraph): Paragraph => {
+  const canonicalFormatting = finalizeParagraphFormatting(formatting);
+  return canonicalFormatting === undefined
+    ? paragraph
+    : { ...paragraph, formatting: canonicalFormatting };
+};
+
 const paragraphArbitrary: fc.Arbitrary<Paragraph> = fc.oneof(
-  { weight: 6, arbitrary: fc.record(paragraphFields, { requiredKeys: ["type", "content"] }) },
+  {
+    weight: 6,
+    arbitrary: fc
+      .record(paragraphFields, { requiredKeys: ["type", "content"] })
+      .map(canonicalParagraph),
+  },
   // A section break is rarer than the other fields, as in real documents.
   {
     weight: 1,
-    arbitrary: fc.record(
-      { ...paragraphFields, sectionProperties: sectionPropertiesArbitrary },
-      { requiredKeys: ["type", "content", "sectionProperties"] },
-    ),
+    arbitrary: fc
+      .record(
+        { ...paragraphFields, sectionProperties: sectionPropertiesArbitrary },
+        { requiredKeys: ["type", "content", "sectionProperties"] },
+      )
+      .map(canonicalParagraph),
   },
 );
 

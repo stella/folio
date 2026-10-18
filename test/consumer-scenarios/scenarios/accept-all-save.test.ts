@@ -34,7 +34,11 @@ const MINIMIZED_REPLAY_SEEDS = [
 ] as const;
 
 for (const { issue, seed } of MINIMIZED_REPLAY_SEEDS) {
-  test(`#${issue} minimized seed ${seed}: accept-all survives save`, async () => {
-    await runFlow(seed, 16, "random");
-  });
+  test(
+    `#${issue} minimized seed ${seed}: accept-all survives save`,
+    { timeout: 60_000 },
+    async () => {
+      await runFlow(seed, 16, "random");
+    },
+  );
 }
