@@ -1539,6 +1539,9 @@ export const compareComments = (
   after: readonly Comment[],
   liveBefore: readonly Comment[] = before,
   mode: Mode = "direct",
+  afterRows: readonly Row[] = model.rows.flatMap(({ pre, removed }) =>
+    pre && !removed ? [pre] : [],
+  ),
 ): string[] => {
   const problems: string[] = [];
   const remaining = [...after];
@@ -1588,6 +1591,7 @@ export const compareComments = (
     }
   }
   // Only what no expectation claimed can be the removed comment itself.
+  const survivingBlockIds = new Set(afterRows.map(({ id }) => id));
   for (const entry of gone) {
     const survivor = remaining.find(({ id }) => id === entry.id);
     // A block id locates the first paragraph containing an anchor; it does not
@@ -1597,12 +1601,7 @@ export const compareComments = (
     // left on the deleted locator, moved to another block the batch also
     // deleted, or left in no block at all, is the orphan this check is meant
     // to catch.
-    if (
-      survivor &&
-      (survivor.blockId === null ||
-        survivor.blockId === entry.blockId ||
-        model.deletedBlockIds.has(survivor.blockId))
-    ) {
+    if (survivor && (survivor.blockId === null || !survivingBlockIds.has(survivor.blockId))) {
       problems.push(`comment ${JSON.stringify(entry)} outlived the block it anchored`);
     }
   }
@@ -1909,7 +1908,7 @@ export const assertRequestedOutcome = async (
     ...(predictable ? compareWithModel(model, rows) : []),
     ...(model.tableGaps.length === 0 ? compareTableGeometry(model.tables, rows) : []),
     ...comparePreservedLinks({ before: pre.links, after: links, afterRows: rows }).problems,
-    ...compareComments(model, pre.comments, comments, pre.liveComments, pre.mode),
+    ...compareComments(model, pre.comments, comments, pre.liveComments, pre.mode, rows),
     ...(bytes ? await compareStyles(model, bytes) : []),
   ];
   if (process.env["FOLIO_ORACLE_GAPS"] && (!predictable || model.tableGaps.length > 0)) {
