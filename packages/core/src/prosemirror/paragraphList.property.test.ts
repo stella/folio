@@ -1,0 +1,169 @@
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import type {
+  AbstractNumbering,
+  ListLevel,
+  NumberingDefinitions,
+  Paragraph,
+} from "@stll/docx-core/model";
+import { numberingLevelEntries, paragraphNumberingReference } from "@stll/docx-core/model";
+import fc from "fast-check";
+import JSZip from "jszip";
+
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import { FolioDocxReviewer } from "../ai-edits/headless";
+import { createDocx } from "../docx/rezip";
+import { createNumberingMap } from "../docx/numberingParser";
+import { fromMarkdown } from "../markdown/fromMarkdown";
+import { toMarkdown } from "../markdown";
+import { resolveParagraphList } from "./paragraphList";
+
+setDefaultTimeout(propertyTestTimeout(20_000));
+
+const levelArb: fc.Arbitrary<ListLevel> = fc
+  .record({
+    ilvl: fc.integer({ min: 0, max: 8 }),
+    numFmt: fc.constantFrom("decimal", "lowerLetter", "bullet", "none"),
+    lvlText: fc.constantFrom("%1.", "%2)", "•", "", "   "),
+    hidden: fc.boolean(),
+    legal: fc.boolean(),
+  })
+  .map(({ ilvl, numFmt, lvlText, hidden, legal }) => {
+    const candidate: ListLevel = { ilvl, numFmt, lvlText };
+    if (hidden) candidate.rPr = { hidden: true };
+    if (legal) candidate.isLgl = true;
+    return candidate;
+  });
+
+const definitionsArb: fc.Arbitrary<NumberingDefinitions> = fc
+  .record({
+    abstracts: fc.array(
+      fc.record({
+        id: fc.integer({ min: 1, max: 3 }),
+        levels: fc.array(levelArb, { maxLength: 3 }),
+        link: fc.option(fc.constantFrom("ListA", "ListB"), { nil: undefined }),
+        isTarget: fc.boolean(),
+      }),
+      { maxLength: 3 },
+    ),
+    nums: fc.array(
+      fc.record({
+        numId: fc.integer({ min: 1, max: 3 }),
+        abstractNumId: fc.integer({ min: 1, max: 4 }),
+        override: fc.option(levelArb, { nil: undefined }),
+      }),
+      { maxLength: 3 },
+    ),
+  })
+  .map(({ abstracts, nums }) => ({
+    abstractNums: [
+      ...abstracts.map(({ id, levels, link, isTarget }) => {
+        const abstract: AbstractNumbering = {
+          abstractNumId: id,
+          levels: link !== undefined && !isTarget ? [] : levels,
+        };
+        if (isTarget) abstract.styleLink = link;
+        else abstract.numStyleLink = link;
+        return abstract;
+      }),
+      { abstractNumId: 90, levels: [] },
+    ],
+    nums: [
+      ...nums.map(({ numId, abstractNumId, override }) => ({
+        numId,
+        abstractNumId,
+        ...(override === undefined
+          ? {}
+          : { levelOverrides: [{ ilvl: override.ilvl, lvl: override }] }),
+      })),
+      { numId: 90, abstractNumId: 90 },
+    ],
+  }));
+
+const paragraph = (text: string, numId: number, ilvl: number): Paragraph => ({
+  type: "paragraph",
+  formatting: { numPr: paragraphNumberingReference({ numId, ilvl }) },
+  content: [{ type: "run", content: [{ type: "text", text }] }],
+});
+
+const numPrXml = async (buffer: ArrayBuffer): Promise<string[]> => {
+  const zip = await JSZip.loadAsync(buffer);
+  const xml = await zip.file("word/document.xml")?.async("string");
+  return xml?.match(/<w:numPr>[\s\S]*?<\/w:numPr>/gu) ?? [];
+};
+
+type Expected = { text: string; kind: "paragraph" | "listItem"; marker: boolean };
+
+const assertReaders = (reviewer: FolioDocxReviewer, expected: Expected[]): void => {
+  const content = reviewer.getContent();
+  const snapshot = reviewer.snapshot().blocks;
+  const rows = reviewer.getContentAsText().split("\n");
+  const markdown = toMarkdown(reviewer.toDocument(), {
+    annotations: "strip",
+    trackedChanges: "clean",
+    comments: "strip",
+  });
+  const formats = new Set(
+    reviewer.readNumberingDefinitions().map(({ numId, level }) => `${numId}:${level}`),
+  );
+
+  for (const [index, result] of expected.entries()) {
+    const block = content.find(({ text }) => text === result.text);
+    const snap = snapshot.find(({ text }) => text === result.text);
+    expect(block?.kind).toBe(result.kind);
+    expect(snap?.kind).toBe(result.kind);
+    expect(block?.displayLabel !== undefined).toBe(result.marker);
+    expect(snap?.displayLabel !== undefined).toBe(result.marker);
+    expect(rows[index]?.endsWith(result.text)).toBe(true);
+    expect(markdown.includes(result.text)).toBe(true);
+    if (block?.displayLabel !== undefined && block.listReference) {
+      expect(formats.has(`${block.listReference.numId}:${block.listReference.level}`)).toBe(true);
+    }
+  }
+};
+
+describe("paragraph list reader agreement", () => {
+  test("all readers and save/reopen follow the numbering-level owner", async () => {
+    await assertProperty(
+      fc.asyncProperty(definitionsArb, async (definitions) => {
+        const references = [
+          ...definitions.nums.map(({ numId }, index) => ({ numId, ilvl: index % 10 })),
+          { numId: 90, ilvl: 8 },
+        ];
+        const document = fromMarkdown("seed");
+        document.package.numbering = definitions;
+        document.package.document.content = references.map(({ numId, ilvl }, index) =>
+          paragraph(`P${index}`, numId, ilvl),
+        );
+        const numbering = createNumberingMap(definitions);
+        const expected = references.map(({ numId, ilvl }, index): Expected => {
+          const resolved = resolveParagraphList(
+            { numPr: paragraphNumberingReference({ numId, ilvl }), numPrFromStyle: undefined },
+            numbering,
+          );
+          return {
+            text: `P${index}`,
+            kind: resolved.kind === "marker" ? "listItem" : "paragraph",
+            marker: resolved.kind === "marker",
+          };
+        });
+
+        const source = await createDocx(document);
+        const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer" });
+        assertReaders(reviewer, expected);
+        const saved = await reviewer.toBuffer();
+        const reopened = await FolioDocxReviewer.fromBuffer(saved, { author: "Reviewer" });
+        assertReaders(reopened, expected);
+
+        const undefinedLevels = references.filter(
+          ({ numId, ilvl }) =>
+            !numberingLevelEntries(definitions).some(
+              (entry) => entry.numId === numId && entry.ilvl === ilvl,
+            ),
+        );
+        if (undefinedLevels.length > 0)
+          expect(await numPrXml(saved)).toEqual(await numPrXml(source));
+      }),
+      { numRuns: 25, id: "all numbering readers agree" },
+    );
+  });
+});
