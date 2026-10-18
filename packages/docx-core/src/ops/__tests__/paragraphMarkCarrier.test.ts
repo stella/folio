@@ -4,16 +4,86 @@ import { paragraphMarkCarrier } from "../blockDeletion";
 
 describe("paragraphMarkCarrier", () => {
   test("the following paragraph owns a deleted break", () => {
-    expect(paragraphMarkCarrier({ followingKind: "paragraph", endsContainer: false })).toBe(
-      "following",
-    );
+    expect(
+      paragraphMarkCarrier({
+        followingKind: "paragraph",
+        endsContainer: false,
+        removesCurrentMark: true,
+        removesParagraph: false,
+        currentContentWasResolved: false,
+      }),
+    ).toBe("following");
   });
 
   test("a container-final paragraph keeps its required terminator", () => {
-    expect(paragraphMarkCarrier({ followingKind: undefined, endsContainer: true })).toBe("current");
+    expect(
+      paragraphMarkCarrier({
+        followingKind: undefined,
+        endsContainer: true,
+        removesCurrentMark: true,
+        removesParagraph: false,
+        currentContentWasResolved: false,
+      }),
+    ).toBe("current");
   });
 
-  test("no paragraph carrier survives before a table", () => {
-    expect(paragraphMarkCarrier({ followingKind: "table", endsContainer: false })).toBe("none");
+  test("a cleared split paragraph's retained mark stays before a table", () => {
+    expect(
+      paragraphMarkCarrier({
+        followingKind: "table",
+        endsContainer: false,
+        removesCurrentMark: false,
+        removesParagraph: false,
+        currentContentWasResolved: false,
+      }),
+    ).toBe("current");
+  });
+
+  test("a paragraph mark remains the carrier before a table while its review resolves", () => {
+    expect(
+      paragraphMarkCarrier({
+        followingKind: "table",
+        endsContainer: false,
+        removesCurrentMark: true,
+        removesParagraph: false,
+        currentContentWasResolved: false,
+      }),
+    ).toBe("current");
+  });
+
+  test("a removed inserted paragraph stays as the table's preceding carrier", () => {
+    expect(
+      paragraphMarkCarrier({
+        followingKind: "table",
+        endsContainer: false,
+        removesCurrentMark: true,
+        removesParagraph: true,
+        currentContentWasResolved: false,
+      }),
+    ).toBe("current");
+  });
+
+  test("a removed inserted paragraph needs no container-final carrier", () => {
+    expect(
+      paragraphMarkCarrier({
+        followingKind: undefined,
+        endsContainer: true,
+        removesCurrentMark: true,
+        removesParagraph: true,
+        currentContentWasResolved: false,
+      }),
+    ).toBe("none");
+  });
+
+  test("a paragraph emptied by review has no carrier before a table", () => {
+    expect(
+      paragraphMarkCarrier({
+        followingKind: "table",
+        endsContainer: false,
+        removesCurrentMark: true,
+        removesParagraph: false,
+        currentContentWasResolved: true,
+      }),
+    ).toBe("none");
   });
 });

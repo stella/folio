@@ -1144,25 +1144,18 @@ const joinOps = (
   const carrier = paragraphMarkCarrier({
     followingKind,
     endsContainer: containerFinal,
+    removesCurrentMark: true,
+    removesParagraph: added,
+    currentContentWasResolved: !added || emptiedEnds.has(idKey(paraId)),
   });
   if (canGo && blocks.length > 1 && carrier === "none") {
-    if (empty) {
-      const previous = blocks.at(location.index - 1);
-      if (previous?.type !== "paragraph") {
-        return Result.err(
-          refusal(
-            op,
-            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            `Resolving the mark of ${paraId} cannot anchor the inverse paragraph insertion.`,
-          ),
-        );
-      }
+    if (empty && followingKind === "table") {
       return Result.ok([
         {
           type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
           story,
-          expected: [previous, paragraph],
-          blocks: [previous],
+          expected: [paragraph],
+          blocks: [],
         },
       ]);
     }

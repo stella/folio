@@ -493,12 +493,15 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     const carrier = paragraphMarkCarrier({
       followingKind,
       endsContainer: !followingContainerChild,
+      removesCurrentMark: joins === true,
+      removesParagraph: joins === true && markWasAdded,
+      currentContentWasResolved: joins === true,
     });
     if (
       marker &&
       holdsNoContent(paragraph) &&
       carrier === "none" &&
-      (joins || (markWasAdded && context.mode === "accept")) &&
+      joins &&
       index + reversed.length + 1 > 1
     ) {
       context.deleted.push({ from: entry.position, to: entry.position + paragraph.nodeSize });

@@ -519,63 +519,6 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     formatting: { styleId: "Heading1" },
     textId: "77777777",
   });
-  const table: BlockContent = {
-    type: "table",
-    rows: [
-      {
-        type: "tableRow",
-        cells: [{ type: "tableCell", content: [paragraph("00000009", [run("cell")])] }],
-      },
-    ],
-  };
-
-  test.each([
-    ["empty", [], [1]],
-    [
-      "non-empty",
-      [
-        {
-          type: "insertion",
-          info: { id: 2, author: "Reviewer", date: DATE },
-          content: [run("new")],
-        },
-      ],
-      [1, 2],
-    ],
-  ] as const)("rejecting an inserted %s paragraph before a table removes it", (_, content, ids) => {
-    const inserted = paragraph("00000002", [...content], {
-      pPrMark: { kind: "ins", info: { id: 1, author: "Reviewer", date: DATE } },
-    });
-    const before = paragraph("00000001", [run("before")]);
-    const document = documentOf(before, inserted, table, paragraph("00000003", [run("after")]));
-
-    expect(blocks(resolved(document, ids, REVISION_DECISIONS.REJECT))).toEqual([
-      before,
-      table,
-      paragraph("00000003", [run("after")]),
-    ]);
-  });
-
-  test("rejecting an inserted mark before a table refuses content it cannot carry", () => {
-    const inserted = paragraph("00000002", [run("untracked")], {
-      pPrMark: { kind: "ins", info: { id: 1, author: "Reviewer", date: DATE } },
-    });
-    const document = documentOf(
-      paragraph("00000001", [run("before")]),
-      inserted,
-      table,
-      paragraph("00000003", [run("after")]),
-    );
-
-    expect(
-      refusalOf(document, {
-        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-        story: OP_STORIES.MAIN,
-        revisionIds: [1],
-        decision: REVISION_DECISIONS.REJECT,
-      }),
-    ).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
-  });
 
   test("a tracked split inside a paragraph gives the new id to the first half", () => {
     const document = documentOf(source, paragraph("00000009", [run("next")]));
