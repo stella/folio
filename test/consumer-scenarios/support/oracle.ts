@@ -1877,24 +1877,33 @@ export const assertRequestedOutcome = async (
   model.inTextBox = pre.targets.inTextBox;
   model.mode = pre.mode;
   model.story = pre.resolvedStory;
-  const removedBlocksBy = new Map<string, string>();
+  const removedBlocksBy = new Map<string, { id: string; type: string }>();
   for (const [index, operation] of outcome.applied.entries()) {
     const range = operation["range"];
     const targetBlockId =
       typeof range === "object" && range !== null && "blockId" in range
         ? range.blockId
         : operation["blockId"];
-    const targetsBesideBlock = [
+    const targetsBlockIdentity = ![
       "insertAfterBlock",
       "insertBeforeBlock",
       "insertSignatureTable",
       "insertTable",
+      "deleteTable",
+      "insertTableRow",
+      "deleteTableRow",
+      "insertTableColumn",
+      "deleteTableColumn",
+      "mergeTableCells",
+      "splitTableCell",
     ].includes(operation.type);
-    if (
-      !targetsBesideBlock &&
-      typeof targetBlockId === "string" &&
-      removedBlocksBy.has(targetBlockId)
-    ) {
+    const removedBy =
+      targetsBlockIdentity && typeof targetBlockId === "string"
+        ? removedBlocksBy.get(targetBlockId)
+        : undefined;
+    const continuesMergeChain =
+      operation.type === "mergeBlockWithNext" && removedBy?.type === "mergeBlockWithNext";
+    if (removedBy !== undefined && !continuesMergeChain) {
       throw new Error(
         `applied an operation on block ${targetBlockId}, which an earlier one of the batch removed`,
       );
@@ -1910,18 +1919,27 @@ export const assertRequestedOutcome = async (
         case "deleteTable":
         case "deleteTableRow":
         case "deleteTableColumn":
-          return getFolioDocumentOperationRemovedBlockIds(pre.rows, {
-            id: `oracle-${String(index)}`,
-            type: operation.type,
-            blockId,
-          });
+          return getFolioDocumentOperationRemovedBlockIds(
+            pre.rows.map(({ id, table }) => ({
+              id,
+              ...(table !== undefined && { table: { ...table, paragraphIndex: 0 } }),
+            })),
+            {
+              id: `oracle-${String(index)}`,
+              type: operation.type,
+              blockId,
+            },
+          );
         default:
           return [];
       }
     })();
     for (const removedBlockId of removal) {
       if (!removedBlocksBy.has(removedBlockId)) {
-        removedBlocksBy.set(removedBlockId, String(operation["id"] ?? index));
+        removedBlocksBy.set(removedBlockId, {
+          id: String(operation["id"] ?? index),
+          type: operation.type,
+        });
       }
     }
   }

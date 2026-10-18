@@ -130,6 +130,15 @@ describe("getFolioDocumentOperationRemovedBlockIds", () => {
     ]).toEqual(["B"]);
   });
 
+  test("a merge does not remove its anchor", () => {
+    expect(
+      getFolioDocumentOperationRemovedBlockIds(blocks, {
+        type: "mergeBlockWithNext",
+        blockId: "A",
+      } as never).has("A"),
+    ).toBe(false);
+  });
+
   test("a merge with an unknown anchor removes nothing", () => {
     expect([
       ...getFolioDocumentOperationRemovedBlockIds(blocks, {

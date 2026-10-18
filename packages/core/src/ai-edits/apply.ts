@@ -3908,7 +3908,7 @@ const applyFolioAIEditOperationsInternal = ({
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
   const batchClaims = new BatchClaims();
-  const removedBlocksBy = new Map<string, string>();
+  const removedBlocksBy = new Map<string, { id: string; type: FolioAIEditOperation["type"] }>();
   const diffText: ReturnType<typeof createWordDiffSession>["diff"] =
     wordDiffMode === "coarse" ? coarseWordDiff : wordDiffSessionFromOptions(wordDiff).diff;
 
@@ -4025,17 +4025,27 @@ const applyFolioAIEditOperationsInternal = ({
     }
 
     const targetBlockId = "range" in operation ? operation.range.blockId : operation.blockId;
-    const targetsBesideBlock =
-      operation.type === "insertAfterBlock" ||
-      operation.type === "insertBeforeBlock" ||
-      operation.type === "insertSignatureTable" ||
-      operation.type === "insertTable";
-    const removedBy = targetsBesideBlock ? undefined : removedBlocksBy.get(targetBlockId);
-    if (removedBy !== undefined) {
+    const targetsBlockIdentity = ![
+      "insertAfterBlock",
+      "insertBeforeBlock",
+      "insertSignatureTable",
+      "insertTable",
+      "deleteTable",
+      "insertTableRow",
+      "deleteTableRow",
+      "insertTableColumn",
+      "deleteTableColumn",
+      "mergeTableCells",
+      "splitTableCell",
+    ].includes(operation.type);
+    const removedBy = targetsBlockIdentity ? removedBlocksBy.get(targetBlockId) : undefined;
+    const continuesMergeChain =
+      operation.type === "mergeBlockWithNext" && removedBy?.type === "mergeBlockWithNext";
+    if (removedBy !== undefined && !continuesMergeChain) {
       skipped.push({
         id: operation.id,
         reason: "overlappingOperation",
-        message: `operation ${JSON.stringify(removedBy)}, earlier in this batch, already claims its target.`,
+        message: `operation ${JSON.stringify(removedBy.id)}, earlier in this batch, already claims its target.`,
       });
       continue;
     }
@@ -4063,7 +4073,9 @@ const applyFolioAIEditOperationsInternal = ({
       snapshot.blocks,
       operation,
     )) {
-      if (!removedBlocksBy.has(removedBlockId)) removedBlocksBy.set(removedBlockId, operation.id);
+      if (!removedBlocksBy.has(removedBlockId)) {
+        removedBlocksBy.set(removedBlockId, { id: operation.id, type: operation.type });
+      }
     }
     if (deletion) {
       claimedTableRows.add(`${deletion.tablePosition}:${deletion.rowIndex}`);
