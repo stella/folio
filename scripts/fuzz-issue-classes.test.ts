@@ -5,7 +5,7 @@ import {
   failureMarker,
   failureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
-import { failureClass } from "./fuzz-failure-class";
+import { failureClass, upgradeClassKey } from "./fuzz-failure-class";
 import { type Context, type Finding, RUN_TRIGGER } from "./fuzz-failure-issues";
 import {
   type ClosedIssue,
@@ -95,6 +95,19 @@ const legacy = (closedAt: string | null = null): Issue => {
 };
 
 describe("class issue filing", () => {
+  test("renamed legacy class keys upgrade through the migration table", () => {
+    expect(upgradeClassKey(["consumer-flow", "listLevel mismatch"])).toBe(
+      '["consumer-invariant","numberingLevel"]',
+    );
+    expect(
+      upgradeClassKey([
+        "consumer-flow",
+        "lists",
+        "tracked-changes",
+        "Missing numbering format for displayed label",
+      ]),
+    ).toBe('["consumer-invariant","numberingLabel"]');
+  });
   test("same class retains every seed/path/replay and counts distinct runs", async () => {
     const fake = fakeStore();
     const first = finding(1);

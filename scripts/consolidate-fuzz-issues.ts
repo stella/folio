@@ -2,7 +2,7 @@
 
 import { $ } from "bun";
 import { TaggedError } from "better-result";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 
@@ -117,7 +117,10 @@ export class GitHubPause extends TaggedError("GitHubPause")<{ message: string }>
 
 export const pauseOnGitHubRefusal = (error: unknown): never => {
   const message = error instanceof Error ? error.message : String(error);
-  if (/\b(?:403|429)\b|rate limit|abuse detection|secondary rate/iu.test(message)) {
+  const isRateLimited =
+    /\b429\b/u.test(message) ||
+    (/\b403\b/u.test(message) && /rate.?limit|abuse|secondary/iu.test(message));
+  if (isRateLimited) {
     throw new GitHubPause({ message });
   }
   throw error;
@@ -245,7 +248,11 @@ export const applyConsolidation = async (
     if (completed.has(id)) return;
     await operation();
     completed.add(id);
-    if (checkpointFile !== undefined) writeFileSync(checkpointFile, JSON.stringify([...completed]));
+    if (checkpointFile !== undefined) {
+      const temporary = `${checkpointFile}.tmp`;
+      writeFileSync(temporary, JSON.stringify([...completed]));
+      renameSync(temporary, checkpointFile);
+    }
   };
   for (const { keep, duplicates, state } of plan.groups) {
     const content = renderSignatureIssue(state);
@@ -253,9 +260,7 @@ export const applyConsolidation = async (
     if (content.title !== keep.title || content.body !== keep.body)
       await run(`edit:${keep.number}:${contentHash}`, () => store.edit(keep.number, content));
     for (const duplicate of duplicates)
-      await run(`close:${duplicate.number}:${contentHash}`, () =>
-        store.close(duplicate.number, "duplicate"),
-      );
+      await run(`close:${duplicate.number}`, () => store.close(duplicate.number, "duplicate"));
   }
 };
 

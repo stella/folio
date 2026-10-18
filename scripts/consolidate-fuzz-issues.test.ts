@@ -8,6 +8,7 @@ import {
   applyConsolidation,
   type ConsolidationStore,
   evidenceOf,
+  GitHubPause,
   identityOf,
   lanesOfWorkflow,
   planConsolidation,
@@ -140,6 +141,12 @@ test("a GitHub refusal becomes a typed pause", () => {
   expect(() => pauseOnGitHubRefusal(new Error("HTTP 429 secondary rate limit"))).toThrow(
     "HTTP 429",
   );
+});
+
+test("a permission refusal remains a failure", () => {
+  const refusal = new Error("HTTP 403: Resource not accessible by integration");
+  expect(() => pauseOnGitHubRefusal(refusal)).toThrow(refusal);
+  expect(() => pauseOnGitHubRefusal(refusal)).not.toThrow(GitHubPause);
 });
 
 const fakeStore = (issues: Issue[], comments: Record<number, string[]> = {}) => {

@@ -136,6 +136,23 @@ const consumerClass = (
 
 export type FailureClass = ReturnType<typeof consumerClass>;
 
+/** Class-key renames made by the invariant classifier. */
+export const LEGACY_CLASS_KEY_RENAMES = {
+  '["consumer-flow","listLevel mismatch"]': '["consumer-invariant","numberingLevel"]',
+  '["consumer-flow","Missing numbering format for displayed label"]':
+    '["consumer-invariant","numberingLabel"]',
+  '["consumer-flow","accepted tracked batches differ from direct batches"]':
+    '["consumer-invariant","directTracked"]',
+  '["consumer-flow","rejected tracked batches differ from fixture"]':
+    '["consumer-invariant","rejectAll"]',
+  '["consumer-flow","saving reopened package changes XML"]':
+    '["consumer-invariant","saveIdempotent"]',
+  '["consumer-flow","batch differs from sequential operations"]':
+    '["consumer-invariant","batchSequential"]',
+  '["consumer-flow","content reads differ after save"]': '["consumer-invariant","readerStability"]',
+} as const satisfies Record<string, string>;
+const legacyClassKeyRenames = new Map(Object.entries(LEGACY_CLASS_KEY_RENAMES));
+
 export const failureClass = (test: string, assertion: string): FailureClass => {
   const consumer = /^consumer flow (.+) \/ (.+)$/u.exec(test);
   if (consumer !== null) {
@@ -156,10 +173,14 @@ export const failureClass = (test: string, assertion: string): FailureClass => {
  * were part of the key carried four parts: kind, fixture or test, mode, message.
  */
 export const upgradeClassKey = (parts: readonly string[]): string => {
-  if (parts.length !== 4) return JSON.stringify(parts);
-  return parts[0] === "consumer-flow"
-    ? JSON.stringify(["consumer-flow", parts[3]])
-    : JSON.stringify(["fuzz-check", parts[1], parts[3]]);
+  let compact = JSON.stringify(parts);
+  if (parts.length === 4) {
+    compact =
+      parts[0] === "consumer-flow"
+        ? JSON.stringify(["consumer-flow", parts[3]])
+        : JSON.stringify(["fuzz-check", parts[1], parts[3]]);
+  }
+  return legacyClassKeyRenames.get(compact) ?? compact;
 };
 
 /** Legacy automated and human titles remain discoverable until they close. */

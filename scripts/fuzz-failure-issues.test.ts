@@ -272,12 +272,15 @@ test("an absent class keeps its regression note and legacy report", async () => 
   issue.body = `${issue.body.replace(
     "\n\n| Fingerprint",
     "\nRegressed: preserved regression evidence.\n\n| Fingerprint",
-  )}\n\n<details><summary>Legacy report</summary>\n\nPreserved reproduction evidence.\n\n</details>`;
+  )}\n\n<details><summary>Legacy report</summary>\n\nPreserved reproduction evidence.\n\n<details><summary>Nested evidence</summary>\n\nNested reproduction.\n\n</details>\n\n</details>`;
+  const failure = /^Failure: .*$/mu.exec(issue.body)?.at(0);
 
   await fileClasses({ findings: [], context: runContext(124), store, known: new Map() });
 
   expect(issue.body).toContain("Regressed: preserved regression evidence.");
   expect(issue.body).toContain("Preserved reproduction evidence.");
+  expect(issue.body).toContain("Nested reproduction.");
+  expect(/^Failure: .*$/mu.exec(issue.body ?? "")?.at(0)).toBe(failure);
 });
 
 const fixtureLog = readFileSync(new URL("./fixtures/fuzz-failures.log", import.meta.url), "utf8");

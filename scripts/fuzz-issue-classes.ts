@@ -273,7 +273,7 @@ const preservedBodyFields = (
     null,
   legacyReport:
     body
-      ?.match(/<details><summary>Legacy report<\/summary>\n\n([\s\S]*?)\n\n<\/details>/u)
+      ?.match(/<details><summary>Legacy report<\/summary>\n\n([\s\S]*)\n\n<\/details>\s*$/u)
       ?.at(1) ?? null,
 });
 const classBody = ({ signature, state, note, legacyReport }: ClassBodyOptions): string => {
@@ -566,11 +566,12 @@ export const fileClasses = async ({
         changed = true;
       }
       if (!changed) continue;
-      const signature = failureClass("Consumer flow", issue.title.replace(/^.*?: /u, ""));
+      const generated = failureClass("Consumer flow", issue.title.replace(/^.*?: /u, ""));
+      const failure = /^Failure: (.*)$/mu.exec(issue.body ?? "")?.at(1) ?? generated.message;
       const preserved = preservedBodyFields(issue.body);
       await store.edit(
         issue.number,
-        classBody({ signature: { ...signature, key }, state, ...preserved }),
+        classBody({ signature: { ...generated, key, message: failure }, state, ...preserved }),
       );
       const resolved = state.signatures.every(
         ({ lanes }) => lanes.length > 0 && lanes.every(({ cleanRuns }) => cleanRuns >= 7),
