@@ -668,12 +668,10 @@ const requestedStyleNumbering = (
       return UNKNOWN_NUMBERING;
     }
     direct = facts.direct.get(row.id);
-  } else if (row.listReference) {
-    direct = {
-      kind: "reference",
-      numId: row.listReference.numId,
-      ilvl: row.listReference.level,
-    };
+  } else if (row.statedNumbering?.kind === "reference") {
+    direct = row.statedNumbering;
+  } else if (row.statedNumbering?.kind === "none") {
+    direct = row.statedNumbering;
   }
   return numberingOver(style, direct);
 };

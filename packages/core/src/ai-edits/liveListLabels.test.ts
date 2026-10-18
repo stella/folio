@@ -252,8 +252,10 @@ describe("a paragraph numbered at a level its list does not define", () => {
       expect(current.getContent().find(({ text }) => text === "Level eight.")).toMatchObject({
         kind: "paragraph",
         statedNumbering: { kind: "reference", numId, ilvl: 8 },
-        listReference: { numId, level: 8 },
       });
+      expect(current.getContent().find(({ text }) => text === "Level eight.")).not.toHaveProperty(
+        "listReference",
+      );
     }
   });
 });

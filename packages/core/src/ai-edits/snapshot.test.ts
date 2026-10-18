@@ -608,7 +608,7 @@ describe("createFolioAIEditSnapshot", () => {
         kind: "heading",
         headingLevel: 2,
         displayLabel: undefined,
-        listReference: { numId: 5, level: 0 },
+        listReference: null,
         statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
       {
@@ -616,7 +616,7 @@ describe("createFolioAIEditSnapshot", () => {
         kind: "paragraph",
         headingLevel: undefined,
         displayLabel: undefined,
-        listReference: { numId: 5, level: 0 },
+        listReference: null,
         statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
       {
@@ -649,8 +649,9 @@ describe("createFolioAIEditSnapshot", () => {
     const block = expectParagraphBlock(createFolioAIEditSnapshot(doc).blocks.at(0));
     expect(block).toMatchObject({
       kind: "paragraph",
-      listReference: { numId: 5, level: 0 },
+      statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
     });
+    expect(block).not.toHaveProperty("listReference");
     expect(block).not.toHaveProperty("displayLabel");
   });
 
@@ -678,7 +679,8 @@ describe("createFolioAIEditSnapshot", () => {
 
     const block = expectParagraphBlock(createFolioAIEditSnapshot(doc).blocks.at(0));
     expect(block.kind).toBe("paragraph");
-    expect(block.listReference).toEqual({ numId: 5, level: 1 });
+    expect(block.statedNumbering).toEqual({ kind: "reference", numId: 5, ilvl: 1 });
+    expect(block).not.toHaveProperty("listReference");
     expect(block).not.toHaveProperty("displayLabel");
   });
 });

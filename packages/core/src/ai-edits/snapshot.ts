@@ -874,14 +874,14 @@ const createFolioAIEditSnapshotInternal = (
         ? expectParagraphAttrs(node)._originalFormatting?.outlineLevel
         : undefined;
     const listReference =
-      visibleList?.structuralReference === undefined
+      displayLabel === undefined || visibleList?.numbering === undefined
         ? undefined
         : {
-            numId: visibleList.structuralReference.numId,
-            level: visibleList.structuralReference.ilvl,
+            numId: visibleList.numbering.numId,
+            level: visibleList.numbering.ilvl,
           };
-    const numberingReferenceKey = visibleList?.structuralReference
-      ? `${String(visibleList.structuralReference.numId)}:${String(visibleList.structuralReference.ilvl)}`
+    const numberingReferenceKey = listReference
+      ? `${String(listReference.numId)}:${String(listReference.level)}`
       : null;
     if (numberingReferenceKey) {
       numberingReferenceKeys.add(numberingReferenceKey);

@@ -113,8 +113,6 @@ export const listLabelAttrsFromRendering = (
 type VisibleListLabel = {
   kind: "none" | "markerless" | "marker";
   label: string | undefined;
-  /** The current paragraph's reference, independent of tracked formatting selected for display. */
-  structuralReference: Extract<ResolvedParagraphNumbering, { kind: "reference" }> | undefined;
   /** The revision-selected reference whose marker was counted for display. */
   numbering: Extract<ResolvedParagraphNumbering, { kind: "reference" }> | undefined;
 };
@@ -215,7 +213,6 @@ export const createListLabelCounter = (
       return {
         kind: "marker",
         label: projectedLabel,
-        structuralReference: list.reference,
         numbering: effective,
       };
     }
@@ -238,21 +235,18 @@ export const createListLabelCounter = (
         return {
           kind: "none",
           label: undefined,
-          structuralReference: list.reference,
           numbering: undefined,
         };
       case "markerless":
         return {
           kind: "markerless",
           label: undefined,
-          structuralReference: list.reference,
           numbering: countedList.reference,
         };
       case "marker":
         return {
           kind: "marker",
           label: projectedLabel,
-          structuralReference: list.reference,
           numbering: countedNumbering,
         };
       default: {
