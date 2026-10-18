@@ -4,15 +4,13 @@
  * A drawing with no image data used to be given one: a megapixel PNG built the
  * moment something was about to paint it, which the DOM backend showed as an
  * `<img>` and the PDF exporter embedded as a bitmap — a photograph of a
- * drawing that is nothing but flat rectangles.
+ * drawing that is vector geometry.
  *
- * The descriptor already holds those rectangles, in the drawing's own
- * coordinate space, and `rect` is a primitive both backends draw natively. So
- * the preview is drawn rather than sampled: the extent maps affinely onto the
- * image's box, every shape becomes a filled rectangle inside it, and no raster
- * exists at any point. The DOM backend paints each one as the absolutely
- * positioned div it paints every other `rect` as, and the PDF backend emits
- * `re`/`f` operators, so the drawing stays a drawing at any zoom.
+ * The descriptor already holds rectangles, polygons, and polylines in the
+ * drawing's own coordinate space, and each maps to native display-list
+ * primitives. The preview is drawn rather than sampled: the extent maps
+ * affinely onto the image's box, and no raster exists at any point, so the
+ * drawing stays a drawing at any zoom.
  */
 
 import { panic } from "better-result";
@@ -66,6 +64,7 @@ export const paintPreview = (
   box: DisplayRect,
 ): readonly DisplayPrimitive[] => {
   switch (descriptor.kind) {
+    case "chart":
     case "diagram": {
       const primitives: DisplayPrimitive[] = [
         { kind: "rect", rect: box, fill: PREVIEW_BACKGROUND },

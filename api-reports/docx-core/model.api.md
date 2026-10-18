@@ -1298,7 +1298,7 @@ export type PresetLineDashValue = PresetLineDashVal | UnrecognisedPresetLineDash
 
 // @public
 export type PreviewDescriptor = {
-    readonly kind: "diagram";
+    readonly kind: "chart" | "diagram";
     readonly extent: {
         readonly width: number;
         readonly height: number;

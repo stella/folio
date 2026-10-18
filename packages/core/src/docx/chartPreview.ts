@@ -1,6 +1,6 @@
 import { decodeText } from "../utils/textEncoding";
 import type { Image, MediaFile, PreviewShape, RelationshipMap } from "../types/document";
-import { MAX_PREVIEW_SHAPES } from "./diagramPreview";
+import { MAX_PREVIEW_POINTS, MAX_PREVIEW_SHAPES } from "./diagramPreview";
 import { RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
   findChildByNamespaceUri,
@@ -383,6 +383,11 @@ export const parseChartPreview = (
     shapes = pieShapes(supported, series, size.width, size.height, kind === "doughnutChart");
   }
   if (shapes.length === 0) return null;
+  const pointCount = shapes.reduce(
+    (total, shape) => total + (shape.type === "rect" ? 0 : shape.points.length),
+    0,
+  );
+  if (pointCount > MAX_PREVIEW_POINTS) return null;
   const finite = shapes.every((shape) =>
     shape.type === "rect"
       ? [shape.x, shape.y, shape.width, shape.height].every(Number.isFinite)
@@ -391,7 +396,7 @@ export const parseChartPreview = (
   if (!finite) return null;
   return {
     type: "image",
-    preview: { kind: "diagram", extent: size, shapes },
+    preview: { kind: "chart", extent: size, shapes },
     size,
     wrap: { type: "inline" },
   };

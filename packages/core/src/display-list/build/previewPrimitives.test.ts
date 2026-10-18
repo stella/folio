@@ -16,8 +16,11 @@ import { paintPreview } from "./previewPrimitives";
 const BOX: DisplayRect = { xPx: 100, yPx: 50, widthPx: 400, heightPx: 200 };
 const EXTENT = { width: 4_000_000, height: 2_000_000 };
 
-const descriptorOf = (shapes: readonly PreviewShape[]): PreviewDescriptor => ({
-  kind: "diagram",
+const descriptorOf = (
+  shapes: readonly PreviewShape[],
+  kind: PreviewDescriptor["kind"] = "diagram",
+): PreviewDescriptor => ({
+  kind,
   extent: EXTENT,
   shapes,
 });
@@ -31,6 +34,10 @@ const rectsOf = (primitives: readonly DisplayPrimitive[]) =>
   });
 
 describe("a preview is drawn", () => {
+  test.each(["chart", "diagram"] as const)("draws a %s descriptor", (kind) => {
+    expect(paintPreview(descriptorOf([], kind), BOX)).toHaveLength(1);
+  });
+
   test("the backdrop is the first mark and fills the box", () => {
     const [backdrop] = rectsOf(paintPreview(descriptorOf([]), BOX));
 

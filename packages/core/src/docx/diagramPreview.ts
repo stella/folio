@@ -21,6 +21,9 @@ import type { XmlElement } from "./xmlParser";
  */
 export const MAX_PREVIEW_SHAPES = 128;
 
+/** Maximum polygon and polyline points held by one preview descriptor. */
+export const MAX_PREVIEW_POINTS = 512;
+
 const DRAWINGML_NAMESPACE_URIS = new Set([
   "http://schemas.openxmlformats.org/drawingml/2006/main",
   "http://purl.oclc.org/ooxml/drawingml/main",

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import type { MediaFile } from "../types/document";
-import { MAX_PREVIEW_SHAPES } from "./diagramPreview";
+import { MAX_PREVIEW_POINTS, MAX_PREVIEW_SHAPES } from "./diagramPreview";
 import { parseChartPreview } from "./chartPreview";
 import { parseDocx } from "./parser";
 import { parseRelationships } from "./relsParser";
@@ -51,6 +51,10 @@ const preview = (xml: string, namespace = NS, extra: [string, MediaFile][] = [])
 };
 
 describe("chart previews", () => {
+  test("identifies the descriptor as a chart", () => {
+    expect(preview(chart("barChart", series([1])))?.preview?.kind).toBe("chart");
+  });
+
   test("column geometry uses a zero baseline and puts negative values below it", () => {
     const image = preview(
       chart("barChart", `<c:barDir val="col"/><c:grouping val="clustered"/>${series([-5, 10])}`),
@@ -169,6 +173,16 @@ describe("chart previews", () => {
       expect(line.points.at(index)?.x).toBeCloseTo(expected[0]!, 3);
       expect(line.points.at(index)?.y).toBeCloseTo(expected[1]!, 3);
     }
+  });
+
+  test("fails closed when polyline points exceed the descriptor bound", () => {
+    const values = Array.from({ length: 64 }, (_unused, index) => index + 1);
+    const seriesCount = Math.floor(MAX_PREVIEW_POINTS / values.length) + 1;
+    expect(
+      preview(
+        chart("lineChart", Array.from({ length: seriesCount }, () => series(values)).join("")),
+      ),
+    ).toBeNull();
   });
 
   test("keeps sparse cache positions and breaks lines across missing values", () => {
