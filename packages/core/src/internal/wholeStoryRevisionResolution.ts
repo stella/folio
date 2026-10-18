@@ -8,6 +8,7 @@ import {
 } from "../docx/paragraphPropertySource";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
 import type { NumberingMap } from "../docx/numberingParser";
+import type { SectionProperties } from "../types/document";
 import { composeRevisionResolutionMaps } from "./revisionResolutionStep";
 import { recordNodeResolution } from "./revisionResolutionEdits";
 import { resolveAllTableChanges } from "../prosemirror/commands/resolveAllTableChanges";
@@ -351,6 +352,7 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
   const reversed: PMNode[] = [];
   let chain: ParagraphChain | null = null;
   let pendingBookmarks: PMNode[] = [];
+  let restoredSectionProperties: SectionProperties | undefined;
   let followingContainerChild = false;
   const flush = (): void => {
     if (!chain) return;
@@ -449,6 +451,12 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       followingContainerChild ||= paragraph.type.spec["tableRole"] === "table";
       continue;
     }
+    if (restoredSectionProperties !== undefined) {
+      paragraph = rebuild(paragraph, {
+        attrs: { ...paragraph.attrs, _sectionProperties: restoredSectionProperties },
+      });
+      restoredSectionProperties = undefined;
+    }
     const marker = expectParagraphAttrs(paragraph).pPrMark;
     const markWasAdded = marker?.kind === "ins" || marker?.kind === "moveTo";
     const joins = marker && markWasAdded !== (context.mode === "accept");
@@ -482,7 +490,12 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
         closing: entry.position + paragraph.nodeSize - 1,
         bookmarks,
       });
-      removedEndpoint(paragraph, context);
+      const sectionProperties = expectParagraphAttrs(paragraph)._sectionProperties;
+      if (markWasAdded && sectionProperties !== undefined) {
+        restoredSectionProperties = sectionProperties;
+      } else {
+        removedEndpoint(paragraph, context);
+      }
       continue;
     }
     flushBookmarks();

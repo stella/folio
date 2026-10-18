@@ -1112,12 +1112,23 @@ const joinOps = (
     // one folded into its neighbour is rebuilt, and is no longer empty.
     ends.set(nextId, emptiedEndsOf(merged, emptied));
     const survivor: Paragraph = { ...next, content: asParagraphContent(merged) };
+    const previous = blocks.at(location.index - 1);
+    const restoredCarrier =
+      added && paragraph.sectionProperties !== undefined && previous?.type === "paragraph"
+        ? {
+            source: previous,
+            paragraph: { ...previous, sectionProperties: paragraph.sectionProperties },
+          }
+        : undefined;
     return Result.ok([
       {
         type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
         story,
-        expected: [paragraph, next],
-        blocks: [survivor],
+        expected:
+          restoredCarrier === undefined
+            ? [paragraph, next]
+            : [restoredCarrier.source, paragraph, next],
+        blocks: restoredCarrier === undefined ? [survivor] : [restoredCarrier.paragraph, survivor],
         ...(paragraph.sectionProperties === undefined
           ? {}
           : { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }),

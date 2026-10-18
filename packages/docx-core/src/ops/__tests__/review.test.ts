@@ -1149,6 +1149,25 @@ describe("an empty content control is content: resolution never merges it away",
 });
 
 describe("section-aware tracked editor joins", () => {
+  test("rejecting an added boundary restores its section properties to the preceding mark", () => {
+    const properties = { pageWidth: 10_000 };
+    const document = documentOf(
+      paragraph("00000001", [run("before")]),
+      paragraph("00000002", [], {
+        sectionProperties: properties,
+        pPrMark: { kind: "ins", info: stamp(1) },
+      }),
+      paragraph("00000003", [run("after")]),
+    );
+
+    expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
+      documentOf(
+        paragraph("00000001", [run("before")], { sectionProperties: properties }),
+        paragraph("00000003", [run("after")]),
+      ),
+    );
+  });
+
   test("explicit section removal is tracked until resolution and every inverse preserves both sections", () => {
     const document = documentOf(
       paragraph("00000001", [run("a")], { sectionProperties: { pageWidth: 10000 } }),

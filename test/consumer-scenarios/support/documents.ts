@@ -438,6 +438,30 @@ export const EMOJI_TEXTS = [
 export const emojiDocument = (): Promise<Uint8Array> =>
   packFixture(fromMarkdown(["# Emoji", ...EMOJI_TEXTS].join("\n\n")));
 
+/** A deterministic generated document whose paragraph marks end several distinct sections. */
+export const randomMultiSectionDocument = (
+  seed: number,
+  sectionCount: number,
+): Promise<Uint8Array> => {
+  const document = fromMarkdown(
+    Array.from({ length: sectionCount * 2 }, (_, index) => `Section ${index + 1}.`).join("\n\n"),
+  );
+  const paragraphs = document.package.document.content.filter(isParagraph);
+  for (let section = 0; section < sectionCount - 1; section += 1) {
+    const carrier = paragraphs.at(section * 2 + 1);
+    if (carrier === undefined)
+      throw new TypeError("A generated section needs its boundary paragraph.");
+    carrier.sectionProperties = {
+      pageWidth: 10_000 + ((seed + section * 977) % 2_000),
+      sectionStart: section % 2 === 0 ? "nextPage" : "continuous",
+    };
+  }
+  document.package.document.finalSectionProperties = {
+    pageWidth: 12_000 + (seed % 2_000),
+  };
+  return packFixture(document);
+};
+
 /** A table whose first column merges vertically through its last two rows. */
 export const mergedTableDocument = (): Promise<Uint8Array> => {
   const document = fromMarkdown("# Merged cells\n\nThe table below merges a column.");
