@@ -2304,7 +2304,7 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
       return replaceInline(document, op);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
-      return resolveRevision(document, op, applyDocumentOps);
+      return resolveRevision(document, op, applyDocumentOpsDuringResolution);
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
     case DOCUMENT_OP_TYPES.DELETE_TABLE:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
@@ -2454,10 +2454,14 @@ const preserveParagraphPropertySnapshots = ({
   }
 };
 
-/** Apply one operation to a document that meets the seed contract. */
-export const applyDocumentOp = (
+type ApplyDocumentOpOptions = {
+  commentRetirement: "apply" | "defer";
+};
+
+const applyDocumentOpInternal = (
   document: Document,
   input: DocumentOp,
+  { commentRetirement }: ApplyDocumentOpOptions,
 ): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   const restored = restoreDocumentOp(input);
   if (restored.isErr()) return restored;
@@ -2508,12 +2512,12 @@ export const applyDocumentOp = (
   }
   let edit = applied.value;
   if (
+    commentRetirement === "apply" &&
     op.type !== DOCUMENT_OP_TYPES.CREATE_COMMENT &&
     op.type !== DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT &&
     op.type !== DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION &&
     op.type !== DOCUMENT_OP_TYPES.DELETE_COMMENT &&
-    op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE &&
-    op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION
+    op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE
   ) {
     const beforeCoverage = commentRangeCoverage(document);
     const afterCoverage = commentRangeCoverage(edit.document);
@@ -2606,6 +2610,30 @@ export const applyDocumentOp = (
     inverse: edit.inverse.map(captureDocumentOp),
     revisions: stamp === undefined ? [] : recordedRevisions(document, edit, stamp),
   });
+};
+
+/** Apply one operation to a document that meets the seed contract. */
+export const applyDocumentOp = (
+  document: Document,
+  input: DocumentOp,
+): Result<AppliedDocumentOp, DocumentOpRefusal> =>
+  applyDocumentOpInternal(document, input, { commentRetirement: "apply" });
+
+const applyDocumentOpsDuringResolution = (
+  document: Document,
+  ops: readonly DocumentOp[],
+): Result<AppliedDocumentOp, DocumentOpRefusal> => {
+  let current = document;
+  const edits: DocumentEdit[] = [];
+  const revisions: number[] = [];
+  for (const op of ops) {
+    const applied = applyDocumentOpInternal(current, op, { commentRetirement: "defer" });
+    if (applied.isErr()) return applied;
+    current = applied.value.document;
+    edits.push(applied.value);
+    revisions.push(...applied.value.revisions);
+  }
+  return Result.ok({ ...combineEdits(document, edits), revisions });
 };
 
 /** Apply a journal envelope only when its schema matches this reader. */

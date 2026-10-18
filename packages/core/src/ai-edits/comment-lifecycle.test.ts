@@ -84,6 +84,26 @@ const deleteGone = async (
   return reopened.getComments().some(({ id }) => id === COMMENT_ID);
 };
 
+const rejectInserted = async (survivors: readonly ParagraphContent[]) => {
+  const reviewer = await openReviewer(
+    await paragraphsDocx(
+      [
+        commentedParagraph([
+          {
+            type: "insertion",
+            info: { id: 19, author: "Reviewer" },
+            content: [textRun("gone")],
+          },
+          ...survivors,
+        ]),
+      ],
+      [reviewComment(COMMENT_ID)],
+    ),
+  );
+  expect(reviewer.rejectAll()).toBeGreaterThan(0);
+  return reviewer.getComments().some(({ id }) => id === COMMENT_ID);
+};
+
 describe("accepted deletion comment anchors", () => {
   test.each(["all", "single"] as const)(
     "a retained inline image keeps the thread after accepting %s revisions",
@@ -130,10 +150,84 @@ describe("accepted deletion comment anchors", () => {
           const expected = survivors.length > 0;
           expect(await deleteGone(covered, "direct", "all", deleted)).toBe(expected);
           expect(await deleteGone(covered, "tracked-changes", "all", deleted)).toBe(expected);
+          expect(
+            await rejectInserted(
+              survivors.map((kind, index) =>
+                kind === "text" ? textRun(`survivor${String(index)}`) : atomContent[kind],
+              ),
+            ),
+          ).toBe(expected);
         },
       );
       await fc.assert(property, propertyConfig({ numRuns: 40, seed: 1958 }));
     },
     propertyTestTimeout(60_000),
   );
+});
+
+describe("rejected insertion comment anchors", () => {
+  test("rejecting inserted text retires its thread and source anchors", async () => {
+    const reviewer = await openReviewer(await paragraphsDocx([[textRun("Original")]]));
+    const blockId = reviewer.snapshot().blocks.at(0)?.id;
+    if (!blockId) throw new Error("Expected a paragraph block");
+    const inserted = reviewer.applyOperations(
+      [{ id: "insert", type: "insertAfterBlock", blockId, text: "Temporary" }],
+      { undefinedReferences: "refuse", mode: "tracked-changes" },
+    );
+    expect(inserted.skipped).toEqual([]);
+    const temporary = reviewer.snapshot().blocks.find(({ text }) => text === "Temporary");
+    expect(temporary).toBeDefined();
+    const commented = reviewer.applyOperations(
+      [
+        {
+          id: "comment",
+          type: "commentOnBlock",
+          blockId: temporary!.id,
+          comment: { text: "Remove with insertion" },
+        },
+      ],
+      { undefinedReferences: "refuse", mode: "direct" },
+    );
+    expect(commented.skipped).toEqual([]);
+
+    expect(reviewer.rejectAll()).toBeGreaterThan(0);
+    expect(reviewer.getComments()).toEqual([]);
+    expect((await openReviewer(await reviewer.toBuffer())).getComments()).toEqual([]);
+  });
+
+  test("rejecting inserted text keeps a range over surviving original text", async () => {
+    const reviewer = await openReviewer(await paragraphsDocx([[textRun("Original")]]));
+    const blockId = reviewer.snapshot().blocks.at(0)?.id;
+    if (!blockId) throw new Error("Expected a paragraph block");
+    const inserted = reviewer.applyOperations(
+      [
+        {
+          id: "insert",
+          type: "replaceInBlock",
+          blockId,
+          find: "Original",
+          replace: "Temporary Original",
+        },
+      ],
+      { undefinedReferences: "refuse", mode: "tracked-changes" },
+    );
+    expect(inserted.skipped).toEqual([]);
+    const commented = reviewer.applyOperations(
+      [
+        {
+          id: "comment",
+          type: "commentOnBlock",
+          blockId,
+          comment: { text: "Keep on original" },
+        },
+      ],
+      { undefinedReferences: "refuse", mode: "direct" },
+    );
+    expect(commented.skipped).toEqual([]);
+
+    expect(reviewer.rejectAll()).toBeGreaterThan(0);
+    expect(
+      reviewer.getComments().map(({ text, anchoredText }) => ({ text, anchoredText })),
+    ).toEqual([{ text: "Keep on original", anchoredText: "Original" }]);
+  });
 });

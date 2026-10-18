@@ -157,6 +157,51 @@ describe("tracked text", () => {
     expect(resolved(tracked.document, [1], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
   });
 
+  test("rejecting a tracked insertion retires a comment that only covered inserted text", () => {
+    const document = commentedDocument([
+      run("before "),
+      { type: "commentRangeStart", id: 40 },
+      {
+        type: "insertion",
+        info: stamp(1),
+        content: [run("inserted")],
+      },
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+    ]);
+
+    const rejected = resolved(document, [1], REVISION_DECISIONS.REJECT);
+
+    expect(rejected.package.document.comments).toBeUndefined();
+    expect(blocks(rejected)).toEqual([paragraph("00000001", [run("before ")])]);
+  });
+
+  test("rejecting a tracked insertion keeps a comment that also covered original text", () => {
+    const document = commentedDocument([
+      { type: "commentRangeStart", id: 40 },
+      {
+        type: "insertion",
+        info: stamp(1),
+        content: [run("inserted ")],
+      },
+      run("original"),
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+    ]);
+
+    const rejected = resolved(document, [1], REVISION_DECISIONS.REJECT);
+
+    expect(rejected.package.document.comments).toHaveLength(1);
+    expect(blocks(rejected)).toEqual([
+      paragraph("00000001", [
+        { type: "commentRangeStart", id: 40 },
+        run("original"),
+        { type: "commentRangeEnd", id: 40 },
+        { type: "commentReference", id: 40 },
+      ]),
+    ]);
+  });
+
   test("a tracked insertion with the same stamp joins the wrapper it follows", () => {
     const document = documentOf(paragraph("00000001", [run("Hello")]));
     const first = applied(document, {
