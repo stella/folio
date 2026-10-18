@@ -9,6 +9,10 @@ const documentWith = (body: Document["package"]["document"]): Document => ({
   package: { document: body },
 });
 
+// Deliberately malformed input: typed only at the validation boundary.
+const malformedDocumentWith = (body: unknown): Document =>
+  ({ package: { document: body } }) as unknown as Document;
+
 describe("canonical Folio document model validation", () => {
   test("rejects an empty comments array", () => {
     const result = validateFolioDocumentModel(documentWith({ content: [], comments: [] }));
@@ -35,7 +39,7 @@ describe("canonical Folio document model validation", () => {
   });
 
   test("rejects null paragraph formatting without throwing", () => {
-    const document = documentWith({
+    const document = malformedDocumentWith({
       content: [{ type: "paragraph", content: [], formatting: null }],
     });
 
@@ -60,7 +64,7 @@ describe("canonical Folio document model validation", () => {
       path: "package.document.content[0].rows[0].cells[0]",
     },
   ])("rejects malformed tables with $name without throwing", ({ rows, path }) => {
-    const document = documentWith({ content: [{ type: "table", rows }] });
+    const document = malformedDocumentWith({ content: [{ type: "table", rows }] });
 
     expect(() => validateFolioDocumentModel(document)).not.toThrow();
     expect(validateFolioDocumentModel(document).issues).toContainEqual({
