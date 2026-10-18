@@ -197,6 +197,66 @@ slowTest("markerless numbering regression seed 1339716102", async () => {
   await runFlow(1339716102, 20, "collisions", { generation: "targeted", swarm: "enabled" });
 });
 
+test("a pending new list does not make a same-text markerless paragraph visible", async () => {
+  const repeatedText = "Repeated paragraph";
+  const markerless = paragraph(repeatedText);
+  markerless.formatting = {
+    ...markerless.formatting,
+    numPr: paragraphNumberingReference({ numId: 5, ilvl: 0 }),
+  };
+  const document = fromMarkdown("Anchor");
+  document.package.document.content = [markerless, paragraph("Anchor")];
+  document.package.numbering = {
+    abstractNums: [
+      {
+        abstractNumId: 5,
+        levels: [{ ...decimalLevel(0, ""), numFmt: "none" }],
+      },
+    ],
+    nums: [{ numId: 5, abstractNumId: 5 }],
+  };
+  const reviewer = await openReviewer(await packDocument(document));
+  const original = rowsOf(reviewer).find((row) => row.text === repeatedText);
+  const anchor = rowsOf(reviewer).find((row) => row.text === "Anchor");
+  assert.ok(original);
+  assert.ok(anchor);
+  assert.equal(original.kind, "paragraph");
+
+  const staged = await applyChecked(
+    reviewer,
+    [
+      {
+        type: "insertAfterBlock",
+        blockId: anchor.id,
+        text: repeatedText,
+        numbering: { kind: "newList", format: "bullet" },
+      },
+    ],
+    "suggested",
+    "stage a same-text list paragraph",
+  );
+  assert.equal(staged.applied.length, 1);
+  const repeated = rowsOf(reviewer).filter((row) => row.text === repeatedText);
+  const retained = repeated.find((row) => row.id === original.id);
+  const inserted = repeated.find((row) => row.id !== original.id);
+  assert.ok(retained);
+  assert.ok(inserted);
+  assert.equal(retained.kind, "paragraph");
+  assert.equal(inserted.kind, "listItem");
+  assert.ok(inserted.listReference);
+
+  const captured = await capture(reviewer, "suggested");
+  assert.equal(captured.numberingSource.type, "live");
+  if (captured.numberingSource.type !== "live") throw new Error("Expected live provenance");
+  assert.equal(captured.numberingSource.facts.markerLevels.get(5)?.has(0), false);
+  assert.equal(
+    captured.numberingSource.facts.markerLevels
+      .get(inserted.listReference.numId)
+      ?.has(inserted.listReference.level),
+    true,
+  );
+});
+
 slowTest(MARKER_VISIBILITY_TEST, async () => {
   for (const marker of [
     "visible",

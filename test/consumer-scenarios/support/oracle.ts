@@ -92,21 +92,34 @@ const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts =>
   const snapshot = reviewer.snapshotStory(story);
   if (!snapshot) return facts;
   const { anchors, blocks } = snapshot;
+  const pendingInsertionBlockIds = new Set<string>();
   for (const { operation } of reviewer.exportPendingSuggestions()) {
     if (operation.type !== "insertAfterBlock" && operation.type !== "insertBeforeBlock") continue;
     if (operation.numbering?.kind !== "newList") continue;
-    for (const block of blocks) {
-      if (
-        block.kind === "diagnostic" ||
-        block.text !== operation.text ||
-        block.statedNumbering.kind !== "reference"
-      )
-        continue;
-      const level = block.statedNumbering.ilvl ?? 0;
-      const levels = facts.markerLevels.get(block.statedNumbering.numId) ?? new Set<number>();
-      levels.add(level);
-      facts.markerLevels.set(block.statedNumbering.numId, levels);
+    const anchorIndex = blocks.findIndex(({ id }) => id === operation.blockId);
+    if (anchorIndex < 0) continue;
+    const direction = operation.type === "insertAfterBlock" ? 1 : -1;
+    let insertedIndex = anchorIndex + direction;
+    while (
+      insertedIndex >= 0 &&
+      insertedIndex < blocks.length &&
+      pendingInsertionBlockIds.has(blocks[insertedIndex].id)
+    ) {
+      insertedIndex += direction;
     }
+    const inserted =
+      insertedIndex >= 0 && insertedIndex < blocks.length ? blocks[insertedIndex] : null;
+    if (
+      !inserted ||
+      inserted.kind === "diagnostic" ||
+      inserted.statedNumbering.kind !== "reference"
+    )
+      continue;
+    pendingInsertionBlockIds.add(inserted.id);
+    const level = inserted.statedNumbering.ilvl ?? 0;
+    const levels = facts.markerLevels.get(inserted.statedNumbering.numId) ?? new Set<number>();
+    levels.add(level);
+    facts.markerLevels.set(inserted.statedNumbering.numId, levels);
   }
   for (const block of blocks) {
     if (block.kind === "diagnostic") continue;
