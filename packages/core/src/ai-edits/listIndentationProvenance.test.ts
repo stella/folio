@@ -111,7 +111,7 @@ test.each(CASES)(
     expect(result.status).toBe("committed");
     expect(result.issues).toEqual([]);
     const text = inserts ? "Inserted" : "Anchor";
-    const assertContent = (current: FolioDocxReviewer) => {
+    const assertContent = (current: FolioDocxReviewer, review: "pending" | "settled") => {
       const observedBlock = current
         .getContent()
         .filter(isFolioAIContentBlock)
@@ -119,17 +119,21 @@ test.each(CASES)(
       if (!observedBlock) throw new TypeError("Combined list operation lost its target.");
       const block = expectParagraphBlock(observedBlock);
       expect(block.styleId).toBe(withStyle ? "IndentBaseline" : anchor.styleId);
+      if (removesNumbering && review === "settled") expect(block.displayLabel).toBeUndefined();
+      const removedLabelReference =
+        block.displayLabel === undefined ? undefined : { numId: numPr.numId, level: 0 };
       expect(block.listReference).toEqual(
-        removesNumbering ? undefined : { numId: numPr.numId, level: 1 },
+        removesNumbering ? removedLabelReference : { numId: numPr.numId, level: 1 },
       );
       expect(block.directIndentation).toEqual(expectedDirect);
     };
-    assertContent(reviewer);
-    assertContent(await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()));
+    const review = mode === "tracked-changes" ? "pending" : "settled";
+    assertContent(reviewer, review);
+    assertContent(await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()), review);
     if (mode === "tracked-changes") {
       expect(reviewer.acceptAll()).toBeGreaterThan(0);
-      assertContent(reviewer);
-      assertContent(await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()));
+      assertContent(reviewer, "settled");
+      assertContent(await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()), "settled");
     }
   },
 );

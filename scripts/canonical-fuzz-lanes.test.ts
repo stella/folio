@@ -108,6 +108,8 @@ test("nightly explicitly executes both lanes and keeps logs for issue filing", (
   expect(report["with"]).toEqual({
     "artifact-pattern": "browser-input-fuzzer",
     "log-pattern": "**/fuzz-artifacts/canonical/*.log",
+    lane: "nightly-canonical-session",
+    result: "${{ needs.browser-input-fuzzer.outputs.canonical_outcome }}",
   });
   const browserReport = jobs["report"];
   if (!record(browserReport)) throw new Error("Missing browser issue reporter");
@@ -115,8 +117,12 @@ test("nightly explicitly executes both lanes and keeps logs for issue filing", (
   expect(browserReport["with"]).toEqual({
     "artifact-pattern": "browser-input-fuzzer",
     "log-pattern": "**/fuzz-artifacts/browser/*.log",
+    lane: "nightly-browser-input",
+    result: "${{ needs.browser-input-fuzzer.outputs.fuzz_outcome }}",
   });
-  expect(report["if"]).toContain("outputs.canonical_findings == 'true'");
+  expect(report["if"]).toBe(
+    "always() && github.ref == 'refs/heads/main' && (needs.browser-input-fuzzer.outputs.canonical_outcome == 'failure' || (needs.browser-input-fuzzer.outputs.canonical_outcome == 'success' && github.event_name == 'schedule'))",
+  );
 });
 
 test("all nightly evidence survives Playwright output cleanup and is uploaded", () => {
@@ -139,7 +145,7 @@ test("all nightly evidence survives Playwright output cleanup and is uploaded", 
   }
   const fuzz = jobs["browser-input-fuzzer"];
   if (!record(fuzz) || !record(fuzz["outputs"])) throw new Error("Missing fuzz outputs");
-  expect(fuzz["outputs"]["canonical_findings"]).toBe("${{ steps.canonical.outcome == 'failure' }}");
+  expect(fuzz["outputs"]["canonical_outcome"]).toBe("${{ steps.canonical.outcome }}");
   const upload = steps.find((step) => step["name"] === "Keep health log and minimized traces");
   const options = upload?.["with"];
   if (!record(options)) throw new Error("Missing upload options");

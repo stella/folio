@@ -4,7 +4,7 @@ name: Continuous Fuzz
 # fresh seeds every run: consumer-scenario flows (fresh random and collision
 # flows plus mutants of a corpus of flows that reached new states; see
 # test/consumer-scenarios/support/fuzz-loop.ts) and the property suite. A
-# failure is shrunk and filed as one issue per fingerprint.
+# failure is shrunk and filed as one issue per signature.
 on:
   schedule:
     # Every two hours at :41, off the scheduler's peak minutes.
@@ -236,9 +236,9 @@ jobs:
   # Separate so the fuzz jobs never hold a write token. Main only: a dispatch
   # on a branch reports in its run, not in the issue tracker.
   report:
-    name: File failures by fingerprint
+    name: File failures by signature
     needs: [consumer-fuzz, property-fuzz]
-    if: failure() && github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (failure() || github.event_name == 'schedule') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -262,14 +262,17 @@ jobs:
           pattern: continuous-fuzz-*
           path: fuzz-results
 
-      - name: Open or update one issue per fingerprint
+      - name: Open, update or close one issue per signature
         run: >-
           bun scripts/fuzz-failure-issues.ts
           --log fuzz-results/continuous-fuzz-consumer/continuous-fuzz.log
           --records fuzz-results/continuous-fuzz-consumer/fuzz-failures
           --log fuzz-results/continuous-fuzz-property/property-fuzz.log
+          --lane continuous-fuzz --result "${RESULT}" --trigger "${TRIGGER}"
           --source "continuous fuzz" --run-url "${RUN_URL}" --sha "${GITHUB_SHA}"
         env:
+          RESULT: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+          TRIGGER: ${{ github.event_name == 'schedule' && 'scheduled' || 'manual' }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

@@ -15,6 +15,8 @@
     "lib/exact-object.ts",
     "fuzz-failure-issues.ts",
     "fuzz-failure-issues.test.ts",
+    "consolidate-fuzz-issues.ts",
+    "consolidate-fuzz-issues.test.ts",
     "fuzz-failure-class.ts",
     "fuzz-failure-class.test.ts",
     "fuzz-issue-classes.ts",

@@ -21,6 +21,7 @@ import { build, type Plugin } from "esbuild";
 import { cp, copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { copyFuzzyWasm, fuzzyFromDisk } from "./portable-fuzzy";
 
 const extensionRoot = path.resolve(import.meta.dir, "..");
 const repoRoot = path.resolve(extensionRoot, "..", "..");
@@ -144,7 +145,7 @@ await Promise.all([
       // used by the browser-native document model. Initialize only this CLI process.
       js: "import { createRequire as __folioCreateRequire } from 'node:module'; import { webcrypto as __folioWebCrypto } from 'node:crypto'; const require = __folioCreateRequire(import.meta.url); globalThis.crypto ??= __folioWebCrypto;",
     },
-    plugins: [shaperFromDisk],
+    plugins: [shaperFromDisk, fuzzyFromDisk],
     logLevel: "warning",
   }),
 ]);
@@ -153,6 +154,7 @@ await copyFile(
   path.join(repoRoot, "packages", "core", "src", "generated", SHAPER_WASM),
   path.join(cliDist, SHAPER_WASM),
 );
+await copyFuzzyWasm(cliDist);
 await copyFonts();
 await copyEditor();
 await copyFile(path.join(repoRoot, "LICENSE"), path.join(extensionRoot, "LICENSE"));
