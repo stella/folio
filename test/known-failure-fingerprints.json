@@ -105,54 +105,6 @@
       "firstSeen": "2026-10-02"
     },
     {
-      "fingerprint": "2e7105353dd49ef4",
-      "issueOrPr": "#1360",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1360,
-        "primary": "ad8a804ccdd560a4",
-        "title": "Fuzz failure [2e7105353dd49ef4]: consumer flow emoji / tracked-changes: block texts differ:",
-        "flow": {
-          "version": 1,
-          "kind": "collisions",
-          "generation": "targeted",
-          "fixture": "emoji",
-          "mode": "tracked-changes",
-          "seed": 774176988,
-          "steps": [
-            {
-              "action": "suggest_changes",
-              "seed": 3166060974,
-              "operations": [
-                {
-                  "type": "mergeBlockWithNext",
-                  "blockId": "412DDC7F",
-                  "separator": " "
-                },
-                {
-                  "type": "deleteBlock",
-                  "blockId": "3CEFFC83"
-                }
-              ]
-            }
-          ],
-          "swarm": [
-            "replaceRange",
-            "formatRange",
-            "insertBeforeBlock",
-            "deleteBlock",
-            "mergeBlockWithNext",
-            "setBlockParagraphProperties",
-            "insertTable",
-            "insertTableRow"
-          ],
-          "origin": "shrunk from collisions flow seed 774176988"
-        },
-        "type": "consumer",
-        "reportSeed": 774176988
-      }
-    },
-    {
       "fingerprint": "ad8a804ccdd560a4",
       "issueOrPr": "#1360",
       "firstSeen": "2026-10-02"
@@ -566,44 +518,6 @@
       "firstSeen": "2026-10-02"
     },
     {
-      "fingerprint": "fd07d3cfa06b22ae",
-      "issueOrPr": "#1353",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1375,
-        "primary": "fb1502e690cc5fea",
-        "title": "consumer flow styleNumbered / tracked-changes: saved block text differs from the requested result",
-        "flow": {
-          "version": 1,
-          "kind": "random",
-          "generation": "targeted",
-          "fixture": "styleNumbered",
-          "mode": "tracked-changes",
-          "seed": 1576447651,
-          "steps": [
-            {
-              "action": "story batch",
-              "seed": 745212090,
-              "operations": [
-                {
-                  "type": "mergeBlockWithNext",
-                  "blockId": "412DDC7F",
-                  "separator": " "
-                },
-                {
-                  "type": "deleteBlock",
-                  "blockId": "3CEFFC83"
-                }
-              ]
-            }
-          ]
-        },
-        "type": "consumer",
-        "reportSeed": 1576447651,
-        "reportSeeds": [1576447651, 1785652482]
-      }
-    },
-    {
       "fingerprint": "fb1502e690cc5fea",
       "issueOrPr": "#1353",
       "firstSeen": "2026-10-02"
@@ -671,102 +585,9 @@
       "firstSeen": "2026-10-02"
     },
     {
-      "fingerprint": "e8b856d27e9e3cbd",
-      "issueOrPr": "#1353",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1393,
-        "primary": "e7615859f49be4f2",
-        "title": "consumer flow directNumbered / tracked-changes: saved block text differs from the requested result",
-        "flow": {
-          "version": 1,
-          "kind": "collisions",
-          "generation": "targeted",
-          "fixture": "directNumbered",
-          "mode": "tracked-changes",
-          "seed": 118244301,
-          "steps": [
-            {
-              "action": "story batch",
-              "atomic": false,
-              "seed": 1317974444,
-              "operations": [
-                {
-                  "type": "deleteBlock",
-                  "blockId": "3CEFFC83"
-                },
-                {
-                  "type": "splitBlock",
-                  "blockId": "3CEFFC83",
-                  "offset": 9
-                },
-                {
-                  "type": "mergeBlockWithNext",
-                  "blockId": "412DDC7F",
-                  "separator": " "
-                }
-              ]
-            }
-          ],
-          "origin": "collisions flow seed 118244301"
-        },
-        "type": "consumer",
-        "reportSeed": 118244301,
-        "reportSeeds": [118244301]
-      }
-    },
-    {
       "fingerprint": "e7615859f49be4f2",
       "issueOrPr": "#1353",
       "firstSeen": "2026-10-02"
-    },
-    {
-      "fingerprint": "72e726ea8358f25a",
-      "issueOrPr": "#1353",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1414,
-        "primary": "f8d16a9479422cfa",
-        "title": "consumer flow plain / direct: saved block text differs from the requested result",
-        "flow": {
-          "version": 1,
-          "kind": "collisions",
-          "generation": "targeted",
-          "fixture": "plain",
-          "mode": "direct",
-          "seed": 1576446778,
-          "steps": [
-            {
-              "action": "story batch",
-              "seed": 2328588542,
-              "operations": [
-                {
-                  "type": "deleteBlock",
-                  "blockId": "31617F9A"
-                }
-              ]
-            },
-            {
-              "action": "story batch",
-              "seed": 113375547,
-              "operations": [
-                {
-                  "type": "deleteBlock",
-                  "blockId": "5E88C024"
-                },
-                {
-                  "type": "mergeBlockWithNext",
-                  "blockId": "3CEFFC83",
-                  "separator": " "
-                }
-              ]
-            }
-          ]
-        },
-        "type": "consumer",
-        "reportSeed": 1576446778,
-        "reportSeeds": [1576446778]
-      }
     },
     {
       "fingerprint": "f8d16a9479422cfa",

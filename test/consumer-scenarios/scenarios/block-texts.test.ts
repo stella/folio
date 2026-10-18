@@ -9,8 +9,22 @@ const row = (index: number): Row => ({
   kind: "paragraph",
 });
 
-const assertMergeSkipsDeletedBlocks = (count: number, deleted: number) => {
-  const rows = Array.from({ length: count }, (_, index) => row(index));
+const assertMergeSkipsDeletedBlocks = (count: number, deleted: number, followingTable = false) => {
+  const rows: Row[] = Array.from({ length: count }, (_, index) => row(index));
+  if (followingTable) {
+    rows.push({
+      ...row(count),
+      table: {
+        outerTableIndex: 0,
+        tableIndex: 0,
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        columnSpan: 1,
+        rowSpan: 1,
+      },
+    });
+  }
   const model = modelOf(rows);
   const first = rows.at(0);
   assert.ok(first);
@@ -28,9 +42,13 @@ const assertMergeSkipsDeletedBlocks = (count: number, deleted: number) => {
     });
   }
   const survivor = rows.at(deleted + 1);
+  const joinsSurvivor = survivor !== undefined && survivor.table === undefined;
   const actual = [
-    { ...first, text: survivor ? `Block 0 ${survivor.text}` : "Block 0" },
-    ...rows.slice(deleted + 2),
+    {
+      ...first,
+      text: joinsSurvivor ? `Block 0 ${survivor.text}` : `Block 0${survivor ? " " : ""}`,
+    },
+    ...rows.slice(deleted + (joinsSurvivor ? 2 : 1)),
   ];
   assert.deepEqual(compareWithModel(model, actual), []);
 };
@@ -45,6 +63,11 @@ test("merge/delete oracle property covers every following deletion span", () => 
   for (let count = 2; count <= 12; count++) {
     for (let deleted = 1; deleted < count; deleted++) {
       assertMergeSkipsDeletedBlocks(count, deleted);
+      assertMergeSkipsDeletedBlocks(count, deleted, true);
     }
   }
+});
+
+test("merge whose next surviving block is a table cell keeps the separator", () => {
+  assertMergeSkipsDeletedBlocks(2, 1, true);
 });
