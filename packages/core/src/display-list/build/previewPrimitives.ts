@@ -41,6 +41,7 @@ type ShapeRectOptions = {
  * clip the raster did by clamping to its own bounds.
  */
 const shapeRect = ({ shape, extent, box }: ShapeRectOptions): DisplayRect | undefined => {
+  if (shape.type !== "rect") return undefined;
   const left = clampFraction(shape.x / extent.width);
   const right = clampFraction((shape.x + shape.width) / extent.width);
   const top = clampFraction(shape.y / extent.height);
@@ -77,6 +78,41 @@ export const paintPreview = (
         return primitives;
       }
       for (const shape of descriptor.shapes) {
+        const color = parseDisplayColor(shape.color) ?? PREVIEW_SHAPE_FILL;
+        if (shape.type === "polygon") {
+          primitives.push({
+            kind: "polygon",
+            points: shape.points.map(({ x, y }) => ({
+              xPx: box.xPx + clampFraction(x / extent.width) * box.widthPx,
+              yPx: box.yPx + clampFraction(y / extent.height) * box.heightPx,
+            })),
+            fill: color,
+          });
+          continue;
+        }
+        if (shape.type === "polyline") {
+          const points = shape.points.map(({ x, y }) => ({
+            xPx: box.xPx + clampFraction(x / extent.width) * box.widthPx,
+            yPx: box.yPx + clampFraction(y / extent.height) * box.heightPx,
+          }));
+          const stroke = {
+            color,
+            thicknessPx:
+              shape.strokeWidth *
+              Math.min(box.widthPx / extent.width, box.heightPx / extent.height),
+            pattern: "solid" as const,
+          };
+          for (let index = 1; index < points.length; index += 1)
+            primitives.push({
+              kind: "line",
+              x1Px: points[index - 1]!.xPx,
+              y1Px: points[index - 1]!.yPx,
+              x2Px: points[index]!.xPx,
+              y2Px: points[index]!.yPx,
+              stroke,
+            });
+          continue;
+        }
         const rect = shapeRect({ shape, extent, box });
         if (rect === undefined) {
           continue;
@@ -84,7 +120,7 @@ export const paintPreview = (
         primitives.push({
           kind: "rect",
           rect,
-          fill: parseDisplayColor(shape.color) ?? PREVIEW_SHAPE_FILL,
+          fill: color,
         });
       }
       return primitives;

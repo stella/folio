@@ -14,14 +14,29 @@
  */
 
 /** One flat rectangle of a preview, in the coordinate space of {@link PreviewDescriptor.extent}. */
-export type PreviewShape = {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-  /** Six hexadecimal digits, no leading `#`, as `a:srgbClr@val` spells it. */
-  readonly color: string;
-};
+export type PreviewPoint = { readonly x: number; readonly y: number };
+
+export type PreviewShape =
+  | {
+      readonly type: "rect";
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+      /** Six hexadecimal digits, no leading `#`, as `a:srgbClr@val` spells it. */
+      readonly color: string;
+    }
+  | {
+      readonly type: "polygon";
+      readonly points: readonly PreviewPoint[];
+      readonly color: string;
+    }
+  | {
+      readonly type: "polyline";
+      readonly points: readonly PreviewPoint[];
+      readonly color: string;
+      readonly strokeWidth: number;
+    };
 
 /**
  * Discriminated on `kind` rather than shaped as a diagram record: chart frames

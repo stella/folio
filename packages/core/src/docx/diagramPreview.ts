@@ -214,6 +214,7 @@ const cachedDiagramShapes = (
     const fill = findChildByNamespaceUri(properties, DRAWINGML_NAMESPACE_URIS, "solidFill");
     const color = findChildByNamespaceUri(fill, DRAWINGML_NAMESPACE_URIS, "srgbClr");
     shapes.push({
+      type: "rect",
       x: parseNumericAttribute(offset, null, "x") ?? 0,
       y: parseNumericAttribute(offset, null, "y") ?? 0,
       width,

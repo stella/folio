@@ -474,6 +474,18 @@ const paintPrimitive = (context: PaintContext, primitive: DisplayPrimitive) => {
         y2Px: primitive.y2Px,
       });
       return;
+    case "polygon": {
+      const first = primitive.points.at(0);
+      if (!first) return;
+      beginPrimitive(context, context.alpha * primitive.fill.a);
+      context.stream.setFillColor(primitive.fill);
+      context.stream.moveTo(first.xPx, first.yPx);
+      for (const point of primitive.points.slice(1)) context.stream.lineTo(point.xPx, point.yPx);
+      context.stream.lineTo(first.xPx, first.yPx);
+      context.stream.fill();
+      context.stream.restore();
+      return;
+    }
     case "image":
       paintImage(context, primitive);
       return;
@@ -591,6 +603,7 @@ const collectPrimitive = (
     }
     case "rect":
     case "line":
+    case "polygon":
       return null;
     case "image":
       if (primitive.image < 0 || primitive.image >= imageCount) {

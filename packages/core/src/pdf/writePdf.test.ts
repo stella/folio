@@ -476,6 +476,15 @@ const SAMPLE_BY_KIND = {
     opacity: 0.5,
     children: [{ kind: "rect", rect: { xPx: 1, yPx: 1, widthPx: 2, heightPx: 2 }, fill: BLACK }],
   },
+  polygon: {
+    kind: "polygon",
+    points: [
+      { xPx: 10, yPx: 20 },
+      { xPx: 40, yPx: 20 },
+      { xPx: 25, yPx: 50 },
+    ],
+    fill: BLACK,
+  },
 } as const satisfies Record<DisplayPrimitive["kind"], DisplayPrimitive>;
 
 describe("primitive coverage", () => {

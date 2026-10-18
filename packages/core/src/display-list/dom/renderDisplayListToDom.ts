@@ -651,6 +651,19 @@ const paintPrimitive = (primitive: DisplayPrimitive, context: PaintContext): voi
       return paintRect(primitive, context);
     case "line":
       return paintLineSegment(primitive, context);
+    case "polygon": {
+      const element = context.doc.createElement("div");
+      element.style.position = "absolute";
+      element.style.inset = "0";
+      element.style.width = "100%";
+      element.style.height = "100%";
+      element.style.clipPath = `polygon(${primitive.points
+        .map(({ xPx, yPx }) => `${px(xPx - context.originXPx)} ${px(yPx - context.originYPx)}`)
+        .join(", ")})`;
+      element.style.background = cssColor(primitive.fill);
+      context.parent.append(element);
+      return;
+    }
     case "image":
       return paintImage(primitive, context);
     case "clipGroup":

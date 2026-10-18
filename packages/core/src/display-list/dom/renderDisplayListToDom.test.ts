@@ -196,6 +196,15 @@ const PRIMITIVE_SAMPLES = {
     y2Px: 10,
     stroke: { color: BLUE, thicknessPx: 1, pattern: "solid" },
   },
+  polygon: {
+    kind: "polygon",
+    points: [
+      { xPx: 10, yPx: 20 },
+      { xPx: 40, yPx: 20 },
+      { xPx: 25, yPx: 50 },
+    ],
+    fill: BLUE,
+  },
   image: {
     kind: "image",
     image: 0,

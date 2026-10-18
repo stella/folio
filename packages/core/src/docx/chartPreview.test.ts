@@ -52,6 +52,7 @@ describe("chart previews", () => {
     const shapes = image?.preview?.shapes ?? [];
     expect(shapes).toHaveLength(2);
     expect(shapes[0]).toEqual({
+      type: "rect",
       x: 123,
       y: 640.0000000000001,
       width: 344,
@@ -59,6 +60,7 @@ describe("chart previews", () => {
       color: "4472C4",
     });
     expect(shapes[1]).toEqual({
+      type: "rect",
       x: 553,
       y: 80,
       width: 344,
@@ -81,12 +83,13 @@ describe("chart previews", () => {
     expect(shapes.length).toBeGreaterThan(0);
     expect(shapes.length).toBeLessThanOrEqual(MAX_PREVIEW_SHAPES);
     expect(
-      shapes.every(
-        (shape) =>
-          shape.x >= 0 &&
-          shape.y >= 0 &&
-          shape.x + shape.width <= 1000 &&
-          shape.y + shape.height <= 1000,
+      shapes.every((shape) =>
+        shape.type === "rect"
+          ? shape.x >= 0 &&
+            shape.y >= 0 &&
+            shape.x + shape.width <= 1000 &&
+            shape.y + shape.height <= 1000
+          : shape.points.every(({ x, y }) => x >= 0 && y >= 0 && x <= 1000 && y <= 1000),
       ),
     ).toBe(true);
   });
@@ -124,22 +127,62 @@ describe("chart previews", () => {
     expect(content.rawXml).toContain("mc:AlternateContent");
   });
 
-  test("uses a chart-part related image before generated geometry", () => {
-    const rels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rImage" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/chart.png"/></Relationships>`;
+  test("does not use a chart picture fill as a fallback preview", () => {
+    const rels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rImage" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/fill.png"/></Relationships>`;
     const image: MediaFile = {
-      path: "word/media/chart.png",
-      filename: "chart.png",
+      path: "word/media/fill.png",
       mimeType: "image/png",
       data: new ArrayBuffer(1),
       dataUrl: "data:image/png;base64,AA==",
     };
-    const result = preview(chart("barChart", series([1])), NS, [
-      xmlFile("word/charts/_rels/chart1.xml.rels", rels),
-      [image.path, image],
+    const result = preview(
+      chart(
+        "barChart",
+        `<c:spPr><a:blipFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rImage"/></a:blipFill></c:spPr>${series([1])}`,
+      ),
+      NS,
+      [xmlFile("word/charts/_rels/chart1.xml.rels", rels), [image.path, image]],
+    );
+    expect(result?.src).toBeUndefined();
+    expect(result?.preview?.shapes).toHaveLength(1);
+  });
+
+  test("connects four line points without implicit markers", () => {
+    const shapes = preview(chart("lineChart", series([1, 3, 2, 4])))?.preview?.shapes ?? [];
+    expect(shapes).toHaveLength(1);
+    const line = shapes.at(0);
+    expect(line?.type).toBe("polyline");
+    if (line?.type !== "polyline") throw new Error("line chart did not produce a polyline");
+    expect(line.points).toHaveLength(4);
+    for (const [index, expected] of [
+      [80, 900],
+      [360, 366.6667],
+      [640, 633.3333],
+      [920, 100],
+    ].entries()) {
+      expect(line.points.at(index)?.x).toBeCloseTo(expected[0]!, 3);
+      expect(line.points.at(index)?.y).toBeCloseTo(expected[1]!, 3);
+    }
+  });
+
+  test("pie sectors start at twelve o'clock and use proportional angles", () => {
+    const shapes = preview(chart("pieChart", series([1, 1, 2])))?.preview?.shapes ?? [];
+    expect(shapes.map((shape) => (shape.type === "polygon" ? shape.points.at(0) : null))).toEqual([
+      { x: 500, y: 80 },
+      { x: 920, y: 500 },
+      { x: 500, y: 920 },
     ]);
-    expect(result?.src).toBe(image.dataUrl);
-    expect(result?.preview).toBeUndefined();
-    expect(result?.size).toEqual({ width: 1000, height: 1000 });
+  });
+
+  test("doughnut geometry stays outside the authored hole", () => {
+    const shapes =
+      preview(chart("doughnutChart", `${series([1, 1])}<c:holeSize val="60"/>`))?.preview?.shapes ??
+      [];
+    for (const shape of shapes)
+      if (shape.type === "polygon")
+        for (const point of shape.points) {
+          expect(Math.hypot(point.x - 500, point.y - 500)).toBeGreaterThanOrEqual(252 - 0.000001);
+        }
   });
 
   test("fails closed without caches and for non-finite values", () => {
@@ -161,7 +204,7 @@ describe("chart previews", () => {
     const strict = "http://purl.oclc.org/ooxml/drawingml/chart";
     expect(
       preview(chart("lineChart", series([1, 2]), strict), strict)?.preview?.shapes.length,
-    ).toBe(2);
+    ).toBe(1);
   });
 
   test("finite cached series always stay inside the extent and never throw", () => {

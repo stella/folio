@@ -1,7 +1,7 @@
 import { decodeText } from "../utils/textEncoding";
 import type { Image, MediaFile, PreviewShape, RelationshipMap } from "../types/document";
 import { MAX_PREVIEW_SHAPES } from "./diagramPreview";
-import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
+import { RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
   findChildByNamespaceUri,
   getAttribute,
@@ -132,7 +132,12 @@ const cachedSeries = (chart: XmlElement): CachedSeries[] | null => {
 
 const pushShape = (shapes: PreviewShape[], shape: PreviewShape): void => {
   if (shapes.length >= MAX_PREVIEW_SHAPES) return;
-  if (shape.x < 0 || shape.y < 0 || shape.width <= 0 || shape.height <= 0) return;
+  if (
+    shape.type === "rect" &&
+    (shape.x < 0 || shape.y < 0 || shape.width <= 0 || shape.height <= 0)
+  )
+    return;
+  if (shape.type !== "rect" && shape.points.length < 2) return;
   shapes.push(shape);
 };
 
@@ -180,6 +185,7 @@ const barShapes = (
       if (value === 0) continue;
       if (direction === "bar") {
         pushShape(shapes, {
+          type: "rect",
           x: plot.x + Math.min(from, to) * plot.width,
           y: plot.y + offset,
           width: Math.abs(to - from) * plot.width,
@@ -189,6 +195,7 @@ const barShapes = (
       } else {
         const top = 1 - Math.max(from, to);
         pushShape(shapes, {
+          type: "rect",
           x: plot.x + offset,
           y: plot.y + top * plot.height,
           width: cross,
@@ -201,44 +208,92 @@ const barShapes = (
   return shapes;
 };
 
-const lineShapes = (series: CachedSeries[], width: number, height: number): PreviewShape[] => {
+const lineShapes = (
+  chart: XmlElement,
+  series: CachedSeries[],
+  width: number,
+  height: number,
+): PreviewShape[] => {
   const values = series.flatMap((item) => item.values);
   const minimum = Math.min(...values);
   const maximum = Math.max(...values);
   const range = maximum - minimum || 1;
   const shapes: PreviewShape[] = [];
-  for (const item of series)
-    for (const [index, value] of item.values.entries()) {
+  const seriesElements = getChildElements(chart).filter((item) => matches(item, CHART, "ser"));
+  for (const [seriesIndex, item] of series.entries()) {
+    const denominator = Math.max(1, item.values.length - 1);
+    const points = item.values.map((value, index) => ({
+      x: width * (0.08 + (0.84 * index) / denominator),
+      y: height * (0.9 - (0.8 * (value - minimum)) / range),
+    }));
+    pushShape(shapes, {
+      type: "polyline",
+      points,
+      color: item.color,
+      strokeWidth: Math.max(1, Math.min(width, height) * 0.008),
+    });
+    if (child(seriesElements.at(seriesIndex) ?? null, "marker")) {
       const size = Math.max(1, Math.min(width, height) * 0.018);
-      const denominator = Math.max(1, item.values.length - 1);
-      pushShape(shapes, {
-        x: width * (0.08 + (0.84 * index) / denominator) - size / 2,
-        y: height * (0.9 - (0.8 * (value - minimum)) / range) - size / 2,
-        width: size,
-        height: size,
-        color: item.color,
-      });
+      for (const point of points)
+        pushShape(shapes, {
+          type: "rect",
+          x: point.x - size / 2,
+          y: point.y - size / 2,
+          width: size,
+          height: size,
+          color: item.color,
+        });
     }
+  }
   return shapes;
 };
 
-const pieShapes = (series: CachedSeries[], width: number, height: number): PreviewShape[] => {
+const arcPoints = (
+  center: { readonly x: number; readonly y: number },
+  radius: number,
+  start: number,
+  sweep: number,
+  segments: number,
+) => {
+  const points: { x: number; y: number }[] = [];
+  for (let step = 0; step <= segments; step += 1) {
+    const angle = start + (sweep * step) / segments;
+    points.push({ x: center.x + radius * Math.cos(angle), y: center.y + radius * Math.sin(angle) });
+  }
+  return points;
+};
+
+const pieShapes = (
+  chart: XmlElement,
+  series: CachedSeries[],
+  width: number,
+  height: number,
+  doughnut: boolean,
+): PreviewShape[] => {
   const values = series.at(0)?.values ?? [];
   if (values.some((value) => value < 0)) return [];
   const total = values.reduce((sum, value) => sum + value, 0);
   if (!(total > 0)) return [];
   const shapes: PreviewShape[] = [];
-  let x = width * 0.08;
+  const center = { x: width / 2, y: height / 2 };
+  const radius = Math.min(width, height) * 0.42;
+  const holePercent = parseNumericAttribute(child(chart, "holeSize"), null, "val") ?? 50;
+  const hole = doughnut ? radius * Math.min(0.9, Math.max(0.1, holePercent / 100)) : 0;
+  let angle =
+    ((parseNumericAttribute(child(chart, "firstSliceAng"), null, "val") ?? 0) * Math.PI) / 180 -
+    Math.PI / 2;
   for (const [index, value] of values.entries()) {
-    const segmentWidth = (width * 0.84 * value) / total;
+    if (value === 0) continue;
+    const sweep = (Math.PI * 2 * value) / total;
+    const segments = Math.max(1, Math.min(32, Math.ceil((32 * value) / total)));
+    const outer = arcPoints(center, radius, angle, sweep, segments);
+    const inner = hole > 0 ? arcPoints(center, hole, angle + sweep, -sweep, segments) : [center];
     pushShape(shapes, {
-      x,
-      y: height * 0.18,
-      width: segmentWidth,
-      height: height * 0.64,
+      type: "polygon",
+      points: [...outer, ...inner],
       color: DEFAULT_COLORS[index % DEFAULT_COLORS.length] ?? "4472C4",
     });
-    x += segmentWidth;
+    angle += sweep;
   }
   return shapes;
 };
@@ -256,27 +311,7 @@ const chartPart = (drawing: XmlElement, rels: RelationshipMap, media: Map<string
   return root ? { root, path } : null;
 };
 
-/** Resolve the chart part's preview image, used when no user-shape overlay exists. */
-const relatedImage = (root: XmlElement, path: string, media: Map<string, MediaFile>) => {
-  if (descendants(root, CHART, "userShapes").length > 0) return null;
-  const slash = path.lastIndexOf("/");
-  const relsPath = `${path.slice(0, slash + 1)}_rels/${path.slice(slash + 1)}.rels`;
-  const relsFile = fileAt(media, relsPath);
-  if (!relsFile) return null;
-  const chartRels = parseRelationships(decodeText(new Uint8Array(relsFile.data)));
-  const image = [...chartRels.values()].find(
-    (relationship) => relationship.type === RELATIONSHIP_TYPES.image,
-  );
-  if (!image) return null;
-  const resolvedPath = resolveRelativePath(path, image.target);
-  const file = fileAt(media, resolvedPath);
-  const src = file?.dataUrl ?? file?.base64;
-  return file && src
-    ? { src, mimeType: file.mimeType, ...(file.filename ? { filename: file.filename } : {}) }
-    : null;
-};
-
-/** Describe a supported cached chart, or its authored related-image fallback. */
+/** Describe a supported cached chart. AlternateContent fallbacks are resolved by the run parser. */
 export const parseChartPreview = (
   drawing: XmlElement,
   rels?: RelationshipMap,
@@ -286,8 +321,6 @@ export const parseChartPreview = (
   const part = chartPart(drawing, rels, media);
   const size = extentOf(drawing);
   if (!part || size.width <= 0 || size.height <= 0) return null;
-  const fallback = relatedImage(part.root, part.path, media);
-  if (fallback) return { type: "image", ...fallback, size, wrap: { type: "inline" } };
   const plotArea = firstDescendant(part.root, CHART, "plotArea");
   if (!plotArea) return null;
   const supported = getChildElements(plotArea).find(
@@ -304,9 +337,9 @@ export const parseChartPreview = (
   if (kind === "barChart") {
     shapes = barShapes(supported, series, size.width, size.height);
   } else if (kind === "lineChart") {
-    shapes = lineShapes(series, size.width, size.height);
+    shapes = lineShapes(supported, series, size.width, size.height);
   } else {
-    shapes = pieShapes(series, size.width, size.height);
+    shapes = pieShapes(supported, series, size.width, size.height, kind === "doughnutChart");
   }
   if (shapes.length === 0) return null;
   return {

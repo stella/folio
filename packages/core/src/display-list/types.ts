@@ -309,6 +309,13 @@ export type DisplayLine = {
   readonly stroke: DisplayStroke;
 };
 
+/** A closed, solid-filled polygon. */
+export type DisplayPolygon = {
+  readonly kind: "polygon";
+  readonly points: readonly { readonly xPx: number; readonly yPx: number }[];
+  readonly fill: DisplayColor;
+};
+
 export type DisplayImagePrimitive = {
   readonly kind: "image";
   readonly image: DisplayImageRef;
@@ -366,6 +373,7 @@ export type DisplayPrimitive =
   | DisplayGlyphRun
   | DisplayRectPrimitive
   | DisplayLine
+  | DisplayPolygon
   | DisplayImagePrimitive
   | DisplayClipGroup
   | DisplayRotateGroup
