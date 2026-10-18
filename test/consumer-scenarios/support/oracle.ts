@@ -1589,7 +1589,13 @@ export const compareComments = (
   }
   // Only what no expectation claimed can be the removed comment itself.
   for (const entry of gone) {
-    if (remaining.some(({ id }) => id === entry.id)) {
+    const survivor = remaining.find(({ id }) => id === entry.id);
+    // A block id locates the first paragraph containing an anchor; it does not
+    // own the whole range. Splits and joins can move the surviving part of a
+    // range to another paragraph before this batch deletes the old locator.
+    // In that case the comment is still anchored and must survive. A thread
+    // left on the deleted locator is the orphan this check is meant to catch.
+    if (survivor && survivor.blockId === entry.blockId) {
       problems.push(`comment ${JSON.stringify(entry)} outlived the block it anchored`);
     }
   }
