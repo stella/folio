@@ -101,6 +101,16 @@ export const createDocumentNumberingPlugin = (
 /** Numbering for states without the plugin, one per document node. */
 const untrackedNumbering = new WeakMap<PMNode, DocumentNumberingState>();
 
+/** Numbering derived from a document when no editor plugin owns package definitions. */
+export const getDocumentNumberingForDoc = (doc: PMNode): NumberingMap | null => {
+  let untracked = untrackedNumbering.get(doc);
+  if (!untracked) {
+    untracked = completedState(null, doc);
+    untrackedNumbering.set(doc, untracked);
+  }
+  return untracked.map;
+};
+
 /**
  * The numbering the document's paragraphs resolve against: the package's
  * definitions plus every instance a list command defined in this document.
@@ -114,12 +124,7 @@ export const getDocumentNumbering = (state: EditorState): NumberingMap | null =>
   }
   // A state without the plugin knows no package numbering; its paragraphs
   // still define the lists commands started in it.
-  let untracked = untrackedNumbering.get(state.doc);
-  if (!untracked) {
-    untracked = completedState(null, state.doc);
-    untrackedNumbering.set(state.doc, untracked);
-  }
-  return untracked.map;
+  return getDocumentNumberingForDoc(state.doc);
 };
 
 /** The package's own definitions, without the instances the document defines. */

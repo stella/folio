@@ -22,7 +22,6 @@ const LEVEL_OWNER_ALLOWLIST = new Set([
   "packages/core/src/docx/numberingParser.ts",
   "packages/core/src/prosemirror/conversion/fromProseDoc.ts",
   "packages/core/src/prosemirror/listInstanceReferences.ts",
-  "packages/core/src/prosemirror/listLabels.ts",
   "packages/core/src/prosemirror/listMarker.ts",
   "packages/core/src/prosemirror/commands/propertyChangeScope.ts",
   "packages/core/src/ai-edits/apply.ts",

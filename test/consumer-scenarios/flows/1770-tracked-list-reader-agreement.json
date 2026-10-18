@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "lists",
+  "mode": "tracked-changes",
+  "seed": 746948072,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1946678215,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "5E88C024",
+            "startOffset": 21,
+            "endOffset": 28,
+            "selectedTextHash": "hwsbp2v"
+          },
+          "formatting": {
+            "bold": true
+          }
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "412DDC7F",
+          "properties": {
+            "styleId": null,
+            "numbering": {
+              "kind": "levelOnly",
+              "ilvl": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 4282197304,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "5E88C024",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "commentOnBlock",
+          "blockId": "79D25458",
+          "quote": "remarks",
+          "comment": {
+            "text": "Warranty warranty agreement written buyer buyer."
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2890643570,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "7B806329",
+            "startOffset": 0,
+            "endOffset": 7,
+            "selectedTextHash": "hjj28ca"
+          },
+          "formatting": {
+            "underline": true
+          }
+        },
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "7B806329",
+            "startOffset": 11,
+            "endOffset": 19,
+            "selectedTextHash": "hb35i6n"
+          },
+          "comment": {
+            "text": "Schedule buyer period buyer goods payment buyer written."
+          }
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "7735D914",
+          "find": "Deposit",
+          "replace": "",
+          "precondition": {
+            "blockTextHash": "he5cbrm"
+          }
+        }
+      ]
+    },
+    {
+      "action": "mistake",
+      "seed": 2634878782
+    },
+    {
+      "action": "mistake",
+      "seed": 2003043112
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1371207442,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "7B806329",
+            "startOffset": 0,
+            "endOffset": 7,
+            "selectedTextHash": "hjj28ca"
+          },
+          "comment": {
+            "text": "Written term buyer invoice."
+          }
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "412DDC7F",
+          "properties": {
+            "spacing": {
+              "spaceBefore": 120,
+              "spaceAfter": 120
+            }
+          }
+        },
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "79D25458",
+            "startOffset": 0,
+            "endOffset": 7,
+            "selectedTextHash": "hck7qhw"
+          },
+          "replace": "updated"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 547548181,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "Supplier period clause notice agreement notice.",
+          "alignment": "right"
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "save and reopen",
+      "seed": 1619395930
+    },
+    {
+      "action": "mistake",
+      "seed": 3450961743
+    },
+    {
+      "action": "reject all",
+      "seed": 355724590
+    },
+    {
+      "action": "save and reopen",
+      "seed": 2187290403
+    },
+    {
+      "action": "story batch",
+      "seed": 4018856216,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "79D25458",
+          "find": "remarks",
+          "replace": "revised",
+          "precondition": {
+            "blockTextHash": "hlum93w"
+          }
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "5E88C024",
+          "properties": {
+            "styleId": null,
+            "numbering": {
+              "kind": "levelOnly",
+              "ilvl": 0
+            }
+          }
+        }
+      ],
+      "atomic": true
+    }
+  ],
+  "origin": "random flow seed 746948072"
+}

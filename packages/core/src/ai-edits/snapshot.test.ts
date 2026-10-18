@@ -274,7 +274,9 @@ describe("createFolioAIEditSnapshot", () => {
 
     const snapshot = createFolioAIEditSnapshot(doc);
 
-    expect(wholeDocumentWalks).toBe(1);
+    // A direct document first derives the numbering map that an EditorState's
+    // numbering plugin would own, then performs the snapshot projection walk.
+    expect(wholeDocumentWalks).toBe(2);
     expect(
       storyTablesOf(snapshot).map(({ index, node }) => ({ index, text: node.textContent })),
     ).toEqual([{ index: 0, text: "table cell" }]);
@@ -607,16 +609,16 @@ describe("createFolioAIEditSnapshot", () => {
         text: "Hidden marker heading",
         kind: "heading",
         headingLevel: 2,
-        displayLabel: undefined,
+        displayLabel: "2.",
         listReference: { numId: 5, level: 0 },
         statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
-      // Numbered in the package, no number on the page: prose that keeps its level.
+      // The owner ignores a conflicting per-paragraph cache for a visible level.
       {
         text: "Hidden marker",
-        kind: "paragraph",
+        kind: "listItem",
         headingLevel: undefined,
-        displayLabel: undefined,
+        displayLabel: "3.",
         listReference: { numId: 5, level: 0 },
         statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
@@ -637,6 +639,22 @@ describe("createFolioAIEditSnapshot", () => {
         statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
     ]);
+  });
+
+  test("ignores hidden cached list rendering when called with a document", () => {
+    const numbered = paragraphNumberingFromSlots({ numId: 5, ilvl: 0 });
+    const doc = folioSchema.node("doc", null, [
+      folioSchema.node("paragraph", { numPr: numbered, listMarker: "1.", listMarkerHidden: true }, [
+        folioSchema.text("Hidden marker"),
+      ]),
+    ]);
+
+    const block = expectParagraphBlock(createFolioAIEditSnapshot(doc).blocks.at(0));
+    expect(block).toMatchObject({
+      kind: "paragraph",
+      listReference: { numId: 5, level: 0 },
+    });
+    expect(block).not.toHaveProperty("displayLabel");
   });
 });
 

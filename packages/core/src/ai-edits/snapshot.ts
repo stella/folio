@@ -18,6 +18,7 @@ import {
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { createListLabelCounter } from "../prosemirror/listLabels";
 import type { NumberingMap } from "../docx/numberingParser";
+import { getDocumentNumberingForDoc } from "../prosemirror/plugins/documentNumbering";
 import { paragraphNumberingAttr, readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
 import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
@@ -714,7 +715,7 @@ const createFolioAIEditSnapshotInternal = (
   doc: PMNode,
   styleResolver: RunStyleResolver | null,
   noteReferenceLabels?: NoteReferenceLabels,
-  numbering: NumberingMap | null = null,
+  numbering?: NumberingMap | null,
 ): FolioAIEditSnapshot => {
   // Resolved once: the walk below classifies every block, and the index is
   // what lets a localized heading style reach the model as a heading.
@@ -736,7 +737,9 @@ const createFolioAIEditSnapshotInternal = (
   // Labels are counted in this walk from the document as it stands, not read
   // from the markers the parser resolved at open: those go stale with the
   // first list edit.
-  const nextListLabel = createListLabelCounter(numbering);
+  const nextListLabel = createListLabelCounter(
+    numbering === undefined ? getDocumentNumberingForDoc(doc) : numbering,
+  );
   const tables: FolioStoryTable[] = [];
   const tableIndexByStart = new Map<number, number>();
   // The containers enclosing the node being visited, innermost last. Kept in
@@ -977,7 +980,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot =>
 export const createFolioAIEditSnapshotWithStyleResolver = (
   doc: PMNode,
   styleResolver: RunStyleResolver | null,
-  numbering: NumberingMap | null = null,
+  numbering?: NumberingMap | null,
 ): FolioAIEditSnapshot =>
   createFolioAIEditSnapshotInternal(doc, styleResolver, undefined, numbering);
 

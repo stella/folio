@@ -17,7 +17,6 @@ import { panic } from "better-result";
 import { bulletMarkerFontName, convertBulletToUnicode } from "../docx/bulletMarkers";
 import type { ListRendering } from "../types/document";
 import {
-  effectiveParagraphNumberingReference,
   paragraphNumberingAttr,
   paragraphNumberingSourcesFromBoundary,
   type ParagraphNumberingSources,
@@ -30,7 +29,7 @@ import {
   createListCounterState,
   type ListCounterStreams,
 } from "./listMarker";
-import { hasListRendering, listRenderingAttrPatch } from "./listRenderingAttrs";
+import { listRenderingAttrPatch } from "./listRenderingAttrs";
 import type { ParagraphAttrs } from "./schema/nodes";
 
 /**
@@ -141,20 +140,6 @@ export const createListLabelCounter = (
           original: createListCounterState(),
         });
   return (attrs) => {
-    if (numbering === null) {
-      const { counterAttrs, marker } = advanceVisibleListMarker(attrs, streams);
-      const reference = effectiveParagraphNumberingReference(
-        paragraphNumberingSourcesFromBoundary({
-          numPr: counterAttrs.numPr,
-          numPrFromStyle: counterAttrs.numPrFromStyle,
-        }),
-      );
-      if (!reference) return { kind: "none", label: undefined, numbering: undefined };
-      if (!hasListRendering(counterAttrs)) {
-        return { kind: "markerless", label: undefined, numbering: reference };
-      }
-      return { kind: "marker", label: visibleLabel(counterAttrs, marker), numbering: reference };
-    }
     const sources = paragraphNumberingSourcesFromBoundary({
       numPr: attrs.numPr,
       numPrFromStyle: attrs.numPrFromStyle,
