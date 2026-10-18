@@ -11,6 +11,7 @@ import type {
   FailureMarker,
   FailureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
+import { consumerScenarioReplay } from "./consumer-scenario-args";
 import { extractFailureMarkers } from "./failure-fingerprints";
 import { failureClass } from "./fuzz-failure-class";
 import { type ClosedIssueDisposition, type Issue, type IssueStore } from "./fuzz-issue-classes";
@@ -424,7 +425,19 @@ export const cliRepro = (command: string): string => {
   if (values.length === 0) return command;
   const executable = "bun scripts/consumer-scenarios.ts";
   if (!rest.startsWith(executable)) return command;
-  return `${executable} ${values.join(" ")}${rest.slice(executable.length)}`;
+  const suffix = rest.slice(executable.length).trim();
+  return consumerScenarioReplay({ flags: [...values, suffix] });
+};
+
+const flowArtifactReplay = (command: string, seed: number, artifact: string): string => {
+  const replay = cliRepro(command);
+  const substituted = replay.replace(
+    /(--flow\s+)(?:'(?:'\\''|[^'])*'|"(?:\\.|[^"])*"|\S+)/u,
+    `$1'${artifact}'`,
+  );
+  return substituted === replay
+    ? consumerScenarioReplay({ flags: [`--seed ${seed}`, `--flow '${artifact}'`] })
+    : substituted;
 };
 
 /** A complete fenced repro; this boundary deliberately has no length parameter. */
@@ -463,7 +476,7 @@ export const renderSignatureIssue = (state: SignatureState): IssueContent => {
       `Flow artifact: ${artifact}`,
       wholeRepro({
         seed: state.repro.seed,
-        command: `bun scripts/consumer-scenarios.ts --seed ${state.repro.seed} --flow '${artifact}'`,
+        command: flowArtifactReplay(state.repro.command, state.repro.seed, artifact),
       }),
     ].join("\n");
     const fallbackAvailable = ISSUE_BODY_LIMIT - prefix.join("\n").length - repro.length - 24;

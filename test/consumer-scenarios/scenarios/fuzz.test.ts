@@ -12,6 +12,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 
+import { consumerScenarioReplay } from "../../../scripts/consumer-scenario-args.ts";
 import {
   failureMarker,
   logFailureMarker,
@@ -78,7 +79,13 @@ const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
       ? `--runs ${run + 1} --collision-runs 0`
       : `--runs 0 --collision-runs ${run + 1}`;
   const label = kind === "random" ? "fuzz" : "collision";
-  const repro = `bun scripts/consumer-scenarios.ts --seed ${SEED} --steps ${STEPS} ${runs} ${relationRepro} --only '^${label} run ${run} \\('`;
+  const repro = consumerScenarioReplay({
+    flags: [
+      `--seed ${SEED} --steps ${STEPS} ${runs}`,
+      relationRepro,
+      `--only '^${label} run ${run} \\('`,
+    ],
+  });
   test(
     `${label} run ${run} (seed ${seed}): ${fixture} / ${mode}, ${STEPS} steps`,
     known ? { skip: `${known.reason}; runs in known-issues.test.ts` } : {},
@@ -129,7 +136,13 @@ for (const flow of PINNED_SCENARIO_FLOWS) {
         await runFlow(flow.seed, flow.steps, flow.kind, { generation: flow.generation });
       } catch (error) {
         const { fixture, mode } = describeFlow(flow.seed, flow.kind);
-        const repro = `bun scripts/consumer-scenarios.ts --seed ${flow.seed} --runs 0 --collision-runs 0 ${relationRepro} --only '^${flow.kind} flow with seed ${flow.seed} \\('`;
+        const repro = consumerScenarioReplay({
+          flags: [
+            `--seed ${flow.seed} --runs 0 --collision-runs 0`,
+            relationRepro,
+            `--only '^${flow.kind} flow with seed ${flow.seed} \\('`,
+          ],
+        });
         reportScenarioFailure({
           test: `consumer flow ${fixture} / ${mode}`,
           seed: flow.seed,

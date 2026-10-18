@@ -1,6 +1,40 @@
 import { panic } from "better-result";
 import path from "node:path";
 
+const CONSUMER_SCENARIO_EXECUTABLE = "bun scripts/consumer-scenarios.ts";
+
+type ReplayCommandOptions = { flags?: readonly string[]; files?: readonly string[] };
+
+/** Build a replay with the executable first, followed by flags and file selectors. */
+export const consumerScenarioReplay = ({
+  flags = [],
+  files = [],
+}: ReplayCommandOptions = {}): string =>
+  [
+    CONSUMER_SCENARIO_EXECUTABLE,
+    ...flags.filter((flag) => flag !== ""),
+    ...(files.length === 0 ? [] : ["--", ...files]),
+  ].join(" ");
+
+const REPLAY_ENV_FLAGS = {
+  FOLIO_SCENARIO_RELATIONS: "--relations",
+  FOLIO_SCENARIO_RELATIONS_DEPTH: "--relations-depth",
+  FOLIO_SCENARIO_FEATURE_WEIGHTS: "--feature-weights",
+  FOLIO_SCENARIO_PUBLIC_CORPUS_DIR: "--public-corpus-dir",
+} as const;
+
+/** Render relation-dependent environment inputs as replay flags. */
+export const consumerScenarioRelationFlags = (
+  environment: Readonly<Record<string, string | undefined>>,
+  quote: (value: string) => string,
+): string =>
+  Object.entries(REPLAY_ENV_FLAGS)
+    .flatMap(([name, flag]) => {
+      const value = environment[name];
+      return value === undefined ? [] : [`${flag} ${quote(value)}`];
+    })
+    .join(" ");
+
 export type ConsumerArgs = {
   tarballs: string | null;
   packOnly: string | null;

@@ -605,7 +605,7 @@ test("a huge assertion yields to the whole repro while the issue stays bounded",
   expect(body).toMatch(/… \(\d+ more characters\)/u);
 });
 
-test("an over-limit repro uses the flow artifact without leaking a partial command", () => {
+test("an over-limit repro substitutes its flow but preserves every replay setting", () => {
   const state: SignatureState = {
     signature: signatureOf({ test: "oversized repro", assertion: "failure" }),
     occurrences: 1,
@@ -618,13 +618,16 @@ test("an over-limit repro uses the flow artifact without leaking a partial comma
   const uniqueTail = "END-OF-OVERSIZED-REPRO";
   state.repro = {
     seed: 43,
-    command: `bun scripts/consumer-scenarios.ts --flow '${"x".repeat(70_000)}${uniqueTail}'`,
+    command: `bun scripts/consumer-scenarios.ts --seed 43 --relations 'preserve-comments' --relations-depth 3 --flow '${"x".repeat(70_000)}${uniqueTail}' -- flow-corpus.test.ts`,
   };
   const { body } = renderSignatureIssue(state);
   expect(body.length).toBeLessThan(65_536);
   expect(body).toContain(`findings/${state.signature.id}-43.flow.json`);
   expect(body).not.toContain(uniqueTail);
   expect(body).not.toContain("x".repeat(1_000));
+  expect(body).toContain("--relations 'preserve-comments'");
+  expect(body).toContain("--relations-depth 3");
+  expect(body).toContain("-- flow-corpus.test.ts");
 });
 
 test("every legacy filer replay template is converted to CLI flags", () => {

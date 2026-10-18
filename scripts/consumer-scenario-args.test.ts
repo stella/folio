@@ -2,7 +2,82 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 
 import { assertProperty } from "../test/property-testing";
-import { consumerScenarioInputs, parseConsumerArgs } from "./consumer-scenario-args";
+import { shellQuote } from "../test/consumer-scenarios/support/failure-fingerprints";
+import {
+  consumerScenarioRelationFlags,
+  consumerScenarioInputs,
+  consumerScenarioReplay,
+  parseConsumerArgs,
+} from "./consumer-scenario-args";
+
+const argvOf = (command: string): string[] =>
+  [...command.matchAll(/'(?:'\\''|[^'])*'|\S+/gu)]
+    .map(([word]) => (word.startsWith("'") ? word.slice(1, -1).replaceAll("'\\''", "'") : word))
+    .slice(2);
+
+test("flow replays put relation flags after the executable and parse them back", () => {
+  const previous = {
+    relations: process.env["FOLIO_SCENARIO_RELATIONS"],
+    depth: process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"],
+  };
+  process.env["FOLIO_SCENARIO_RELATIONS"] = "preserve-comments,round-trip";
+  process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"] = "3";
+  try {
+    const command = consumerScenarioReplay({
+      flags: [consumerScenarioRelationFlags(process.env, shellQuote), "--flow 'flow.json'"],
+      files: ["flow-corpus.test.ts"],
+    });
+    expect(command.split(" ").at(0)).toBe("bun");
+    const parsed = parseConsumerArgs(argvOf(command), "/repo");
+    expect(parsed.relations).toBe("preserve-comments,round-trip");
+    expect(parsed.relationsDepth).toBe("3");
+  } finally {
+    if (previous.relations === undefined) delete process.env["FOLIO_SCENARIO_RELATIONS"];
+    else process.env["FOLIO_SCENARIO_RELATIONS"] = previous.relations;
+    if (previous.depth === undefined) delete process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"];
+    else process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"] = previous.depth;
+  }
+});
+
+test("generated replay settings round-trip entirely through CLI flags", () => {
+  assertProperty(
+    fc.property(
+      fc.record({
+        seed: fc.integer().map(String),
+        steps: fc.nat().map(String),
+        runs: fc.nat().map(String),
+        collisionRuns: fc.nat().map(String),
+        swarm: fc.constantFrom("0", "1"),
+        relations: fc.string({ minLength: 1, maxLength: 30 }),
+        relationsDepth: fc.nat().map(String),
+        flow: fc.oneof(
+          fc.string({ minLength: 1, maxLength: 80 }),
+          fc.stringMatching(/^[a-zA-Z0-9_-]{1,20}\.json$/u),
+        ),
+      }),
+      (settings) => {
+        const command = consumerScenarioReplay({
+          flags: [
+            `--seed ${shellQuote(settings.seed)}`,
+            `--steps ${shellQuote(settings.steps)}`,
+            `--runs ${shellQuote(settings.runs)}`,
+            `--collision-runs ${shellQuote(settings.collisionRuns)}`,
+            `--swarm ${shellQuote(settings.swarm)}`,
+            `--relations ${shellQuote(settings.relations)}`,
+            `--relations-depth ${shellQuote(settings.relationsDepth)}`,
+            `--flow ${shellQuote(settings.flow)}`,
+          ],
+          files: ["fuzz.test.ts"],
+        });
+        expect(command).toStartWith("bun ");
+        expect(command).not.toContain("FOLIO_SCENARIO_");
+        const parsed = parseConsumerArgs(argvOf(command), "/repo");
+        expect(parsed).toMatchObject({ ...settings, files: ["fuzz.test.ts"] });
+      },
+    ),
+    { numRuns: 100, id: "generated scenario replay settings round-trip" },
+  );
+});
 
 test("CLI replay flags resolve to the same inputs as environment variables", () => {
   assertProperty(
