@@ -211,21 +211,30 @@ const resolveSpecifier = (
     const absolute = resolveFile(path.join(repoRoot, workspace.directory, target));
     return absolute ? normalize(path.relative(repoRoot, absolute)) : undefined;
   }
-  if (
-    specifier.startsWith("node:") ||
-    Bun.resolveSync(specifier, path.dirname(path.join(repoRoot, importer)))
-  ) {
-    return null;
+  if (specifier.startsWith("node:")) return null;
+  const resolved = Bun.resolveSync(specifier, path.dirname(path.join(repoRoot, importer)));
+  const relative = normalize(path.relative(repoRoot, resolved));
+  if (!relative.startsWith("../") && !path.isAbsolute(relative)) {
+    if (!relative.split("/").includes("node_modules")) return relative;
   }
+  return null;
 };
 
 const hasNonLiteralDynamicImport = (source: string) => {
-  if (/\bimport\s*\(\s*`(?:\\.|[^`\\])*\$\{/u.test(source)) return true;
   const masked = source.replace(
-    /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu,
-    (match, literal: string | undefined) => literal ?? " ".repeat(match.length),
+    /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\$]|\$(?!\{))*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu,
+    (match) => " ".repeat(match.length),
   );
-  return /\bimport\s*\(\s*(?!["'`])/u.test(masked);
+  for (const match of masked.matchAll(/\bimport\s*\(/gu)) {
+    const argument = source.slice((match.index ?? 0) + match[0].length);
+    if (
+      /^\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\$]|\$(?!\{))*`)\s*\)/u.test(argument)
+    ) {
+      continue;
+    }
+    return true;
+  }
+  return false;
 };
 
 const transpilerLoader = (file: string) => {

@@ -133,6 +133,8 @@ describe("reverse import closure", () => {
       'import "unknown-package";',
       "import(process.env.MODULE);",
       "const name = 'value'; import(`./${name}`);",
+      'const name = "value"; import("./handlers/" + name);',
+      "const value = `${import(process.env.MODULE)}`;",
     ]) {
       const root = fixture({
         "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
@@ -188,6 +190,32 @@ describe("reverse import closure", () => {
       focusedFiles: [],
       repoRoot: root,
     });
+    expect(result.suites.flatMap(({ files }) => files)).toEqual(["packages/app/src/one.test.ts"]);
+    expect(result.cause).toBeUndefined();
+  });
+
+  test("follows a tsconfig path alias that resolves inside the repository", () => {
+    const root = fixture({
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: { baseUrl: ".", paths: { "@app/*": ["packages/app/src/*"] } },
+      }),
+      "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
+      "packages/app/src/value.ts": "export const value = 1;",
+      "packages/app/src/one.test.ts": 'import { value } from "@app/value"; void value;',
+      "packages/app/src/two.test.ts": "export {};",
+      "packages/app/src/three.test.ts": "export {};",
+    });
+    const result = selectFastTestSuitesWithReason({
+      suites: suite([
+        "packages/app/src/one.test.ts",
+        "packages/app/src/two.test.ts",
+        "packages/app/src/three.test.ts",
+      ]),
+      changedFiles: ["packages/app/src/value.ts"],
+      focusedFiles: [],
+      repoRoot: root,
+    });
+    expect(result.reason).toBe("closure");
     expect(result.suites.flatMap(({ files }) => files)).toEqual(["packages/app/src/one.test.ts"]);
     expect(result.cause).toBeUndefined();
   });
