@@ -127,6 +127,27 @@ const commentOnTrackedInsertion = async (): Promise<FolioDocxReviewer> => {
 
 const SURVIVOR = { id: 1, text: "On surviving text.", anchoredText: "Keep.", replies: [] };
 
+test("a batch insertion and deletion keep a comment on another block", async () => {
+  const reviewer = await twoParagraphs();
+  const [removed, surviving] = reviewer.getContent();
+  const result = reviewer.applyOperations(
+    [
+      {
+        id: "insert",
+        type: "insertBeforeBlock",
+        blockId: surviving!.id,
+        text: "Inserted.",
+      },
+      { id: "delete", type: "deleteBlock", blockId: removed!.id },
+    ],
+    { undefinedReferences: "refuse", mode: "tracked-changes" },
+  );
+
+  expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["delete", "insert"]);
+  expect(threads(reviewer.getComments())).toEqual([SURVIVOR]);
+  expect(threads((await reopen(reviewer)).getComments())).toEqual([SURVIVOR]);
+});
+
 describe("a comment whose anchored content is removed goes with it", () => {
   const cases: [string, (reviewer: FolioDocxReviewer) => void][] = [
     ["reject all", (reviewer) => reviewer.rejectAll()],
