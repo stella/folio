@@ -253,7 +253,12 @@ export const buildModuleGraph = (
   const unresolved = new Map<string, string[]>();
   const workspaces = readWorkspaces(repoRoot);
   const transpilers = new Map<string, Bun.Transpiler>();
-  for (const importer of codeFiles) {
+  const pending = [...codeFiles];
+  const scanned = new Set<string>();
+  while (pending.length > 0) {
+    const importer = pending.shift();
+    if (!importer || scanned.has(importer)) continue;
+    scanned.add(importer);
     const source = readFileSync(path.join(repoRoot, importer), "utf8").replace(/^#![^\n]*\n/u, "");
     const loader = transpilerLoader(importer);
     let transpiler = transpilers.get(loader);
@@ -282,6 +287,16 @@ export const buildModuleGraph = (
       const importers = reverse.get(resolved) ?? new Set<string>();
       importers.add(importer);
       reverse.set(resolved, importers);
+      if (
+        CODE_FILE.test(resolved) &&
+        !/\.d\.[cm]?ts$/u.test(resolved) &&
+        !resolved.startsWith("../") &&
+        !resolved.split("/").includes("node_modules") &&
+        !codeFiles.has(resolved)
+      ) {
+        codeFiles.add(resolved);
+        pending.push(resolved);
+      }
     }
     if (failures.length > 0) unresolved.set(importer, failures);
   }
@@ -323,7 +338,8 @@ export const selectFastTestSuitesWithReason = ({
   }
   let fallbackCause: string | undefined;
   for (const file of changedFiles) {
-    if (SOURCE_FILE.test(file) && !graph.codeFiles.has(file)) {
+    const isUntrackedCode = CODE_FILE.test(file) && !/\.d\.[cm]?ts$/u.test(file);
+    if ((SOURCE_FILE.test(file) || isUntrackedCode) && !graph.codeFiles.has(file)) {
       fallbackCause = `changed source is absent from graph: ${file}`;
       break;
     }

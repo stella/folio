@@ -30,6 +30,49 @@ afterEach(() => {
 });
 
 describe("reverse import closure", () => {
+  test("scans modules reached outside the graph roots", () => {
+    const root = fixture({
+      "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
+      "packages/app/src/selected.test.ts": 'import "../../../specifications/registry";',
+      "packages/app/src/other.test.ts": "export {};",
+      "packages/app/src/third.test.ts": "export {};",
+      "specifications/registry.ts": 'import "./colors";',
+      "specifications/colors.ts": "export const colors = [];",
+    });
+    const result = selectFastTestSuitesWithReason({
+      suites: suite([
+        "packages/app/src/selected.test.ts",
+        "packages/app/src/other.test.ts",
+        "packages/app/src/third.test.ts",
+      ]),
+      changedFiles: ["specifications/colors.ts"],
+      focusedFiles: [],
+      repoRoot: root,
+    });
+    expect(result.reason).toBe("closure");
+    expect(result.suites.flatMap(({ files }) => files)).toEqual([
+      "packages/app/src/selected.test.ts",
+    ]);
+  });
+
+  test("fails closed for an unreachable code file outside the graph roots", () => {
+    const file = "specifications/unreachable.ts";
+    const root = fixture({
+      "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
+      "packages/app/src/one.test.ts": "export {};",
+      "packages/app/src/two.test.ts": "export {};",
+      [file]: "export const unreachable = true;",
+    });
+    const result = selectFastTestSuitesWithReason({
+      suites: suite(["packages/app/src/one.test.ts", "packages/app/src/two.test.ts"]),
+      changedFiles: [file],
+      focusedFiles: [],
+      repoRoot: root,
+    });
+    expect(result.reason).toBe("full-fallback");
+    expect(result.cause).toBe(`changed source is absent from graph: ${file}`);
+  });
+
   test("follows relative imports, re-exports, workspace exports, literals, and cycles", () => {
     const root = fixture({
       "packages/lib/package.json": JSON.stringify({

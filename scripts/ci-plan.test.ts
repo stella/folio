@@ -271,7 +271,11 @@ describe("CI plan", () => {
             "packages/example/src/parser/roundtrip.spec.ts",
           ],
         },
-        ["packages/example/src/parser/parse.ts", "packages/example/src/other/added.test.ts"],
+        [
+          "packages/example/src/parser/parse.ts",
+          "packages/example/src/other/added.test.ts",
+          "scripts/new.test.ts",
+        ],
       ),
     });
     expect(selected).toEqual([
