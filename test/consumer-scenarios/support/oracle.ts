@@ -23,6 +23,8 @@ import type { FolioContentStatedNumbering } from "@stll/folio-core/compare/conte
 
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
+  getFolioDocumentOperationRemovedBlockIds,
+  getTrackedFolioDocumentOperationRemovedBlockIds,
   type FolioDocumentOperationType,
   type FolioDocumentStoryHandle,
   inspectDocumentStylesFromDocx,
@@ -647,6 +649,28 @@ const target = (model: Model, blockId: unknown, { adjacent = false } = {}): Mode
   return row;
 };
 
+const sameParagraphContainer = (left: Row, right: Row): boolean => {
+  if (left.table === undefined || right.table === undefined) {
+    return left.table === undefined && right.table === undefined;
+  }
+  return (
+    left.table.tableIndex === right.table.tableIndex &&
+    left.table.rowIndex === right.table.rowIndex &&
+    left.table.cellIndex === right.table.cellIndex
+  );
+};
+
+const isContainerCarrier = (model: Model, row: ModelRow): boolean => {
+  const pre = row.pre;
+  if (pre === undefined) return false;
+  const index = model.rows.indexOf(row);
+  return model.rows
+    .slice(index + 1)
+    .every(
+      (candidate) => candidate.pre === undefined || !sameParagraphContainer(pre, candidate.pre),
+    );
+};
+
 const tableOf = (row: ModelRow): TableLocation => {
   const table = row.pre?.table;
   if (!table) throw new Unmodelled("the anchor is not in a table");
@@ -1230,6 +1254,10 @@ export const EXPECTATIONS = {
     if (row.pendingDeletion || next?.pendingDeletion) {
       // Whether the join keeps that paragraph's pending deletion is not modelled yet.
       throw new Unmodelled("a join with a paragraph pending deletion");
+    }
+    if (model.mode !== "direct" && next?.removed && isContainerCarrier(model, next)) {
+      next.removed = false;
+      next.edits.push({ start: 0, end: next.text.length, replace: "" });
     }
     row.mergeSeparator = typeof operation["separator"] === "string" ? operation["separator"] : "";
     const merged = operation["mergedParagraphProperties"] as ParagraphRequest | undefined;
@@ -2025,7 +2053,85 @@ export const assertRequestedOutcome = async (
   model.inTextBox = pre.targets.inTextBox;
   model.mode = pre.mode;
   model.story = pre.resolvedStory;
-  for (const operation of outcome.applied) expectOperation(model, operation);
+  const removedBlocksBy = new Map<string, { id: string; type: string }>();
+  for (const [index, operation] of outcome.applied.entries()) {
+    const range = operation["range"];
+    const targetBlockId =
+      typeof range === "object" && range !== null && "blockId" in range
+        ? range.blockId
+        : operation["blockId"];
+    const targetsBlockIdentity = ![
+      "insertAfterBlock",
+      "insertBeforeBlock",
+      "insertSignatureTable",
+      "insertTable",
+      "deleteTable",
+      "insertTableRow",
+      "deleteTableRow",
+      "insertTableColumn",
+      "deleteTableColumn",
+      "mergeTableCells",
+      "splitTableCell",
+    ].includes(operation.type);
+    const removedBy =
+      targetsBlockIdentity && typeof targetBlockId === "string"
+        ? removedBlocksBy.get(targetBlockId)
+        : undefined;
+    const continuesMergeChain =
+      operation.type === "mergeBlockWithNext" && removedBy?.type === "mergeBlockWithNext";
+    if (removedBy !== undefined && !continuesMergeChain) {
+      throw new Error(
+        `applied an operation on block ${targetBlockId}, which an earlier one of the batch removed`,
+      );
+    }
+    expectOperation(model, operation);
+
+    if (pre.mode !== "direct" && operation.type === "mergeBlockWithNext") {
+      const anchorIndex = pre.rows.findIndex(({ id }) => id === operation["blockId"]);
+      const carrier = anchorIndex < 0 ? undefined : pre.rows[anchorIndex + 1];
+      const carrierRow = model.rows.find((row) => row.pre?.id === carrier?.id);
+      if (carrierRow !== undefined && isContainerCarrier(model, carrierRow)) {
+        removedBlocksBy.delete(carrier?.id ?? "");
+      }
+    }
+
+    const blockId = operation["blockId"];
+    if (typeof blockId !== "string") continue;
+    const removal = (() => {
+      switch (operation.type) {
+        case "deleteBlock":
+        case "mergeBlockWithNext":
+        case "deleteTable":
+        case "deleteTableRow":
+        case "deleteTableColumn":
+          const getRemovedBlockIds =
+            pre.mode === "direct"
+              ? getFolioDocumentOperationRemovedBlockIds
+              : getTrackedFolioDocumentOperationRemovedBlockIds;
+          return getRemovedBlockIds(
+            pre.rows.map(({ id, table }) => ({
+              id,
+              ...(table !== undefined && { table: { ...table, paragraphIndex: 0 } }),
+            })),
+            {
+              id: `oracle-${String(index)}`,
+              type: operation.type,
+              blockId,
+            },
+          );
+        default:
+          return [];
+      }
+    })();
+    for (const removedBlockId of removal) {
+      if (!removedBlocksBy.has(removedBlockId)) {
+        removedBlocksBy.set(removedBlockId, {
+          id: String(operation["id"] ?? index),
+          type: operation.type,
+        });
+      }
+    }
+  }
   // An operation the oracle cannot model changes the document in a way it
   // cannot predict; the rest of the batch is not compared either.
   const predictable = model.unmodelled.length === 0;

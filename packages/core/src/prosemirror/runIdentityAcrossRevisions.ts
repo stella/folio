@@ -19,8 +19,11 @@ const REVISION_MARK_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /** Ordered source of truth for source-carrier identities and continuation. */
-export const SOURCE_CARRIER_MARK_NAMES = [RUN_IDENTITY_MARK_NAME, "hyperlink"] as const;
-type SourceCarrierMarkName = (typeof SOURCE_CARRIER_MARK_NAMES)[number];
+export type SourceCarrierMarkName = "runIdentity" | "hyperlink";
+export const SOURCE_CARRIER_MARK_NAMES: readonly ["runIdentity", "hyperlink"] = [
+  RUN_IDENTITY_MARK_NAME,
+  "hyperlink",
+] as const;
 type CarrierIdentity = { id: number; payloadKey: string } | undefined;
 type CarrierOwner<Name extends SourceCarrierMarkName = SourceCarrierMarkName> = {
   markName: Name;

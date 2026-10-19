@@ -1,0 +1,10 @@
+{
+  "merged replay inputs round-trip once": [
+    {
+      "seed": 582184708,
+      "path": "44:3:2:3:2:2",
+      "note": "Replay values beginning with a dash must remain attached to their flags during command parsing",
+      "date": "2026-10-19"
+    }
+  ]
+}

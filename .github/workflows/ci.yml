@@ -562,6 +562,15 @@ jobs:
           mkdir -p test-results
           bun scripts/ci-test-shards.ts --shard 1 --depth full 2>&1 | tee test-results/full-test-suite.log
 
+      - name: Upload per-file test timings
+        if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-timings-${{ github.run_id }}-1
+          path: test-results/test-timings-1.json
+          retention-days: 14
+          if-no-files-found: error
+
       # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
       - name: Keep the test log of a failed merge group
         if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
@@ -603,6 +612,15 @@ jobs:
           set -o pipefail
           mkdir -p test-results
           bun scripts/ci-test-shards.ts --shard 2 --depth full 2>&1 | tee test-results/full-test-suite.log
+
+      - name: Upload per-file test timings
+        if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-timings-${{ github.run_id }}-2
+          path: test-results/test-timings-2.json
+          retention-days: 14
+          if-no-files-found: error
 
       # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
       - name: Keep the test log of a failed merge group
@@ -646,6 +664,15 @@ jobs:
           mkdir -p test-results
           bun scripts/ci-test-shards.ts --shard 3 --depth full 2>&1 | tee test-results/full-test-suite.log
 
+      - name: Upload per-file test timings
+        if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-timings-${{ github.run_id }}-3
+          path: test-results/test-timings-3.json
+          retention-days: 14
+          if-no-files-found: error
+
       # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
       - name: Keep the test log of a failed merge group
         if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
@@ -687,6 +714,15 @@ jobs:
           set -o pipefail
           mkdir -p test-results
           bun scripts/ci-test-shards.ts --shard 4 --depth full 2>&1 | tee test-results/full-test-suite.log
+
+      - name: Upload per-file test timings
+        if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-timings-${{ github.run_id }}-4
+          path: test-results/test-timings-4.json
+          retention-days: 14
+          if-no-files-found: error
 
       # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
       - name: Keep the test log of a failed merge group
