@@ -24,6 +24,7 @@ import type { FolioContentStatedNumbering } from "@stll/folio-core/compare/conte
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
   getFolioDocumentOperationRemovedBlockIds,
+  getTrackedFolioDocumentOperationRemovedBlockIds,
   type FolioDocumentOperationType,
   type FolioDocumentStoryHandle,
   inspectDocumentStylesFromDocx,
@@ -2045,7 +2046,11 @@ export const assertRequestedOutcome = async (
         case "deleteTable":
         case "deleteTableRow":
         case "deleteTableColumn":
-          const removed = getFolioDocumentOperationRemovedBlockIds(
+          const getRemovedBlockIds =
+            pre.mode === "direct"
+              ? getFolioDocumentOperationRemovedBlockIds
+              : getTrackedFolioDocumentOperationRemovedBlockIds;
+          return getRemovedBlockIds(
             pre.rows.map(({ id, table }) => ({
               id,
               ...(table !== undefined && { table: { ...table, paragraphIndex: 0 } }),
@@ -2056,11 +2061,6 @@ export const assertRequestedOutcome = async (
               blockId,
             },
           );
-          if (pre.mode === "direct" || operation.type !== "mergeBlockWithNext") return removed;
-          return [...removed].filter((removedBlockId) => {
-            const removedRow = model.rows.find((row) => row.pre?.id === removedBlockId);
-            return removedRow === undefined || !isContainerCarrier(model, removedRow);
-          });
         default:
           return [];
       }

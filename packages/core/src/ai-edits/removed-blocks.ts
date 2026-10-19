@@ -97,7 +97,8 @@ export const getFolioDocumentOperationRemovedBlockIds = (
 export const getTrackedFolioDocumentOperationRemovedBlockIds = (
   blocks: readonly BlockIdentity[],
   operation: FolioDocumentOperation,
-): ReadonlySet<string> => removedBlockIds(blocks, operation);
+): ReadonlySet<string> =>
+  operation.type === "mergeBlockWithNext" ? new Set() : removedBlockIds(blocks, operation);
 
 export const getTrackedFolioDocumentOperationCarrierBlockId = (
   blocks: readonly BlockIdentity[],

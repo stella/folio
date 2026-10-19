@@ -7,8 +7,9 @@
   "seed": 1576446700,
   "steps": [
     {
-      "action": "story batch",
+      "action": "core batch",
       "seed": 1512505503,
+      "atomic": false,
       "operations": [
         {
           "type": "deleteBlock",

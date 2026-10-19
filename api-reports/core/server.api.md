@@ -1716,6 +1716,9 @@ export const getFolioDocumentOutline: (snapshot: FolioAIEditSnapshot) => FolioDo
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
 
 // @public (undocumented)
+export const getTrackedFolioDocumentOperationRemovedBlockIds: (blocks: readonly BlockIdentity[], operation: FolioDocumentOperation) => ReadonlySet<string>;
+
+// @public (undocumented)
 export const hashFolioAIBlockText: (text: string) => string;
 
 // @public
