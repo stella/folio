@@ -1739,6 +1739,22 @@ export function compareComments(
       remaining.splice(index, 1);
     }
   }
+  // A new comment the model removed must not survive among the unclaimed ones.
+  for (const comment of model.comments) {
+    if (!comment.removed?.()) continue;
+    const anchor = comment.anchor?.();
+    const stale = remaining.find(
+      (candidate) =>
+        !beforeIds.has(candidate.id) &&
+        candidate.text === comment.text &&
+        (anchor === undefined || candidate.anchor === anchor),
+    );
+    if (stale !== undefined) {
+      problems.push(
+        `removed comment ${JSON.stringify({ text: comment.text, anchor })} remains among ${JSON.stringify(after)}`,
+      );
+    }
+  }
   // Only what no expectation claimed can be the removed comment itself.
   const survivingBlockIds = new Set(afterRows.map(({ id }) => id));
   for (const { entry, located } of gone) {
