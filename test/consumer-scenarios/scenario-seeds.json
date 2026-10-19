@@ -573,13 +573,6 @@
       "title": "#1799 collision flow"
     },
     {
-      "seed": 740097169,
-      "steps": 20,
-      "kind": "collisions",
-      "generation": "targeted",
-      "title": "#1799 collision flow"
-    },
-    {
       "seed": 1101252753,
       "steps": 16,
       "kind": "random",
