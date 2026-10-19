@@ -143,7 +143,7 @@
     "test:visual:update": "bunx playwright test --update-snapshots",
     "test:visual:report": "bunx playwright show-report",
     "bench:compare": "bun benchmarks/compare/run.ts",
-    "test:source-guards": "bun test scripts/source-guard-budgets.test.ts scripts/host-peer-policy.test.ts scripts/lib/scoped-editor-css.test.ts scripts/reusable-workflow-permissions.test.ts scripts/ci-scoped-install.test.ts scripts/shared-docx-fixtures.test.ts scripts/browser-preview-imports.test.ts scripts/workflow-cache-policy.test.ts scripts/canonical-timer-owner.test.ts scripts/canonical-cutover.test.ts scripts/canonical-command-census.test.ts scripts/canonical-range-producers.test.ts scripts/property-test-budgets.test.ts scripts/property-timeout.test.ts scripts/rust-boundaries.test.ts scripts/on-off-element-writer.test.ts scripts/zip-part-writer.test.ts scripts/encoding-boundaries.test.ts scripts/text-truncation.test.ts scripts/on-off-spelling.test.ts scripts/consumer-scenario-dependencies.test.ts scripts/adapter-layout-timing.test.ts scripts/specification-sources.test.ts scripts/ci-plan.test.ts scripts/ci-toolchain-plan.test.mjs scripts/check-package-dependencies.test.ts scripts/packed-declaration-diagnostics.test.ts scripts/packed-exports.test.ts scripts/published-packages.test.ts"
+    "test:source-guards": "bun test scripts/source-guard-budgets.test.ts scripts/workflow-runner-labels.test.ts scripts/host-peer-policy.test.ts scripts/lib/scoped-editor-css.test.ts scripts/reusable-workflow-permissions.test.ts scripts/ci-scoped-install.test.ts scripts/shared-docx-fixtures.test.ts scripts/browser-preview-imports.test.ts scripts/workflow-cache-policy.test.ts scripts/canonical-timer-owner.test.ts scripts/canonical-cutover.test.ts scripts/canonical-command-census.test.ts scripts/canonical-range-producers.test.ts scripts/property-test-budgets.test.ts scripts/property-timeout.test.ts scripts/rust-boundaries.test.ts scripts/on-off-element-writer.test.ts scripts/zip-part-writer.test.ts scripts/encoding-boundaries.test.ts scripts/text-truncation.test.ts scripts/on-off-spelling.test.ts scripts/consumer-scenario-dependencies.test.ts scripts/adapter-layout-timing.test.ts scripts/specification-sources.test.ts scripts/ci-plan.test.ts scripts/ci-toolchain-plan.test.mjs scripts/check-package-dependencies.test.ts scripts/packed-declaration-diagnostics.test.ts scripts/packed-exports.test.ts scripts/published-packages.test.ts"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",
@@ -159,6 +159,7 @@
     "@stll/aho-corasick": "1.0.4",
     "@stll/docx-core": "workspace:*",
     "@stll/folio-core": "workspace:*",
+    "@stll/fuzzy-search": "1.1.5",
     "@stll/oxlint-config": "1.2.2",
     "@stll/regex-set": "1.0.5",
     "@stll/utf8-boundaries": "workspace:*",

@@ -452,6 +452,132 @@
       "kind": "collisions",
       "generation": "targeted",
       "title": "a merge crosses blocks deleted by its batch"
+    },
+    {
+      "seed": 1339715958,
+      "steps": 20,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "#1726 collision flow"
+    },
+    {
+      "seed": 1339715842,
+      "steps": 20,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "#1731 collision flow"
+    },
+    {
+      "seed": 1346488458,
+      "steps": 16,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "#1735 random flow"
+    },
+    {
+      "seed": 1339716259,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "#1738 random flow"
+    },
+    {
+      "seed": 1346488438,
+      "steps": 16,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "#1739 random flow"
+    },
+    {
+      "seed": 740097491,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "#1746 random flow"
+    },
+    {
+      "seed": 1809931132,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "#1749 random flow"
+    },
+    {
+      "seed": 740097119,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "#1753 random flow"
+    },
+    {
+      "seed": 746947935,
+      "steps": 16,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "#1761 random flow"
+    },
+    {
+      "seed": 1339716106,
+      "steps": 20,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "#1774 collision flow"
+    },
+    {
+      "seed": 1339716569,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "#1815 random flow"
+    },
+    {
+      "seed": 1346488368,
+      "steps": 16,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "#1868 collision flow"
+    },
+    {
+      "seed": 740097530,
+      "steps": 20,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "#1877 collision flow"
+    },
+    {
+      "seed": 14491272,
+      "steps": 16,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "#1885 random flow"
+    },
+    {
+      "seed": 1809930875,
+      "steps": 20,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "#1732 collision flow"
+    },
+    {
+      "seed": 1339716102,
+      "steps": 20,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "#1799 markerless numbering flow"
+    },
+    {
+      "seed": 1339716619,
+      "steps": 20,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "#1799 collision flow"
+    },
+    {
+      "seed": 1101252753,
+      "steps": 16,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "batch replay preserves pre-batch positions across adjacent insertion, merge and replacement"
     }
   ]
 }

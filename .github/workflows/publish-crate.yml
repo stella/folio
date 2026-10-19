@@ -21,7 +21,7 @@ permissions: {}
 jobs:
   package:
     name: Package stella-docx-kernel
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -45,7 +45,7 @@ jobs:
     name: Publish stella-docx-kernel
     needs: package
     if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
