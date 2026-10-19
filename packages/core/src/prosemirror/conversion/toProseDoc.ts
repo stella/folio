@@ -1078,6 +1078,7 @@ function convertParagraph(
             nextHyperlinkInstanceIndex,
             runScope,
             textBoxAnchors,
+            openCommentIds,
           }),
         );
         break;
@@ -1092,6 +1093,7 @@ function convertParagraph(
             styleResolver,
             textBoxAnchors,
             stack,
+            openCommentIds,
           ),
         );
         break;
@@ -1272,11 +1274,11 @@ function convertTrackedChange(
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
   runScope: RunConversionScope,
   runFormattingResolvers: TrackedRunFormattingResolvers,
-  styleResolver?: StyleEngine | null,
-  moveKind: "moveFrom" | "moveTo" | null = null,
-  textBoxAnchors?: ReadonlyMap<Shape, string>,
-  wrappedBy: readonly InlineWrapperLayer[] = [],
-  openCommentIds: Set<number> = new Set(),
+  styleResolver: StyleEngine | null | undefined,
+  moveKind: "moveFrom" | "moveTo" | null,
+  textBoxAnchors: ReadonlyMap<Shape, string> | undefined,
+  wrappedBy: readonly InlineWrapperLayer[],
+  openCommentIds: Set<number>,
 ): PMNode[] {
   const nodes: PMNode[] = [];
   const getTrackedRunFormatting =
@@ -1335,6 +1337,7 @@ function convertTrackedChange(
         nextHyperlinkInstanceIndex,
         runScope,
         textBoxAnchors,
+        openCommentIds,
       });
       if (fieldNode) {
         itemNodes.push(fieldNode);
@@ -1384,6 +1387,7 @@ function convertTrackedChange(
         styleResolver,
         textBoxAnchors,
         [...wrappedBy, ...stack],
+        openCommentIds,
       );
       if (sdtNode) {
         itemNodes.push(sdtNode);
@@ -2628,6 +2632,7 @@ type ConvertFieldOptions = {
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
   runScope: RunConversionScope;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
+  openCommentIds: Set<number>;
 };
 
 function convertField(
@@ -2638,6 +2643,7 @@ function convertField(
     nextHyperlinkInstanceIndex,
     runScope,
     textBoxAnchors,
+    openCommentIds,
   }: ConvertFieldOptions,
 ): PMNode | null {
   // Extract display text and formatting from field content/result
@@ -2752,6 +2758,8 @@ function convertField(
               styleResolver,
               content.type === "moveFrom" || content.type === "moveTo" ? content.type : null,
               textBoxAnchors,
+              [],
+              openCommentIds,
             ),
           );
           break;
@@ -2964,9 +2972,10 @@ function convertInlineSdt(
   runScope: RunConversionScope,
   getInheritedRunFormatting: RunFormattingResolver,
   trackedRunFormattingResolvers: TrackedRunFormattingResolvers,
-  styleResolver?: StyleEngine | null,
-  textBoxAnchors?: ReadonlyMap<Shape, string>,
-  wrappedBy: readonly InlineWrapperLayer[] = [],
+  styleResolver: StyleEngine | null | undefined,
+  textBoxAnchors: ReadonlyMap<Shape, string> | undefined,
+  wrappedBy: readonly InlineWrapperLayer[],
+  openCommentIds: Set<number>,
 ): PMNode | null {
   const props = sdt.properties;
   const inlineNodes: PMNode[] = [];
@@ -2980,6 +2989,7 @@ function convertInlineSdt(
       continue;
     }
     const itemNodes: PMNode[] = [];
+    let commentsAlreadyApplied = false;
     const anchored = emptyRanges.anchorAt.get(index);
     if (anchored) {
       inlineNodes.push(
@@ -3023,6 +3033,7 @@ function convertInlineSdt(
           nextHyperlinkInstanceIndex,
           runScope,
           textBoxAnchors,
+          openCommentIds,
         });
         if (fieldNode) {
           itemNodes.push(fieldNode);
@@ -3039,6 +3050,7 @@ function convertInlineSdt(
           styleResolver,
           textBoxAnchors,
           stack,
+          openCommentIds,
         );
         if (nestedSdt) {
           itemNodes.push(nestedSdt);
@@ -3059,8 +3071,11 @@ function convertInlineSdt(
             styleResolver,
             content.type === "moveTo" || content.type === "moveFrom" ? content.type : null,
             textBoxAnchors,
+            stack,
+            openCommentIds,
           ),
         );
+        commentsAlreadyApplied = true;
         break;
       case "mathEquation": {
         const mathNode = convertMathEquation(content);
@@ -3110,7 +3125,10 @@ function convertInlineSdt(
         panic(`Unsupported inline SDT content: ${JSON.stringify(unsupported)}`);
       }
     }
-    inlineNodes.push(...withInlineWrapperMark(itemNodes, stack));
+    const wrappedNodes = withInlineWrapperMark(itemNodes, stack);
+    inlineNodes.push(
+      ...(commentsAlreadyApplied ? wrappedNodes : applyCommentMarks(wrappedNodes, openCommentIds)),
+    );
   }
 
   return schema.node(

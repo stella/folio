@@ -618,8 +618,15 @@ const removedCommentRangeIds = (
   resolution: Resolution,
 ): ReadonlySet<number> => {
   const ids = new Set<number>();
-  const visit = (items: readonly InlineNode[]): void => {
+  const survivingReferences = new Set<number>();
+  const visit = (items: readonly InlineNode[], removedWithAncestor = false): void => {
     for (const node of items) {
+      const removedHere =
+        removedWithAncestor ||
+        (isTrackedWrapper(node) &&
+          resolution.ids.has(node.info.id) &&
+          removesContent(node, resolution.decision));
+      if (node.type === "commentReference" && !removedHere) survivingReferences.add(node.id);
       if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
         if (removesContent(node, resolution.decision)) {
           const starts = new Set<number>();
@@ -635,10 +642,11 @@ const removedCommentRangeIds = (
           for (const id of starts) if (ends.has(id)) ids.add(id);
         }
       }
-      visit(childNodes(node) ?? []);
+      visit(childNodes(node) ?? [], removedHere);
     }
   };
   visit(nodes);
+  for (const id of survivingReferences) ids.delete(id);
   return ids;
 };
 
@@ -649,9 +657,7 @@ const withoutCommentAnchors = (
   if (removedIds.size === 0) return nodes;
   return nodes.flatMap((node) => {
     if (
-      (node.type === "commentRangeStart" ||
-        node.type === "commentRangeEnd" ||
-        node.type === "commentReference") &&
+      (node.type === "commentRangeStart" || node.type === "commentRangeEnd") &&
       removedIds.has(node.id)
     )
       return [];

@@ -428,6 +428,41 @@ describe("comment-range boundaries inside tracked changes", () => {
     ]);
   });
 
+  test("an open comment range reaches a tracked change inside an inline content control", () => {
+    const input = wrapParagraph({
+      type: "paragraph",
+      content: [
+        { type: "commentRangeStart", id: 5 },
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "richText", id: 42 },
+          content: [
+            {
+              type: "insertion",
+              info: { id: 7, author: "Reviewer" },
+              content: [{ type: "run", content: [{ type: "text", text: "covered" }] }],
+            },
+          ],
+        },
+        { type: "commentRangeEnd", id: 5 },
+        { type: "commentReference", id: 5 },
+      ],
+    });
+
+    const projected = toProseDoc(input);
+    const reopened = fromProseDoc(projected, input, {
+      stylesheetSource: { type: "package" },
+    });
+
+    expect(markedText(projected, 5)).toBe("covered");
+    expect(markedText(toProseDoc(reopened), 5)).toBe("covered");
+    expect(markerTypes(reopened)).toEqual([
+      "commentRangeStart",
+      "commentRangeEnd",
+      "commentReference",
+    ]);
+  });
+
   test("a range end between adjacent revisions stays outside both revision wrappers", () => {
     const input = wrapParagraph({
       type: "paragraph",
@@ -498,15 +533,12 @@ describe("comment-range boundaries inside tracked changes", () => {
         });
 
         const expected = ["commentRangeStart", "commentRangeEnd", "commentReference"];
-        const removesContent =
-          (decision === "reject" && (wrapper.type === "insertion" || wrapper.type === "moveTo")) ||
-          (decision === "accept" && (wrapper.type === "deletion" || wrapper.type === "moveFrom"));
-        expect(markerTypes(operation.value.document)).toEqual(removesContent ? [] : expected);
-        const exhaustsEditorComment =
-          decision === "reject" && (wrapper.type === "insertion" || wrapper.type === "moveTo");
-        expect(markerTypes(editor)).toEqual(
-          exhaustsEditorComment ? ["commentReference"] : expected,
-        );
+        expect(markerTypes(operation.value.document)).toEqual(expected);
+        const editorExpected =
+          decision === "reject" && (wrapper.type === "insertion" || wrapper.type === "moveTo")
+            ? ["commentReference"]
+            : expected;
+        expect(markerTypes(editor)).toEqual(editorExpected);
       });
     }
   }

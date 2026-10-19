@@ -3111,8 +3111,7 @@ function extractParagraphContent(
     const boundaryInsertionMark = node.marks.find((mark) => mark.type.name === "insertion");
     const boundaryDeletionMark = node.marks.find((mark) => mark.type.name === "deletion");
     const boundaryChangeMark = boundaryDeletionMark ?? boundaryInsertionMark;
-    if (!boundaryChangeMark || node.marks.some((mark) => mark.type.name === "hyperlink"))
-      return undefined;
+    if (!boundaryChangeMark) return undefined;
 
     const changeAttrs = expectTrackedChangeMarkAttrs(boundaryChangeMark);
     const info: TrackedChangeInfo = {
@@ -3197,6 +3196,12 @@ function extractParagraphContent(
     for (const commentId of byCommentId(toClose)) {
       closingBoundaryOwner.push({ type: "commentRangeEnd", id: commentId });
       openedComments.delete(commentId);
+    }
+    // A hyperlink is a child of the tracked wrapper. Once a positional
+    // boundary has been written beside that child, following linked content
+    // must start a new owner rather than being appended ahead of the marker.
+    if (currentTrackedChange?.type === "hyperlink") {
+      currentTrackedChange = undefined;
     }
     if (toOpen.length > 0) establishTrackedBoundaryOwner(node);
     const openingBoundaryOwner =
