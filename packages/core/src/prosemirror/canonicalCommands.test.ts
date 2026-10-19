@@ -144,13 +144,13 @@ describe("canonical command descriptors", () => {
         singletonManager.requireCommand("insertFootnote")(7, content),
         state,
       ),
-    ).toEqual([{ type: "insertNote", kind: "footnote", id: 7, content }]);
+    ).toEqual([{ type: "insertNote", kind: "footnote", id: 7, content, at: 10 }]);
     expect(
       getCanonicalCommandIntents(
         singletonManager.requireCommand("insertEndnote")(8, content),
         state,
       ),
-    ).toEqual([{ type: "insertNote", kind: "endnote", id: 8, content }]);
+    ).toEqual([{ type: "insertNote", kind: "endnote", id: 8, content, at: 10 }]);
   });
 
   test("formats each selected paragraph using its own indentation", () => {

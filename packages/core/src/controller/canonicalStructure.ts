@@ -19,6 +19,7 @@ import {
 import { headingOutlineLevel, paragraphNumberingReference } from "@stll/docx-core/model";
 import type { Paragraph, ListLevel } from "../types/document";
 import { createNote } from "../docx/noteReferenceMark";
+import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 import { getCachedNumberingMap, numberingLevelUsesBulletMarker } from "../docx/numberingParser";
 import { listRequestsForMarker } from "../prosemirror/listAutoformatMarkers";
 import type { ListRequest } from "../prosemirror/listNumbering";
@@ -205,10 +206,12 @@ export const prepareCanonicalCommands = (
       const blockIds =
         blockIdGroups.value[commandIndex] ?? panic("A fresh identity group was reserved per note.");
       // Inserted note content is new text, so every paragraph takes a fresh identity.
-      const content = command.content.map((block, index) => ({
-        ...block,
-        paraId: blockIds[index] ?? panic("A fresh identity was reserved per paragraph."),
-      }));
+      const content = command.content.map((block, index) => {
+        if (block.type !== "paragraph") panic("Canonical note content was already validated.");
+        return cloneParagraphWithoutPropertySource(block, {
+          paraId: blockIds[index] ?? panic("A fresh identity was reserved per paragraph."),
+        });
+      });
       ops.push({
         type: DOCUMENT_OP_TYPES.ADD_NOTE,
         at: at.value,

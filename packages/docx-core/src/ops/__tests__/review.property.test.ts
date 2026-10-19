@@ -751,6 +751,18 @@ describe("tracked operations and their resolution", () => {
             const own = revisionIdsIn(paragraph);
             if (!ids.some((id) => own.has(id))) continue;
             holding.add(idKey(paragraph.paraId ?? ""));
+            for (const { node } of leafSpans(paragraph.content)) {
+              if (node.type === "footnoteRef") {
+                const note = document.package.footnotes?.find(({ id }) => id === node.id);
+                for (const paragraphId of paragraphIdsIn(note?.content ?? []))
+                  holding.add(idKey(paragraphId));
+              }
+              if (node.type === "endnoteRef") {
+                const note = document.package.endnotes?.find(({ id }) => id === node.id);
+                for (const paragraphId of paragraphIdsIn(note?.content ?? []))
+                  holding.add(idKey(paragraphId));
+              }
+            }
             const next = follower(document, paragraph.paraId ?? "");
             if (next !== undefined) holding.add(idKey(next.paraId ?? ""));
           }
@@ -1050,6 +1062,8 @@ const namedParagraphs = (op: DocumentOp): Set<string> => {
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
       return new Set([idKey(op.at.blockId)]);
     case DOCUMENT_OP_TYPES.DELETE_RANGE:
     case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
@@ -1090,8 +1104,6 @@ const namedParagraphs = (op: DocumentOp): Set<string> => {
     case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
-    case DOCUMENT_OP_TYPES.ADD_NOTE:
-    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
       return new Set();

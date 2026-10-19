@@ -2266,6 +2266,47 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
   return storyLifecycleEdit(document, next, op);
 };
 
+const noteReferences = (document: Document): Set<string> => {
+  const references = new Set<string>();
+  for (const story of documentStories(document)) {
+    for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
+      for (const { node } of leafSpans(paragraph.content)) {
+        if (node.type === "footnoteRef") references.add(`footnote:${String(node.id)}`);
+        if (node.type === "endnoteRef") references.add(`endnote:${String(node.id)}`);
+      }
+    }
+  }
+  return references;
+};
+
+/** Direct text edits own the lifecycle of note bodies whose last reference they remove. */
+const withoutOrphanedNotes = (before: Document, after: Document): Document => {
+  const beforeReferences = noteReferences(before);
+  const afterReferences = noteReferences(after);
+  const removed = new Set([...beforeReferences].filter((key) => !afterReferences.has(key)));
+  if (removed.size === 0) return after;
+  return {
+    ...after,
+    package: {
+      ...after.package,
+      ...(after.package.footnotes === undefined
+        ? {}
+        : {
+            footnotes: after.package.footnotes.filter(
+              ({ id }) => !removed.has(`footnote:${String(id)}`),
+            ),
+          }),
+      ...(after.package.endnotes === undefined
+        ? {}
+        : {
+            endnotes: after.package.endnotes.filter(
+              ({ id }) => !removed.has(`endnote:${String(id)}`),
+            ),
+          }),
+    },
+  };
+};
+
 const dispatch = (document: Document, op: DocumentOp): Applied => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
@@ -2513,7 +2554,15 @@ export const applyDocumentOp = (
   if (applied.isErr()) {
     return Result.err(applied.error);
   }
-  const edit = applied.value;
+  let edit = applied.value;
+  if (stamp === undefined) {
+    const cleaned = withoutOrphanedNotes(document, edit.document);
+    if (cleaned !== edit.document) {
+      const lifecycle = storyLifecycleEdit(document, cleaned, op);
+      if (lifecycle.isErr()) return Result.err(lifecycle.error);
+      edit = lifecycle.value;
+    }
+  }
   const beforeSections = document.package.document.sections;
   const afterSections = edit.document.package.document.sections;
   const structural =

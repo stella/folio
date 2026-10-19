@@ -1469,7 +1469,10 @@ class CanonicalSession {
           newIds: allocation.newIds,
         } as const;
         if (ops.length > 1) {
-          const applied = applyDocumentOp(structuredClone(document), structuredClone(next));
+          const applied = applyDocumentOp(
+            cloneDocumentWithParagraphPropertySources(document),
+            structuredClone(next),
+          );
           if (applied.isErr()) return refuse(applied.error.message);
           document = applied.value.document;
         }

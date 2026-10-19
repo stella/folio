@@ -82,8 +82,10 @@ export const fixture = async (seed: Seed): Promise<Document> => {
       },
     ];
   }
+  const first = paragraph({ id: FIRST_ID, text: seed.text, seed });
+  first.content.push({ type: "run", content: [{ type: "footnoteRef", id: 2 }] });
   const targets: BlockContent[] = [
-    paragraph({ id: FIRST_ID, text: seed.text, seed }),
+    first,
     paragraph({ id: SECOND_ID, text: seed.text, seed }),
     nested,
     paragraph({ id: "00000004", text: "tail", seed }),
@@ -99,6 +101,13 @@ export const fixture = async (seed: Seed): Promise<Document> => {
         ];
   const model: Document = {
     package: {
+      footnotes: [
+        {
+          type: "footnote",
+          id: 2,
+          content: [paragraph({ id: "00000006", text: seed.insertion, seed })],
+        },
+      ],
       document: {
         content: [
           ...targetBlocks,
@@ -212,10 +221,10 @@ export const operations = {
     revision: stamp,
     newIds,
   }),
-  [DOCUMENT_OP_TYPES.REMOVE_NOTE]: ({ document, seed }: OperationOptions) => ({
+  [DOCUMENT_OP_TYPES.REMOVE_NOTE]: ({ document }: OperationOptions) => ({
     type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
-    at: at(targetOffset({ document, seed })),
-    story: { kind: "footnote", id: 1 },
+    at: at(targetLength(document) - 1),
+    story: { kind: "footnote", id: 2 },
     revision: stamp,
     newIds,
   }),
