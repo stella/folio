@@ -494,7 +494,7 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       followingKind,
       endsContainer: !followingContainerChild,
       removesCurrentMark: joins === true,
-      removesParagraph: joins === true && (markWasAdded || holdsNoContent(paragraph)),
+      removesParagraph: joins === true && (markWasAdded || followingKind === "table"),
     });
     if (
       marker &&
