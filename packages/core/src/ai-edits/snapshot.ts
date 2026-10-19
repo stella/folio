@@ -874,7 +874,7 @@ const createFolioAIEditSnapshotInternal = (
         ? expectParagraphAttrs(node)._originalFormatting?.outlineLevel
         : undefined;
     const listReference =
-      displayLabel === undefined || visibleList?.numbering === undefined
+      visibleList?.numbering === undefined
         ? undefined
         : {
             numId: visibleList.numbering.numId,

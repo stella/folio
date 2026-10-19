@@ -153,16 +153,23 @@ test.each([
     ]);
   }
 });
-test("every production counter producer belongs to an exercised reader", () => {
-  const files = execFileSync("git", ["ls-files", "packages/core/src"], { cwd: ROOT })
-    .toString()
-    .trim()
-    .split("\n")
-    .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"));
-  const sources = new Map(files.map((file) => [file, readFileSync(path.join(ROOT, file), "utf8")]));
-  expect(unregisteredProducers(sources)).toEqual([]);
-  expect(discoveredProducers(sources).sort()).toEqual(Object.keys(PRODUCER_READERS).sort());
-});
+test(
+  "every production counter producer belongs to an exercised reader",
+  () => {
+    const files = execFileSync("git", ["ls-files", "packages/core/src"], { cwd: ROOT })
+      .toString()
+      .trim()
+      .split("\n")
+      .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"));
+    const sources = new Map(
+      files.map((file) => [file, readFileSync(path.join(ROOT, file), "utf8")]),
+    );
+    expect(unregisteredProducers(sources)).toEqual([]);
+    expect(discoveredProducers(sources).sort()).toEqual(Object.keys(PRODUCER_READERS).sort());
+  },
+  // This structural guard parses every production source file with TypeScript.
+  propertyTestTimeout(10_000),
+);
 
 const streams = () => ({ final: createListCounterState(), original: createListCounterState() });
 const stateSnapshot = (state: ReturnType<typeof streams>) => ({
@@ -331,8 +338,8 @@ test(
                 paragraphNumberingSourcesFromBoundary({
                   numPr: para.formatting?.numPr,
                   numPrFromStyle:
-                    ctx.paragraphNumbering(para.formatting?.styleId) ??
-                    para.formatting?.numPrFromStyle,
+                    para.formatting?.numPrFromStyle ??
+                    ctx.paragraphNumbering(para.formatting?.styleId),
                 }),
               );
               const modelAttrs = {

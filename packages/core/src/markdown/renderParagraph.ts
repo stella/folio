@@ -58,36 +58,46 @@ export function renderParagraphBlock(
   // Every paragraph advances the list counter, whatever it renders as: the
   // items after a numbered heading continue from its number.
   const inherited = ctx.paragraphNumbering(para.formatting?.styleId);
-  const numPrFromStyle = inherited ?? para.formatting?.numPrFromStyle;
+  const sources = {
+    numPr: para.formatting?.numPr,
+    numPrFromStyle: para.formatting?.numPrFromStyle,
+  };
   const numbering = pkg?.numbering ? getCachedNumberingMap(pkg.numbering) : null;
   const resolvedList = resolveParagraphList(
-    { numPr: para.formatting?.numPr, numPrFromStyle },
+    { ...sources, ...(inherited === undefined ? {} : { inheritedReference: inherited }) },
     numbering,
     standaloneListRendering(para),
   );
   const resolvedRendering = resolvedList.kind === "marker" ? resolvedList.rendering : undefined;
   const counterAttrs = listLabelAttrsFromRendering(resolvedRendering, {
-    numPr: para.formatting?.numPr,
-    numPrFromStyle,
+    ...sources,
+    numPrFromStyle:
+      sources.numPrFromStyle ?? (resolvedList.kind === "none" ? undefined : inherited),
   });
   if (para.pPrMark) counterAttrs.pPrMark = para.pPrMark;
-  let originalList: ListRendering | undefined;
   if (para.propertyChanges) {
     counterAttrs._propertyChanges = para.propertyChanges.map(
       ({ previousFormatting, ...change }) => {
         if (!previousFormatting) return change;
-        const previousInherited =
-          ctx.paragraphNumbering(previousFormatting.styleId) ?? previousFormatting.numPrFromStyle;
+        const previousInherited = ctx.paragraphNumbering(previousFormatting.styleId);
+        const previousSources = {
+          numPr: previousFormatting.numPr,
+          numPrFromStyle: previousFormatting.numPrFromStyle,
+        };
         const previousList = resolveParagraphList(
-          { numPr: previousFormatting.numPr, numPrFromStyle: previousInherited },
+          {
+            ...previousSources,
+            ...(previousInherited === undefined ? {} : { inheritedReference: previousInherited }),
+          },
           numbering,
         );
         const previousRendering =
           previousList.kind === "marker" ? previousList.rendering : undefined;
-        originalList ??= previousRendering;
         const previousAttrs = listLabelAttrsFromRendering(previousRendering, {
-          numPr: previousFormatting.numPr,
-          numPrFromStyle: previousInherited,
+          ...previousSources,
+          numPrFromStyle:
+            previousSources.numPrFromStyle ??
+            (previousList.kind === "none" ? undefined : previousInherited),
         });
         return {
           ...change,
@@ -105,7 +115,8 @@ export function renderParagraphBlock(
       },
     );
   }
-  const { label } = ctx.nextListLabel(counterAttrs, resolvedRendering);
+  const countedList = ctx.nextListLabel(counterAttrs, resolvedRendering);
+  const { label } = countedList;
   const inline = renderParagraphInline(ctx, pkg, para.content, para.paraId);
   const styleId = para.formatting?.styleId;
 
@@ -128,7 +139,7 @@ export function renderParagraphBlock(
     };
   }
 
-  const visibleList = resolvedRendering ?? originalList;
+  const visibleList = resolvedList.kind === "marker" ? resolvedRendering : undefined;
   if (visibleList && label !== undefined) {
     return renderListItem(ctx, visibleList, label, inline);
   }
