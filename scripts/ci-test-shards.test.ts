@@ -85,23 +85,83 @@ describe("reverse import closure", () => {
     ]);
   });
 
-  test("fails closed for an unresolved or non-literal import", () => {
+  test("seeds files with unresolved or non-literal imports for every code change", () => {
     for (const source of ['import "unknown-package";', "import(process.env.MODULE);"]) {
       const root = fixture({
         "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
         "packages/app/src/value.ts": "export {};",
-        "packages/app/src/importer.ts": `import "./value"; ${source}`,
-        "packages/app/src/one.test.ts": 'import "./importer";',
+        "packages/app/src/one.test.ts": source,
         "packages/app/src/two.test.ts": "export {};",
+        "packages/app/src/three.test.ts": "export {};",
       });
       const result = selectFastTestSuitesWithReason({
-        suites: suite(["packages/app/src/one.test.ts", "packages/app/src/two.test.ts"]),
+        suites: suite([
+          "packages/app/src/one.test.ts",
+          "packages/app/src/two.test.ts",
+          "packages/app/src/three.test.ts",
+        ]),
         changedFiles: ["packages/app/src/value.ts"],
         focusedFiles: [],
         repoRoot: root,
       });
-      expect(result.reason).toBe("full-fallback");
+      expect(result.reason).toBe("closure");
+      expect(result.suites.flatMap(({ files }) => files)).toEqual(["packages/app/src/one.test.ts"]);
+      expect(result.cause).toBe("unknown dependencies in 1 file: packages/app/src/one.test.ts");
+
+      const documentationOnly = selectFastTestSuitesWithReason({
+        suites: suite([
+          "packages/app/src/one.test.ts",
+          "packages/app/src/two.test.ts",
+          "packages/app/src/three.test.ts",
+        ]),
+        changedFiles: ["README.md"],
+        focusedFiles: [],
+        repoRoot: root,
+      });
+      expect(documentationOnly.suites).toEqual([]);
+      expect(documentationOnly.cause).toBeUndefined();
     }
+  });
+
+  test("selects every test in a suite when a reached preload depends on the change", () => {
+    const root = fixture({
+      "packages/app/package.json": JSON.stringify({
+        name: "@stll/app",
+        scripts: { test: "bun test src" },
+      }),
+      "packages/app/bunfig.toml": '[test]\npreload = ["./test/setup.ts"]\n',
+      "packages/app/src/value.ts": "export {};",
+      "packages/app/test/setup.ts": 'import "../src/value";',
+      "packages/app/src/one.test.ts": "export {};",
+      "packages/app/src/two.test.ts": "export {};",
+      "packages/other/package.json": JSON.stringify({
+        name: "@stll/other",
+        scripts: { test: "bun test src" },
+      }),
+      "packages/other/src/three.test.ts": "export {};",
+      "packages/other/src/four.test.ts": "export {};",
+      "packages/other/src/unrelated.ts": "export {};",
+    });
+    const suites = discoverTestSuites(root);
+    expect(suites.find(({ cwd }) => cwd === "packages/app")?.preloads).toEqual(["./test/setup.ts"]);
+    const reached = selectFastTestSuitesWithReason({
+      suites,
+      changedFiles: ["packages/app/src/value.ts"],
+      focusedFiles: [],
+      repoRoot: root,
+    });
+    expect(reached.suites.flatMap(({ files }) => files)).toEqual([
+      "packages/app/src/one.test.ts",
+      "packages/app/src/two.test.ts",
+    ]);
+
+    const unrelated = selectFastTestSuitesWithReason({
+      suites,
+      changedFiles: ["packages/other/src/unrelated.ts"],
+      focusedFiles: [],
+      repoRoot: root,
+    });
+    expect(unrelated.suites).toEqual([]);
   });
 
   test("fails closed when a changed declaration source is excluded from the graph", () => {
@@ -214,6 +274,14 @@ test("random real source subsets preserve changed tests and closure intersection
   const graph = buildModuleGraph();
   const tests = suites.flatMap(({ files }) => files);
   const sources = [...graph.codeFiles].filter((file) => !/\.test\./u.test(file));
+  const dependencies = new Map<string, Set<string>>();
+  for (const [dependency, importers] of graph.reverse) {
+    for (const importer of importers) {
+      const imported = dependencies.get(importer) ?? new Set<string>();
+      imported.add(dependency);
+      dependencies.set(importer, imported);
+    }
+  }
   let state = 0x19_62_10_18;
   const random = () => (state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0) / 2 ** 32;
   for (let iteration = 0; iteration < 8; iteration++) {
@@ -233,13 +301,14 @@ test("random real source subsets preserve changed tests and closure intersection
       const pending = [testFile];
       while (pending.length > 0) {
         const importer = pending.pop();
-        for (const [dependency, importers] of graph.reverse) {
-          if (!importer || !importers.has(importer) || seen.has(dependency)) continue;
+        if (!importer) continue;
+        for (const dependency of dependencies.get(importer) ?? []) {
+          if (seen.has(dependency)) continue;
           seen.add(dependency);
           pending.push(dependency);
         }
       }
-      expect([...changed].some((file) => seen.has(file))).toBe(true);
+      expect([...changed, ...graph.unresolved.keys()].some((file) => seen.has(file))).toBe(true);
     }
   }
 });

@@ -53,6 +53,23 @@ export const discoverTestSuites = (repoRoot = REPO_ROOT): TestSuite[] => {
       }
       roots.push(arg);
     }
+    const bunfig = path.join(repoRoot, cwd, "bunfig.toml");
+    if (existsSync(bunfig)) {
+      const config: unknown = Bun.TOML.parse(readFileSync(bunfig, "utf8"));
+      if (typeof config === "object" && config && "test" in config) {
+        const test = config.test;
+        if (typeof test === "object" && test && "preload" in test) {
+          const configured = test.preload;
+          if (
+            !Array.isArray(configured) ||
+            configured.some((preload) => typeof preload !== "string")
+          ) {
+            panic(`Unsupported test preload in ${path.posix.join(cwd, "bunfig.toml")}`);
+          }
+          preloads.push(...configured);
+        }
+      }
+    }
     suites.push({ cwd, preloads, files: discoverFiles(cwd, roots) });
   }
   for (const root of ["scripts", "benchmarks/compare"]) {
@@ -298,16 +315,18 @@ export const selectFastTestSuitesWithReason = ({
       break;
     }
   }
-  const reached = new Set(changedFiles);
-  const queue = [...changedFiles];
-  while (!fallbackCause && queue.length > 0) {
+  const unknownDependencies = changedFiles.some((file) => CODE_FILE.test(file))
+    ? [...graph.unresolved.keys()].toSorted()
+    : [];
+  const unknownCause =
+    unknownDependencies.length > 0
+      ? `unknown dependencies in ${unknownDependencies.length} ${unknownDependencies.length === 1 ? "file" : "files"}: ${unknownDependencies.slice(0, 3).join(", ")}`
+      : undefined;
+  const reached = new Set([...changedFiles, ...unknownDependencies]);
+  const queue = [...reached];
+  while (queue.length > 0) {
     const file = queue.shift();
     if (!file) continue;
-    const failure = graph.unresolved.get(file);
-    if (failure) {
-      fallbackCause = `unresolved import from ${file}: ${failure.join(", ")}`;
-      break;
-    }
     for (const importer of graph.reverse.get(file) ?? []) {
       if (reached.has(importer)) continue;
       reached.add(importer);
@@ -315,6 +334,16 @@ export const selectFastTestSuitesWithReason = ({
     }
   }
   const candidates = new Set<string>(focused);
+  const suitesReachedThroughPreload = new Set(
+    suites.filter(({ cwd, preloads }) =>
+      preloads.some((preload) =>
+        reached.has(normalize(path.relative(repoRoot, path.resolve(repoRoot, cwd, preload)))),
+      ),
+    ),
+  );
+  for (const suite of suitesReachedThroughPreload) {
+    for (const file of suite.files) candidates.add(file);
+  }
   for (const file of discovered) {
     if (changed.has(file) || reached.has(file)) candidates.add(file);
     const packageName = /^packages\/([^/]+)\//u.exec(file)?.at(1);
@@ -327,7 +356,7 @@ export const selectFastTestSuitesWithReason = ({
     return {
       suites: selectFullTestSuites({ suites, focusedFiles }),
       reason: "full-fallback",
-      cause: fallbackCause,
+      cause: unknownCause ? `${unknownCause}; ${fallbackCause}` : fallbackCause,
       selectedCount: fullCount,
       fullCount,
     };
@@ -345,6 +374,7 @@ export const selectFastTestSuitesWithReason = ({
     reason,
     selectedCount: candidates.size,
     fullCount,
+    cause: unknownCause,
   };
 };
 
