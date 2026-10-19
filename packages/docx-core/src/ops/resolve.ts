@@ -25,6 +25,7 @@ import type {
   ParagraphPropertyChange,
   Run,
   RunPropertyChange,
+  Table,
 } from "../model/document";
 import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
 import { paragraphMarkCarrier, paragraphMarkRemovesParagraph } from "./blockDeletion";
@@ -66,6 +67,43 @@ export type ApplyOps = (
 
 const refusal = (op: ResolveRevisionOp, reason: DocumentOpRefusal["reason"], message: string) =>
   new DocumentOpRefusal({ message, reason, opType: op.type });
+
+/** Prepends a retired paragraph's content to the paragraph in a table's first cell. */
+const runParagraphIntoTable = (paragraph: Paragraph, table: Table): Table | undefined => {
+  const row = table.rows.at(0);
+  const cell = row?.cells.at(0);
+  const target = cell?.content.at(0);
+  if (!row || !cell || !target) return undefined;
+  if (target.type === "table") {
+    const nested = runParagraphIntoTable(paragraph, target);
+    if (!nested) return undefined;
+    return {
+      ...table,
+      rows: [
+        {
+          ...row,
+          cells: [{ ...cell, content: [nested, ...cell.content.slice(1)] }, ...row.cells.slice(1)],
+        },
+        ...table.rows.slice(1),
+      ],
+    };
+  }
+  if (target.type !== "paragraph") return undefined;
+  const survivor = {
+    ...target,
+    content: joinParagraphSeam(paragraph.content, target.content),
+  };
+  return {
+    ...table,
+    rows: [
+      {
+        ...row,
+        cells: [{ ...cell, content: [survivor, ...cell.content.slice(1)] }, ...row.cells.slice(1)],
+      },
+      ...table.rows.slice(1),
+    ],
+  };
+};
 
 /** Whether a decision removes the content of a tracked change of this kind. */
 const removesContent = (node: InlineNode, decision: RevisionDecision): boolean =>
@@ -1151,31 +1189,43 @@ const joinOps = (
       markWasAdded: added,
     }),
   });
-  if (canGo && blocks.length > 1 && carrier === "none") {
-    if (empty && followingKind === "table") {
-      const anchor = blocks.find(
-        (block, index): block is Paragraph =>
-          index !== location.index && block.type === "paragraph",
+  if (canGo && blocks.length > 1 && followingKind === "table" && next?.type === "table") {
+    const anchor = blocks.find(
+      (block, index): block is Paragraph => index !== location.index && block.type === "paragraph",
+    );
+    if (anchor === undefined) {
+      return Result.err(
+        refusal(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          `Resolving the mark of ${paraId} leaves no structural inverse anchor.`,
+        ),
       );
-      if (anchor === undefined) {
-        return Result.err(
-          refusal(
-            op,
-            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            `Resolving the mark of ${paraId} leaves no structural inverse anchor.`,
-          ),
-        );
-      }
-      return Result.ok([
-        {
-          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-          story,
-          blockId: anchor.paraId ?? "",
-          expected: blocks,
-          blocks: blocks.filter((_, index) => index !== location.index),
-        },
-      ]);
     }
+    const replacement = empty ? next : runParagraphIntoTable(paragraph, next);
+    if (replacement === undefined) {
+      return Result.err(
+        refusal(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          `Resolving the mark of ${paraId} cannot run into the table's first cell paragraph.`,
+        ),
+      );
+    }
+    return Result.ok([
+      {
+        type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+        story,
+        blockId: anchor.paraId ?? "",
+        expected: blocks,
+        blocks: blocks.flatMap((block, index) => {
+          if (index === location.index) return [];
+          return index === location.index + 1 ? [replacement] : [block];
+        }),
+      },
+    ]);
+  }
+  if (canGo && blocks.length > 1 && carrier === "none") {
     return Result.err(
       refusal(
         op,

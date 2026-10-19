@@ -95,8 +95,9 @@ test("accepting an empty paragraph-mark deletion removes the paragraph before a 
   expect(result.resolved.content.content).toEqual([following]);
 });
 
-test("accepting a non-empty paragraph-mark deletion keeps its cleared carrier before a table", () => {
-  const following = table([row([cell("cell")])]);
+test("accepting a non-empty paragraph-mark deletion runs its content into the table", () => {
+  const cellParagraph = paragraph("cell");
+  const following = table([row([schema.node("tableCell", null, [cellParagraph])])]);
   const doc = schema.node("doc", null, [
     schema.node("paragraph", { pPrMark: deletedParagraphMark }, [schema.text("kept")]),
     following,
@@ -105,7 +106,9 @@ test("accepting a non-empty paragraph-mark deletion keeps its cleared carrier be
   const result = resolveWholeStory({ doc, mode: "accept", styleResolver: null, numbering: null });
 
   expect(result.failed).toBe(false);
-  expect(result.resolved.childCount).toBe(2);
-  expect(result.resolved.firstChild?.textContent).toBe("kept");
-  expect(result.resolved.firstChild?.attrs["pPrMark"]).toBeNull();
+  expect(result.resolved.childCount).toBe(1);
+  const survivor = result.resolved.firstChild?.firstChild?.firstChild?.firstChild;
+  expect(survivor?.textContent).toBe("keptcell");
+  expect(survivor?.attrs["paraId"]).toBe(cellParagraph.attrs["paraId"]);
+  expect(survivor?.attrs["pPrMark"]).toBeNull();
 });

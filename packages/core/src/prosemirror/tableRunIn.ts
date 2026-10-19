@@ -168,7 +168,6 @@ export const runsIntoFollowingTable = (
 ): boolean =>
   paragraph.type.name === "paragraph" &&
   next?.type.spec["tableRole"] === "table" &&
-  holdsNoContent(paragraph) &&
   markGoes(paragraph, mode);
 
 /**

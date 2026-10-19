@@ -53,7 +53,7 @@ test("accepting an emptied paragraph-mark deletion removes its paragraph before 
   ]);
 });
 
-test("accepting a non-empty paragraph-mark deletion keeps and clears its carrier before a table", () => {
+test("accepting a non-empty paragraph-mark deletion runs it into the first cell paragraph", () => {
   const paragraph: Paragraph = {
     type: "paragraph",
     paraId: "00000001",
@@ -65,8 +65,26 @@ test("accepting a non-empty paragraph-mark deletion keeps and clears its carrier
   };
 
   expect(resolveAccepted(document).package.document.content).toEqual([
-    { ...paragraph, pPrMark: undefined },
-    table,
+    {
+      ...table,
+      rows: [
+        {
+          ...table.rows[0],
+          cells: [
+            {
+              ...table.rows[0].cells[0],
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000002",
+                  content: [{ type: "run", content: [{ type: "text", text: "kept" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
     finalParagraph,
   ]);
 });
