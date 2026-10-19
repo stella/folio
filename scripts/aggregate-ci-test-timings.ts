@@ -59,36 +59,41 @@ export const selectTimingArtifacts = async (
   repository: string,
   fetchJson: FetchJson,
 ): Promise<TimingArtifactReference[]> => {
-  const runsResponse = await fetchJson(
-    `https://api.github.com/repos/${repository}/actions/workflows/ci.yml/runs?status=success&per_page=100`,
-  );
-  const runs = recordsFor(runsResponse, "workflow_runs").filter(
-    (run): run is WorkflowRun =>
-      typeof run === "object" &&
-      run !== null &&
-      typeof run.id === "number" &&
-      (run.event === "merge_group" || run.event === "push"),
-  );
   const selected: TimingArtifactReference[] = [];
   let accepted = 0;
-  for (const run of runs) {
-    const artifactsResponse = await fetchJson(
-      `https://api.github.com/repos/${repository}/actions/runs/${run.id}/artifacts?per_page=100`,
+  // Timing artifacts expire after 14 days, so ten pages of runs reach past every usable set.
+  for (let page = 1; page <= 10 && accepted < 5; page++) {
+    const runsResponse = await fetchJson(
+      `https://api.github.com/repos/${repository}/actions/workflows/ci.yml/runs?status=success&per_page=100&page=${page}`,
     );
-    const prefix = `test-timings-${run.id}-`;
-    const artifacts = recordsFor(artifactsResponse, "artifacts").filter(
-      (artifact): artifact is Artifact =>
-        typeof artifact === "object" &&
-        artifact !== null &&
-        typeof artifact.id === "number" &&
-        typeof artifact.name === "string" &&
-        artifact.name.startsWith(prefix) &&
-        artifact.expired !== true,
+    const pageRuns = recordsFor(runsResponse, "workflow_runs");
+    const runs = pageRuns.filter(
+      (run): run is WorkflowRun =>
+        typeof run === "object" &&
+        run !== null &&
+        typeof run.id === "number" &&
+        (run.event === "merge_group" || run.event === "push"),
     );
-    if (artifacts.length !== 4) continue;
-    selected.push(...artifacts.map(({ id }) => ({ artifactId: id, runId: run.id })));
-    accepted += 1;
-    if (accepted === 5) break;
+    for (const run of runs) {
+      const artifactsResponse = await fetchJson(
+        `https://api.github.com/repos/${repository}/actions/runs/${run.id}/artifacts?per_page=100`,
+      );
+      const prefix = `test-timings-${run.id}-`;
+      const artifacts = recordsFor(artifactsResponse, "artifacts").filter(
+        (artifact): artifact is Artifact =>
+          typeof artifact === "object" &&
+          artifact !== null &&
+          typeof artifact.id === "number" &&
+          typeof artifact.name === "string" &&
+          artifact.name.startsWith(prefix) &&
+          artifact.expired !== true,
+      );
+      if (artifacts.length !== 4) continue;
+      selected.push(...artifacts.map(({ id }) => ({ artifactId: id, runId: run.id })));
+      accepted += 1;
+      if (accepted === 5) break;
+    }
+    if (pageRuns.length < 100) break;
   }
   return selected;
 };

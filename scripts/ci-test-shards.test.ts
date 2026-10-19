@@ -88,6 +88,29 @@ describe("measured test shard balancing", () => {
     );
   });
 
+  test("timing artifact discovery reads later pages when the first holds no eligible run", async () => {
+    const fetchJson = async (url: string) => {
+      if (url.includes("/workflows/")) {
+        if (url.endsWith("&page=1")) {
+          return {
+            workflow_runs: Array.from({ length: 100 }, (_, index) => ({
+              event: "pull_request",
+              id: 1_000 + index,
+            })),
+          };
+        }
+        if (url.endsWith("&page=2")) return { workflow_runs: [{ event: "push", id: 5 }] };
+        return { workflow_runs: [] };
+      }
+      return {
+        artifacts: [1, 2, 3, 4].map((id) => ({ id: 50 + id, name: `test-timings-5-${id}` })),
+      };
+    };
+    expect(await selectTimingArtifacts("stella/folio", fetchJson)).toEqual(
+      [1, 2, 3, 4].map((id) => ({ artifactId: 50 + id, runId: 5 })),
+    );
+  });
+
   test("timing artifact discovery skips runs whose artifacts have expired", async () => {
     const fetchJson = async (url: string) => {
       if (url.includes("/workflows/")) {
