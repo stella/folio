@@ -73,7 +73,7 @@ const refusal = (op: ResolveRevisionOp, reason: DocumentOpRefusal["reason"], mes
 const removesContent = (node: InlineNode, decision: RevisionDecision): boolean =>
   decision === REVISION_DECISIONS.ACCEPT ? !isAddedRevision(node) : isAddedRevision(node);
 
-type NoteReference = { kind: "footnote" | "endnote"; id: number };
+type NoteReference = { kind: "footnote" | "endnote"; id: number; added: boolean };
 
 /** Note bodies whose selected reference revision is removed by this decision. */
 const removedNoteReferences = (
@@ -85,18 +85,17 @@ const removedNoteReferences = (
   for (const { paragraph } of storyParagraphs(storyBody(document, op.story))) {
     for (const { node, ancestors } of leafSpans(paragraph.content)) {
       if (node.type !== "footnoteRef" && node.type !== "endnoteRef") continue;
-      if (
-        !ancestors.some(
-          (ancestor) =>
-            isTrackedWrapper(ancestor) &&
-            ids.has(ancestor.info.id) &&
-            removesContent(ancestor, op.decision),
-        )
-      )
-        continue;
+      const revision = ancestors.find(
+        (ancestor) =>
+          isTrackedWrapper(ancestor) &&
+          ids.has(ancestor.info.id) &&
+          removesContent(ancestor, op.decision),
+      );
+      if (revision === undefined || !isTrackedWrapper(revision)) continue;
       const reference = {
         kind: node.type === "footnoteRef" ? "footnote" : "endnote",
         id: node.id,
+        added: isAddedRevision(revision),
       } as const;
       references.set(`${reference.kind}:${reference.id}`, reference);
     }
@@ -1494,18 +1493,19 @@ export const resolveRevision = (
       const endnotes = new Set(
         orphaned.filter(({ kind }) => kind === "endnote").map(({ id }) => id),
       );
-      const cleaned = {
-        ...current,
-        package: {
-          ...current.package,
-          ...(footnotes.size === 0
-            ? {}
-            : { footnotes: current.package.footnotes?.filter(({ id }) => !footnotes.has(id)) }),
-          ...(endnotes.size === 0
-            ? {}
-            : { endnotes: current.package.endnotes?.filter(({ id }) => !endnotes.has(id)) }),
-        },
-      };
+      const packageParts = { ...current.package };
+      const removesAddedFootnote = orphaned.some(({ kind, added }) => kind === "footnote" && added);
+      const removesAddedEndnote = orphaned.some(({ kind, added }) => kind === "endnote" && added);
+      if (footnotes.size > 0 && packageParts.footnotes !== undefined) {
+        packageParts.footnotes = packageParts.footnotes.filter(({ id }) => !footnotes.has(id));
+        if (packageParts.footnotes.length === 0 && removesAddedFootnote)
+          delete packageParts.footnotes;
+      }
+      if (endnotes.size > 0 && packageParts.endnotes !== undefined) {
+        packageParts.endnotes = packageParts.endnotes.filter(({ id }) => !endnotes.has(id));
+        if (packageParts.endnotes.length === 0 && removesAddedEndnote) delete packageParts.endnotes;
+      }
+      const cleaned = { ...current, package: packageParts };
       const cleanup = storyLifecycleEdit(current, cleaned, op);
       if (cleanup.isErr()) return cleanup;
       edits.push(cleanup.value);

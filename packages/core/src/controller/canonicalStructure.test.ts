@@ -178,6 +178,12 @@ test("note-reference descriptors delete beside a caret or across a range with ex
         state,
         prepareCanonicalCommands(session, state, removeIntents).unwrap(),
       );
+      if (mode.type === "suggesting") {
+        expect(session.document.package.footnotes).toStrictEqual(inserted.package.footnotes);
+        expect(JSON.stringify(session.document.package.document.content)).toContain(
+          '"author":"Reviewer"',
+        );
+      }
       state = accept(session, state, session.prepareUndo(state).unwrap());
       expect(session.document).toStrictEqual(inserted);
     }

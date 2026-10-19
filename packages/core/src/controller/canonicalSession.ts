@@ -13,6 +13,7 @@ import {
   type Transaction,
 } from "prosemirror-state";
 import {
+  applyDocumentOp,
   applyDocumentOps,
   combineEdits,
   commentDocumentIssue,
@@ -1432,7 +1433,6 @@ class CanonicalSession {
     if (selected.isErr()) return selected;
     let preparedOps = ops;
     if (
-      this.mode.type === "suggesting" &&
       ops.every(
         (op) => op.type === DOCUMENT_OP_TYPES.ADD_NOTE || op.type === DOCUMENT_OP_TYPES.REMOVE_NOTE,
       )
@@ -1443,23 +1443,36 @@ class CanonicalSession {
         if (op.type !== DOCUMENT_OP_TYPES.ADD_NOTE && op.type !== DOCUMENT_OP_TYPES.REMOVE_NOTE)
           panic("A note operation batch contains only note operations.");
         const allocation = this.allocateIntentIds(document, {
-          type: "insertAtom",
-          from: op.at,
-          to: op.at,
-          atom: { type: "break", breakType: "line" },
+          type: "replaceFragment",
+          from: { ...op.at, offset: 0 },
+          to: { ...op.at, offset: Number.MAX_SAFE_INTEGER },
+          paragraphs: [
+            {
+              type: "paragraph",
+              content: [{ type: "run", content: [{ type: "break", breakType: "page" }] }],
+            },
+          ],
+          openStart: 0,
+          openEnd: 0,
         });
         const next = {
           ...op,
-          revision: {
-            id: allocation.revisionId,
-            author: this.mode.author,
-            date: new Date().toISOString(),
-          },
+          ...(this.mode.type === "suggesting"
+            ? {
+                revision: {
+                  id: allocation.revisionId,
+                  author: this.mode.author,
+                  date: new Date().toISOString(),
+                },
+              }
+            : {}),
           newIds: allocation.newIds,
         } as const;
-        const applied = applyDocumentOp(document, next);
-        if (applied.isErr()) return refuse(applied.error.message);
-        document = applied.value.document;
+        if (ops.length > 1) {
+          const applied = applyDocumentOp(structuredClone(document), structuredClone(next));
+          if (applied.isErr()) return refuse(applied.error.message);
+          document = applied.value.document;
+        }
         tracked.push(next);
       }
       preparedOps = tracked;

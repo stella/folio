@@ -201,6 +201,24 @@ const targetOffset = ({ document, seed }: OperationOptions): number => {
 
 /** Total over the tracked members of DocumentOp; a new family requires a case. */
 export const operations = {
+  [DOCUMENT_OP_TYPES.ADD_NOTE]: ({ document, seed }: OperationOptions) => ({
+    type: DOCUMENT_OP_TYPES.ADD_NOTE,
+    at: at(targetOffset({ document, seed })),
+    note: {
+      type: "footnote",
+      id: 1,
+      content: [paragraph({ id: NEW_ID, text: seed.insertion, seed })],
+    },
+    revision: stamp,
+    newIds,
+  }),
+  [DOCUMENT_OP_TYPES.REMOVE_NOTE]: ({ document, seed }: OperationOptions) => ({
+    type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
+    at: at(targetOffset({ document, seed })),
+    story: { kind: "footnote", id: 1 },
+    revision: stamp,
+    newIds,
+  }),
   [DOCUMENT_OP_TYPES.INSERT_TEXT]: ({ document, seed }: OperationOptions) => ({
     type: DOCUMENT_OP_TYPES.INSERT_TEXT,
     at: at(targetOffset({ document, seed })),

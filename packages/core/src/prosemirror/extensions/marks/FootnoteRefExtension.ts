@@ -115,6 +115,7 @@ export const FootnoteRefExtension = createMarkExtension({
       ): Command =>
         withCanonicalCommand(
           (state, dispatch) => {
+            if (!state.selection.empty) return false;
             if (!dispatch) {
               return true;
             }
@@ -135,7 +136,8 @@ export const FootnoteRefExtension = createMarkExtension({
             dispatch(tr.scrollIntoView());
             return true;
           },
-          () => [{ type: "insertNote", kind: noteType, id, content }],
+          (state) =>
+            state.selection.empty ? [{ type: "insertNote", kind: noteType, id, content }] : [],
         );
     }
 

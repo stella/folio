@@ -12,6 +12,8 @@ export type AddNoteOp = {
     type: typeof DOCUMENT_OP_TYPES.ADD_NOTE;
     at: TextPosition;
     note: Footnote | Endnote;
+    revision?: RevisionStamp;
+    newIds?: NewIds;
 };
 
 // @public
@@ -749,6 +751,9 @@ export const packageResourcesOpOf: (input: PackageResourcesOpOptions) => SetPack
 export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
 
 // @public
+export const paragraphIdsIn: (value: unknown) => string[];
+
+// @public
 export const paragraphLength: (paragraph: Paragraph) => number;
 
 // @public
@@ -826,6 +831,8 @@ export type RemoveNoteOp = {
     type: typeof DOCUMENT_OP_TYPES.REMOVE_NOTE;
     at: TextPosition;
     story: NoteStory;
+    revision?: RevisionStamp;
+    newIds?: NewIds;
 };
 
 // @public
