@@ -12,6 +12,8 @@ import path from "node:path";
 import editorWebPlaywright from "../packages/editor-web/playwright.config";
 import runContract from "./ci-run-contract.json";
 import { affectedPackagePlan } from "./ci-api-plan";
+import { affectedTypecheckPlanForPaths } from "./check-affected-packages";
+import { typecheckPlanForPaths } from "./ci-plan";
 import {
   BROWSER_INPUT_REGRESSIONS,
   PINNED_BROWSER_INPUT_TAG,
@@ -93,6 +95,57 @@ describe("CI plan", () => {
   const jobs = readJobs();
   const { areas, fullDepth } = readPolicy();
   const planOutputs = jobs[PLAN_JOB]?.outputs ?? {};
+
+  test("core changes typecheck core and every dependent package", () => {
+    const plan = typecheckPlanForPaths(["packages/core/src/core.ts"]);
+    expect(plan.type).toBe("selected");
+    if (plan.type !== "selected") return;
+    expect(plan.projects.map(({ name }) => name)).toEqual([
+      "@stll/folio-agents",
+      "@stll/folio-cli",
+      "@stll/folio-core",
+      "@stll/folio-editor-web",
+      "@stll/folio-nuxt",
+      "@stll/playground-vue",
+      "@stll/playground",
+      "@stll/folio-react",
+      "@stll/folio-vue",
+    ]);
+  });
+
+  test("scripts select tooling while documentation skips typecheck", () => {
+    expect(typecheckPlanForPaths(["scripts/example.ts"])).toEqual({
+      type: "selected",
+      projects: [
+        {
+          name: "typecheck:tooling",
+          command: ["bun", "run", "typecheck:tooling"],
+        },
+      ],
+    });
+    expect(typecheckPlanForPaths(["docs/guide.md"])).toEqual({
+      type: "selected",
+      projects: [],
+    });
+  });
+
+  test("the affected-package typecheck selection is the CI selection for generated path sets", () => {
+    const candidates = [
+      "packages/core/src/core.ts",
+      "packages/react/src/index.ts",
+      "scripts/example.ts",
+      "parity/example.ts",
+      "specifications/container-contract/example.ts",
+      "docs/guide.md",
+      "bun.lock",
+    ];
+    for (let mask = 0; mask < 1 << candidates.length; mask += 1) {
+      const changedPaths = candidates.filter((_, index) => (mask & (1 << index)) !== 0);
+      expect(affectedTypecheckPlanForPaths(changedPaths)).toEqual(
+        typecheckPlanForPaths(changedPaths),
+      );
+    }
+  });
 
   test("discovery covers every committed Bun test outside declared Playwright directories", () => {
     const tracked = Bun.spawnSync(

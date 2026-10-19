@@ -485,7 +485,9 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Typecheck
-        run: bun run typecheck
+        run: bun scripts/ci-plan.ts --base "$TYPECHECK_BASE" --head "$GITHUB_SHA"
+        env:
+          TYPECHECK_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
 
   build-api:
     name: Build reproducibility and API reports
