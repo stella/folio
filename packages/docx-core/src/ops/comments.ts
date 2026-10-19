@@ -62,14 +62,29 @@ const anchorId = (node: InlineNode): number | undefined => {
       return undefined;
   }
 };
+const storyBodiesIncludingTextBoxes = (
+  body: Pick<Document["package"]["document"], "content">,
+): Pick<Document["package"]["document"], "content">[] => {
+  const bodies = [body];
+  const paragraphs = storyParagraphs(body);
+  for (const location of paragraphs) {
+    for (const { node } of leafSpans(location.paragraph.content)) {
+      if (node.type !== "shape" || node.shape.textBody === undefined) continue;
+      bodies.push(...storyBodiesIncludingTextBoxes({ content: node.shape.textBody.content }));
+    }
+  }
+  return bodies;
+};
 type StoryAnchorSpan = LeafSpan & { story: OpStory; blockId: string };
 const anchorsIn = (document: Document) => {
   const anchors: StoryAnchorSpan[] = [];
   for (const story of documentStories(document)) {
-    for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
-      for (const span of leafSpans(paragraph.content)) {
-        if (isCommentAnchor(span.node))
-          anchors.push({ story, blockId: paragraph.paraId ?? "", ...span });
+    for (const body of storyBodiesIncludingTextBoxes(storyBody(document, story))) {
+      for (const { paragraph } of storyParagraphs(body)) {
+        for (const span of leafSpans(paragraph.content)) {
+          if (isCommentAnchor(span.node))
+            anchors.push({ story, blockId: paragraph.paraId ?? "", ...span });
+        }
       }
     }
   }
@@ -80,37 +95,56 @@ const anchorsIn = (document: Document) => {
 const coveredCommentIds = (document: Document): Set<number> => {
   const covered = new Set<number>();
   for (const story of documentStories(document)) {
-    const open = new Set<number>();
-    for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
-      for (const { node } of leafSpans(paragraph.content)) {
-        if (node.type === "commentRangeStart") {
-          open.add(node.id);
-          continue;
+    for (const body of storyBodiesIncludingTextBoxes(storyBody(document, story))) {
+      const open = new Set<number>();
+      for (const { paragraph } of storyParagraphs(body)) {
+        for (const { node } of leafSpans(paragraph.content)) {
+          if (node.type === "commentRangeStart") {
+            open.add(node.id);
+            continue;
+          }
+          if (node.type === "commentRangeEnd") {
+            open.delete(node.id);
+            continue;
+          }
+          if (isCommentAnchor(node)) continue;
+          for (const id of open) covered.add(id);
         }
-        if (node.type === "commentRangeEnd") {
-          open.delete(node.id);
-          continue;
-        }
-        if (isCommentAnchor(node)) continue;
-        for (const id of open) covered.add(id);
       }
     }
   }
   return covered;
 };
 
+export type CommentExhaustionInput =
+  | { type: "document"; document: Document; id: number }
+  | {
+      type: "coverage";
+      anchorKind: Comment["anchorKind"];
+      survivingNonCarrierContent: boolean;
+    };
+
 /** Whether a statically ranged comment currently covers no document content. */
-export const isCommentExhausted = (document: Document, id: number): boolean => {
+export const isCommentExhausted = (input: CommentExhaustionInput): boolean => {
+  if (input.type === "coverage")
+    return input.anchorKind === "range" && !input.survivingNonCarrierContent;
+  const { document, id } = input;
   const comment = document.package.document.comments?.find((entry) => entry.id === id);
   if (comment === undefined || comment.parentId !== undefined) return false;
-  return comment.anchorKind === "range" && !coveredCommentIds(document).has(id);
+  return isCommentExhausted({
+    type: "coverage",
+    anchorKind: comment.anchorKind,
+    survivingNonCarrierContent: coveredCommentIds(document).has(id),
+  });
 };
 
 /** Comment definitions whose root range still has content, including their replies. */
 export const survivingComments = (document: Document): Comment[] => {
   const comments = document.package.document.comments ?? [];
   const exhausted = new Set(
-    comments.filter(({ id }) => isCommentExhausted(document, id)).map(({ id }) => id),
+    comments
+      .filter(({ id }) => isCommentExhausted({ type: "document", document, id }))
+      .map(({ id }) => id),
   );
   return comments.filter(
     ({ id, parentId }) =>

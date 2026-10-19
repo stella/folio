@@ -790,7 +790,8 @@ export async function parseDocxWithPreviewBudget(
     for (const comment of document.package.document.comments ?? []) {
       if (comment.parentId !== undefined) continue;
       comment.anchorKind = "range";
-      if (isCommentExhausted(document, comment.id)) comment.anchorKind = "point";
+      if (isCommentExhausted({ type: "document", document, id: comment.id }))
+        comment.anchorKind = "point";
     }
     const altChunkBudget = { remainingBytes: ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES };
     await attachAltChunkPlainText(pkg.document.content, {

@@ -34,6 +34,7 @@ test(
                     (_, id) =>
                       ({
                         id,
+                        anchorKind: "range",
                         author: "Reviewer",
                         content: [
                           {

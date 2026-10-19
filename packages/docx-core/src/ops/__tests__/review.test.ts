@@ -108,7 +108,7 @@ describe("tracked text", () => {
     const document = commentedDocument([{ type: "commentReference", id: 40 }]);
     document.package.document.comments![0]!.anchorKind = "point";
 
-    expect(isCommentExhausted(document, 40)).toBe(false);
+    expect(isCommentExhausted({ type: "document", document, id: 40 })).toBe(false);
   });
 
   // The L1 generator found an empty revision acting as a zero-width deletion
@@ -181,7 +181,7 @@ describe("tracked text", () => {
 
     const rejected = resolved(document, [1], REVISION_DECISIONS.REJECT);
 
-    expect(isCommentExhausted(rejected, 40)).toBe(true);
+    expect(isCommentExhausted({ type: "document", document: rejected, id: 40 })).toBe(true);
   });
 
   test("rejecting a tracked insertion keeps a comment that also covered original text", () => {
@@ -460,7 +460,7 @@ describe("tracked text", () => {
       document,
     );
     const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
-    expect(isCommentExhausted(accepted, 40)).toBe(true);
+    expect(isCommentExhausted({ type: "document", document: accepted, id: 40 })).toBe(true);
 
     const direct = applied(document, directly(deletion));
     expect(direct.document).toStrictEqual(accepted);
@@ -514,7 +514,7 @@ describe("tracked text", () => {
 
     const accepted = resolved(document, [9, 10], REVISION_DECISIONS.ACCEPT);
 
-    expect(isCommentExhausted(accepted, 40)).toBe(true);
+    expect(isCommentExhausted({ type: "document", document: accepted, id: 40 })).toBe(true);
     expect(blocks(accepted)).toHaveLength(2);
   });
 

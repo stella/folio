@@ -122,6 +122,17 @@ export type CommentAnchor = {
 // @public
 export const commentDocumentIssue: (document: Document_2, allowedOrphans?: ReadonlySet<number> | "all") => string | undefined;
 
+// @public (undocumented)
+export type CommentExhaustionInput = {
+    type: "document";
+    document: Document_2;
+    id: number;
+} | {
+    type: "coverage";
+    anchorKind: Comment_2["anchorKind"];
+    survivingNonCarrierContent: boolean;
+};
+
 // @public
 export type CommentState = {
     relationshipPresence: "absent" | "undefined" | "present";
@@ -610,7 +621,7 @@ export type InsertTextOp = {
 };
 
 // @public
-export const isCommentExhausted: (document: Document_2, id: number) => boolean;
+export const isCommentExhausted: (input: CommentExhaustionInput) => boolean;
 
 // @public
 export function isTextOnlyRun(run: Run): boolean;
