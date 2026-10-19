@@ -16,6 +16,11 @@ import path from "node:path";
 setDefaultTimeout(scanTestTimeout(30_000));
 
 const repo = path.resolve(import.meta.dir, "..");
+const sharedPolicyDependabot = () =>
+  readFileSync(path.join(repo, ".github/dependabot.yml"), "utf8").replace(
+    /      # The API declarations follow the extension's engines\.vscode floor\.\n      - dependency-name: "@types\/vscode"\n        versions: \[">1\.86\.0"\]\n/u,
+    "",
+  );
 const workflow = Bun.YAML.parse(readFileSync(path.join(repo, ".github/workflows/ci.yml"), "utf8"));
 const proofs = Bun.YAML.parse(
   readFileSync(path.join(repo, ".github/workflows/typecheck-proofs.yml"), "utf8"),
@@ -326,6 +331,22 @@ describe("required shared toolchain policy", () => {
     expect(JSON.parse(evaluation.env.JOB_SCOPES).lint).toEqual({ reuse: "forbidden" });
   });
 
+  test("the editor declaration updates stop above its engine floor", () => {
+    const manifest = JSON.parse(
+      readFileSync(path.join(repo, "plugins/vscode/package.json"), "utf8"),
+    );
+    const updates = Bun.YAML.parse(
+      readFileSync(path.join(repo, ".github/dependabot.yml"), "utf8"),
+    ).updates;
+    const bun = updates.find((entry) => entry["package-ecosystem"] === "bun");
+    expect(manifest.devDependencies["@types/vscode"]).toBe("1.86.0");
+    expect(manifest.engines.vscode).toBe("^1.86.0");
+    expect(bun.ignore).toContainEqual({
+      "dependency-name": "@types/vscode",
+      versions: [">1.86.0"],
+    });
+  });
+
   test("the required outcome rejects unsuccessful lint even for scoped PRs", () => {
     const scopes = JSON.parse(evaluation.env.JOB_SCOPES);
     for (const codeRequired of ["true", "false"]) {
@@ -372,10 +393,7 @@ describe("required shared toolchain policy", () => {
       );
     try {
       mkdirSync(path.dirname(workflowFile), { recursive: true });
-      writeFileSync(
-        path.join(directory, ".github/dependabot.yml"),
-        readFileSync(path.join(repo, ".github/dependabot.yml"), "utf8"),
-      );
+      writeFileSync(path.join(directory, ".github/dependabot.yml"), sharedPolicyDependabot());
       writeWorkflow(action.sha);
       for (const args of [
         ["init", "--quiet"],
@@ -521,7 +539,6 @@ describe("published Node minimum", () => {
       mkdirSync(path.dirname(manifest), { recursive: true });
       mkdirSync(path.dirname(workflowFile), { recursive: true });
       for (const file of [
-        ".github/dependabot.yml",
         ".node-version",
         "stll-toolchain.json",
         ".agents/cloud-setup.sh",
@@ -533,6 +550,7 @@ describe("published Node minimum", () => {
         mkdirSync(path.dirname(path.join(directory, file)), { recursive: true });
         writeFileSync(path.join(directory, file), readFileSync(path.join(repo, file), "utf8"));
       }
+      writeFileSync(path.join(directory, ".github/dependabot.yml"), sharedPolicyDependabot());
       writeFileSync(
         path.join(directory, "package.json"),
         JSON.stringify({

@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.0",
-    "@playwright/test": "^1.64.0",
+    "@playwright/test": "^1.61.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "esbuild": "0.28.2",
