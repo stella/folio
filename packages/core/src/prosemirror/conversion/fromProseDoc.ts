@@ -3107,13 +3107,13 @@ function extractParagraphContent(
     rememberSourceRunOwner(run, node, sourceRunOwners);
   };
 
-  const establishTrackedBoundaryOwner = (node: PMNode): void => {
+  const trackedBoundary = (node: PMNode) => {
     const boundaryInsertionMark = node.marks.find((mark) => mark.type.name === "insertion");
     const boundaryDeletionMark = node.marks.find((mark) => mark.type.name === "deletion");
     const boundaryChangeMark = boundaryDeletionMark ?? boundaryInsertionMark;
-    if (!boundaryChangeMark || node.marks.some((mark) => mark.type.name === "hyperlink")) return;
+    if (!boundaryChangeMark || node.marks.some((mark) => mark.type.name === "hyperlink"))
+      return undefined;
 
-    flushCurrentInline();
     const changeAttrs = expectTrackedChangeMarkAttrs(boundaryChangeMark);
     const info: TrackedChangeInfo = {
       id: changeAttrs.revisionId,
@@ -3138,7 +3138,15 @@ function extractParagraphContent(
     const outerWrapperCount =
       changeAttrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length;
     const trackedChangeKey = `${type}:${JSON.stringify(info)}:${outerWrapperCount}:${JSON.stringify(revisionAncestors)}:${JSON.stringify(changeAttrs._docxResolutionJoins ?? undefined)}`;
-    if (currentTrackedChange?.type === "direct" && currentTrackedChange.key === trackedChangeKey) {
+    return { changeAttrs, info, key: trackedChangeKey, outerWrapperCount, revisionAncestors, type };
+  };
+
+  const establishTrackedBoundaryOwner = (node: PMNode): void => {
+    const boundary = trackedBoundary(node);
+    if (!boundary) return;
+    flushCurrentInline();
+    const { changeAttrs, info, key, outerWrapperCount, revisionAncestors, type } = boundary;
+    if (currentTrackedChange?.type === "direct" && currentTrackedChange.key === key) {
       return;
     }
     const wrapper = createTrackedRunWrapper({
@@ -3149,7 +3157,7 @@ function extractParagraphContent(
     revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
     revisionAncestorsByWrapper.set(wrapper, revisionAncestors);
     content.push(wrapper);
-    currentTrackedChange = { type: "direct", key: trackedChangeKey, wrapper };
+    currentTrackedChange = { type: "direct", key, wrapper };
   };
 
   const syncCommentRanges = (node: PMNode, offset: number) => {
@@ -3178,9 +3186,11 @@ function extractParagraphContent(
     }
 
     flushCurrentInline();
+    const nodeTrackedBoundary = trackedBoundary(node);
     const closingBoundaryOwner =
-      node.marks.some((mark) => mark.type.name === "insertion" || mark.type.name === "deletion") &&
-      currentTrackedChange
+      nodeTrackedBoundary &&
+      currentTrackedChange?.type === "direct" &&
+      currentTrackedChange.key === nodeTrackedBoundary.key
         ? currentTrackedChange.wrapper.content
         : content;
 

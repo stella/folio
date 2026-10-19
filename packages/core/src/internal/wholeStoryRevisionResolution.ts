@@ -45,9 +45,9 @@ const resolveProperties = ({
   steps,
   changedRanges,
 }: ResolvePropertiesOptions) => {
+  const removedMark = doc.type.schema.marks[mode === "accept" ? "deletion" : "insertion"];
   const collector = createResolvedCommentPointCollector({
-    removes: (node) =>
-      mode === "accept" && doc.type.schema.marks["deletion"]?.isInSet(node.marks) !== undefined,
+    removes: (node) => removedMark?.isInSet(node.marks) !== undefined,
     retiresStructure: () => mode === "accept",
   });
   let structural = false;

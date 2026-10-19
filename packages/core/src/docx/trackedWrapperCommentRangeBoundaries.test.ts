@@ -428,14 +428,53 @@ describe("comment-range boundaries inside tracked changes", () => {
     ]);
   });
 
+  test("a range end between adjacent revisions stays outside both revision wrappers", () => {
+    const input = wrapParagraph({
+      type: "paragraph",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 7, author: "Reviewer" },
+          content: [
+            { type: "commentRangeStart", id: 5 },
+            { type: "run", content: [{ type: "text", text: "first" }] },
+          ],
+        },
+        { type: "commentRangeEnd", id: 5 },
+        {
+          type: "insertion",
+          info: { id: 8, author: "Other reviewer" },
+          content: [{ type: "run", content: [{ type: "text", text: "second" }] }],
+        },
+        { type: "commentReference", id: 5 },
+      ],
+    });
+
+    const reopened = fromProseDoc(toProseDoc(input), input, {
+      stylesheetSource: { type: "package" },
+    });
+    const paragraph = reopened.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+
+    expect(paragraph.content.map(({ type }) => type)).toEqual([
+      "insertion",
+      "commentRangeEnd",
+      "insertion",
+      "commentReference",
+    ]);
+    const first = paragraph.content.at(0);
+    if (first?.type !== "insertion") throw new Error("Expected the first insertion");
+    expect(first.content.map(({ type }) => type)).toEqual(["commentRangeStart", "run"]);
+  });
+
   for (const wrapper of TRACKED_WRAPPERS) {
     for (const decision of ["accept", "reject"] as const) {
-      test(`${decision} ${wrapper.type} agrees across resolution paths and retains marker order`, () => {
+      test(`${decision} ${wrapper.type} retains the editor comment range when its text is removed`, () => {
         const paragraph = parseParagraphXml(
           `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}"><w:${wrapper.tag} w:id="7" w:author="Reviewer">` +
             `<w:r><w:t>before</w:t></w:r><w:commentRangeStart w:id="5"/>` +
             `<w:r><w:t>covered</w:t></w:r><w:commentRangeEnd w:id="5"/>` +
-            `${COMMENT_REFERENCE}<w:r><w:t>after</w:t></w:r></w:${wrapper.tag}></w:p>`,
+            `<w:r><w:t>after</w:t></w:r></w:${wrapper.tag}>${COMMENT_REFERENCE}</w:p>`,
         );
         const input = wrapParagraph(paragraph);
 
@@ -463,7 +502,7 @@ describe("comment-range boundaries inside tracked changes", () => {
           (decision === "reject" && (wrapper.type === "insertion" || wrapper.type === "moveTo")) ||
           (decision === "accept" && (wrapper.type === "deletion" || wrapper.type === "moveFrom"));
         expect(markerTypes(operation.value.document)).toEqual(removesContent ? [] : expected);
-        expect(markerTypes(editor)).toEqual(removesContent ? [] : expected);
+        expect(markerTypes(editor)).toEqual(expected);
       });
     }
   }
