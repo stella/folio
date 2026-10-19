@@ -80,9 +80,14 @@ export type RemovedParagraphMarkSectionDestination =
   | { type: "preceding" }
   | { type: "following" };
 
+export type PrecedingSectionEndpoint =
+  | { type: "none" }
+  | { type: "non-paragraph" }
+  | { type: "paragraph"; sectionProperties: unknown };
+
 type RemovedParagraphMarkSectionOptions = {
   removedSectionProperties: unknown;
-  precedingSectionProperties: unknown;
+  preceding: PrecedingSectionEndpoint;
   followingSectionProperties: unknown;
 };
 
@@ -93,13 +98,14 @@ type RemovedParagraphMarkSectionOptions = {
  */
 export const removedParagraphMarkSectionDestination = ({
   removedSectionProperties,
-  precedingSectionProperties,
+  preceding,
   followingSectionProperties,
 }: RemovedParagraphMarkSectionOptions): RemovedParagraphMarkSectionDestination => {
   if (removedSectionProperties === undefined) return { type: "none" };
   if (followingSectionProperties !== undefined) return { type: "none" };
-  if (precedingSectionProperties === undefined) return { type: "preceding" };
-  if (structurallyEqual(removedSectionProperties, precedingSectionProperties)) {
+  if (preceding.type !== "paragraph") return { type: "following" };
+  if (preceding.sectionProperties === undefined) return { type: "preceding" };
+  if (structurallyEqual(removedSectionProperties, preceding.sectionProperties)) {
     return { type: "none" };
   }
   return { type: "following" };
@@ -1144,10 +1150,17 @@ const joinOps = (
     ends.set(nextId, emptiedEndsOf(merged, emptied));
     const survivor: Paragraph = { ...next, content: asParagraphContent(merged) };
     const previous = location.index > 0 ? blocks.at(location.index - 1) : undefined;
+    let preceding: PrecedingSectionEndpoint;
+    if (previous === undefined) {
+      preceding = { type: "none" };
+    } else if (previous.type === "paragraph") {
+      preceding = { type: "paragraph", sectionProperties: previous.sectionProperties };
+    } else {
+      preceding = { type: "non-paragraph" };
+    }
     const sectionDestination = removedParagraphMarkSectionDestination({
       removedSectionProperties: added ? paragraph.sectionProperties : undefined,
-      precedingSectionProperties:
-        previous?.type === "paragraph" ? previous.sectionProperties : undefined,
+      preceding,
       followingSectionProperties: next.sectionProperties,
     });
     const resolvedSurvivor =

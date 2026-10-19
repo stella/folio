@@ -13,6 +13,7 @@ import type {
   Document,
   Paragraph,
   ParagraphContent,
+  Table,
   TextFormatting,
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
@@ -46,6 +47,21 @@ const paragraph = (
 
 const documentOf = (...content: BlockContent[]): Document => ({
   package: { document: { content } },
+});
+
+const table = (text: string): Table => ({
+  type: "table",
+  rows: [
+    {
+      type: "tableRow",
+      cells: [
+        {
+          type: "tableCell",
+          content: [paragraph("10000001", [run(text)])],
+        },
+      ],
+    },
+  ],
 });
 
 const at = (blockId: string, offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
@@ -1150,6 +1166,34 @@ describe("an empty content control is content: resolution never merges it away",
 });
 
 describe("section-aware tracked editor joins", () => {
+  test("resolving an added boundary after a table keeps its section after the table", () => {
+    const properties = { pageWidth: 10_000 };
+    const document = documentOf(
+      table("cell"),
+      paragraph("00000001", [run("before")], {
+        sectionProperties: properties,
+        pPrMark: { kind: "ins", info: stamp(1) },
+      }),
+      paragraph("00000002", [run("after")]),
+    );
+
+    expect(resolved(document, [1], REVISION_DECISIONS.ACCEPT)).toEqual(
+      documentOf(
+        table("cell"),
+        paragraph("00000001", [run("before")], { sectionProperties: properties }),
+        paragraph("00000002", [run("after")]),
+      ),
+    );
+    expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
+      documentOf(
+        table("cell"),
+        paragraph("00000002", [run("beforeafter")], {
+          sectionProperties: properties,
+        }),
+      ),
+    );
+  });
+
   test("rejecting an added boundary restores its section properties to the preceding mark", () => {
     const properties = { pageWidth: 10_000 };
     const document = documentOf(
@@ -1329,7 +1373,7 @@ describe("removedParagraphMarkSectionDestination", () => {
     expect(
       removedParagraphMarkSectionDestination({
         removedSectionProperties: nextPage,
-        precedingSectionProperties: { ...nextPage },
+        preceding: { type: "paragraph", sectionProperties: { ...nextPage } },
         followingSectionProperties: undefined,
       }),
     ).toEqual({ type: "none" });
@@ -1339,9 +1383,19 @@ describe("removedParagraphMarkSectionDestination", () => {
     expect(
       removedParagraphMarkSectionDestination({
         removedSectionProperties: nextPage,
-        precedingSectionProperties: undefined,
+        preceding: { type: "paragraph", sectionProperties: undefined },
         followingSectionProperties: undefined,
       }),
     ).toEqual({ type: "preceding" });
+  });
+
+  test("a preceding non-paragraph keeps the section on its following side", () => {
+    expect(
+      removedParagraphMarkSectionDestination({
+        removedSectionProperties: nextPage,
+        preceding: { type: "non-paragraph" },
+        followingSectionProperties: undefined,
+      }),
+    ).toEqual({ type: "following" });
   });
 });

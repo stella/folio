@@ -802,6 +802,16 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
     };
 };
 
+// @public (undocumented)
+export type PrecedingSectionEndpoint = {
+    type: "none";
+} | {
+    type: "non-paragraph";
+} | {
+    type: "paragraph";
+    sectionProperties: unknown;
+};
+
 // @public
 export const PROPERTY_REVIEW_POLICIES: Readonly<{
     readonly APPEND: "append";

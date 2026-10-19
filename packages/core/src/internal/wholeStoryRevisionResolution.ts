@@ -1,6 +1,9 @@
 import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
-import { removedParagraphMarkSectionDestination } from "@stll/docx-core/ops";
+import {
+  removedParagraphMarkSectionDestination,
+  type PrecedingSectionEndpoint,
+} from "@stll/docx-core/ops";
 import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 import { Mapping, StepMap, ReplaceStep, Transform, type Step } from "prosemirror-transform";
 import {
@@ -473,13 +476,20 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       Object.keys(paragraphAttrs._sectionProperties).length > 0
     ) {
       const preceding = index > 0 ? entries.at(index - 1)?.node : undefined;
-      const precedingProperties =
-        preceding?.type.name === "paragraph"
-          ? expectParagraphAttrs(preceding)._sectionProperties
-          : undefined;
+      let precedingEndpoint: PrecedingSectionEndpoint;
+      if (preceding == null) {
+        precedingEndpoint = { type: "none" };
+      } else if (preceding.type.name === "paragraph") {
+        precedingEndpoint = {
+          type: "paragraph",
+          sectionProperties: expectParagraphAttrs(preceding)._sectionProperties,
+        };
+      } else {
+        precedingEndpoint = { type: "non-paragraph" };
+      }
       sectionDestination = removedParagraphMarkSectionDestination({
         removedSectionProperties: paragraphAttrs._sectionProperties,
-        precedingSectionProperties: precedingProperties,
+        preceding: precedingEndpoint,
         followingSectionProperties: chain
           ? expectParagraphAttrs(chain.node)._sectionProperties
           : undefined,

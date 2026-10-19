@@ -211,6 +211,29 @@ describe("tracked section-boundary ownership", () => {
     });
   });
 
+  test("resolving a boundary after a table keeps its section after the table", async () => {
+    const insertedMark = {
+      kind: "ins" as const,
+      info: { id: 1, author: OPTIONS.author, date: OPTIONS.timestamp },
+    };
+    await expectPendingTerminals({
+      pendingDocument: documentWith([
+        table("Cell"),
+        { ...paragraph("00000001", "Alpha", SECTION_A), pPrMark: insertedMark },
+        paragraph("00000002", "Beta"),
+      ]),
+      acceptedDocument: documentWith([
+        table("Cell"),
+        paragraph("00000001", "Alpha", SECTION_A),
+        paragraph("00000002", "Beta"),
+      ]),
+      rejectedDocument: documentWith([
+        table("Cell"),
+        paragraph("00000002", "AlphaBeta", SECTION_A),
+      ]),
+    });
+  });
+
   test("accept removes consecutive source section endpoints and reject restores them", async () => {
     const baseDocument = documentWith([
       paragraph("00000001", "Keep"),

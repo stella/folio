@@ -18,6 +18,7 @@ export { combineEdits } from "./edits";
 export { registerParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
 export {
   removedParagraphMarkSectionDestination,
+  type PrecedingSectionEndpoint,
   type RemovedParagraphMarkSectionDestination,
 } from "./resolve";
 export {
