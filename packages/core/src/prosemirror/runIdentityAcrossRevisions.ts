@@ -18,16 +18,27 @@ const REVISION_MARK_NAMES: ReadonlySet<string> = new Set([
   "runPropertyChange",
 ]);
 
-const CARRIER_OWNERS = [
-  {
-    markName: RUN_IDENTITY_MARK_NAME,
+/** Ordered source of truth for source-carrier identities and continuation. */
+export const SOURCE_CARRIER_MARK_NAMES = [RUN_IDENTITY_MARK_NAME, "hyperlink"] as const;
+type SourceCarrierMarkName = (typeof SOURCE_CARRIER_MARK_NAMES)[number];
+type CarrierIdentity = { id: number; payloadKey: string } | undefined;
+type CarrierOwner<Name extends SourceCarrierMarkName = SourceCarrierMarkName> = {
+  markName: Name;
+  read: (mark: Mark) => CarrierIdentity;
+};
+type CarrierOwners = { readonly [Name in SourceCarrierMarkName]: CarrierOwner<Name> };
+
+/** Every declared carrier has one owner; iteration follows the canonical tuple. */
+const CARRIER_OWNERS = {
+  [SOURCE_CARRIER_MARK_NAMES[0]]: {
+    markName: SOURCE_CARRIER_MARK_NAMES[0],
     read: (mark: Mark) => {
       const attrs = expectRunIdentityMarkAttrs(mark);
       return { id: attrs.id, payloadKey: JSON.stringify({ ...attrs, id: 0 }) };
     },
   },
-  {
-    markName: "hyperlink",
+  [SOURCE_CARRIER_MARK_NAMES[1]]: {
+    markName: SOURCE_CARRIER_MARK_NAMES[1],
     read: (mark: Mark) => {
       const attrs = expectHyperlinkMarkAttrs(mark);
       if (typeof attrs._docxHyperlinkIndex !== "number") return undefined;
@@ -37,13 +48,10 @@ const CARRIER_OWNERS = [
       };
     },
   },
-] as const;
-type CarrierOwner = (typeof CARRIER_OWNERS)[number];
+} satisfies CarrierOwners;
+type CarrierOwnerEntry = CarrierOwners[SourceCarrierMarkName];
 
-/** The continuation policy covers every declared source-carrier mark. */
-export const SOURCE_CARRIER_MARK_NAMES = CARRIER_OWNERS.map(({ markName }) => markName);
-
-const identityOf = (node: PMNode, owner: CarrierOwner) => {
+const identityOf = (node: PMNode, owner: CarrierOwnerEntry) => {
   const mark = node.marks.find((candidate) => candidate.type.name === owner.markName);
   if (!mark) return undefined;
   const identity = owner.read(mark);
@@ -58,7 +66,7 @@ type ContinuesCarrierOptions = {
   right: PMNode;
   /** Whether revised content lies between the two. */
   bridged: boolean;
-  owner: CarrierOwner;
+  owner: CarrierOwnerEntry;
 };
 
 /** Whether `right` continues `left`'s run across a revision boundary. */
@@ -79,7 +87,10 @@ const continuesCarrier = ({ left, right, bridged, owner }: ContinuesCarrierOptio
  * the identity of its matching source carrier. A control is a container of its
  * own. `nodes` itself comes back when nothing changes.
  */
-const continueIdentities = (nodes: readonly PMNode[], owner: CarrierOwner): readonly PMNode[] => {
+const continueIdentities = (
+  nodes: readonly PMNode[],
+  owner: CarrierOwnerEntry,
+): readonly PMNode[] => {
   const renamed = new Map<number, Mark>();
   /** The last carrier with an identity, while only revised content follows it. */
   let anchor: PMNode | undefined;
@@ -130,6 +141,8 @@ export const continueSourceCarrierIdentitiesAcrossRevisions = (
   nodes: readonly PMNode[],
 ): readonly PMNode[] => {
   let continued = nodes;
-  for (const owner of CARRIER_OWNERS) continued = continueIdentities(continued, owner);
+  for (const markName of SOURCE_CARRIER_MARK_NAMES) {
+    continued = continueIdentities(continued, CARRIER_OWNERS[markName]);
+  }
   return continued;
 };
