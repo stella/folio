@@ -1,6 +1,6 @@
 import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
-import { paragraphMarkCarrier } from "@stll/docx-core/ops";
+import { paragraphMarkCarrier, paragraphMarkRemovesParagraph } from "@stll/docx-core/ops";
 import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 import { Mapping, StepMap, ReplaceStep, Transform, type Step } from "prosemirror-transform";
 import {
@@ -494,13 +494,20 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       followingKind,
       endsContainer: !followingContainerChild,
       removesCurrentMark: joins === true,
-      removesParagraph: joins === true && (markWasAdded || followingKind === "table"),
+      removesParagraph:
+        joins === true &&
+        paragraphMarkRemovesParagraph({
+          followingKind,
+          holdsNoContent: holdsNoContent(paragraph),
+          markWasAdded,
+        }),
     });
     if (
       marker &&
       holdsNoContent(paragraph) &&
       carrier === "none" &&
       joins &&
+      (followingKind !== undefined || markWasAdded) &&
       index + reversed.length + 1 > 1
     ) {
       context.deleted.push({ from: entry.position, to: entry.position + paragraph.nodeSize });

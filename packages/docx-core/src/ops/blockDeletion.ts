@@ -30,6 +30,20 @@ type BlockDeletionOptions = {
 
 export type ParagraphMarkCarrier = "following" | "current" | "none";
 
+type ParagraphMarkRemovalOptions = {
+  followingKind: "paragraph" | "table" | "other" | undefined;
+  holdsNoContent: boolean;
+  markWasAdded: boolean;
+};
+
+/** Whether resolving a paragraph mark also retires its paragraph. */
+export const paragraphMarkRemovesParagraph = ({
+  followingKind,
+  holdsNoContent,
+  markWasAdded,
+}: ParagraphMarkRemovalOptions): boolean =>
+  holdsNoContent || (followingKind !== "table" && markWasAdded);
+
 type ParagraphMarkCarrierOptions = {
   followingKind: "paragraph" | "table" | "other" | undefined;
   endsContainer: boolean;

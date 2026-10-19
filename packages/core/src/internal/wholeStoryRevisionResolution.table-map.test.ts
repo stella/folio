@@ -10,6 +10,10 @@ const cell = (text: string, attrs?: Record<string, unknown>) =>
 const row = (cells: PMNode[], attrs?: Record<string, unknown>) =>
   schema.node("tableRow", attrs, cells);
 const table = (rows: PMNode[]) => schema.node("table", null, rows);
+const deletedParagraphMark = {
+  kind: "del",
+  info: { id: 7, author: "Reviewer", date: "2026-10-19" },
+} as const;
 
 const paragraphPosition = (doc: PMNode, text: string): number => {
   let found: number | null = null;
@@ -76,4 +80,32 @@ test("nested table resolution preserves a following paragraph position", () => {
 
   expect(result.mapping.map(source, 1)).toBe(final);
   expect(final).toBeLessThan(source);
+});
+
+test("accepting an empty paragraph-mark deletion removes the paragraph before a table", () => {
+  const following = table([row([cell("cell")])]);
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", { pPrMark: deletedParagraphMark }),
+    following,
+  ]);
+
+  const result = resolveWholeStory({ doc, mode: "accept", styleResolver: null, numbering: null });
+
+  expect(result.failed).toBe(false);
+  expect(result.resolved.content.content).toEqual([following]);
+});
+
+test("accepting a non-empty paragraph-mark deletion keeps its cleared carrier before a table", () => {
+  const following = table([row([cell("cell")])]);
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", { pPrMark: deletedParagraphMark }, [schema.text("kept")]),
+    following,
+  ]);
+
+  const result = resolveWholeStory({ doc, mode: "accept", styleResolver: null, numbering: null });
+
+  expect(result.failed).toBe(false);
+  expect(result.resolved.childCount).toBe(2);
+  expect(result.resolved.firstChild?.textContent).toBe("kept");
+  expect(result.resolved.firstChild?.attrs["pPrMark"]).toBeNull();
 });

@@ -61,6 +61,22 @@ const sectionsOf = (reviewer: FolioDocxReviewer): { text: string; endsSection: b
   });
 
 describe("deleting the paragraph that ends a section", () => {
+  test("direct and accepted tracked deletion remove a paragraph immediately before a table", async () => {
+    const source = await buildSectionsDocx();
+    const direct = await open(source);
+    expect(deleteBlock(direct, SECTIONS_FIXTURE_TEXT.twoOpens, "direct").applied).toHaveLength(1);
+    const expected = sectionsOf(direct);
+
+    const tracked = await open(source);
+    expect(
+      deleteBlock(tracked, SECTIONS_FIXTURE_TEXT.twoOpens, "tracked-changes").applied,
+    ).toHaveLength(1);
+    tracked.acceptAll();
+
+    expect(sectionsOf(tracked)).toEqual(expected);
+    expect(expected.some(({ text }) => text === SECTIONS_FIXTURE_TEXT.twoOpens)).toBe(false);
+  });
+
   test("merges its section into the next one and saves, in direct mode", async () => {
     const reviewer = await open(await buildSectionsDocx());
 

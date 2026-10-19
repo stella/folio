@@ -27,7 +27,7 @@ import type {
   RunPropertyChange,
 } from "../model/document";
 import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
-import { paragraphMarkCarrier } from "./blockDeletion";
+import { paragraphMarkCarrier, paragraphMarkRemovesParagraph } from "./blockDeletion";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
 import {
@@ -1145,16 +1145,34 @@ const joinOps = (
     followingKind,
     endsContainer: containerFinal,
     removesCurrentMark: true,
-    removesParagraph: followingKind !== "table" && (added || empty),
+    removesParagraph: paragraphMarkRemovesParagraph({
+      followingKind,
+      holdsNoContent: empty,
+      markWasAdded: added,
+    }),
   });
   if (canGo && blocks.length > 1 && carrier === "none") {
     if (empty && followingKind === "table") {
+      const anchor = blocks.find(
+        (block, index): block is Paragraph =>
+          index !== location.index && block.type === "paragraph",
+      );
+      if (anchor === undefined) {
+        return Result.err(
+          refusal(
+            op,
+            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            `Resolving the mark of ${paraId} leaves no structural inverse anchor.`,
+          ),
+        );
+      }
       return Result.ok([
         {
-          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
           story,
-          expected: [paragraph],
-          blocks: [],
+          blockId: anchor.paraId ?? "",
+          expected: blocks,
+          blocks: blocks.filter((_, index) => index !== location.index),
         },
       ]);
     }

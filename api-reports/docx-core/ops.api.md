@@ -723,6 +723,9 @@ export type ParagraphMarkCarrier = "following" | "current" | "none";
 export const paragraphMarkCarrier: (input: ParagraphMarkCarrierOptions) => ParagraphMarkCarrier;
 
 // @public
+export const paragraphMarkRemovesParagraph: (input: ParagraphMarkRemovalOptions) => boolean;
+
+// @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
 
 // @public

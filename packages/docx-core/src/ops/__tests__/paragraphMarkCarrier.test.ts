@@ -1,6 +1,90 @@
 import { describe, expect, test } from "bun:test";
 
-import { paragraphMarkCarrier } from "../blockDeletion";
+import type { Document, Paragraph } from "../../model/document";
+import { applyDocumentOp } from "../apply";
+import { paragraphMarkCarrier, paragraphMarkRemovesParagraph } from "../blockDeletion";
+import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
+
+const resolveAccepted = (document: Document, revisionIds = [7]): Document => {
+  const result = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds,
+    decision: REVISION_DECISIONS.ACCEPT,
+  });
+  if (result.isErr()) throw result.error;
+  return result.value.document;
+};
+
+const table = {
+  type: "table",
+  rows: [
+    {
+      type: "tableRow",
+      cells: [
+        { type: "tableCell", content: [{ type: "paragraph", paraId: "00000002", content: [] }] },
+      ],
+    },
+  ],
+} as const;
+const finalParagraph = { type: "paragraph", paraId: "00000003", content: [] } as const;
+
+test("accepting an emptied paragraph-mark deletion removes its paragraph before a table", () => {
+  const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    content: [
+      {
+        type: "deletion",
+        info: { ...info, id: 8 },
+        content: [{ type: "run", content: [{ type: "deletedText", text: "removed" }] }],
+      },
+    ],
+    pPrMark: { kind: "del", info },
+  };
+  const document: Document = {
+    package: { document: { content: [paragraph, table, finalParagraph] } },
+  };
+
+  expect(resolveAccepted(document, [7, 8]).package.document.content).toEqual([
+    table,
+    finalParagraph,
+  ]);
+});
+
+test("accepting a non-empty paragraph-mark deletion keeps and clears its carrier before a table", () => {
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    content: [{ type: "run", content: [{ type: "text", text: "kept" }] }],
+    pPrMark: { kind: "del", info: { id: 7, author: "Reviewer", date: "2026-10-19" } },
+  };
+  const document: Document = {
+    package: { document: { content: [paragraph, table, finalParagraph] } },
+  };
+
+  expect(resolveAccepted(document).package.document.content).toEqual([
+    { ...paragraph, pPrMark: undefined },
+    table,
+    finalParagraph,
+  ]);
+});
+
+describe("paragraphMarkRemovesParagraph", () => {
+  test.each([
+    { followingKind: "table", holdsNoContent: true, markWasAdded: false, expected: true },
+    { followingKind: "table", holdsNoContent: false, markWasAdded: false, expected: false },
+    { followingKind: "table", holdsNoContent: false, markWasAdded: true, expected: false },
+    { followingKind: "paragraph", holdsNoContent: false, markWasAdded: true, expected: true },
+    { followingKind: undefined, holdsNoContent: false, markWasAdded: true, expected: true },
+  ] as const)(
+    "returns $expected before $followingKind when empty=$holdsNoContent and added=$markWasAdded",
+    ({ expected, ...options }) => {
+      expect(paragraphMarkRemovesParagraph(options)).toBe(expected);
+    },
+  );
+});
 
 describe("paragraphMarkCarrier", () => {
   test("the following paragraph owns a deleted break", () => {
