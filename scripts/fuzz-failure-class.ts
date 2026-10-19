@@ -25,6 +25,13 @@ const semanticClasses = [
     mode: "all",
   },
   {
+    pattern: /^Missing numbering format for displayed label/u,
+    area: "List numbering",
+    message: "Missing numbering format for displayed label",
+    shape: "paragraph-numbering",
+    mode: "all",
+  },
+  {
     pattern: /\[directTracked\]/u,
     area: "Revision acceptance",
     message: "accepted tracked batches differ from direct batches",

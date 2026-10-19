@@ -10,7 +10,8 @@ import {
   shellQuote,
   writeFailureRecord,
 } from "../support/failure-fingerprints.ts";
-import { recordFailure, relationEnv } from "../support/fuzz-loop.ts";
+import { recordFailure, relationInputs } from "../support/fuzz-loop.ts";
+import { consumerScenarioReplay } from "../support/replay-inputs.ts";
 import { FlowError, runFlow, runFlowFile } from "../support/fuzz.ts";
 import type { FlowFile } from "../support/flow-file.ts";
 import { openReviewer } from "../support/documents.ts";
@@ -197,14 +198,17 @@ if (!ENABLED) {
     test(`public corpus full flow: ${fixture}`, { timeout: 180_000 }, async () => {
       const destination = path.join(output, fixture.slice(PUBLIC_CORPUS_PREFIX.length));
       await mkdir(destination, { recursive: true });
-      const repro = [
-        `FOLIO_SCENARIO_PUBLIC_CORPUS_FUZZ=1 FOLIO_SCENARIO_SEED=${seed} FOLIO_SCENARIO_PUBLIC_CORPUS_STEPS=${steps}`,
-        `FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT=test-results/public-corpus FOLIO_SCENARIO_PUBLIC_CORPUS_FIXTURE=${shellQuote(fixture)}`,
-        relationEnv(),
-        "bun scripts/consumer-scenarios.ts -- public-corpus-fuzz.test.ts",
-      ]
-        .filter(Boolean)
-        .join(" ");
+      const repro = consumerScenarioReplay({
+        inputs: {
+          ...relationInputs(),
+          publicCorpusFuzz: "1",
+          seed: String(seed),
+          publicCorpusSteps: String(steps),
+          publicCorpusOutput: "test-results/public-corpus",
+          publicCorpusFixture: fixture,
+        },
+        files: ["public-corpus-fuzz.test.ts"],
+      });
       const stagedDirectory = process.env[PUBLIC_CORPUS_DIRECTORY_ENV];
       if (!stagedDirectory) throw new TypeError("Public corpus cache directory is missing");
       const cache = path.dirname(stagedDirectory);

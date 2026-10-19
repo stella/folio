@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 1339715958,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1339715958,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "3CEFFC83",
+          "separator": " "
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 1339715958",
+  "title": "a tracked merge into a bullet labels it with the list it shows"
+}

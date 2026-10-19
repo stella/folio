@@ -7,29 +7,45 @@
  * a megapixel PNG — megabytes per drawing — for the life of the document,
  * whether or not anything ever paints it.
  *
- * A descriptor says the same thing as a list of flat rectangles in the
- * drawing's own coordinate space. It is hundreds of bytes against megabytes,
- * and it is what a renderer draws: no picture is built at parse time or at
- * paint time, so a backend with vector operators draws vectors.
+ * A descriptor says the same thing as a list of filled rectangles, filled
+ * polygons, and stroked polylines in the drawing's own coordinate space. It
+ * is hundreds of bytes against megabytes, and it is what a renderer draws: no
+ * picture is built at parse time or at paint time, so a backend with vector
+ * operators draws vectors.
  */
 
-/** One flat rectangle of a preview, in the coordinate space of {@link PreviewDescriptor.extent}. */
-export type PreviewShape = {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-  /** Six hexadecimal digits, no leading `#`, as `a:srgbClr@val` spells it. */
-  readonly color: string;
-};
+/** One point in the coordinate space of {@link PreviewDescriptor.extent}. */
+export type PreviewPoint = { readonly x: number; readonly y: number };
+
+export type PreviewShape =
+  | {
+      /** Absent on diagram rectangles produced before previews supported paths. */
+      readonly type?: "rect";
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+      /** Six hexadecimal digits, no leading `#`, as `a:srgbClr@val` spells it. */
+      readonly color: string;
+    }
+  | {
+      readonly type: "polygon";
+      readonly points: readonly PreviewPoint[];
+      readonly color: string;
+    }
+  | {
+      readonly type: "polyline";
+      readonly points: readonly PreviewPoint[];
+      readonly color: string;
+      readonly strokeWidth: number;
+    };
 
 /**
- * Discriminated on `kind` rather than shaped as a diagram record: chart frames
- * and OLE previews are the same problem and will want the same field, and a
- * `kind` now is cheaper than migrating a bare `diagram` later.
+ * The kind identifies the drawing source while the renderers share the same
+ * bounded vector primitives for every source.
  */
 export type PreviewDescriptor = {
-  readonly kind: "diagram";
+  readonly kind: "chart" | "diagram";
   /**
    * The drawing's extent, in the units `shapes` coordinates use (EMU).
    *
@@ -38,6 +54,6 @@ export type PreviewDescriptor = {
    * drawn in.
    */
   readonly extent: { readonly width: number; readonly height: number };
-  /** Already clipped to the shape cap, in paint order. */
+  /** Already bounded by the shape and point caps, in paint order. */
   readonly shapes: readonly PreviewShape[];
 };

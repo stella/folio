@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
 import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
+import { fitWidthZoom } from "@stll/folio-core/paged-layout/fitWidthZoom";
 import { computeScrollPageInfo } from "@stll/folio-core/paged-layout/scrollPageInfo";
 import type { ScrollPageInfo } from "@stll/folio-core/paged-layout/scrollPageInfo";
 import {
@@ -13,14 +14,6 @@ import { DEFAULT_PAGE_GAP, VIEWPORT_PADDING_TOP } from "../../paged-editor/Paged
 import type { PagedEditorRef } from "../../paged-editor/PagedEditor";
 
 const PAGE_INFO_FADE_MS = 600;
-
-// Breathing room kept between the fitted page and the scroll container edges so
-// the page does not sit flush against them (matched to the viewport padding).
-const FIT_TO_WIDTH_PADDING_PX = 16;
-const FIT_TO_WIDTH_MIN_ZOOM = 0.1;
-// A page never grows past 100% in fit-width: a container wider than the page
-// leaves the page at natural size, centred, rather than magnified.
-const FIT_TO_WIDTH_MAX_ZOOM = 1;
 
 export type UseZoomAndPageInfoArgs = {
   scrollContainerRef: RefObject<HTMLDivElement | null>;
@@ -177,29 +170,31 @@ export function useZoomAndPageInfo({
   // to be measured in the DOM; a rAF retry covers the window before the first
   // layout completes. A manual zoom afterwards wins (this only re-fires on a
   // container resize), matching the documented "override the fit" behaviour.
+  // The fit basis reserves the widest scrollbar gutter seen on this container,
+  // so a gutter the fit itself toggles cannot feed back into the next fit.
   useEffect(() => {
     if (!fitToWidth || !scrollContainerEl) {
       return undefined;
     }
     let rafId = 0;
+    let reservedEdge = 0;
     const applyFit = () => {
       const pageWidth = pagedEditorRef.current?.getLayout()?.pages[0]?.size.w ?? 0;
       if (pageWidth <= 0) {
         rafId = requestAnimationFrame(applyFit); // layout not ready yet
         return;
       }
-      const available = scrollContainerEl.clientWidth - FIT_TO_WIDTH_PADDING_PX;
-      if (available <= 0) {
-        return;
-      }
-      const target = Math.min(
-        FIT_TO_WIDTH_MAX_ZOOM,
-        Math.max(FIT_TO_WIDTH_MIN_ZOOM, Math.round((available / pageWidth) * 100) / 100),
-      );
+      const fit = fitWidthZoom({
+        offsetWidth: scrollContainerEl.offsetWidth,
+        clientWidth: scrollContainerEl.clientWidth,
+        pageWidth,
+        reservedEdge,
+      });
+      reservedEdge = fit.reservedEdge;
       // Guard against a redundant zoom set (which would re-anchor the scroll)
       // and sub-percent jitter.
-      if (Math.abs(target - zoomRef.current) > 0.005) {
-        setZoomWithViewportAnchor(target);
+      if (fit.zoom !== null && Math.abs(fit.zoom - zoomRef.current) > 0.005) {
+        setZoomWithViewportAnchor(fit.zoom);
       }
     };
     const observer = new ResizeObserver(() => {
