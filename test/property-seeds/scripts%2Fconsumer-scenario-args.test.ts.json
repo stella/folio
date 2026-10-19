@@ -1,0 +1,10 @@
+{
+  "merged replay inputs round-trip once": [
+    {
+      "seed": 1527555107,
+      "path": "11:3:1:5:8:5:5",
+      "note": "Keep flag-like replay values distinct from replay flags when merged inputs are serialized",
+      "date": "2026-10-19"
+    }
+  ]
+}

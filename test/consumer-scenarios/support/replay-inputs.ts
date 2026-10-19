@@ -37,6 +37,8 @@ export const CONSUMER_SCENARIO_REPLAY_INPUTS = [
 const optionForFlag = (flag: `--${string}`): string =>
   flag.slice(2).replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
 
+const shellQuote = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
+
 /** Read the replay inputs present in an environment into one mergeable value set. */
 export const consumerScenarioReplayInputs = (
   environment: Readonly<Record<string, string | undefined>>,
@@ -58,7 +60,10 @@ export const consumerScenarioReplay = ({
     CONSUMER_SCENARIO_EXECUTABLE,
     ...CONSUMER_SCENARIO_REPLAY_INPUTS.flatMap(({ flag }) => {
       const value = inputs[optionForFlag(flag)];
-      return value == null ? [] : [`${flag} '${value.replaceAll("'", `'\\''`)}'`];
+      if (value == null) return [];
+      return [
+        value.startsWith("-") ? shellQuote(`${flag}=${value}`) : `${flag} ${shellQuote(value)}`,
+      ];
     }),
     ...flags.filter((flag) => flag !== ""),
     ...(files.length === 0 ? [] : ["--", ...files]),

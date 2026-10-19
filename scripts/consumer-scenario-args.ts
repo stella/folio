@@ -80,13 +80,15 @@ export const parseConsumerArgs = (argv: readonly string[], repoRoot: string): Co
     else if (arg === "--coverage-out") args.coverageOut = path.resolve(value());
     else if (arg === "--feature-coverage-out") args.featureCoverageOut = path.resolve(value());
     else if (arg !== undefined) {
-      const input = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ flag }) => flag === arg);
+      const input = CONSUMER_SCENARIO_REPLAY_INPUTS.find(
+        ({ flag }) => flag === arg || arg.startsWith(`${flag}=`),
+      );
       if (input !== undefined) {
         if (seenReplayFlags.has(input.flag)) {
           panic(`consumer-scenarios: repeated replay flag ${input.flag}`);
         }
         seenReplayFlags.add(input.flag);
-        const inputValue = value();
+        const inputValue = arg === input.flag ? value() : arg.slice(input.flag.length + 1);
         Object.assign(args, {
           [optionForFlag(input.flag)]:
             input.kind === "path" ? path.resolve(inputValue) : inputValue,
