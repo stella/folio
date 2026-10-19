@@ -7,7 +7,18 @@
  * walks would drift.
  */
 
-import type { BlockContent, Paragraph, ParagraphContent } from "../types/document";
+import type {
+  BlockContent,
+  Hyperlink,
+  InlineSdt,
+  Paragraph,
+  ParagraphContent,
+  SimpleField,
+  Table,
+  TableCell,
+  TableRow,
+  TrackedRunContent,
+} from "../types/document";
 import { visitInlineContentSlots } from "./paragraphTraversal";
 
 export type CommentMarkerSlot = {
@@ -70,18 +81,219 @@ export const visitCommentMarkers = (
 export const removeCommentMarkers = (
   blocks: readonly BlockContent[],
   commentIds: ReadonlySet<number>,
-): void => {
-  if (commentIds.size === 0) return;
-  const removals = new Map<ParagraphContent[], number[]>();
+): BlockContent[] => {
+  if (commentIds.size === 0) return blocks.slice();
+  const removals = new Map<readonly unknown[], number[]>();
   visitCommentMarkers(blocks, ({ content, index, item }) => {
     if (!commentIds.has(item.id)) return;
     const indexes = removals.get(content) ?? [];
     indexes.push(index);
     removals.set(content, indexes);
   });
-  for (const [content, indexes] of removals) {
-    for (const index of indexes.toReversed()) content.splice(index, 1);
-  }
+  if (removals.size === 0) return blocks.slice();
+
+  const rebuildArray = <T>(content: T[], rebuildItem: (item: T) => T): T[] => {
+    const removed = removals.get(content);
+    let changed = removed !== undefined;
+    const result: T[] = [];
+    for (const [index, item] of content.entries()) {
+      if (removed?.includes(index) === true) continue;
+      const rebuilt = rebuildItem(item);
+      changed ||= rebuilt !== item;
+      result.push(rebuilt);
+    }
+    return changed ? result : content;
+  };
+
+  type SimpleFieldContent = SimpleField["content"][number];
+  type InlineSdtContent = InlineSdt["content"][number];
+  type HyperlinkContent = Hyperlink["children"][number];
+
+  const rebuildHyperlink = (hyperlink: Hyperlink): Hyperlink => {
+    const children = rebuildArray(hyperlink.children, rebuildHyperlinkContent);
+    return children === hyperlink.children ? hyperlink : { ...hyperlink, children };
+  };
+  const rebuildSimpleFieldContent = (item: SimpleFieldContent): SimpleFieldContent => {
+    switch (item.type) {
+      case "hyperlink":
+        return rebuildHyperlink(item);
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        return rebuildTrackedChange(item);
+      case "inlineWrapper": {
+        const content = rebuildParagraphContent(item.content);
+        return content === item.content ? item : { ...item, content };
+      }
+      case "run":
+      case "preservedInline":
+        return item;
+    }
+  };
+  const rebuildSimpleField = (field: SimpleField): SimpleField => {
+    const content = rebuildArray(field.content, rebuildSimpleFieldContent);
+    return content === field.content ? field : { ...field, content };
+  };
+  const rebuildInlineSdtContent = (item: InlineSdtContent): InlineSdtContent => {
+    switch (item.type) {
+      case "hyperlink":
+        return rebuildHyperlink(item);
+      case "simpleField":
+        return rebuildSimpleField(item);
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        return rebuildTrackedChange(item);
+      case "inlineSdt":
+        return rebuildInlineSdt(item);
+      case "inlineWrapper": {
+        const content = rebuildParagraphContent(item.content);
+        return content === item.content ? item : { ...item, content };
+      }
+      case "run":
+      case "complexField":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+      case "mathEquation":
+      case "preservedInline":
+        return item;
+    }
+  };
+  const rebuildInlineSdt = (sdt: InlineSdt): InlineSdt => {
+    const content = rebuildArray(sdt.content, rebuildInlineSdtContent);
+    return content === sdt.content ? sdt : { ...sdt, content };
+  };
+  const rebuildTrackedContent = (item: TrackedRunContent): TrackedRunContent => {
+    switch (item.type) {
+      case "hyperlink":
+        return rebuildHyperlink(item);
+      case "simpleField":
+        return rebuildSimpleField(item);
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        return rebuildTrackedChange(item);
+      case "inlineSdt":
+        return rebuildInlineSdt(item);
+      case "inlineWrapper": {
+        const content = rebuildParagraphContent(item.content);
+        return content === item.content ? item : { ...item, content };
+      }
+      case "run":
+      case "complexField":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+      case "mathEquation":
+      case "preservedInline":
+        return item;
+    }
+  };
+  const rebuildTrackedChange = (
+    change: Extract<ParagraphContent, { type: "insertion" | "deletion" | "moveFrom" | "moveTo" }>,
+  ): typeof change => {
+    const content = rebuildArray(change.content, rebuildTrackedContent);
+    return content === change.content ? change : { ...change, content };
+  };
+  const rebuildParagraphItem = (item: ParagraphContent): ParagraphContent => {
+    switch (item.type) {
+      case "hyperlink":
+        return rebuildHyperlink(item);
+      case "simpleField":
+        return rebuildSimpleField(item);
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        return rebuildTrackedChange(item);
+      case "inlineSdt":
+        return rebuildInlineSdt(item);
+      case "inlineWrapper": {
+        const content = rebuildParagraphContent(item.content);
+        return content === item.content ? item : { ...item, content };
+      }
+      case "run":
+      case "complexField":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+      case "mathEquation":
+      case "preservedInline":
+        return item;
+    }
+  };
+  const rebuildHyperlinkContent = (item: HyperlinkContent): HyperlinkContent => {
+    switch (item.type) {
+      case "inlineWrapper": {
+        const content = rebuildParagraphContent(item.content);
+        return content === item.content ? item : { ...item, content };
+      }
+      case "run":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "preservedInline":
+        return item;
+    }
+  };
+  const rebuildParagraphContent = (content: ParagraphContent[]): ParagraphContent[] =>
+    rebuildArray(content, rebuildParagraphItem);
+
+  const rebuildParagraph = (paragraph: Paragraph): Paragraph => {
+    const content = rebuildParagraphContent(paragraph.content);
+    return content === paragraph.content ? paragraph : { ...paragraph, content };
+  };
+  const rebuildCell = (cell: TableCell): TableCell => {
+    const content = rebuildBlocks(cell.content);
+    return content === cell.content ? cell : { ...cell, content };
+  };
+  const rebuildRow = (row: TableRow): TableRow => {
+    const cells = rebuildArray(row.cells, rebuildCell);
+    return cells === row.cells ? row : { ...row, cells };
+  };
+  const rebuildTable = (table: Table): Table => {
+    const rows = rebuildArray(table.rows, rebuildRow);
+    return rows === table.rows ? table : { ...table, rows };
+  };
+  const rebuildBlock = (block: BlockContent): BlockContent => {
+    switch (block.type) {
+      case "paragraph":
+        return rebuildParagraph(block);
+      case "table":
+        return rebuildTable(block);
+      case "blockSdt":
+      case "blockCustomXml": {
+        const content = rebuildBlocks(block.content);
+        return content === block.content ? block : { ...block, content };
+      }
+      case "preservedBlock":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+        return block;
+    }
+  };
+  const rebuildBlocks = (content: BlockContent[]): BlockContent[] =>
+    rebuildArray(content, rebuildBlock);
+
+  return rebuildBlocks(blocks.slice());
 };
 
 /**
