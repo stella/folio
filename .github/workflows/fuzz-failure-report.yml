@@ -26,7 +26,7 @@ permissions: {}
 jobs:
   report:
     name: File fuzz failures by signature
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
       group: fuzz-failure-issues

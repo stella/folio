@@ -53,7 +53,7 @@ permissions: {}
 jobs:
   package:
     name: Build and package the .vsix
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read # No id-token while dependency and build scripts run.
     outputs:
@@ -129,7 +129,7 @@ jobs:
     name: Publish the .vsix as its own GitHub release
     needs: package
     if: inputs.publish
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
@@ -179,7 +179,7 @@ jobs:
     # Marketplace user id, which the `stll` publisher needs before the first
     # publish. Only the publish steps wait for the `publish` input.
     if: inputs.marketplace
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: vscode-marketplace
     permissions:
       contents: read
@@ -277,7 +277,7 @@ jobs:
     name: Publish to Open VSX
     needs: package
     if: inputs.publish && inputs.open-vsx
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: open-vsx
     permissions:
       contents: read
