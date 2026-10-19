@@ -387,26 +387,118 @@ export type SignatureState = {
 const ISSUE_BODY_LIMIT = 65_535;
 const LANE_TABLE_HEADER = ["| Lane | Last run | Clean scheduled runs |", "| --- | --- | --- |"];
 
+type ShellWord = { raw: string; value: string };
+
+/** Decode the shell syntax emitted by scenario replay commands. */
+export const shellWords = (command: string): ShellWord[] | null => {
+  const words: ShellWord[] = [];
+  let index = 0;
+  while (index < command.length) {
+    while (command[index] === " " || command[index] === "\t") index += 1;
+    if (index === command.length) break;
+    const start = index;
+    let value = "";
+    while (index < command.length && command[index] !== " " && command[index] !== "\t") {
+      const character = command[index] ?? "";
+      if (character === "'") {
+        const end = command.indexOf("'", index + 1);
+        if (end === -1) return null;
+        value += command.slice(index + 1, end);
+        index = end + 1;
+        continue;
+      }
+      if (character === '"') {
+        index += 1;
+        let closed = false;
+        while (index < command.length) {
+          const quoted = command[index] ?? "";
+          if (quoted === '"') {
+            index += 1;
+            closed = true;
+            break;
+          }
+          if (quoted === "`" || quoted === "$" || quoted === "\n") return null;
+          if (quoted !== "\\") {
+            value += quoted;
+            index += 1;
+            continue;
+          }
+          const escaped = command[index + 1];
+          if (escaped === undefined) return null;
+          if (escaped === "$" || escaped === "`" || escaped === '"' || escaped === "\\") {
+            value += escaped;
+          } else if (escaped !== "\n") {
+            value += `\\${escaped}`;
+          }
+          index += 2;
+        }
+        if (!closed) return null;
+        continue;
+      }
+      if (character === "\\") {
+        const escaped = command[index + 1];
+        if (escaped === undefined) return null;
+        if (escaped !== "\n") value += escaped;
+        index += 2;
+        continue;
+      }
+      if (character === "\n" || /[;|&<>()`$]/u.test(character)) return null;
+      value += character;
+      index += 1;
+    }
+    words.push({ raw: command.slice(start, index), value });
+  }
+  return words;
+};
+
 /** Convert old environment-prefixed scenario replays before they reach public issue text. */
 export const cliRepro = (command: string): string => {
-  const values: string[] = [];
-  let rest = command.trim();
-  while (true) {
-    const match = /^(FOLIO_SCENARIO_[A-Z_]+)=('(?:'\\''|[^'])*'|"(?:\\.|[^"])*"|\S+)\s*/u.exec(
-      rest,
-    );
-    if (match === null) break;
-    const [, name = "", raw = ""] = match;
+  const words = shellWords(command);
+  if (words === null) return command;
+  const inputs: Record<string, string> = {};
+  let index = 0;
+  while (index < words.length) {
+    const word = words[index];
+    const assignment = /^(FOLIO_SCENARIO_[A-Z_]+)=(.*)$/su.exec(word?.value ?? "");
+    if (assignment === null) break;
+    const [, name = "", value = ""] = assignment;
     const flag = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ env }) => env === name)?.flag;
     if (flag === undefined) break;
-    values.push(`${flag} ${raw}`);
-    rest = rest.slice(match[0].length);
+    const option = flag
+      .slice(2)
+      .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
+    inputs[option] = value;
+    index += 1;
   }
-  if (values.length === 0) return command;
-  const executable = "bun scripts/consumer-scenarios.ts";
-  if (!rest.startsWith(executable)) return command;
-  const suffix = rest.slice(executable.length).trim();
-  return consumerScenarioReplay({ flags: [...values, suffix] });
+  if (Object.keys(inputs).length === 0) return command;
+  if (
+    words[index]?.value !== "bun" ||
+    words[index + 1]?.value !== "scripts/consumer-scenarios.ts"
+  ) {
+    return command;
+  }
+  const suffix = words.slice(index + 2);
+  const flags: string[] = [];
+  for (let suffixIndex = 0; suffixIndex < suffix.length; suffixIndex += 1) {
+    const word = suffix[suffixIndex];
+    if (word?.value === "--") {
+      flags.push(...suffix.slice(suffixIndex).map(({ raw }) => raw));
+      break;
+    }
+    const replayInput = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ flag }) => flag === word?.value);
+    if (replayInput === undefined) {
+      flags.push(word?.raw ?? "");
+      continue;
+    }
+    const value = suffix[suffixIndex + 1];
+    if (value === undefined) return command;
+    const option = replayInput.flag
+      .slice(2)
+      .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
+    inputs[option] = value.value;
+    suffixIndex += 1;
+  }
+  return consumerScenarioReplay({ inputs, flags: [flags.join(" ")] });
 };
 
 const flowArtifactReplay = (command: string, seed: number, artifact: string): string => {
@@ -416,7 +508,7 @@ const flowArtifactReplay = (command: string, seed: number, artifact: string): st
     `$1'${artifact}'`,
   );
   return substituted === replay
-    ? consumerScenarioReplay({ flags: [`--seed ${seed}`, `--flow '${artifact}'`] })
+    ? consumerScenarioReplay({ inputs: { seed: String(seed), flow: artifact } })
     : substituted;
 };
 

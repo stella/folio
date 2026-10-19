@@ -3,12 +3,11 @@ import fc from "fast-check";
 import path from "node:path";
 
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
-import { shellQuote } from "../test/consumer-scenarios/support/failure-fingerprints";
 import {
   CONSUMER_SCENARIO_REPLAY_INPUTS,
   consumerScenarioInputs,
   consumerScenarioReplay,
-  consumerScenarioReplayFlags,
+  consumerScenarioReplayInputs,
   parseConsumerArgs,
 } from "./consumer-scenario-args";
 
@@ -49,7 +48,7 @@ test("flow replays put relation flags after the executable and parse them back",
   process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"] = "3";
   try {
     const command = consumerScenarioReplay({
-      flags: [consumerScenarioReplayFlags(process.env, shellQuote), "--flow 'flow.json'"],
+      inputs: { ...consumerScenarioReplayInputs(process.env), flow: "flow.json" },
       files: ["flow-corpus.test.ts"],
     });
     expect(command.split(" ").at(0)).toBe("bun");
@@ -77,7 +76,7 @@ test("the replay input table drives parsing, environment mapping and rendering",
     expect(consumerScenarioInputs(parseConsumerArgs([], "/repo"), environment)[option]).toBe(value);
 
     const replay = consumerScenarioReplay({
-      flags: [consumerScenarioReplayFlags(environment, shellQuote)],
+      inputs: consumerScenarioReplayInputs(environment),
     });
     expect(parseConsumerArgs(argvOf(replay), "/repo")[option as keyof typeof parsedFlag]).toBe(
       expected,
@@ -111,7 +110,7 @@ test("generated replay settings round-trip entirely through CLI flags", () => {
         runs: fc.nat().map(String),
         collisionRuns: fc.nat().map(String),
         swarm: fc.constantFrom("0", "1"),
-        relations: fc.string({ minLength: 1, maxLength: 30 }),
+        relations: fc.stringMatching(/^[a-zA-Z0-9_-]{1,30}$/u),
         relationsDepth: fc.nat().map(String),
         flow: fc.oneof(
           fc.string({ minLength: 1, maxLength: 80 }),
@@ -120,16 +119,7 @@ test("generated replay settings round-trip entirely through CLI flags", () => {
       }),
       (settings) => {
         const command = consumerScenarioReplay({
-          flags: [
-            `--seed ${shellQuote(settings.seed)}`,
-            `--steps ${shellQuote(settings.steps)}`,
-            `--runs ${shellQuote(settings.runs)}`,
-            `--collision-runs ${shellQuote(settings.collisionRuns)}`,
-            `--swarm ${shellQuote(settings.swarm)}`,
-            `--relations ${shellQuote(settings.relations)}`,
-            `--relations-depth ${shellQuote(settings.relationsDepth)}`,
-            `--flow ${shellQuote(settings.flow)}`,
-          ],
+          inputs: settings,
           files: ["fuzz.test.ts"],
         });
         expect(command).toStartWith("bun ");
@@ -139,6 +129,55 @@ test("generated replay settings round-trip entirely through CLI flags", () => {
       },
     ),
     { numRuns: 100, id: "generated scenario replay settings round-trip" },
+  );
+});
+
+test("repeated replay flags are rejected", () => {
+  expect(() => parseConsumerArgs(["--seed", "1", "--seed", "2"], "/repo")).toThrow(
+    "consumer-scenarios: repeated replay flag --seed",
+  );
+});
+
+test("flow replay inputs override overlapping run inputs", () => {
+  const runInputs = { seed: "792792449", runs: "12", collisionRuns: "8" };
+  const flowInputs = { seed: "20260933", runs: "0", collisionRuns: "0" };
+  const command = consumerScenarioReplay({ inputs: { ...runInputs, ...flowInputs } });
+
+  expect(command.match(/--seed/gu)).toHaveLength(1);
+  expect(command.match(/--runs/gu)).toHaveLength(1);
+  expect(command.match(/--collision-runs/gu)).toHaveLength(1);
+  expect(parseConsumerArgs(argvOf(command), "/repo")).toMatchObject(flowInputs);
+});
+
+test("merged run and flow replay inputs round-trip without repeated flags", () => {
+  const inputNames = CONSUMER_SCENARIO_REPLAY_INPUTS.map(({ flag }) =>
+    flag.slice(2).replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase()),
+  );
+  const inputs = fc.dictionary(
+    fc.constantFrom(...inputNames),
+    fc.stringMatching(/^[a-zA-Z0-9_-]{1,30}$/u),
+  );
+  assertProperty(
+    fc.property(inputs, inputs, (runInputs, flowInputs) => {
+      const merged = { ...runInputs, ...flowInputs };
+      const command = consumerScenarioReplay({ inputs: merged });
+      const argv = argvOf(command);
+      const flags = argv.filter((argument) => argument.startsWith("--"));
+      expect(new Set(flags).size).toBe(flags.length);
+      const expected = Object.fromEntries(
+        Object.entries(merged).map(([option, value]) => {
+          const input = CONSUMER_SCENARIO_REPLAY_INPUTS.find(
+            ({ flag }) =>
+              flag
+                .slice(2)
+                .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase()) === option,
+          );
+          return [option, input?.kind === "path" ? path.resolve(value) : value];
+        }),
+      );
+      expect(consumerScenarioInputs(parseConsumerArgs(argv, "/repo"), {})).toMatchObject(expected);
+    }),
+    { numRuns: 100, id: "merged replay inputs round-trip once" },
   );
 });
 

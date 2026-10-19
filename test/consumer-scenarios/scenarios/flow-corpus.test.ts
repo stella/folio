@@ -16,7 +16,7 @@ import { consumerScenarioReplay } from "../support/replay-inputs.ts";
 import { readFlowDir } from "../support/corpus.ts";
 import { reportScenarioFailure } from "../support/failure-fingerprints.ts";
 import { type FlowFile, parseFlowFile } from "../support/flow-file.ts";
-import { flowReplay, flowTestName, relationFlags } from "../support/fuzz-loop.ts";
+import { flowReplay, flowTestName, relationInputs } from "../support/fuzz-loop.ts";
 import { type FlowRun, runFlowFile, unstableFixtureRefs, vacuousSteps } from "../support/fuzz.ts";
 import {
   expectedFailure,
@@ -124,7 +124,8 @@ if (requested !== undefined && requested !== "") {
   for (const { file, flow } of corpus) {
     const name = `checked-in flow ${file}`;
     const repro = consumerScenarioReplay({
-      flags: [relationFlags(), `--only '^${name.replaceAll(".", "\\.")}'`],
+      inputs: relationInputs(),
+      flags: [`--only '^${name.replaceAll(".", "\\.")}'`],
       files: ["flow-corpus.test.ts"],
     });
     const title = `${name}: ${flow.title ?? flow.origin ?? "regression flow"}`;

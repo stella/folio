@@ -19,7 +19,8 @@
           "type": "deleteBlock",
           "blockId": "1BF99289"
         }
-      ]
+      ],
+      "atomic": false
     }
   ],
   "swarm": [

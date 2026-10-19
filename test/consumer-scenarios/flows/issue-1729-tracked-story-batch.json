@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 774176527,
+  "steps": [
+    { "action": "mistake", "seed": 816132534 },
+    { "action": "story batch", "seed": 1909965473 }
+  ],
+  "swarm": [
+    "commentOnRange",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableRow",
+    "insertTableColumn"
+  ],
+  "origin": "insert+unpin of 2179064ca195f917",
+  "title": "keeps tracked story batch results aligned (#1729)"
+}

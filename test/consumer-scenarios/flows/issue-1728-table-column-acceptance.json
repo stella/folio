@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 1502256349,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3518069453,
+      "operations": [{ "type": "insertTableColumn", "blockId": "5CFDAD72", "position": "after" }],
+      "atomic": true
+    },
+    { "action": "accept one", "seed": 294949906 }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "formatRange",
+    "insertAfterBlock",
+    "replaceBlock",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTable",
+    "deleteTableRow",
+    "insertTableColumn",
+    "deleteTable"
+  ],
+  "origin": "shrunk from random flow seed 1502256349",
+  "title": "accepts an inserted table column (#1728)"
+}

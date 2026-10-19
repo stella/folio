@@ -23,7 +23,8 @@
  *   at a time, with pre-batch anchors mapped through earlier operations, in
  *   the order the batch contract gives (packages/core/src/ai-edits/
  *   batchOverlap.test.ts): annotations first, then insertions and other
- *   non-column operations, then table-column edits in source-grid order
+ *   non-column operations together from right to left, then table-column
+ *   edits in source-grid order
  *   (table and column descending, insertions before deletions at ties).
  * - `readerStability`: after every save, the live reviewer and the reopened
  *   one give the same `getContent()`, bridge snapshot, `toMarkdown`,
@@ -42,6 +43,12 @@
 
 import assert from "node:assert/strict";
 import { validateDocxPackage } from "@stll/docx-core";
+import {
+  contentRank,
+  groupInsertionRuns,
+  orderBatchOperations,
+  type BatchOrderAddress,
+} from "@stll/docx-core/ops";
 import { inflateRawSync } from "node:zlib";
 
 import { createReviewerBridge } from "@stll/folio-agents";
@@ -415,7 +422,7 @@ const rebase = (before: string, after: string, start: number, end: number): numb
  * `operation`, made against `preRows`, restated against `rows`: the same
  * block, the same words. Null when what it names is no longer there.
  */
-const restate = (
+export const restate = (
   operation: AnyOperation,
   preRows: readonly Row[],
   rows: readonly Row[],
@@ -440,6 +447,22 @@ const restate = (
     const startOffset = pre.text.indexOf(find);
     if (!find || startOffset < 0 || pre.text.indexOf(find, startOffset + 1) >= 0) return null;
     handle = { blockId, startOffset, endOffset: startOffset + find.length };
+  }
+  if (operation.type === "replaceBlock" && now.text !== pre.text) {
+    if (operation["styleId"] !== undefined || operation["preserveFormatting"] === false) {
+      return null;
+    }
+    const shift = rebase(pre.text, now.text, 0, pre.text.length);
+    if (shift === null) return null;
+    const range = createFolioAITextRangeHandle({
+      blockId,
+      text: now.text,
+      startOffset: shift,
+      endOffset: pre.text.length + shift,
+    });
+    if (!range || now.text.slice(range.startOffset, range.endOffset) !== pre.text) return null;
+    const { type: _type, blockId: _blockId, text: replace, ...metadata } = restated;
+    return { ...metadata, id: operation.id, type: "replaceRange", range, replace };
   }
   if (handle) {
     const shift = rebase(pre.text, now.text, handle.startOffset, handle.endOffset);
@@ -590,19 +613,21 @@ export const sequentialGroups = ({
   const earlyIds = new Set(earlyProperties.map(({ id }) => id));
   const isColumnEdit = (operation: AnyOperation): boolean =>
     operation.type === "insertTableColumn" || operation.type === "deleteTableColumn";
-  const rest = indexed
-    .filter(
-      ({ operation }) =>
-        !INSERTIONS.has(operation.type) &&
-        !ANNOTATIONS.has(operation.type) &&
-        !earlyIds.has(operation.id) &&
-        !isColumnEdit(operation),
-    )
-    .toSorted((left, right) => {
-      const a = placement(left.operation, preRows);
-      const b = placement(right.operation, preRows);
-      return b[0] - a[0] || b[1] - a[1] || b[2] - a[2] || right.index - left.index;
-    });
+  const deletedSplitTargets = new Set(
+    applied
+      .filter(
+        (operation) =>
+          mode === "tracked-changes" &&
+          operation.type === "deleteBlock" &&
+          applied.some(
+            (candidate) =>
+              candidate.type === "insertTable" &&
+              candidate["position"] !== "before" &&
+              blockIdOf(candidate) === blockIdOf(operation),
+          ),
+      )
+      .map(blockIdOf),
+  );
   const columnLocation = (operation: AnyOperation): [number, number] => {
     const targetId = blockIdOf(operation);
     const target = preRows.find((row) => row.id === targetId);
@@ -615,28 +640,62 @@ export const sequentialGroups = ({
         : sourceColumn;
     return [target.table.tableIndex, column];
   };
-  const columns = indexed
-    .filter(({ operation }) => isColumnEdit(operation))
-    .toSorted((left, right) => {
-      const [leftTable, leftColumn] = columnLocation(left.operation);
-      const [rightTable, rightColumn] = columnLocation(right.operation);
-      if (leftTable !== rightTable) return rightTable - leftTable;
-      if (leftColumn !== rightColumn) return rightColumn - leftColumn;
-      const leftIsInsertion = left.operation.type === "insertTableColumn";
-      const rightIsInsertion = right.operation.type === "insertTableColumn";
-      if (leftIsInsertion !== rightIsInsertion) return leftIsInsertion ? -1 : 1;
-      return right.index - left.index;
-    });
-  const insertions = applied.filter((operation) => INSERTIONS.has(operation.type));
+  const ordered = orderBatchOperations(
+    indexed.filter(
+      ({ operation }) => !ANNOTATIONS.has(operation.type) && !earlyIds.has(operation.id),
+    ),
+    ({ operation, index }): BatchOrderAddress => {
+      if (isColumnEdit(operation)) {
+        const [tablePosition, columnIndex] = columnLocation(operation);
+        return {
+          type: "column",
+          tablePosition,
+          columnIndex,
+          insertion: operation.type === "insertTableColumn",
+          inputIndex: index,
+        };
+      }
+      const [block, inside, offset] = placement(operation, preRows);
+      const hasDeletedSplit = deletedSplitTargets.has(blockIdOf(operation));
+      const position =
+        hasDeletedSplit && operation.type === "deleteBlock"
+          ? (block + 1) * 1_000_000_000
+          : block * 1_000_000_000 + inside * 100_000_000 + offset;
+      return {
+        type: "content",
+        position,
+        rank: contentRank(operation, { hasDeletedSplit }),
+        inputIndex: index,
+      };
+    },
+  );
+  const rest = ordered.filter(({ operation }) => !isColumnEdit(operation));
+  const columns = ordered.filter(({ operation }) => isColumnEdit(operation));
+  const inputOrder = new Map(applied.map(({ id }, index) => [id, index]));
+  const groups = groupInsertionRuns(
+    rest.map(({ operation }) => operation),
+    (operation) => {
+      if (!INSERTIONS.has(operation.type)) return null;
+      const [block, inside, offset] = placement(operation, preRows);
+      return block * 1_000_000_000 + inside * 100_000_000 + offset;
+    },
+  ).map((group) =>
+    group.toSorted(
+      (left, right) =>
+        (inputOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+        (inputOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+    ),
+  );
   return [
     ...applied.filter((operation) => ANNOTATIONS.has(operation.type)).map((one) => [one]),
-    // Insertions sharing a gap keep their input order, which is the batch's
-    // own contract, so they are stated together the same way.
-    ...(insertions.length > 0 ? [insertions] : []),
     // A tracked batch retires final breaks only after admissible property edits.
     // Separate deletions retire them immediately, so replay those edits first.
     ...earlyProperties.map((one) => [one]),
-    ...rest.map(({ operation }) => [operation]),
+    // Insertions participate in the same right-to-left sweep as the other
+    // operations. Only insertions at one gap stay together: applying every
+    // insertion first can change which pending paragraph mark a later
+    // merge or replacement owns. Within a gap the batch preserves input order.
+    ...groups,
     ...columns.map(({ operation }) => [operation]),
   ];
 };
