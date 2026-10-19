@@ -108,6 +108,9 @@ export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> =
  * change to how the fixture serializes detaches every flow on it.
  */
 export const VACUOUS_CHECKED_IN_FLOWS: Readonly<Record<string, readonly number[]>> = {
+  // The recorded reply step finds no unresolved comment; the later list edits
+  // and rejection are the behavior this flow guards.
+  "issue-1770-list-review-sequence.json": [4],
   // The separate patch intentionally refuses pendingParagraphMarkDeletion;
   // known-issues.test.ts asserts the refusal and unchanged document explicitly.
   "restyle-paragraph-pending-deletion.json": [1],
