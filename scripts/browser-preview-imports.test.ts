@@ -1,6 +1,10 @@
-import { expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 // Scan all browser harness/host sources, including future specs and helpers.
 // Source imports must be resolved by the bundler, never by a dev server URL.

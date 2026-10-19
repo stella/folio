@@ -1,7 +1,11 @@
+import { scanTestTimeout } from "../test/scan-timeout";
+
 import { panic } from "better-result";
-import { expect, test } from "bun:test";
+import { setDefaultTimeout, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

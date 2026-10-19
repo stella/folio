@@ -1,17 +1,10 @@
 const CONSUMER_SCENARIO_EXECUTABLE = "bun scripts/consumer-scenarios.ts";
 
-type ReplayCommandOptions = { flags?: readonly string[]; files?: readonly string[] };
-
-/** Build a replay with the executable first, followed by flags and file selectors. */
-export const consumerScenarioReplay = ({
-  flags = [],
-  files = [],
-}: ReplayCommandOptions = {}): string =>
-  [
-    CONSUMER_SCENARIO_EXECUTABLE,
-    ...flags.filter((flag) => flag !== ""),
-    ...(files.length === 0 ? [] : ["--", ...files]),
-  ].join(" ");
+type ReplayCommandOptions = {
+  inputs?: Readonly<Record<string, string | null | undefined>>;
+  flags?: readonly string[];
+  files?: readonly string[];
+};
 
 export const CONSUMER_SCENARIO_REPLAY_INPUTS = [
   { flag: "--seed", env: "FOLIO_SCENARIO_SEED", kind: "value" },
@@ -41,12 +34,32 @@ export const CONSUMER_SCENARIO_REPLAY_INPUTS = [
   kind: "value" | "path";
 }[];
 
-/** Render environment replay inputs as CLI flags. */
-export const consumerScenarioReplayFlags = (
+const optionForFlag = (flag: `--${string}`): string =>
+  flag.slice(2).replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
+
+/** Read the replay inputs present in an environment into one mergeable value set. */
+export const consumerScenarioReplayInputs = (
   environment: Readonly<Record<string, string | undefined>>,
-  quote: (value: string) => string,
-): string =>
-  CONSUMER_SCENARIO_REPLAY_INPUTS.flatMap(({ env, flag }) => {
-    const value = environment[env];
-    return value === undefined ? [] : [`${flag} ${quote(value)}`];
-  }).join(" ");
+): Readonly<Record<string, string>> =>
+  Object.fromEntries(
+    CONSUMER_SCENARIO_REPLAY_INPUTS.flatMap(({ env, flag }) => {
+      const value = environment[env];
+      return value === undefined ? [] : [[optionForFlag(flag), value]];
+    }),
+  );
+
+/** Build a replay from one resolved input set, followed by other flags and file selectors. */
+export const consumerScenarioReplay = ({
+  inputs = {},
+  flags = [],
+  files = [],
+}: ReplayCommandOptions = {}): string =>
+  [
+    CONSUMER_SCENARIO_EXECUTABLE,
+    ...CONSUMER_SCENARIO_REPLAY_INPUTS.flatMap(({ flag }) => {
+      const value = inputs[optionForFlag(flag)];
+      return value == null ? [] : [`${flag} '${value.replaceAll("'", `'\\''`)}'`];
+    }),
+    ...flags.filter((flag) => flag !== ""),
+    ...(files.length === 0 ? [] : ["--", ...files]),
+  ].join(" ");
