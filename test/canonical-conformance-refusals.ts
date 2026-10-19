@@ -69,7 +69,6 @@ const COMMAND_REFUSAL_CONTRACTS = {
       "host:addComment",
       "host:acceptChange",
       "host:rejectChange",
-      "host:clearFormatting",
     ],
     rows: [
       {

@@ -1045,7 +1045,7 @@ export function textFormattingToMarks(
  * not formatting, and removing them deleted the comment's range, unlinked the
  * text, orphaned the note and silently resolved the revision.
  */
-export const clearFormatting: Command = (state, dispatch) => {
+const clearFormattingCommand: Command = (state, dispatch) => {
   const { empty } = state.selection;
 
   if (empty) {
@@ -1081,6 +1081,22 @@ export const clearFormatting: Command = (state, dispatch) => {
 
   return true;
 };
+
+/** Clear character formatting from the selection. */
+export const clearFormatting: Command = withCanonicalCommand(clearFormattingCommand, (state) =>
+  canonicalSelectionRanges(state).flatMap(({ from, to }) =>
+    selectRunFormattingCarrierRepresentations({ doc: state.doc, from, to }).map(
+      (representation) => ({
+        type: "formatRun" as const,
+        from: representation.from,
+        to: representation.to,
+        patch: Object.fromEntries(
+          Object.keys(marksToTextFormatting(representation.node.marks)).map((key) => [key, null]),
+        ),
+      }),
+    ),
+  ),
+);
 
 /**
  * Create a command that sets a mark on the selection

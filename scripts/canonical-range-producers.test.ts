@@ -12,6 +12,7 @@ const producers = {
   formatRun: [
     "canonicalCommands.ts#canonicalRunFormatting",
     "extensions/marks/markUtils.ts#canonicalSetMarkFormatting",
+    "extensions/marks/markUtils.ts#clearFormatting",
   ],
   setHyperlink: ["extensions/marks/HyperlinkExtension.ts#setHyperlink"],
   removeHyperlink: ["extensions/marks/HyperlinkExtension.ts#removeHyperlink"],
@@ -212,6 +213,7 @@ test("every canonical range producer normalizes selection endpoints", async () =
               expect([
                 "canonicalCommands.ts#canonicalRunFormatting",
                 "extensions/marks/markUtils.ts#canonicalSetMarkFormatting",
+                "extensions/marks/markUtils.ts#clearFormatting",
               ]).toContain(owner);
               expect(property.initializer.getText()).toBe(
                 `representation.${property.name.getText()}`,
@@ -228,7 +230,8 @@ test("every canonical range producer normalizes selection endpoints", async () =
           }
           if (
             owner.endsWith("#canonicalSetMarkFormatting") ||
-            owner.endsWith("#canonicalRunFormatting")
+            owner.endsWith("#canonicalRunFormatting") ||
+            owner.endsWith("#clearFormatting")
           ) {
             expect(declaration?.getText()).toContain("canonicalSelectionRanges(state)");
             expect(declaration?.getText()).not.toMatch(/state\.selection\.(from|to)/u);
