@@ -4,7 +4,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
-import { aggregateTestTimings, createGraphqlRequest } from "./aggregate-ci-test-timings";
+import {
+  aggregateTestTimings,
+  createGraphqlRequest,
+  selectTimingArtifacts,
+} from "./aggregate-ci-test-timings";
 import { assignTestShards, shardLoads } from "./ci-test-shards";
 
 const temporaryDirectories: string[] = [];
@@ -53,6 +57,35 @@ describe("measured test shard balancing", () => {
     expect(first).toBe(aggregateTestTimings(artifacts.toReversed(), ["kept", "new"]));
     expect(JSON.parse(first)).toEqual({ kept: 20, new: 15 });
     expect(first).not.toContain("vanished");
+  });
+
+  test("timing artifact discovery distinguishes a failed listing from no data", async () => {
+    const failure = new Error("run listing failed");
+    expect(selectTimingArtifacts("stella/folio", async () => Promise.reject(failure))).rejects.toBe(
+      failure,
+    );
+    expect(
+      await selectTimingArtifacts("stella/folio", async () => ({ workflow_runs: [] })),
+    ).toEqual([]);
+  });
+
+  test("timing artifact discovery selects complete sets from eligible runs", async () => {
+    const fetchJson = async (url: string) => {
+      if (url.includes("/workflows/")) {
+        return {
+          workflow_runs: [
+            { event: "pull_request", id: 1 },
+            { event: "push", id: 2 },
+          ],
+        };
+      }
+      return {
+        artifacts: [1, 2, 3, 4].map((id) => ({ id: 20 + id, name: `test-timings-2-${id}` })),
+      };
+    };
+    expect(await selectTimingArtifacts("stella/folio", fetchJson)).toEqual(
+      [1, 2, 3, 4].map((id) => ({ artifactId: 20 + id, runId: 2 })),
+    );
   });
 
   test("assignment is deterministic for identical inputs", () => {
@@ -107,5 +140,6 @@ describe("measured test shard balancing", () => {
     );
     expect(workflow).toContain('--graphql-request "$request"');
     expect(workflow).not.toContain("--arg contents");
+    expect(workflow).not.toContain("< <(");
   });
 });

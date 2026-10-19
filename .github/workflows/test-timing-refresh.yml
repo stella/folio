@@ -43,25 +43,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p test-timing-artifacts
-          accepted=0
-          while read -r run_id; do
-            artifacts=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?per_page=100")
-            count=$(jq '[.artifacts[] | select(.name | startswith("test-timings-'"${run_id}"'-"))] | length' <<< "$artifacts")
-            [[ "$count" == 4 ]] || continue
-            mkdir -p "test-timing-artifacts/${run_id}"
-            while read -r artifact_id; do
-              gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "${RUNNER_TEMP}/${artifact_id}.zip"
-              unzip -q "${RUNNER_TEMP}/${artifact_id}.zip" -d "test-timing-artifacts/${run_id}"
-            done < <(jq -r '.artifacts[] | select(.name | startswith("test-timings-'"${run_id}"'-")) | .id' <<< "$artifacts")
-            accepted=$((accepted + 1))
-            [[ "$accepted" == 5 ]] && break
-          done < <(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?status=success&per_page=100" --jq '.workflow_runs[] | select(.event == "merge_group" or .event == "push") | .id')
-          if [[ "$accepted" == 0 ]]; then
+          manifest="$RUNNER_TEMP/test-timing-artifacts.tsv"
+          bun scripts/aggregate-ci-test-timings.ts \
+            --artifact-manifest "$manifest" \
+            --repository "$GITHUB_REPOSITORY"
+          if [[ ! -s "$manifest" ]]; then
             echo "No complete timing sets are available; skipping refresh." >> "$GITHUB_STEP_SUMMARY"
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          mapfile -t inputs < <(find test-timing-artifacts -name 'test-timings-*.json' -type f | sort)
+          while IFS=$'\t' read -r run_id artifact_id; do
+            mkdir -p "test-timing-artifacts/${run_id}"
+            gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "${RUNNER_TEMP}/${artifact_id}.zip"
+            unzip -q "${RUNNER_TEMP}/${artifact_id}.zip" -d "test-timing-artifacts/${run_id}"
+          done < "$manifest"
+          inputs_file="$RUNNER_TEMP/test-timing-inputs.txt"
+          find test-timing-artifacts -name 'test-timings-*.json' -type f | sort > "$inputs_file"
+          mapfile -t inputs < "$inputs_file"
           bun scripts/aggregate-ci-test-timings.ts --output scripts/ci-test-timings.json "${inputs[@]}"
           if git diff --quiet -- scripts/ci-test-timings.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"

@@ -6,6 +6,14 @@ import { discoverTestSuites, focusedTestFiles, type TestTimings } from "./ci-tes
 
 type TimingArtifact = { runId: string; timings: TestTimings };
 
+type TimingArtifactReference = { artifactId: number; runId: number };
+
+type FetchJson = (url: string) => Promise<unknown>;
+
+type WorkflowRun = { event: string; id: number };
+
+type Artifact = { id: number; name: string };
+
 type GraphqlRequestOptions = {
   base: string;
   branch: string;
@@ -38,6 +46,66 @@ export const createGraphqlRequest = ({
   },
 });
 
+const recordsFor = (value: unknown, key: string) => {
+  if (typeof value !== "object" || value === null || !(key in value)) {
+    panic(`GitHub response is missing ${key}`);
+  }
+  const records = value[key as keyof typeof value];
+  if (!Array.isArray(records)) panic(`GitHub response field ${key} is not an array`);
+  return records;
+};
+
+export const selectTimingArtifacts = async (
+  repository: string,
+  fetchJson: FetchJson,
+): Promise<TimingArtifactReference[]> => {
+  const runsResponse = await fetchJson(
+    `https://api.github.com/repos/${repository}/actions/workflows/ci.yml/runs?status=success&per_page=100`,
+  );
+  const runs = recordsFor(runsResponse, "workflow_runs").filter(
+    (run): run is WorkflowRun =>
+      typeof run === "object" &&
+      run !== null &&
+      typeof run.id === "number" &&
+      (run.event === "merge_group" || run.event === "push"),
+  );
+  const selected: TimingArtifactReference[] = [];
+  let accepted = 0;
+  for (const run of runs) {
+    const artifactsResponse = await fetchJson(
+      `https://api.github.com/repos/${repository}/actions/runs/${run.id}/artifacts?per_page=100`,
+    );
+    const prefix = `test-timings-${run.id}-`;
+    const artifacts = recordsFor(artifactsResponse, "artifacts").filter(
+      (artifact): artifact is Artifact =>
+        typeof artifact === "object" &&
+        artifact !== null &&
+        typeof artifact.id === "number" &&
+        typeof artifact.name === "string" &&
+        artifact.name.startsWith(prefix),
+    );
+    if (artifacts.length !== 4) continue;
+    selected.push(...artifacts.map(({ id }) => ({ artifactId: id, runId: run.id })));
+    accepted += 1;
+    if (accepted === 5) break;
+  }
+  return selected;
+};
+
+const githubFetchJson: FetchJson = async (url) => {
+  const token = process.env.GH_TOKEN;
+  if (!token) panic("GH_TOKEN is required to list timing artifacts");
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
+  if (!response.ok) panic(`GitHub request failed with ${response.status}: ${url}`);
+  return response.json();
+};
+
 const median = (values: number[]) => {
   const sorted = values.toSorted((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
@@ -68,6 +136,24 @@ export const aggregateTestTimings = (artifacts: TimingArtifact[], files: string[
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
+  const artifactManifestIndex = args.indexOf("--artifact-manifest");
+  if (artifactManifestIndex !== -1) {
+    const artifactManifest = args.at(artifactManifestIndex + 1);
+    const repositoryIndex = args.indexOf("--repository");
+    const repository = args.at(repositoryIndex + 1);
+    if (!artifactManifest || !repository) {
+      panic(
+        "Usage: bun scripts/aggregate-ci-test-timings.ts --artifact-manifest <file> --repository <owner/name>",
+      );
+    }
+    const artifacts = await selectTimingArtifacts(repository, githubFetchJson);
+    writeFileSync(
+      artifactManifest,
+      artifacts.map(({ artifactId, runId }) => `${runId}\t${artifactId}`).join("\n") +
+        (artifacts.length === 0 ? "" : "\n"),
+    );
+    process.exit(0);
+  }
   const requestIndex = args.indexOf("--graphql-request");
   if (requestIndex !== -1) {
     const valueFor = (name: string) => {
