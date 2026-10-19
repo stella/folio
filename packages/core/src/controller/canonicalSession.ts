@@ -1482,17 +1482,27 @@ class CanonicalSession {
     }
     const addedNotes = preparedOps.filter((op) => op.type === DOCUMENT_OP_TYPES.ADD_NOTE);
     const firstAddedNote = addedNotes.at(0);
+    // Only references inserted in the caret's paragraph, at or before it, move the caret.
+    const referencesBeforeCaret =
+      firstAddedNote === undefined
+        ? 0
+        : addedNotes.filter(
+            ({ at }) =>
+              sameStory(at.story, firstAddedNote.at.story) &&
+              at.blockId === firstAddedNote.at.blockId &&
+              at.offset <= firstAddedNote.at.offset,
+          ).length;
     const postSelection =
       addedNotes.length === preparedOps.length && firstAddedNote !== undefined
         ? {
             type: "text" as const,
             anchor: {
               ...firstAddedNote.at,
-              offset: firstAddedNote.at.offset + addedNotes.length,
+              offset: firstAddedNote.at.offset + referencesBeforeCaret,
             },
             head: {
               ...firstAddedNote.at,
-              offset: firstAddedNote.at.offset + addedNotes.length,
+              offset: firstAddedNote.at.offset + referencesBeforeCaret,
             },
           }
         : selected.value;

@@ -178,6 +178,37 @@ test("note commands insert after selected text in both editor modes with exact u
   }
 });
 
+test("a note batch across paragraphs leaves the caret after its own paragraph's reference", () => {
+  const session = createCanonicalSession(seed()).unwrap();
+  let state = select(EditorState.create({ schema, doc: session.projection.doc }), 3);
+  const content = [
+    {
+      type: "paragraph" as const,
+      content: [{ type: "run" as const, content: [{ type: "text" as const, text: "A note." }] }],
+    },
+  ];
+  // The caret sits after "ab"; the second note goes after "E" in the next paragraph.
+  const intents = [
+    ...(getCanonicalCommandIntents(
+      singletonManager.requireCommand("insertFootnote")(1, content),
+      state,
+    ) ?? panic("Missing note descriptor.")),
+    ...(getCanonicalCommandIntents(
+      singletonManager.requireCommand("insertEndnote")(1, content),
+      select(state, 10),
+    ) ?? panic("Missing note descriptor.")),
+  ];
+
+  state = accept(session, state, prepareCanonicalCommands(session, state, intents).unwrap());
+  expect(session.document.package.footnotes).toHaveLength(1);
+  expect(session.document.package.endnotes).toHaveLength(1);
+  expect(state.selection.toJSON()).toEqual({ type: "text", anchor: 4, head: 4 });
+
+  state = accept(session, state, session.prepareUndo(state).unwrap());
+  state = accept(session, state, session.prepareRedo(state).unwrap());
+  expect(state.selection.toJSON()).toEqual({ type: "text", anchor: 4, head: 4 });
+});
+
 test("note-reference descriptors delete beside a caret or across a range with exact undo", () => {
   for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Reviewer" }] as const) {
     for (const selection of ["before", "after", "range"] as const) {
