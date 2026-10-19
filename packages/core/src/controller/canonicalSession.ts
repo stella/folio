@@ -568,9 +568,6 @@ const project = ({
     });
   });
   if (failure !== undefined) return Result.err(failure);
-  if (paragraphs.length !== sources.size) {
-    return refuse("The projection changed paragraph structure.");
-  }
   return Result.ok(new CanonicalProjection({ doc: converted.value, paragraphs, story }));
 };
 
@@ -1384,7 +1381,11 @@ class CanonicalSession {
       this.projection.paragraph(second.paraId)?.container
     )
       return noChange("There is no adjacent paragraph to join.");
-    if (!isCanonicalJoinBoundary(state, direction))
+    const current = this.projection.paragraph(at.value.blockId);
+    if (
+      current === undefined ||
+      at.value.offset !== (direction === "backward" ? 0 : current.text.length)
+    )
       return refuse("Join requires a caret at a paragraph boundary.");
     return this.prepareIntent(state, {
       type: "joinParagraphs",
@@ -1773,18 +1774,24 @@ const hasDeletedParagraphMark = (node: PMNode): boolean => {
 /** Visible graphemes concatenate across retained deletions and deleted paragraph marks. */
 const visibleDeletionContext = (state: EditorState) => {
   const { selection } = state;
-  const index = selection.$from.index(0);
+  const paragraphDepth = selection.$from.depth;
+  const containerDepth = paragraphDepth - 1;
+  if (containerDepth < 0 || selection.$from.node(paragraphDepth).type.name !== "paragraph")
+    return refuse("Canonical deletion requires a caret inside a paragraph.");
+  const container = selection.$from.node(containerDepth);
+  const containerStart = selection.$from.start(containerDepth);
+  const index = selection.$from.index(containerDepth);
   let first = index;
-  while (first > 0 && hasDeletedParagraphMark(state.doc.child(first - 1))) first -= 1;
+  while (first > 0 && hasDeletedParagraphMark(container.child(first - 1))) first -= 1;
   let last = index;
-  while (last + 1 < state.doc.childCount && hasDeletedParagraphMark(state.doc.child(last)))
+  while (last + 1 < container.childCount && hasDeletedParagraphMark(container.child(last)))
     last += 1;
   let text = "";
   const physicalStarts: number[] = [];
   const physicalEnds: number[] = [];
   let visibleOffset = 0;
   let issue: CanonicalSessionError | undefined;
-  state.doc.forEach((paragraph, paragraphOffset, paragraphIndex) => {
+  container.forEach((paragraph, paragraphOffset, paragraphIndex) => {
     if (paragraphIndex < first || paragraphIndex > last) return;
     const native = canonicalNativeCells(paragraph);
     if (native.isErr()) {
@@ -1802,8 +1809,8 @@ const visibleDeletionContext = (state: EditorState) => {
       )
         continue;
       const value = cell.type === "text" ? cell.text : "\uFFFC";
-      const from = paragraphOffset + 1 + cell.from;
-      const to = paragraphOffset + 1 + cell.to;
+      const from = containerStart + paragraphOffset + 1 + cell.from;
+      const to = containerStart + paragraphOffset + 1 + cell.to;
       if (cell.type !== "text" && selection.from > from && selection.from < to) {
         issue = new CanonicalSessionError({
           gap: CANONICAL_GAP.dispatch,

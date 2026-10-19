@@ -83,10 +83,7 @@ export const canonicalBrowserAcceptances = [
   },
 ] satisfies readonly { seed: number; trace: BrowserInputTrace }[];
 
-type AcceptanceSourceShape = Exclude<
-  (typeof canonicalBrowserAcceptances)[number]["trace"]["shape"],
-  "tables"
->;
+type AcceptanceSourceShape = (typeof canonicalBrowserAcceptances)[number]["trace"]["shape"];
 type SourceRefusal = Pick<CanonicalSessionError, "name" | "gap" | "reason" | "message">;
 
 const unsupportedInlineSource = {
@@ -96,8 +93,16 @@ const unsupportedInlineSource = {
   message: "Canonical sessions currently require plain paragraphs and supported inline atoms.",
 } as const satisfies SourceRefusal;
 
+const unexpectedTableRefusal = {
+  name: "CanonicalSessionError",
+  gap: CANONICAL_GAP.dispatch,
+  reason: "refused",
+  message: "Canonical table acceptance unexpectedly refused.",
+} as const satisfies SourceRefusal;
+
 /** Expected source limits apply only on refusal; newly supported sources run their traces. */
 export const canonicalBrowserSourceRefusals = {
+  tables: unexpectedTableRefusal,
   "single-bullet-list": unsupportedInlineSource,
   "header-footer": unsupportedInlineSource,
   "mixed-lists": unsupportedInlineSource,

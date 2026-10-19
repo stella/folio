@@ -12,6 +12,8 @@ const tableFixture = async (story: "main" | "header" | "footer") => {
   if (story === "main") return parsed;
   const content = parsed.package.document.content.filter((block) => block.type === "table");
   const source = createEmptyDocument({ initialText: "Body" });
+  const body = source.package.document.content.at(0);
+  if (body?.type === "paragraph") body.paraId = "10000000";
   if (story === "header")
     source.package.headers = new Map([
       ["rIdHeader", { type: "header", hdrFtrType: "default", content }],

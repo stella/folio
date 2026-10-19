@@ -109,7 +109,7 @@ describe("canonical public operation batches", () => {
       const editor = setup(document);
       const result = editor.apply([{ id: "merge", type: "mergeBlockWithNext", blockId }]);
       expect(result.applied).toEqual([]);
-      expect(result.issues).toMatchObject([{ operationId: "merge", reason: "missingBlock" }]);
+      expect(result.issues).toMatchObject([{ operationId: "merge", code: "missingBlock" }]);
       expect(editor.session.version).toBe(0);
     }
   });
