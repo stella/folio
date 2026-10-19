@@ -1481,30 +1481,31 @@ class CanonicalSession {
       preparedOps = tracked;
     }
     const addedNotes = preparedOps.filter((op) => op.type === DOCUMENT_OP_TYPES.ADD_NOTE);
-    const firstAddedNote = addedNotes.at(0);
-    // Only references inserted in the caret's paragraph, at or before it, move the caret.
-    const referencesBeforeCaret =
-      firstAddedNote === undefined
-        ? 0
-        : addedNotes.filter(
-            ({ at }) =>
-              sameStory(at.story, firstAddedNote.at.story) &&
-              at.blockId === firstAddedNote.at.blockId &&
-              at.offset <= firstAddedNote.at.offset,
-          ).length;
+    // The caret follows the reference inserted at the selection's end, past every
+    // reference the batch inserts at or before it in the same paragraph.
+    const atSelection = addedNotes.find(({ at }) =>
+      [selected.value.anchor, selected.value.head].some(
+        (end) =>
+          sameStory(at.story, end.story) && at.blockId === end.blockId && at.offset === end.offset,
+      ),
+    );
+    const caret =
+      atSelection === undefined
+        ? undefined
+        : {
+            ...atSelection.at,
+            offset:
+              atSelection.at.offset +
+              addedNotes.filter(
+                ({ at }) =>
+                  sameStory(at.story, atSelection.at.story) &&
+                  at.blockId === atSelection.at.blockId &&
+                  at.offset <= atSelection.at.offset,
+              ).length,
+          };
     const postSelection =
-      addedNotes.length === preparedOps.length && firstAddedNote !== undefined
-        ? {
-            type: "text" as const,
-            anchor: {
-              ...firstAddedNote.at,
-              offset: firstAddedNote.at.offset + referencesBeforeCaret,
-            },
-            head: {
-              ...firstAddedNote.at,
-              offset: firstAddedNote.at.offset + referencesBeforeCaret,
-            },
-          }
+      addedNotes.length === preparedOps.length && caret !== undefined
+        ? { type: "text" as const, anchor: caret, head: caret }
         : selected.value;
     const preDocument = this.currentDocument;
     return this.stage({
