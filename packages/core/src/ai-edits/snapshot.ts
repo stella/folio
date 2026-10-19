@@ -864,7 +864,9 @@ const createFolioAIEditSnapshotInternal = (
     usedBlockIds.add(id);
     const headingLevel = getHeadingLevel(node, builtInStyles);
     const visibleList =
-      node.type.name === "paragraph" ? nextListLabel(expectParagraphAttrs(node)) : undefined;
+      node.type.name === "paragraph"
+        ? nextListLabel(snapshotListAttrs(expectParagraphAttrs(node), styleResolver))
+        : undefined;
     const listLabel = visibleList?.label;
     const kind = getBlockKind(headingLevel, visibleList?.kind === "marker");
     const displayLabel = getDisplayLabel(node, listLabel, kind === "heading");
@@ -874,7 +876,7 @@ const createFolioAIEditSnapshotInternal = (
         ? expectParagraphAttrs(node)._originalFormatting?.outlineLevel
         : undefined;
     const listReference =
-      visibleList?.numbering === undefined
+      displayLabel === undefined || visibleList?.numbering === undefined
         ? undefined
         : {
             numId: visibleList.numbering.numId,
@@ -991,14 +993,58 @@ export const createFolioAIEditSnapshotWithStyleResolver = (
  * `listReference`. A paragraph is a list item when it shows a marker, which is
  * when it has a label. One whose numbering shows none (a `w:vanish` level, a
  * level its list does not define, or `w:numId="0"` cancelling its style's
- * numbering) reads as prose and is a paragraph, keeping its `statedNumbering` and
- * effective `listReference`.
+ * numbering) reads as prose and is a paragraph, keeping its `statedNumbering`
+ * without claiming effective list membership.
  */
 const getBlockKind = (headingLevel: number | undefined, showsMarker: boolean) => {
   if (headingLevel !== undefined) {
     return "heading";
   }
   return showsMarker ? "listItem" : "paragraph";
+};
+
+/** Rebind cached style numbering to the current style before the owner reads it. */
+const snapshotListAttrs = (
+  attrs: Readonly<ReturnType<typeof expectParagraphAttrs>>,
+  styleResolver: RunStyleResolver | null,
+) => {
+  if (styleResolver === null) return attrs;
+  const styleNumbering = (styleId: unknown) =>
+    styleResolver.resolveParagraphStyle(typeof styleId === "string" ? styleId : null)
+      .paragraphFormatting?.numPr;
+  const styleNumberingAttr = (styleId: unknown) => {
+    const numbering = styleNumbering(styleId);
+    return numbering === undefined ? null : paragraphNumberingAttr(numbering);
+  };
+  const currentStyleNumbering = styleNumberingAttr(attrs.styleId);
+  const currentAttrs = { ...attrs };
+  delete currentAttrs.numPrFromStyle;
+  const cancelsStaleStyleNumbering =
+    (attrs.numPr === null || attrs.numPr === undefined) &&
+    currentStyleNumbering === null &&
+    attrs._propertyChanges !== null &&
+    attrs._propertyChanges !== undefined &&
+    attrs._propertyChanges.length > 0;
+  return {
+    ...currentAttrs,
+    ...(cancelsStaleStyleNumbering ? { numPr: paragraphNumberingAttr({ kind: "none" }) } : {}),
+    ...(currentStyleNumbering === null ? {} : { numPrFromStyle: currentStyleNumbering }),
+    ...(attrs._propertyChanges === null || attrs._propertyChanges === undefined
+      ? {}
+      : {
+          _propertyChanges: attrs._propertyChanges.map((change) => ({
+            ...change,
+            ...(change.previousFormatting === undefined
+              ? {}
+              : {
+                  previousFormatting: {
+                    ...change.previousFormatting,
+                    numPrFromStyle: styleNumberingAttr(change.previousFormatting.styleId),
+                  },
+                }),
+          })),
+        }),
+  };
 };
 
 /** The block's 1-based heading level, as {@link resolveHeadingLevel} classifies it. */

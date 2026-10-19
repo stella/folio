@@ -48,14 +48,18 @@ export type ParagraphList =
  */
 export const resolveParagraphList = (
   sources: ParagraphNumberingSources & {
-    inheritedReference?: ParagraphListReference;
+    /** `null` means the current style was resolved and supplies no numbering. */
+    inheritedReference?: ParagraphListReference | null;
   },
   numbering: NumberingMap | null,
   standaloneRendering?: ListRendering,
 ): ParagraphList => {
   const resolved = effectiveParagraphNumbering({
     numPr: sources.numPr,
-    numPrFromStyle: sources.numPrFromStyle ?? sources.inheritedReference,
+    numPrFromStyle:
+      sources.inheritedReference === undefined
+        ? sources.numPrFromStyle
+        : (sources.inheritedReference ?? undefined),
   });
   const effective =
     resolved.kind === "none" &&

@@ -197,8 +197,17 @@ export function advanceVisibleListMarker(
   const final = advance(attrs, "final");
   const original =
     attrs.pPrMark?.kind === "ins" ? undefined : advance(previous ?? attrs, "original");
+  const levelOnlyResolves =
+    attrs.numPr?.kind !== "levelOnly" ||
+    effectiveParagraphNumbering(
+      paragraphNumberingSourcesFromBoundary({
+        numPr: attrs.numPr,
+        numPrFromStyle: attrs.numPrFromStyle,
+      }),
+    ).kind === "reference";
   const visible =
     attrs.numPr?.kind !== "none" &&
+    levelOnlyResolves &&
     final.marker === null &&
     original &&
     original.marker !== null &&

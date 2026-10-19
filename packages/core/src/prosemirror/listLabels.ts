@@ -267,7 +267,7 @@ export const createListLabelCounter = (
         return {
           kind: "marker",
           label: projectedLabel,
-          numbering: countedNumbering,
+          numbering: countedList.reference,
         };
       default: {
         const unhandled: never = countedList;

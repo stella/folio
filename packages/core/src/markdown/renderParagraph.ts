@@ -16,6 +16,10 @@ import { isQuoteStyle, resolveHeadingLevel } from "../docx/builtInStyles";
 import { getCachedNumberingMap } from "../docx/numberingParser";
 import { listLabelAttrsFromRendering } from "../prosemirror/listLabels";
 import { resolveParagraphList } from "../prosemirror/paragraphList";
+import {
+  effectiveParagraphNumberingReference,
+  paragraphNumberingAttr,
+} from "../prosemirror/numberingAttr";
 import type { DocxPackage, ListRendering, Paragraph } from "../types/document";
 import { renderParagraphInline } from "./renderRuns";
 import { inlineBreaksToHtml } from "./escape";
@@ -58,13 +62,17 @@ export function renderParagraphBlock(
   // Every paragraph advances the list counter, whatever it renders as: the
   // items after a numbered heading continue from its number.
   const inherited = ctx.paragraphNumbering(para.formatting?.styleId);
+  const inheritedReference = effectiveParagraphNumberingReference({
+    numPr: undefined,
+    numPrFromStyle: inherited,
+  });
   const sources = {
     numPr: para.formatting?.numPr,
     numPrFromStyle: para.formatting?.numPrFromStyle,
   };
   const numbering = pkg?.numbering ? getCachedNumberingMap(pkg.numbering) : null;
   const resolvedList = resolveParagraphList(
-    { ...sources, ...(inherited === undefined ? {} : { inheritedReference: inherited }) },
+    { ...sources, inheritedReference: inheritedReference ?? null },
     numbering,
     standaloneListRendering(para),
   );
@@ -72,14 +80,28 @@ export function renderParagraphBlock(
   const counterAttrs = listLabelAttrsFromRendering(resolvedRendering, {
     ...sources,
     numPrFromStyle:
-      sources.numPrFromStyle ?? (resolvedList.kind === "none" ? undefined : inherited),
+      resolvedList.kind === "none" ? undefined : (inherited ?? sources.numPrFromStyle),
   });
+  if (
+    sources.numPr === undefined &&
+    sources.numPrFromStyle !== undefined &&
+    inheritedReference === undefined &&
+    para.propertyChanges !== undefined &&
+    para.propertyChanges.length > 0
+  ) {
+    counterAttrs.numPr = paragraphNumberingAttr({ kind: "none" });
+  }
   if (para.pPrMark) counterAttrs.pPrMark = para.pPrMark;
+  let originalList: ListRendering | undefined;
   if (para.propertyChanges) {
     counterAttrs._propertyChanges = para.propertyChanges.map(
       ({ previousFormatting, ...change }) => {
         if (!previousFormatting) return change;
         const previousInherited = ctx.paragraphNumbering(previousFormatting.styleId);
+        const previousInheritedReference = effectiveParagraphNumberingReference({
+          numPr: undefined,
+          numPrFromStyle: previousInherited,
+        });
         const previousSources = {
           numPr: previousFormatting.numPr,
           numPrFromStyle: previousFormatting.numPrFromStyle,
@@ -87,17 +109,19 @@ export function renderParagraphBlock(
         const previousList = resolveParagraphList(
           {
             ...previousSources,
-            ...(previousInherited === undefined ? {} : { inheritedReference: previousInherited }),
+            inheritedReference: previousInheritedReference ?? null,
           },
           numbering,
         );
         const previousRendering =
           previousList.kind === "marker" ? previousList.rendering : undefined;
+        originalList ??= previousRendering;
         const previousAttrs = listLabelAttrsFromRendering(previousRendering, {
           ...previousSources,
           numPrFromStyle:
-            previousSources.numPrFromStyle ??
-            (previousList.kind === "none" ? undefined : previousInherited),
+            previousList.kind === "none"
+              ? undefined
+              : (previousInherited ?? previousSources.numPrFromStyle),
         });
         return {
           ...change,
@@ -116,7 +140,7 @@ export function renderParagraphBlock(
     );
   }
   const countedList = ctx.nextListLabel(counterAttrs, resolvedRendering);
-  const { label } = countedList;
+  const label = countedList.kind === "marker" ? countedList.label : undefined;
   const inline = renderParagraphInline(ctx, pkg, para.content, para.paraId);
   const styleId = para.formatting?.styleId;
 
@@ -139,7 +163,8 @@ export function renderParagraphBlock(
     };
   }
 
-  const visibleList = resolvedList.kind === "marker" ? resolvedRendering : undefined;
+  const visibleList =
+    resolvedRendering ?? (sources.numPr?.kind === "levelOnly" ? undefined : originalList);
   if (visibleList && label !== undefined) {
     return renderListItem(ctx, visibleList, label, inline);
   }

@@ -752,7 +752,12 @@ const requestedStyleNumbering = (
 const numberingFields = (model: Model, styleId: string | null, row?: Row): Fields => {
   const numbering = requestedStyleNumbering(model, styleId, row);
   if (numbering === UNKNOWN_NUMBERING) return { listLevel: ANY };
-  return { listLevel: numbering?.kind === "reference" ? (numbering.ilvl ?? 0) : undefined };
+  return {
+    listLevel:
+      numbering?.kind === "reference" && numberingKind(model, numbering) === "listItem"
+        ? (numbering.ilvl ?? 0)
+        : undefined,
+  };
 };
 
 /** A retained reference alone is not a rendered marker: its level must exist and be visible. */
@@ -955,7 +960,7 @@ const paragraphRequest = (
         ...(typeof numbering["ilvl"] === "number" ? { ilvl: numbering["ilvl"] } : {}),
       });
       const reference =
-        effective?.kind === "reference"
+        effective?.kind === "reference" && numberingKind(model, effective) === "listItem"
           ? { numId: effective.numId, level: effective.ilvl ?? 0 }
           : undefined;
       fields.listLevel = reference?.level;
@@ -974,7 +979,7 @@ const paragraphRequest = (
         ilvl: numbering["ilvl"] as number,
       });
       const reference =
-        effective?.kind === "reference"
+        effective?.kind === "reference" && numberingKind(model, effective) === "listItem"
           ? { numId: effective.numId, level: effective.ilvl ?? 0 }
           : undefined;
       fields.listLevel = reference?.level;
