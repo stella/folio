@@ -2,7 +2,7 @@
 import type { BlockContent, Document, Footnote, Endnote, Run } from "../model/document";
 import { storyParagraphs, updateBlockList } from "./blocks";
 import { leafSpans } from "./leaves";
-import { documentStories, storyBody } from "./stories";
+import { documentStories, replaceStoryBody, storyBody } from "./stories";
 
 type NoteMarkOptions = { note: Footnote | Endnote; customMark: boolean };
 export const noteContentWithAutomaticMark = ({
@@ -46,3 +46,23 @@ export const noteUsesCustomMark = (document: Document, note: Footnote | Endnote)
       ),
     ),
   );
+
+/** Restore source-owned automatic markers after an operation rewrites a note story. */
+export const withAutomaticNoteMarks = (document: Document): Document => {
+  let current = document;
+  for (const story of documentStories(document)) {
+    if (story === "main" || (story.kind !== "footnote" && story.kind !== "endnote")) continue;
+    const note =
+      story.kind === "footnote"
+        ? current.package.footnotes?.find(({ id }) => id === story.id)
+        : current.package.endnotes?.find(({ id }) => id === story.id);
+    if (!note) continue;
+    const content = noteContentWithAutomaticMark({
+      note,
+      customMark: noteUsesCustomMark(current, note),
+    });
+    if (content === note.content) continue;
+    current = replaceStoryBody({ document: current, story, body: { content } });
+  }
+  return current;
+};

@@ -19,6 +19,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+import { isCommentAnchorCarrierType } from "@stll/docx-core/ops";
 
 import { visitCommentMarkers } from "../docx/commentAnchorIndex";
 import { readCommentReferenceAttrs } from "../prosemirror/commentReferenceAttrs";
@@ -28,8 +29,12 @@ import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import type { BlockContent, Comment } from "../types/document";
 
 /** Whether an inline node only locates a comment rather than being covered content. */
-export const isCommentAnchorCarrier = (node: PMNode): boolean =>
-  node.type.name === COMMENT_REFERENCE_NODE_NAME || node.type.name === RANGE_ANCHOR_NODE_NAME;
+export const isCommentAnchorCarrier = (node: PMNode): boolean => {
+  let type = node.type.name;
+  if (type === RANGE_ANCHOR_NODE_NAME) type = "commentRangeStart";
+  if (type === COMMENT_REFERENCE_NODE_NAME) type = "commentReference";
+  return isCommentAnchorCarrierType(type);
+};
 
 /** Ids of the comments an editor document anchors: by mark, reference or point anchor. */
 export const anchoredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {

@@ -111,6 +111,17 @@ describe("tracked text", () => {
     expect(isCommentExhausted({ type: "document", document, id: 40 })).toBe(false);
   });
 
+  test("a note marker is surviving covered content for a ranged comment", () => {
+    const document = commentedDocument([
+      { type: "commentRangeStart", id: 40 },
+      { type: "run", content: [{ type: "noteMarker", kind: "footnote" }] },
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+    ]);
+
+    expect(isCommentExhausted({ type: "document", document, id: 40 })).toBe(false);
+  });
+
   // The L1 generator found an empty revision acting as a zero-width deletion
   // target. The input normalization must remove it for both operation modes.
   test.each(["insertion", "deletion", "moveFrom", "moveTo"] as const)(

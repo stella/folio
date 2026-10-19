@@ -35,6 +35,7 @@ const atomContent = {
     content: [],
   },
   tab: { type: "run", content: [{ type: "tab" }] },
+  noteMarker: { type: "run", content: [{ type: "noteMarker", kind: "footnote" }] },
 } as const satisfies Record<string, ParagraphContent>;
 
 const commentedParagraph = (
@@ -187,7 +188,7 @@ describe("accepted deletion comment anchors", () => {
       const property = fc.asyncProperty(
         fc.record({
           deletedTextCount: fc.integer({ min: 1, max: 4 }),
-          survivors: fc.array(fc.constantFrom("text", "image", "field", "tab"), {
+          survivors: fc.array(fc.constantFrom("text", "image", "field", "tab", "noteMarker"), {
             maxLength: 6,
           }),
         }),

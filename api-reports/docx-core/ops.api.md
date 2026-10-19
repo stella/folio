@@ -621,6 +621,9 @@ export type InsertTextOp = {
 };
 
 // @public
+export const isCommentAnchorCarrierType: (type: string) => boolean;
+
+// @public
 export const isCommentExhausted: (input: CommentExhaustionInput) => boolean;
 
 // @public

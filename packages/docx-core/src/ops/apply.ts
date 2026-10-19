@@ -7,7 +7,7 @@ import {
   registerParagraphPropertySnapshot,
   transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
-import { noteContentWithAutomaticMark } from "./noteMarks";
+import { noteContentWithAutomaticMark, withAutomaticNoteMarks } from "./noteMarks";
 import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
 import { documentStories, findStoryBody, sameStory } from "./stories";
 /**
@@ -2506,6 +2506,7 @@ export const applyDocumentOp = (
     return Result.err(applied.error);
   }
   const edit = applied.value;
+  edit.document = withAutomaticNoteMarks(edit.document);
   const beforeSections = document.package.document.sections;
   const afterSections = edit.document.package.document.sections;
   const structural =
