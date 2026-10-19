@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 605094110,
+  "steps": [
+    {
+      "action": "add_comment",
+      "seed": 29623306
+    },
+    {
+      "action": "story batch",
+      "seed": 213870597,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "79D25458",
+          "text": "Payment notice term."
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " "
+        },
+        {
+          "type": "replaceBlock",
+          "blockId": "412DDC7F",
+          "text": "Schedule agreement notice party delivery party buyer goods."
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from insert+splice of 2ceb9689a65f8083",
+  "title": "PINNED #1388, reported seed 1785652606: consumer flow tables / tracked-changes: a batch differs from applying its operations separately"
+}
