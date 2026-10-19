@@ -163,7 +163,12 @@ const resolveProperties = ({
     return changed ? rebuild(resolved, { content: children }) : resolved;
   };
   const resolved = walk({ node: doc, position: -1 });
-  return { resolved, structural, runsIntoTable, pointComments: new Set(collector.finish().keys()) };
+  return {
+    resolved,
+    structural,
+    runsIntoTable,
+    pointComments: mode === "accept" ? new Set(collector.finish().keys()) : new Set<number>(),
+  };
 };
 
 type StructuralContext = {

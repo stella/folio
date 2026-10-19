@@ -50,6 +50,55 @@ const firstBlockId = (reviewer: FolioDocxReviewer): string => {
 };
 
 describe("FolioDocxReviewer.save", () => {
+  test("rejecting an insertion drops its exhausted comment before and after save", async () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "60000001",
+              content: [
+                { type: "run", content: [{ type: "text", text: "Before " }] },
+                {
+                  type: "insertion",
+                  info: { id: 7, author: "Reviewer" },
+                  content: [
+                    { type: "commentRangeStart", id: 9 },
+                    { type: "run", content: [{ type: "text", text: "inserted" }] },
+                    { type: "commentRangeEnd", id: 9 },
+                    { type: "commentReference", id: 9 },
+                  ],
+                },
+                { type: "run", content: [{ type: "text", text: " after" }] },
+              ],
+            },
+          ],
+          comments: [
+            {
+              id: 9,
+              author: "Reviewer",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "run", content: [{ type: "text", text: "Check." }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
+
+    expect(reviewer.rejectAll()).toBe(1);
+    const beforeSave = reviewer.getComments();
+    expect(beforeSave).toEqual([]);
+
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(reopened.getComments()).toEqual(beforeSave);
+  });
+
   test("retiring a header comment leaves repeated saves and public story reads stable", async () => {
     const headerId = "rIdHeader";
     const document: Document = {

@@ -469,7 +469,7 @@ describe("comment-range boundaries inside tracked changes", () => {
 
   for (const wrapper of TRACKED_WRAPPERS) {
     for (const decision of ["accept", "reject"] as const) {
-      test(`${decision} ${wrapper.type} retains the editor comment range when its text is removed`, () => {
+      test(`${decision} ${wrapper.type} follows the comment lifecycle when its text is removed`, () => {
         const paragraph = parseParagraphXml(
           `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}"><w:${wrapper.tag} w:id="7" w:author="Reviewer">` +
             `<w:r><w:t>before</w:t></w:r><w:commentRangeStart w:id="5"/>` +
@@ -502,7 +502,11 @@ describe("comment-range boundaries inside tracked changes", () => {
           (decision === "reject" && (wrapper.type === "insertion" || wrapper.type === "moveTo")) ||
           (decision === "accept" && (wrapper.type === "deletion" || wrapper.type === "moveFrom"));
         expect(markerTypes(operation.value.document)).toEqual(removesContent ? [] : expected);
-        expect(markerTypes(editor)).toEqual(expected);
+        const exhaustsEditorComment =
+          decision === "reject" && (wrapper.type === "insertion" || wrapper.type === "moveTo");
+        expect(markerTypes(editor)).toEqual(
+          exhaustsEditorComment ? ["commentReference"] : expected,
+        );
       });
     }
   }
