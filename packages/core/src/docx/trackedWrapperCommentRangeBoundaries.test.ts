@@ -428,40 +428,117 @@ describe("comment-range boundaries inside tracked changes", () => {
     ]);
   });
 
-  test("an open comment range reaches a tracked change inside an inline content control", () => {
-    const input = wrapParagraph({
-      type: "paragraph",
-      content: [
-        { type: "commentRangeStart", id: 5 },
+  const runXml = (text: string, deleted = false) =>
+    `<w:r><w:${deleted ? "delText" : "t"}>${text}</w:${deleted ? "delText" : "t"}></w:r>`;
+  const insertionXml = (content: string) => `<w:ins ${REVISION_ATTRIBUTES}>${content}</w:ins>`;
+  const deletionXml = (content: string) => `<w:del ${REVISION_ATTRIBUTES}>${content}</w:del>`;
+  const hyperlinkInsertionXml = (content: string) =>
+    insertionXml(
+      content.replaceAll(/<w:r>[\s\S]*?<\/w:r>/gu, (run) =>
+        run.includes("commentReference")
+          ? run
+          : `<w:hyperlink w:anchor="target">${run}</w:hyperlink>`,
+      ),
+    );
+  const fieldInsertionXml = (content: string) =>
+    `<w:fldSimple w:instr=" REF target ">${insertionXml(content)}</w:fldSimple>`;
+  const contentControlInsertionXml = (content: string) =>
+    `<w:sdt><w:sdtPr><w:id w:val="42"/><w:richText/></w:sdtPr><w:sdtContent>${insertionXml(content)}</w:sdtContent></w:sdt>`;
+
+  const boundaryCases = [
+    {
+      name: "range starts outside and ends inside",
+      expectedText: "A",
+      place: (wrap: (content: string) => string, deleted: boolean) =>
+        `<w:commentRangeStart w:id="5"/>${wrap(`${runXml("A", deleted)}<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}${runXml("B", deleted)}`)}`,
+    },
+    {
+      name: "range starts inside and ends outside",
+      expectedText: "A",
+      place: (wrap: (content: string) => string, deleted: boolean) =>
+        `${wrap(`<w:commentRangeStart w:id="5"/>${runXml("A", deleted)}`)}<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}${runXml("B")}`,
+    },
+    {
+      name: "point comment inside",
+      expectedText: "",
+      place: (wrap: (content: string) => string, deleted: boolean) =>
+        wrap(`${runXml("A", deleted)}${COMMENT_REFERENCE}${runXml("B", deleted)}`),
+    },
+  ];
+  const containerCases = [
+    { name: "tracked insertion", wrap: insertionXml, deleted: false },
+    { name: "tracked deletion", wrap: deletionXml, deleted: true },
+    { name: "hyperlink inside a tracked insertion", wrap: hyperlinkInsertionXml, deleted: false },
+    {
+      name: "simple field containing a tracked insertion",
+      wrap: fieldInsertionXml,
+      deleted: false,
+    },
+    {
+      name: "inline content control containing a tracked insertion",
+      wrap: contentControlInsertionXml,
+      deleted: false,
+    },
+  ];
+  const boundaryMatrix = containerCases.flatMap((container) =>
+    boundaryCases.map((boundary) => {
+      const xml = boundary.place(container.wrap, container.deleted);
+      return {
+        name: `${container.name}: ${boundary.name}`,
+        xml,
+        expectedText: boundary.expectedText,
+        expectedOrder:
+          boundary.name === "point comment inside"
+            ? ["A", "commentReference", "B"]
+            : ["commentRangeStart", "A", "commentRangeEnd", "commentReference", "B"],
+      };
+    }),
+  );
+
+  test.each(boundaryMatrix)(
+    "$name preserves covered text and marker order through load, save, and reopen",
+    ({ xml, expectedText, expectedOrder }) => {
+      const input = wrapParagraph(
+        parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
+      );
+      input.package.document.comments = [
         {
-          type: "inlineSdt",
-          properties: { sdtType: "richText", id: 42 },
+          id: 5,
+          author: "Reviewer",
           content: [
             {
-              type: "insertion",
-              info: { id: 7, author: "Reviewer" },
-              content: [{ type: "run", content: [{ type: "text", text: "covered" }] }],
+              type: "paragraph",
+              content: [{ type: "run", content: [{ type: "text", text: "Comment" }] }],
             },
           ],
         },
-        { type: "commentRangeEnd", id: 5 },
-        { type: "commentReference", id: 5 },
-      ],
-    });
+      ];
+      const loaded = toProseDoc(input);
+      expect(markedText(loaded, 5)).toBe(expectedText);
 
-    const projected = toProseDoc(input);
-    const reopened = fromProseDoc(projected, input, {
-      stylesheetSource: { type: "package" },
-    });
-
-    expect(markedText(projected, 5)).toBe("covered");
-    expect(markedText(toProseDoc(reopened), 5)).toBe("covered");
-    expect(markerTypes(reopened)).toEqual([
-      "commentRangeStart",
-      "commentRangeEnd",
-      "commentReference",
-    ]);
-  });
+      const saved = fromProseDoc(loaded, input, { stylesheetSource: { type: "package" } });
+      const savedParagraph = saved.package.document.content.at(0);
+      if (savedParagraph?.type !== "paragraph") throw new Error("Expected a saved paragraph");
+      const markerOrder = serializeParagraph(savedParagraph)
+        .match(
+          /<w:(?:commentRangeStart|commentRangeEnd|commentReference)\b[^>]*\/>|<w:(?:t|delText)>[^<]*<\/w:(?:t|delText)>/gu,
+        )
+        ?.map((token) => token.match(/^<w:([^ >]+)/u)?.at(1) ?? token)
+        .map((token, index, tokens) =>
+          token === "t" || token === "delText"
+            ? serializeParagraph(savedParagraph)
+                .match(/<w:(?:t|delText)>([^<]*)<\/w:(?:t|delText)>/gu)
+                ?.at(
+                  tokens.slice(0, index).filter((entry) => entry === "t" || entry === "delText")
+                    .length,
+                )
+                ?.replace(/^<w:(?:t|delText)>|<\/w:(?:t|delText)>$/gu, "")
+            : token,
+        );
+      expect(markerOrder).toEqual(expectedOrder);
+      expect(markedText(toProseDoc(saved), 5)).toBe(expectedText);
+    },
+  );
 
   test("a range end between adjacent revisions stays outside both revision wrappers", () => {
     const input = wrapParagraph({
