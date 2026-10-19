@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, describe, expect, test } from "bun:test";
 import {
   existsSync,
   mkdirSync,
@@ -10,6 +12,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const repo = path.resolve(import.meta.dir, "..");
 const workflow = Bun.YAML.parse(readFileSync(path.join(repo, ".github/workflows/ci.yml"), "utf8"));
@@ -444,8 +448,7 @@ describe("published Node minimum", () => {
         .map((step) => step.run),
     ).toEqual([`bun scripts/consumer-scenarios.ts --typecheck --tarballs ${download.with.path}`]);
     expect(JSON.parse(evaluationForMinimum().env.JOB_SCOPES)[floor.job]).toEqual({
-      area: "consumer_scenarios_required",
-      depth: "full",
+      area: "packaged_consumer_required",
     });
     const root = JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8"));
     expect(root.scripts["check:toolchain"]).toBe(

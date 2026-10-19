@@ -24,6 +24,7 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { panic } from "better-result";
+import { scanTestTimeout } from "../test/scan-timeout";
 import path from "node:path";
 import ts from "typescript";
 
@@ -35,7 +36,7 @@ const ASSERT_HELPERS = new Set(["assertProperty", "assertPinnedProperty"]);
 const FAST_CHECK_DRIVERS = new Set(["assert", "sample", "check"]);
 const TEST_CALLEES = new Set(["test", "it"]);
 
-setDefaultTimeout(120_000);
+setDefaultTimeout(scanTestTimeout(120_000));
 
 /** `fc.assert(...)`, `fc.sample(...)`, `fc.check(...)`. */
 const callsFastCheck = (node: ts.CallExpression): boolean =>
@@ -345,7 +346,7 @@ ${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
     expect(
       budgetRequiringSites(
         "probe.ts",
-        `setDefaultTimeout(120_000);
+        `setDefaultTimeout(scanTestTimeout(120_000));
       test("x", () => { fc.assert(p, propertyConfig()); }, propertyTestTimeout(30_000));`,
       ),
     ).toEqual([{ site: "probe.ts:2", declaresBudget: true }]);
