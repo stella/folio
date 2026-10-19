@@ -368,7 +368,7 @@ describe("required shared toolchain policy", () => {
     const writeWorkflow = (selector) =>
       writeFileSync(
         workflowFile,
-        `name: Example\non: push\njobs:\n  example:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${selector} # ${action.version}\n`,
+        `name: Example\non: push\njobs:\n  example:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/checkout@${selector} # ${action.version}\n`,
       );
     try {
       mkdirSync(path.dirname(workflowFile), { recursive: true });

@@ -40,7 +40,7 @@ jobs:
     name: Projection footprint attribution
     needs: canonical-wasm
     if: always() && (needs.canonical-wasm.outputs.budget_exceeded == 'true' || (github.event_name == 'workflow_dispatch' && inputs.footprint_base != ''))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -107,7 +107,7 @@ jobs:
   canonical-wasm:
     name: Canonical projection artifact
     if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
       budget_exceeded: ${{ steps.generate.outputs.budget_exceeded }}
