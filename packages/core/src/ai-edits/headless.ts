@@ -161,6 +161,7 @@ import {
   anchoredCommentIdsInProseDoc,
   withoutLostCommentThreads,
 } from "./comment-lifecycle";
+import { removeCommentMarkers } from "../docx/commentAnchorIndex";
 import {
   FolioPendingSuggestionRegistry,
   createPendingSuggestionSourceSnapshot,
@@ -2919,6 +2920,29 @@ export class FolioDocxReviewer {
       snapshot.mainState,
       snapshot.secondaryStoryStates,
     );
+    const keptIds = new Set(kept.map(({ id }) => id));
+    const retiredCommentIds = new Set(
+      [...(this.baseDocument.package.document.comments ?? []), ...snapshot.createdComments]
+        .filter(({ id }) => !keptIds.has(id))
+        .map(({ id }) => id),
+    );
+    const modelStories = [
+      document.package.document,
+      ...(document.package.headers?.values() ?? []),
+      ...(document.package.footers?.values() ?? []),
+      ...(document.package.footnotes ?? []),
+      ...(document.package.endnotes ?? []),
+    ];
+    for (const story of modelStories) {
+      for (const id of anchoredCommentIdsInBlocks(story.content)) {
+        if (!keptIds.has(id)) retiredCommentIds.add(id);
+      }
+    }
+    if (retiredCommentIds.size > 0) {
+      for (const story of modelStories) {
+        removeCommentMarkers(story.content, retiredCommentIds);
+      }
+    }
     if (
       kept.length !== definitions.length ||
       snapshot.createdComments.length > 0 ||

@@ -1383,12 +1383,20 @@ export const resolveRevision = (
   const emptiedEnds: EmptiedEndsById = new Map();
   const resolvedContents = new Map<string, readonly InlineNode[]>();
   const resolvedCutEdges = new Map<string, CutEdges>();
-  for (const { paragraph } of paragraphs) {
+  const preparedContents = paragraphs.map(({ paragraph }) => ({
+    paragraph,
+    content: prepareDeferredRemovals(paragraph.content, resolution),
+  }));
+  resolution.commentRangeIds = pairedCommentRangeIds(
+    preparedContents.flatMap(({ content }) => content),
+  );
+  const removedCommentIds = removedCommentRangeIds(
+    preparedContents.flatMap(({ content }) => content),
+    resolution,
+  );
+  for (const { paragraph, content: prepared } of preparedContents) {
     const paraId = paragraph.paraId ?? "";
-    const prepared = prepareDeferredRemovals(paragraph.content, resolution);
-    resolution.commentRangeIds = pairedCommentRangeIds(prepared);
     const resolved = resolveList(prepared, resolution);
-    const removedCommentIds = removedCommentRangeIds(prepared, resolution);
     const resolvedNodes = withoutCommentAnchors(resolved.nodes, removedCommentIds);
     resolvedContents.set(idKey(paraId), resolvedNodes);
     if (resolved.edges !== undefined) resolvedCutEdges.set(idKey(paraId), resolved.edges);

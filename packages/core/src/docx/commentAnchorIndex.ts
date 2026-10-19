@@ -66,6 +66,24 @@ export const visitCommentMarkers = (
   visitBlocks(blocks);
 };
 
+/** Remove every serialized anchor record for comments whose definitions are retired. */
+export const removeCommentMarkers = (
+  blocks: readonly BlockContent[],
+  commentIds: ReadonlySet<number>,
+): void => {
+  if (commentIds.size === 0) return;
+  const removals = new Map<ParagraphContent[], number[]>();
+  visitCommentMarkers(blocks, ({ content, index, item }) => {
+    if (!commentIds.has(item.id)) return;
+    const indexes = removals.get(content) ?? [];
+    indexes.push(index);
+    removals.set(content, indexes);
+  });
+  for (const [content, indexes] of removals) {
+    for (const index of indexes.toReversed()) content.splice(index, 1);
+  }
+};
+
 /**
  * Comments that open a range anywhere in these blocks.
  *
