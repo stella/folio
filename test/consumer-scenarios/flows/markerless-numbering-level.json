@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 1492413172,
+  "steps": [
+    { "action": "core batch", "seed": 476930320 },
+    { "action": "mistake", "seed": 1924848951 },
+    { "action": "story batch", "seed": 4137292766 }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "deleteTableRow"
+  ],
+  "title": "retains a markerless numbering reference after tracked insertion"
+}

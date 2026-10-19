@@ -24,6 +24,8 @@
  */
 import { parse, TYPE } from "@formatjs/icu-messageformat-parser";
 import type { MessageFormatElement } from "@formatjs/icu-messageformat-parser";
+import { AhoCorasick } from "@stll/aho-corasick";
+import { RegexSet } from "@stll/regex-set";
 import { panic } from "better-result";
 import path from "node:path";
 
@@ -508,9 +510,10 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 const ARABIC_PROCLITIC_PREFIX = "[وفبكلس]*(?:ال)?";
 
 /** Whole-word, script-aware (Unicode) containment test. */
-const wordRegexCache = new Map<string, RegExp>();
+const wordRegexCache = new Map<string, RegexSet>();
 const containsWord = (haystack: string, needle: string, locale: string): boolean => {
-  const cacheKey = `${locale}:${needle}`;
+  const normalizedNeedle = needle.toWellFormed();
+  const cacheKey = `${locale}:${normalizedNeedle}`;
   let regex = wordRegexCache.get(cacheKey);
   if (!regex) {
     const prefix = locale === "ar" ? ARABIC_PROCLITIC_PREFIX : "";
@@ -519,10 +522,29 @@ const containsWord = (haystack: string, needle: string, locale: string): boolean
     // source side is English; target forbidden terms stay exact-word (their own
     // inflected forms are listed explicitly in the glossary).
     const suffix = locale === "en" ? "(?:e?s)?" : "";
-    regex = new RegExp(`(?<!\\p{L})${prefix}${escapeRegExp(needle)}${suffix}(?!\\p{L})`, "iu");
+    regex = new RegexSet([
+      new RegExp(`(?<!\\p{L})${prefix}${escapeRegExp(normalizedNeedle)}${suffix}(?!\\p{L})`, "iu"),
+    ]);
     wordRegexCache.set(cacheKey, regex);
   }
-  return regex.test(haystack);
+  return regex.isMatch(haystack.toWellFormed());
+};
+
+// Key by configuration contents: callers may edit the exported rule arrays.
+const literalMatcherCache = new Map<string, AhoCorasick>();
+const containsLiteral = (haystack: string, needles: string[]): boolean => {
+  const normalizedNeedles = needles.map((needle) => needle.toWellFormed());
+  // An empty literal matches every string; keep it outside the native automaton.
+  if (normalizedNeedles.some((needle) => needle.length === 0)) {
+    return true;
+  }
+  const cacheKey = JSON.stringify(normalizedNeedles);
+  let matcher = literalMatcherCache.get(cacheKey);
+  if (!matcher) {
+    matcher = new AhoCorasick(normalizedNeedles);
+    literalMatcherCache.set(cacheKey, matcher);
+  }
+  return matcher.isMatch(haystack.toWellFormed());
 };
 
 export type ForbiddenRule = {
@@ -580,7 +602,7 @@ export const findForbiddenTerms = (
   const hits: string[] = [];
   for (const rule of rules) {
     const wordFires = rule.triggers.some((trigger) => containsWord(source, trigger, "en"));
-    const keyFires = key !== undefined && rule.keyTriggers.some((trigger) => key.includes(trigger));
+    const keyFires = key !== undefined && containsLiteral(key, rule.keyTriggers);
     if (!wordFires && !keyFires) {
       continue;
     }
@@ -589,8 +611,7 @@ export const findForbiddenTerms = (
     // the word trigger unless the source is exempt (e.g. it also talks about
     // "organizing", so the banned form renders that word, not the concept).
     const lowerSource = source.toLowerCase();
-    const onKeyApplies =
-      keyFires || !rule.sourceExempt.some((exempt) => lowerSource.includes(exempt));
+    const onKeyApplies = keyFires || !containsLiteral(lowerSource, rule.sourceExempt);
     const forbidden = [
       ...(rule.byLocale[locale] ?? []),
       ...(onKeyApplies ? (rule.byLocaleOnKey[locale] ?? []) : []),

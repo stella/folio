@@ -213,6 +213,24 @@ const PRIMITIVE_SAMPLES = {
     y2Px: 200,
     stroke: { color: BLACK, thicknessPx: 2, pattern: "dashed" },
   },
+  polygon: {
+    kind: "polygon",
+    points: [
+      { xPx: 10, yPx: 220 },
+      { xPx: 80, yPx: 220 },
+      { xPx: 45, yPx: 260 },
+    ],
+    fill: BLACK,
+  },
+  polyline: {
+    kind: "polyline",
+    points: [
+      { xPx: 10, yPx: 280 },
+      { xPx: 45, yPx: 250 },
+      { xPx: 80, yPx: 280 },
+    ],
+    stroke: { color: BLACK, thicknessPx: 2, pattern: "solid" },
+  },
   image: {
     kind: "image",
     image: 0,

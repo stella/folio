@@ -83,7 +83,7 @@ describe("SmartArt preview", () => {
     expect(image?.preview?.kind).toBe("diagram");
     expect(image?.preview?.extent).toEqual({ width: 914400, height: 457200 });
     expect(image?.preview?.shapes).toEqual([
-      { x: 10_000, y: 10_000, width: 400_000, height: 200_000, color: "70AD47" },
+      { type: "rect", x: 10_000, y: 10_000, width: 400_000, height: 200_000, color: "70AD47" },
     ]);
 
     // And the drawing is drawn, one step later: a backdrop and the shape,
@@ -145,10 +145,10 @@ describe("SmartArt preview", () => {
 
     // Each preview describes its own diagram's shape, so the two differ.
     expect(first?.preview?.shapes).toEqual([
-      { x: 0, y: 0, width: 400_000, height: 400_000, color: "70AD47" },
+      { type: "rect", x: 0, y: 0, width: 400_000, height: 400_000, color: "70AD47" },
     ]);
     expect(second?.preview?.shapes).toEqual([
-      { x: 0, y: 0, width: 800_000, height: 400_000, color: "C00000" },
+      { type: "rect", x: 0, y: 0, width: 800_000, height: 400_000, color: "C00000" },
     ]);
 
     // And still draw different pictures.

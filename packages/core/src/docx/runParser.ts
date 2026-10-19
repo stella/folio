@@ -60,6 +60,7 @@ import {
 } from "./containerChildren";
 import { isGroupDrawing, parseGroupDrawing } from "./groupDrawingParser";
 import { parseDiagramPreview } from "./diagramPreview";
+import { parseChartPreview } from "./chartPreview";
 import { parseImage } from "./imageParser";
 import { imageRawXmlFingerprint } from "./imageRawXml";
 import {
@@ -933,6 +934,15 @@ function parseDrawingContent(
       rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
     };
   }
+  const chartImage = parseChartPreview(element, rels ?? undefined, media ?? undefined);
+  if (chartImage) {
+    return {
+      type: "drawing",
+      image: chartImage,
+      rawXml: captureVerbatimXml(element),
+      rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
+    };
+  }
   if (shouldPreserveRawShapeDrawing(element)) {
     return preserveOnlyDrawing(captureVerbatimXml(element));
   }
@@ -1144,6 +1154,29 @@ function parseRunContents(
             contents.push({ ...groupedDrawing, rawXml: captureVerbatimXml(child) });
             break;
           }
+        }
+
+        const fallbackDrawing = fallbackEl
+          ? getChildElements(fallbackEl).find((el) => getLocalName(el.name) === "drawing")
+          : undefined;
+        const fallbackImage = fallbackDrawing
+          ? parseImage(fallbackDrawing, rels ?? undefined, media ?? undefined)
+          : null;
+        if (fallbackImage?.src && choiceEl) {
+          const choiceDrawing = getChildElements(choiceEl).find(
+            (el) => getLocalName(el.name) === "drawing",
+          );
+          const choiceImage = choiceDrawing
+            ? parseImage(choiceDrawing, rels ?? undefined, media ?? undefined)
+            : null;
+          if (choiceImage) fallbackImage.size = choiceImage.size;
+          contents.push({
+            type: "drawing",
+            image: fallbackImage,
+            rawXml: captureVerbatimXml(child),
+            rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
+          });
+          break;
         }
 
         const fallbackPict = fallbackEl
