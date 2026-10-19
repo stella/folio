@@ -86,6 +86,7 @@ describe("shared toolchain CI selection", () => {
         env: {
           TYPECHECK_BASE:
             "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}",
+          TYPECHECK_PUSH: "${{ github.event_name == 'push' }}",
         },
       },
     ]);

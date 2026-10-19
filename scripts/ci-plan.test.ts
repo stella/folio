@@ -13,7 +13,7 @@ import editorWebPlaywright from "../packages/editor-web/playwright.config";
 import runContract from "./ci-run-contract.json";
 import { affectedPackagePlan } from "./ci-api-plan";
 import { affectedTypecheckPlanForPaths } from "./check-affected-packages";
-import { typecheckPlanForPaths } from "./ci-plan";
+import { changedTypecheckPaths, typecheckPlanForPaths } from "./ci-plan";
 import {
   BROWSER_INPUT_REGRESSIONS,
   PINNED_BROWSER_INPUT_TAG,
@@ -110,11 +110,88 @@ describe("CI plan", () => {
       "@stll/playground",
       "@stll/folio-react",
       "@stll/folio-vue",
+      "typecheck:benchmarks",
+      "typecheck:parity",
+      "typecheck:corpus",
+      "typecheck:corpus-edit-fuzz",
+      "typecheck:tooling",
     ]);
   });
 
-  test("scripts select tooling while documentation skips typecheck", () => {
-    expect(typecheckPlanForPaths(["scripts/example.ts"])).toEqual({
+  test("root project inputs come from their tsconfig files, including test sources", () => {
+    for (const [file, name] of [
+      ["test/corpus-edit-fuzz-worker.ts", "typecheck:corpus-edit-fuzz"],
+      ["scripts/fuzz-failure-issues.test.ts", "typecheck:tooling"],
+      ["scripts/tsconfig.budgets.json", "typecheck:tooling"],
+    ]) {
+      const plan = typecheckPlanForPaths([file]);
+      expect(plan.type).toBe("selected");
+      if (plan.type === "selected")
+        expect(plan.projects.map((project) => project.name)).toContain(name);
+    }
+  });
+
+  test("an unavailable pushed base requests the full typecheck", () => {
+    expect(
+      changedTypecheckPaths({
+        repoRoot: REPO_ROOT,
+        base: "f".repeat(40),
+        head: Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT })
+          .stdout.toString()
+          .trim(),
+        fallbackOnMissingBase: true,
+      }),
+    ).toEqual(["package.json"]);
+  });
+
+  test("resolvable bases retain merge-base diff semantics", () => {
+    const fixtureRoot = mkdtempSync(path.join(tmpdir(), "folio-typecheck-diff-"));
+    const git = (...args: string[]) => {
+      const result = Bun.spawnSync(["git", ...args], {
+        cwd: fixtureRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(result.exitCode).toBe(0);
+      return result.stdout.toString().trim();
+    };
+    const commit = (message: string) =>
+      git(
+        "-c",
+        "user.name=CI fixture",
+        "-c",
+        "user.email=ci@example.com",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "--quiet",
+        "-am",
+        message,
+      );
+    try {
+      git("init", "--quiet");
+      writeFileSync(path.join(fixtureRoot, "shared.ts"), "initial");
+      git("add", ".");
+      commit("initial");
+      const common = git("rev-parse", "HEAD");
+      git("checkout", "--quiet", "-b", "feature");
+      writeFileSync(path.join(fixtureRoot, "feature.ts"), "feature");
+      git("add", ".");
+      commit("feature");
+      const head = git("rev-parse", "HEAD");
+      git("checkout", "--quiet", "-b", "base", common);
+      writeFileSync(path.join(fixtureRoot, "base-only.ts"), "base");
+      git("add", ".");
+      commit("base");
+      const base = git("rev-parse", "HEAD");
+      expect(changedTypecheckPaths({ repoRoot: fixtureRoot, base, head })).toEqual(["feature.ts"]);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("included scripts select tooling while documentation skips typecheck", () => {
+    expect(typecheckPlanForPaths(["scripts/check-canonical-cutover.ts"])).toEqual({
       type: "selected",
       projects: [
         {
@@ -133,7 +210,7 @@ describe("CI plan", () => {
     const candidates = [
       "packages/core/src/core.ts",
       "packages/react/src/index.ts",
-      "scripts/example.ts",
+      "scripts/check-canonical-cutover.ts",
       "parity/example.ts",
       "specifications/container-contract/example.ts",
       "docs/guide.md",

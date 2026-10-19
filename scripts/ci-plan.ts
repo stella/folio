@@ -32,25 +32,68 @@ type Manifest = {
 const readManifest = (file: string): Manifest => JSON.parse(readFileSync(file, "utf8"));
 
 const rootProjects = [
-  { name: "typecheck:benchmarks", prefix: "benchmarks/" },
-  { name: "typecheck:parity", prefix: "parity/" },
-  { name: "typecheck:corpus", prefix: "corpus/" },
-  { name: "typecheck:corpus-edit-fuzz", prefix: "test/corpus-edit-fuzz" },
-  { name: "typecheck:tooling", prefix: "scripts/" },
-  { name: "typecheck:reserved-values", prefix: "specifications/reserved-values/" },
-  { name: "typecheck:container-contract", prefix: "specifications/container-contract/" },
+  {
+    name: "typecheck:benchmarks",
+    tsconfig: "benchmarks/tsconfig.json",
+    dependencies: ["@stll/folio-core"],
+  },
+  {
+    name: "typecheck:parity",
+    tsconfig: "parity/tsconfig.check.json",
+    dependencies: ["@stll/folio-core"],
+  },
+  {
+    name: "typecheck:corpus",
+    tsconfig: "scripts/tsconfig.corpus.json",
+    dependencies: ["@stll/docx-core", "@stll/folio-core"],
+  },
+  {
+    name: "typecheck:corpus-edit-fuzz",
+    tsconfig: "test/tsconfig.corpus-edit-fuzz.json",
+    dependencies: ["@stll/folio-core"],
+  },
+  {
+    name: "typecheck:tooling",
+    tsconfig: "scripts/tsconfig.budgets.json",
+    dependencies: ["@stll/docx-core", "@stll/folio-core"],
+  },
+  {
+    name: "typecheck:reserved-values",
+    tsconfig: "specifications/reserved-values/tsconfig.json",
+    dependencies: ["@stll/docx-core"],
+  },
+  {
+    name: "typecheck:container-contract",
+    tsconfig: "specifications/container-contract/tsconfig.json",
+    dependencies: [],
+  },
 ] as const;
 
-const rootProjectMatches = (name: (typeof rootProjects)[number]["name"], file: string) => {
-  if (name === "typecheck:corpus")
-    return (
-      file === "scripts/tsconfig.corpus.json" ||
-      file.startsWith("scripts/corpus-") ||
-      file.startsWith("scripts/lib/corpus-") ||
-      file.startsWith("scripts/lib/corpus-invariants/") ||
-      file.startsWith("corpus/")
-    );
-  return file.startsWith(rootProjects.find((project) => project.name === name)?.prefix ?? "\0");
+type TsconfigInputs = { include?: unknown; files?: unknown; exclude?: unknown };
+
+const rootProjectMatches = (tsconfigPath: string, file: string, repoRoot: string) => {
+  if (file === tsconfigPath) return true;
+  const config: TsconfigInputs = JSON.parse(
+    readFileSync(path.join(repoRoot, tsconfigPath), "utf8"),
+  );
+  const directory = path.posix.dirname(tsconfigPath);
+  const inputs = [config.include, config.files].flatMap((value) =>
+    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [],
+  );
+  const excludes = Array.isArray(config.exclude)
+    ? config.exclude.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  return inputs.some((input) => {
+    const relativePattern = input === "." ? "**" : input;
+    const pattern = path.posix.normalize(path.posix.join(directory, relativePattern));
+    if (!new Bun.Glob(pattern).match(file)) return false;
+    return !excludes.some((exclude) => {
+      const excludedPattern = exclude.endsWith("/") ? `${exclude}**` : `${exclude}/**`;
+      return new Bun.Glob(path.posix.normalize(path.posix.join(directory, excludedPattern))).match(
+        file,
+      );
+    });
+  });
 };
 
 const isTypecheckedInput = (file: string) =>
@@ -108,13 +151,36 @@ export const typecheckPlanForPaths = (
     .map(({ name }) => ({ name, command: ["bun", "--filter", name, "typecheck"] }));
   for (const project of rootProjects) {
     if (
-      changedPaths.some(
-        (file) => isTypecheckedInput(file) && rootProjectMatches(project.name, file),
-      )
+      project.dependencies.some((dependency) => selectedNames.has(dependency)) ||
+      changedPaths.some((file) => rootProjectMatches(project.tsconfig, file, repoRoot))
     )
       projects.push({ name: project.name, command: ["bun", "run", project.name] });
   }
   return { type: "selected", projects };
+};
+
+type ChangedTypecheckPathsOptions = {
+  repoRoot: string;
+  base: string;
+  head: string;
+  fallbackOnMissingBase?: boolean;
+};
+
+export const changedTypecheckPaths = ({
+  repoRoot,
+  base,
+  head,
+  fallbackOnMissingBase = false,
+}: ChangedTypecheckPathsOptions): string[] => {
+  if (fallbackOnMissingBase) {
+    const resolved = Bun.spawnSync(["git", "rev-parse", "--verify", `${base}^{commit}`], {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (resolved.exitCode !== 0) return ["package.json"];
+  }
+  return changedApiPaths({ repoRoot, base, head });
 };
 
 type RunTypecheckPlanOptions = {
@@ -158,6 +224,11 @@ if (import.meta.main) {
   if (!base || !head) throw new TypeError("Typecheck planning requires a base and head.");
   const changedPaths = /^0+$/u.test(base)
     ? ["package.json"]
-    : changedApiPaths({ repoRoot, base, head });
+    : changedTypecheckPaths({
+        repoRoot,
+        base,
+        head,
+        fallbackOnMissingBase: process.env["TYPECHECK_PUSH"] === "true",
+      });
   process.exitCode = runTypecheckPlan(typecheckPlanForPaths(changedPaths, repoRoot), { run });
 }
