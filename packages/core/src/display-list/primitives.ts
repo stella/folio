@@ -81,6 +81,8 @@ const PRIMITIVE_KIND_NAMES = {
   glyphRun: "glyphRun",
   rect: "rect",
   line: "line",
+  polygon: "polygon",
+  polyline: "polyline",
   image: "image",
   clipGroup: "clipGroup",
   rotateGroup: "rotateGroup",

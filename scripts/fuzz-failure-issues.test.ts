@@ -9,8 +9,14 @@ import type { Issue } from "./fuzz-issue-classes";
 import {
   failureMarker,
   failureRecord,
+  shellQuote,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
+import {
+  CONSUMER_SCENARIO_REPLAY_INPUTS,
+  consumerScenarioInputs,
+  parseConsumerArgs,
+} from "./consumer-scenario-args";
 import {
   AUTO_CLOSE_CLEAN_RUNS,
   type CloseReason,
@@ -36,6 +42,8 @@ import {
   LABEL,
   TITLE_PREFIX,
   TITLE_FORMAT,
+  cliRepro,
+  shellWords,
 } from "./fuzz-failure-issues";
 
 const marker = (seed: number, message = "step 3: no comment") =>
@@ -326,7 +334,8 @@ test("a new signature opens one issue for every fingerprint and seed that share 
   expect(state.seeds).toEqual([1, 2, 3]);
   expect(state.lanes).toEqual([{ lane: "nightly-swarm-fuzz", lastRun: `${RUN}123`, cleanRuns: 0 }]);
   expect(state.lastSeen).toEqual({ lane: "nightly-swarm-fuzz", run: `${RUN}123` });
-  expect(state.repro.command).toContain("FOLIO_SCENARIO_SEED=");
+  expect(state.repro.command).toContain("--seed '1'");
+  expect(state.repro.command).not.toContain("FOLIO_SCENARIO_");
 });
 
 test("signatures split by flow, mode and failure class, never by seed or label text", () => {
@@ -558,6 +567,205 @@ test("bodies stay bounded for large evidence and seed sets", async () => {
   expect(state.seeds).toHaveLength(MAX_LISTED_SEEDS);
   expect(state.seeds.at(-1)).toBe(1000);
 });
+
+test("a 20 KB flow is emitted whole and its embedded JSON is unchanged", () => {
+  const flow = {
+    version: 1,
+    steps: Array.from({ length: 800 }, (_, index) => ({ index, text: `step ${index}` })),
+  };
+  const json = JSON.stringify(flow);
+  expect(json.length).toBeGreaterThan(20_000);
+  const state: SignatureState = {
+    signature: signatureOf({ test: "large flow", assertion: "failure" }),
+    occurrences: 1,
+    seeds: [41],
+    lastSeen: { lane: "nightly", run: "local:test" },
+    lanes: [],
+    assertion: "failure",
+    repro: {
+      seed: 41,
+      command: `bun scripts/consumer-scenarios.ts --seed 41 --flow '${json}' -- flow-corpus.test.ts`,
+    },
+  };
+  const { body } = renderSignatureIssue(state);
+  const embedded = /--flow '([^']+)'/u.exec(body)?.at(1);
+  expect(JSON.parse(embedded ?? "null")).toEqual(flow);
+  expect(parseSignatureState({ number: 1, body })?.repro.command).toBe(state.repro.command);
+});
+
+test("a huge assertion yields to the whole repro while the issue stays bounded", () => {
+  const state: SignatureState = {
+    signature: signatureOf({ test: "huge assertion", assertion: "failure" }),
+    occurrences: 1,
+    seeds: [42],
+    lastSeen: { lane: "nightly", run: "local:test" },
+    lanes: [],
+    assertion: "assertion ".repeat(20_000),
+    repro: {
+      seed: 42,
+      command: `bun scripts/consumer-scenarios.ts --seed 42 --flow '${"x".repeat(20_000)}'`,
+    },
+  };
+  const { body } = renderSignatureIssue(state);
+  expect(body.length).toBeLessThan(65_536);
+  expect(body).toContain(state.repro.command);
+  expect(body).toMatch(/… \(\d+ more characters\)/u);
+});
+
+test("an over-limit repro substitutes its flow but preserves every replay setting", () => {
+  const state: SignatureState = {
+    signature: signatureOf({ test: "oversized repro", assertion: "failure" }),
+    occurrences: 1,
+    seeds: [43],
+    lastSeen: { lane: "nightly", run: "local:test" },
+    lanes: [],
+    assertion: "failure",
+    repro: { seed: 43, command: "" },
+  };
+  const uniqueTail = "END-OF-OVERSIZED-REPRO";
+  state.repro = {
+    seed: 43,
+    command: `bun scripts/consumer-scenarios.ts --seed 43 --relations 'preserve-comments' --relations-depth 3 --flow '${"x".repeat(70_000)}${uniqueTail}' -- flow-corpus.test.ts`,
+  };
+  const { body } = renderSignatureIssue(state);
+  expect(body.length).toBeLessThan(65_536);
+  expect(body).toContain(`findings/${state.signature.id}-43.flow.json`);
+  expect(body).not.toContain(uniqueTail);
+  expect(body).not.toContain("x".repeat(1_000));
+  expect(body).toContain("--relations 'preserve-comments'");
+  expect(body).toContain("--relations-depth 3");
+  expect(body).toContain("-- flow-corpus.test.ts");
+});
+
+test("every legacy filer replay template is converted to CLI flags", () => {
+  const templates = [
+    "FOLIO_SCENARIO_SEED=1 FOLIO_SCENARIO_FUZZ_STEPS=2 FOLIO_SCENARIO_FUZZ_RUNS=3 FOLIO_SCENARIO_COLLISION_RUNS=4 FOLIO_SCENARIO_SWARM=1 bun scripts/consumer-scenarios.ts -- fuzz.test.ts",
+    `FOLIO_SCENARIO_FLOW='{"steps":[]}' FOLIO_SCENARIO_PUBLIC_CORPUS_DIR='/tmp/corpus' bun scripts/consumer-scenarios.ts -- flow-corpus.test.ts`,
+  ];
+  for (const template of templates) expect(cliRepro(template)).not.toContain("FOLIO_SCENARIO_");
+});
+
+const replayArgv = (command: string): string[] =>
+  (shellWords(command) ?? []).map(({ value }) => value).slice(2);
+
+test("legacy replay conversion follows shell quoting rules", () => {
+  const doubleQuoted = cliRepro(
+    'FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only "^fuzz \\("',
+  );
+  expect(parseConsumerArgs(replayArgv(doubleQuoted), "/repo").only).toBe("^fuzz \\(");
+
+  const quoted = cliRepro(
+    "FOLIO_SCENARIO_SEED='1' bun scripts/consumer-scenarios.ts --only one\\ two --flow pre' literal 'mid\" quoted\"post",
+  );
+  expect(parseConsumerArgs(replayArgv(quoted), "/repo")).toMatchObject({
+    seed: "1",
+    only: "one two",
+    flow: "pre literal mid quotedpost",
+  });
+});
+
+test("legacy replay conversion preserves unsupported shell commands", () => {
+  const commands = [
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only $(pattern)",
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only `pattern`",
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only 'pattern",
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only pattern && echo done",
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only pattern; echo done",
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only pattern | echo done",
+  ];
+  for (const command of commands) expect(cliRepro(command)).toBe(command);
+});
+
+test(
+  "scenario shell quoting decodes every generated word",
+  () => {
+    assertProperty(
+      fc.property(fc.array(fc.string(), { maxLength: 20 }), (values) => {
+        expect(shellWords(values.map(shellQuote).join(" "))?.map(({ value }) => value)).toEqual(
+          values,
+        );
+      }),
+      { numRuns: 500, id: "scenario shell quoting round trips" },
+    );
+  },
+  propertyTestTimeout(5_000),
+);
+
+test("legacy replay conversion merges environment and CLI inputs with CLI precedence", () => {
+  const converted = cliRepro(
+    "FOLIO_SCENARIO_SEED=1 FOLIO_SCENARIO_FUZZ_RUNS=3 bun scripts/consumer-scenarios.ts scenario.test.ts --seed 2 --only focused",
+  );
+
+  expect(converted.match(/--seed/gu)).toHaveLength(1);
+  expect(converted.match(/--runs/gu)).toHaveLength(1);
+  expect(parseConsumerArgs(replayArgv(converted), "/repo")).toMatchObject({
+    seed: "2",
+    runs: "3",
+    only: "focused",
+    files: ["scenario.test.ts"],
+  });
+});
+
+test("legacy environment-only and flags-only replays resolve through the shared renderer", () => {
+  const environmentOnly = cliRepro(
+    "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only focused",
+  );
+  const flagsOnly = cliRepro("bun scripts/consumer-scenarios.ts --seed 2 --only focused");
+
+  expect(parseConsumerArgs(replayArgv(environmentOnly), "/repo")).toMatchObject({
+    seed: "1",
+    only: "focused",
+  });
+  expect(parseConsumerArgs(replayArgv(flagsOnly), "/repo")).toMatchObject({
+    seed: "2",
+    only: "focused",
+  });
+});
+
+test(
+  "converted legacy replays resolve to the runner's merged inputs",
+  () => {
+    const replayInputs = CONSUMER_SCENARIO_REPLAY_INPUTS.map(({ env, flag }) => ({
+      env,
+      flag,
+      option: flag.slice(2).replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase()),
+    }));
+    const options = replayInputs.map(({ option }) => option);
+    const generatedInputs = fc.dictionary(
+      fc.constantFrom(...options),
+      fc.stringMatching(/^\/[a-zA-Z0-9_-]{1,20}$/u),
+    );
+    assertProperty(
+      fc.property(generatedInputs, generatedInputs, (environmentValues, flagValues) => {
+        const environment = Object.fromEntries(
+          replayInputs.flatMap(({ env, option }) =>
+            environmentValues[option] === undefined ? [] : [[env, environmentValues[option]]],
+          ),
+        );
+        const environmentPrefix = Object.entries(environment)
+          .map(([name, value]) => `${name}=${value}`)
+          .join(" ");
+        const legacyArgv = replayInputs.flatMap(({ flag, option }) =>
+          flagValues[option] === undefined ? [] : [flag, flagValues[option]],
+        );
+        const legacy = `${environmentPrefix}${environmentPrefix === "" ? "" : " "}bun scripts/consumer-scenarios.ts --only focused ${legacyArgv.join(" ")}`;
+        const converted = cliRepro(legacy);
+        const resolvedBefore = consumerScenarioInputs(
+          parseConsumerArgs(["--only", "focused", ...legacyArgv], "/repo"),
+          environment,
+        );
+        const resolvedAfter = consumerScenarioInputs(
+          parseConsumerArgs(replayArgv(converted), "/repo"),
+          {},
+        );
+
+        expect(resolvedAfter).toEqual(resolvedBefore);
+      }),
+      { numRuns: 100, id: "converted legacy replay inputs preserve runner resolution" },
+    );
+  },
+  propertyTestTimeout(5_000),
+);
 
 test("a malformed signature body fails instead of opening a duplicate", async () => {
   const fake = fakeClient([

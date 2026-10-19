@@ -119,7 +119,6 @@ jobs:
       docx_kernel_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).docx_kernel) }}
       interactions_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).interactions) }}
       differential_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).differential) }}
-      consumer_scenarios_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).consumer_scenarios) }}
       packaged_consumer_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.packaged_consumer_required == 'true' || fromJSON(steps.plan.outputs.areas).packaged_consumer) }}
     steps:
       - name: Find successful merge-group coverage
@@ -216,7 +215,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
@@ -286,7 +285,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -479,7 +478,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -499,7 +498,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -543,7 +542,7 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -585,7 +584,7 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -627,7 +626,7 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -669,7 +668,7 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -710,7 +709,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -745,7 +744,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -837,7 +836,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -874,7 +873,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
       - run: bun install --frozen-lockfile
@@ -904,7 +903,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -967,7 +966,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -991,14 +990,14 @@ jobs:
   consumer-scenarios:
     name: Consumer scenarios (tarballs)
     needs: ci-plan
-    if: needs.ci-plan.outputs.consumer_scenarios_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
+    if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -1063,14 +1062,14 @@ jobs:
   consumer-scenarios-minimum:
     name: Consumer scenarios (minimum supported Node)
     needs: [ci-plan, consumer-scenarios]
-    if: needs.ci-plan.outputs.consumer_scenarios_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
+    if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -1114,7 +1113,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -1228,8 +1227,8 @@ jobs:
             "canonical-evaluation-regressions":{"area":"interactions_required"},
             "interactions":{"area":"interactions_required","depth":"full"},
             "differential":{"area":"differential_required","depth":"full"},
-            "consumer-scenarios":{"area":"consumer_scenarios_required","depth":"full"},
-            "consumer-scenarios-minimum":{"area":"consumer_scenarios_required","depth":"full"},
+            "consumer-scenarios":{"area":"packaged_consumer_required"},
+            "consumer-scenarios-minimum":{"area":"packaged_consumer_required"},
             "packaged-consumer":{"area":"packaged_consumer_required"}}
         run: |
           if [[ "$PLAN_RESULT" == "skipped" ]]; then
