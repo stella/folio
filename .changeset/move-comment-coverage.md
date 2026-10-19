@@ -2,4 +2,4 @@
 "@stll/docx-core": patch
 ---
 
-Preserve moved comment coverage until the move completes and retire comments whose coverage is exhausted.
+Derive exhausted comment ranges from their surviving coverage without changing document-operation history.

@@ -276,6 +276,7 @@ export type ExhaustiveHyperlinkReserved = ExhaustiveFields<
 export const BOOKMARK_START_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
+  anchorKind: NO_RESERVED_VALUE,
   name: NO_RESERVED_VALUE,
   colFirst: NO_RESERVED_VALUE,
   colLast: NO_RESERVED_VALUE,

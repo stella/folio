@@ -99,18 +99,6 @@ export type CommentAnchor = {
 export const commentDocumentIssue: (document: Document_2, allowedOrphans?: ReadonlySet<number> | "all") => string | undefined;
 
 // @public
-export type CommentRangeCoverage = {
-    authoredAsPoint: boolean;
-    survivingNonCarrierContent: boolean;
-};
-
-// @public
-export const commentRangeCoverage: (document: Document_2) => Map<number, CommentRangeCoverage>;
-
-// @public
-export const commentRangeShouldRetire: (before: CommentRangeCoverage, after: CommentRangeCoverage) => boolean;
-
-// @public
 export type CommentState = {
     relationshipPresence: "absent" | "undefined" | "present";
     relationships: readonly {
@@ -356,8 +344,6 @@ export type DocumentBatch = {
 
 // @public
 export type DocumentOp = (CommentOp | CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
-    commentAnchorMove?: true;
-    retiredCommentStates?: readonly RetiredCommentState[];
     undefinedFields?: readonly (readonly string[])[];
 };
 
@@ -587,6 +573,9 @@ export type InsertTextOp = {
     newIds?: NewIds;
     revision?: RevisionStamp;
 };
+
+// @public
+export const isCommentExhausted: (document: Document_2, id: number) => boolean;
 
 // @public
 export function isTextOnlyRun(run: Run): boolean;
@@ -1091,6 +1080,9 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 
 // @public (undocumented)
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
+
+// @public
+export const survivingComments: (document: Document_2) => Comment_2[];
 
 // @public (undocumented)
 export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;

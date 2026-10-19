@@ -1,6 +1,5 @@
 /** One editor intent, compiled to direct or tracked document operations. */
 import { compileHyperlinkIntent, type HyperlinkEditorIntent } from "./hyperlinkIntent";
-import { commentRangeCoverage } from "./comments";
 import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import { cloneModel } from "./modelClone";
 import { INSERTION_SEAM_POLICIES } from "../model/content";
@@ -1478,9 +1477,7 @@ export const compileEditorIntent = (
         ...(firstBlockId === undefined ? {} : { firstBlockId }),
       });
       if (inserted.isErr()) return inserted;
-      ops = [...deletionOps, ...inserted.value.ops].map((op) =>
-        Object.assign({}, op, { commentAnchorMove: true as const }),
-      );
+      ops = [...deletionOps, ...inserted.value.ops];
       selection = inserted.value.selection;
       break;
     }
@@ -1812,37 +1809,6 @@ export const compileEditorIntent = (
           if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT)
             selection = replacementCaret(op.at, text);
         }
-        break;
-      }
-      const coverage = commentRangeCoverage(document);
-      const replacesWholeParagraph =
-        idKey(from.blockId) === idKey(to.blockId) &&
-        from.offset === 0 &&
-        to.offset === paragraphLength(paragraph) &&
-        paragraphLength(paragraph) > 0 &&
-        text.length > 0 &&
-        (from.zeroWidthBefore ?? 0) > 0 &&
-        ![...coverage.values()].some(({ authoredAsPoint }) => authoredAsPoint);
-      if (replacesWholeParagraph) {
-        ops = [
-          {
-            type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
-            story: from.story,
-            blockId: from.blockId,
-            expected: paragraph.content,
-            content: [
-              ...paragraph.content.filter(
-                (node): node is InlineNode => isParagraphContent(node) && isRangeBoundary(node),
-              ),
-              ...content,
-              ...paragraph.content.filter(
-                (node): node is InlineNode =>
-                  isParagraphContent(node) && node.type === "commentReference",
-              ),
-            ],
-          },
-        ];
-        selection = { ...from, offset: text.length, zeroWidthBefore: 0 };
         break;
       }
       ops = [];

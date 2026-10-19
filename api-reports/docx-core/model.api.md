@@ -135,6 +135,7 @@ export type Column = {
 // @public
 type Comment_2 = {
     id: number;
+    anchorKind?: "point" | "range";
     author: string;
     initials?: string;
     date?: string;

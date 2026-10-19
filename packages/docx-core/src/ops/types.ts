@@ -1047,12 +1047,6 @@ export type RestoreCommentStateOp = {
   state: CommentState;
 };
 
-/** Comment state retired as a side effect, restored after the owning inverse. */
-export type RetiredCommentState = {
-  ids: readonly number[];
-  state: CommentState;
-};
-
 export type CommentOp =
   | CreateCommentOp
   | UpdateCommentContentOp
@@ -1097,10 +1091,6 @@ export type DocumentOp = (
   | SetSectionEndpointOp
   | SetPackageResourcesOp
 ) & {
-  /** Primitive belongs to one atomic comment-anchor move. */
-  commentAnchorMove?: true;
-  /** Comment state to restore after this inverse has restored its content. */
-  retiredCommentStates?: readonly RetiredCommentState[];
   /** Own undefined fields recorded by the operation capture boundary. */
   undefinedFields?: readonly (readonly string[])[];
 };

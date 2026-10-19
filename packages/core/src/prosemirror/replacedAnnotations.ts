@@ -14,9 +14,8 @@
  *
  * Text replacement preserves a comment's aligned coverage. Unchanged text
  * keeps its ranges; inserted text takes the comments of the replaced aligned
- * span. A comment range with no remaining covered content is removed. A
- * comment authored as a point is unchanged. The applier decides alignment
- * once for direct and tracked edits.
+ * span. A range with no remaining content becomes a point at the replacement
+ * start. The applier decides alignment once for direct and tracked edits.
  *
  * - `comment` mark: carried over its aligned replacement span.
  * - `hyperlink` mark: the replacement carries the first link the span held, so
@@ -55,15 +54,12 @@
  * - every other mark: formatting, and left to boundary inheritance, which
  *   already gives the replacement the formatting of the text it replaces.
  *
- * A comment range is retired when none of its covered non-carrier inline
- * content survives, whether or not its paragraph survives. Its
- * `commentReference` and range markers are carriers, not covered content.
+ * Removing the owning block removes its comment. Replacing its last covered
+ * text within a surviving block retains a point rather than dropping it.
  */
 
 import { Fragment, Mark, type Node as PMNode, type Schema } from "prosemirror-model";
-import { commentRangeShouldRetire } from "@stll/docx-core/ops";
 
-import { isCommentAnchorCarrier } from "../ai-edits/comment-lifecycle";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
 import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
@@ -102,7 +98,7 @@ const isCarried = (mark: Mark): boolean =>
   NON_INCLUSIVE_MARK_DISPOSITION[mark.type.name as keyof typeof NON_INCLUSIVE_MARK_DISPOSITION] ===
   "carry";
 
-/** One typed anchor for a comment authored as a point. */
+/** One typed point for a comment whose aligned coverage has no content left. */
 export const commentPoint = (schema: Schema, id: number): PMNode =>
   schema.node(RANGE_ANCHOR_NODE_NAME, {
     start: { type: "commentRangeStart", id },
@@ -122,7 +118,6 @@ export const createResolvedCommentPointCollector = ({
 }: Omit<ResolvedCommentPointsOptions, "doc">) => {
   const points = new Map<number, number>();
   const retained = new Set<number>();
-  const removedStructures: { from: number; to: number }[] = [];
   const visit = (node: PMNode, position: number, previous?: PMNode): boolean => {
     if (node.type.name === "paragraph") {
       const mark = expectParagraphAttrs(node).pPrMark;
@@ -139,65 +134,49 @@ export const createResolvedCommentPointCollector = ({
         node.descendants((inline, offset) => {
           if (
             inline.isInline &&
-            !isCommentAnchorCarrier(inline) &&
+            !isZeroWidthAnchor(inline) &&
             !removes(inline, position + 1 + offset)
           )
             survivingContent = true;
           return !survivingContent;
         });
-        // Keep walking an emptied carrier so its ranged comments are recorded
-        // for removal along with the carrier.
+        if (!survivingContent) return false;
       }
     }
     if (
       node.type.name === "tableRow" &&
       expectTableRowAttrs(node).trDel &&
       retiresStructure(node, position)
-    ) {
-      removedStructures.push({ from: position, to: position + node.nodeSize });
-      return true;
-    }
+    )
+      return false;
     if (
       (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
       expectTableCellAttrs(node).cellMarker?.kind === "del" &&
       retiresStructure(node, position)
-    ) {
-      removedStructures.push({ from: position, to: position + node.nodeSize });
-      return true;
-    }
+    )
+      return false;
     if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
       const attrs = readRangeAnchorAttrs(node);
       if (attrs.ok && attrs.value.start.type === "commentRangeStart")
         retained.add(attrs.value.start.id);
     }
-    if (!node.isInline || isCommentAnchorCarrier(node)) return true;
-    const removedWithStructure = removedStructures.some(
-      ({ from, to }) => position > from && position < to,
-    );
+    if (!node.isInline || isZeroWidthAnchor(node)) return true;
     for (const mark of node.marks) {
       if (mark.type.name !== "comment") continue;
       const id = mark.attrs["commentId"];
-      if (!removedWithStructure && !removes(node, position)) retained.add(id);
+      if (!removes(node, position)) retained.add(id);
       else if (!points.has(id)) points.set(id, position);
     }
     return true;
   };
   const finish = (): Map<number, number> => {
-    for (const id of points.keys()) {
-      if (
-        !commentRangeShouldRetire(
-          { authoredAsPoint: false, survivingNonCarrierContent: true },
-          { authoredAsPoint: false, survivingNonCarrierContent: retained.has(id) },
-        )
-      )
-        points.delete(id);
-    }
+    for (const id of retained) points.delete(id);
     return points;
   };
   return { visit, finish };
 };
 
-/** Ranged comments whose covered non-carrier content is removed by a resolution. */
+/** Point fallback excludes comments belonging to retired blocks and table cells. */
 export const resolvedCommentPoints = ({
   doc,
   removes,

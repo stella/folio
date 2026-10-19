@@ -1,5 +1,5 @@
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
-import { applyCommentOp, captureRetiredCommentState, restoreRetiredCommentState } from "./comments";
+import { applyCommentOp } from "./comments";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { cloneModel } from "./modelClone";
 import {
@@ -86,7 +86,6 @@ import {
   validateOpsDocument,
 } from "./contract";
 import { combineEdits, type DocumentEdit } from "./edits";
-import { commentRangeCoverage, commentRangeShouldRetire } from "./comments";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { freshenIdentities, rebindRetainedIdentities } from "./identity";
 import {
@@ -185,7 +184,6 @@ import {
   type ParagraphReviewFields,
   type ReplaceBlocksOp,
   type ReplaceInlineOp,
-  type RetiredCommentState,
   type RevisionStamp,
   type SetParagraphPropsOp,
   type SetParagraphReviewOp,
@@ -2260,18 +2258,14 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
   return storyLifecycleEdit(document, next, op);
 };
 
-const dispatch = (
-  document: Document,
-  op: DocumentOp,
-  retiringCommentIds: ReadonlySet<number>,
-): Applied => {
+const dispatch = (document: Document, op: DocumentOp): Applied => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
     case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
     case DOCUMENT_OP_TYPES.DELETE_COMMENT:
     case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
-      return applyCommentOp(document, op, applyDocumentOps, retiringCommentIds);
+      return applyCommentOp(document, op, applyDocumentOps);
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
@@ -2309,7 +2303,7 @@ const dispatch = (
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
       return replaceInline(document, op);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
-      return resolveRevision(document, op, applyDocumentOpsDuringResolution);
+      return resolveRevision(document, op, applyDocumentOps);
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
     case DOCUMENT_OP_TYPES.DELETE_TABLE:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
@@ -2459,28 +2453,10 @@ const preserveParagraphPropertySnapshots = ({
   }
 };
 
-type ApplyDocumentOpOptions = {
-  commentRetirement: "apply" | "defer";
-  retiringCommentIds?: ReadonlySet<number>;
-};
-
-/** Restore retired comment state before the first inverse that still expects its anchors. */
-const prependRetiredCommentStates = (
-  inverse: readonly DocumentOp[],
-  states: readonly RetiredCommentState[],
-): readonly DocumentOp[] => {
-  const first = inverse.at(0);
-  if (first === undefined) panic("A comment-retiring edit produced no inverse.");
-  return [
-    { ...first, retiredCommentStates: [...(first.retiredCommentStates ?? []), ...states] },
-    ...inverse.slice(1),
-  ];
-};
-
-const applyDocumentOpInternal = (
+/** Apply one operation to a document that meets the seed contract. */
+export const applyDocumentOp = (
   document: Document,
   input: DocumentOp,
-  { commentRetirement, retiringCommentIds = new Set() }: ApplyDocumentOpOptions,
 ): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   const restored = restoreDocumentOp(input);
   if (restored.isErr()) return restored;
@@ -2525,91 +2501,11 @@ const applyDocumentOpInternal = (
   if (badStamp !== undefined) {
     return Result.err(badStamp);
   }
-  let inputDocument = document;
-  const restorations: DocumentEdit[] = [];
-  if (op.retiredCommentStates !== undefined) {
-    for (const state of op.retiredCommentStates) {
-      const definitions = new Set(
-        (inputDocument.package.document.comments ?? []).map(({ id }) => id),
-      );
-      if (state.ids.every((id) => definitions.has(id))) continue;
-      const restoredComment = applyCommentOp(
-        inputDocument,
-        restoreRetiredCommentState(inputDocument, state),
-        applyDocumentOps,
-      );
-      if (restoredComment.isErr()) return Result.err(restoredComment.error);
-      inputDocument = restoredComment.value.document;
-      restorations.push(restoredComment.value);
-    }
-  }
-  const applied = dispatch(inputDocument, op, retiringCommentIds);
+  const applied = dispatch(document, op);
   if (applied.isErr()) {
     return Result.err(applied.error);
   }
-  let edit = applied.value;
-  if (restorations.length > 0) {
-    const combined = combineEdits(document, [...restorations, edit]);
-    edit = {
-      ...combined,
-      inverse: [...edit.inverse, ...restorations.toReversed().flatMap(({ inverse }) => inverse)],
-    };
-  }
-  if (
-    commentRetirement === "apply" &&
-    op.type !== DOCUMENT_OP_TYPES.CREATE_COMMENT &&
-    op.type !== DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT &&
-    op.type !== DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION &&
-    op.type !== DOCUMENT_OP_TYPES.DELETE_COMMENT &&
-    op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE
-  ) {
-    const beforeCoverage = commentRangeCoverage(document);
-    const afterCoverage = commentRangeCoverage(edit.document);
-    const definedComments = new Set((document.package.document.comments ?? []).map(({ id }) => id));
-    const preservedComments = new Set(op.retiredCommentStates?.flatMap(({ ids }) => ids) ?? []);
-    const retire = [...beforeCoverage]
-      .filter(
-        ([id, before]) =>
-          definedComments.has(id) &&
-          !preservedComments.has(id) &&
-          commentRangeShouldRetire(
-            before,
-            afterCoverage.get(id) ?? {
-              authoredAsPoint: false,
-              survivingNonCarrierContent: false,
-            },
-          ),
-      )
-      .map(([id]) => ({
-        type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
-        id,
-        scope: "thread" as const,
-      }));
-    if (retire.length > 0) {
-      const ids = new Set(retire.map(({ id }) => id));
-      let current = edit.document;
-      const retirements: DocumentEdit[] = [];
-      for (const retirement of retire) {
-        const retired = applyDocumentOpInternal(current, retirement, {
-          commentRetirement: "defer",
-          retiringCommentIds: ids,
-        });
-        if (retired.isErr()) return Result.err(retired.error);
-        current = retired.value.document;
-        retirements.push(retired.value);
-      }
-      const retired = combineEdits(edit.document, retirements);
-      const states = retired.inverse.flatMap((inverse) =>
-        inverse.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE
-          ? [{ ids: inverse.ids, state: inverse.state }]
-          : [],
-      );
-      edit = {
-        ...combineEdits(document, [edit, retired]),
-        inverse: prependRetiredCommentStates(edit.inverse, states),
-      };
-    }
-  }
+  const edit = applied.value;
   const beforeSections = document.package.document.sections;
   const afterSections = edit.document.package.document.sections;
   const structural =
@@ -2670,120 +2566,11 @@ const applyDocumentOpInternal = (
   }
   meetsContract(edit.document);
   preserveParagraphPropertySnapshots({ before: document, edit });
-  const inverseRetirements = [...commentRangeCoverage(edit.document)]
-    .filter(([id, coverage]) =>
-      commentRangeShouldRetire(
-        coverage,
-        commentRangeCoverage(document).get(id) ?? {
-          authoredAsPoint: false,
-          survivingNonCarrierContent: false,
-        },
-      ),
-    )
-    .map(([id]) => id);
-  if (inverseRetirements.length > 0) {
-    const last = edit.inverse.at(-1);
-    if (last === undefined) panic("A comment-affecting edit produced no inverse.");
-    edit.inverse = [
-      ...edit.inverse.slice(0, -1),
-      {
-        ...last,
-        retiredCommentStates: [
-          ...(last.retiredCommentStates ?? []),
-          captureRetiredCommentState(document, inverseRetirements, edit.document),
-        ],
-      },
-    ];
-  }
   return Result.ok({
     ...edit,
-    inverse: edit.inverse.map((inverse) =>
-      captureDocumentOp(op.commentAnchorMove ? { ...inverse, commentAnchorMove: true } : inverse),
-    ),
+    inverse: edit.inverse.map(captureDocumentOp),
     revisions: stamp === undefined ? [] : recordedRevisions(document, edit, stamp),
   });
-};
-
-/** Apply one operation to a document that meets the seed contract. */
-export const applyDocumentOp = (
-  document: Document,
-  input: DocumentOp,
-): Result<AppliedDocumentOp, DocumentOpRefusal> => {
-  return applyDocumentOpInternal(document, input, {
-    commentRetirement: input.commentAnchorMove ? "defer" : "apply",
-  });
-};
-
-const retireExhaustedComments = (
-  before: Document,
-  edit: AppliedDocumentOp,
-  allowOrphanRetirement = false,
-): Result<AppliedDocumentOp, DocumentOpRefusal> => {
-  const beforeCoverage = commentRangeCoverage(before);
-  const afterCoverage = commentRangeCoverage(edit.document);
-  const beforeDefined = new Set((before.package.document.comments ?? []).map(({ id }) => id));
-  const afterDefined = new Set((edit.document.package.document.comments ?? []).map(({ id }) => id));
-  const ids = new Set(
-    [...beforeCoverage]
-      .filter(
-        ([id, coverage]) =>
-          beforeDefined.has(id) &&
-          afterDefined.has(id) &&
-          commentRangeShouldRetire(
-            coverage,
-            afterCoverage.get(id) ?? {
-              authoredAsPoint: false,
-              survivingNonCarrierContent: false,
-            },
-          ),
-      )
-      .map(([id]) => id),
-  );
-  if (ids.size === 0) return Result.ok(edit);
-  let current = edit.document;
-  const retirements: DocumentEdit[] = [];
-  for (const id of ids) {
-    const retired = applyDocumentOpInternal(
-      current,
-      { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id, scope: "thread" },
-      {
-        commentRetirement: "defer",
-        ...(allowOrphanRetirement ? { retiringCommentIds: ids } : {}),
-      },
-    );
-    if (retired.isErr()) return retired;
-    current = retired.value.document;
-    retirements.push(retired.value);
-  }
-  const states = retirements.flatMap(({ inverse }) =>
-    inverse.flatMap((operation) =>
-      operation.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE
-        ? [{ ids: operation.ids, state: operation.state }]
-        : [],
-    ),
-  );
-  return Result.ok({
-    ...combineEdits(before, [edit, ...retirements]),
-    inverse: prependRetiredCommentStates(edit.inverse, states),
-    revisions: edit.revisions,
-  });
-};
-
-const applyDocumentOpsDuringResolution = (
-  document: Document,
-  ops: readonly DocumentOp[],
-): Result<AppliedDocumentOp, DocumentOpRefusal> => {
-  let current = document;
-  const edits: DocumentEdit[] = [];
-  const revisions: number[] = [];
-  for (const op of ops) {
-    const applied = applyDocumentOpInternal(current, op, { commentRetirement: "defer" });
-    if (applied.isErr()) return applied;
-    current = applied.value.document;
-    edits.push(applied.value);
-    revisions.push(...applied.value.revisions);
-  }
-  return Result.ok({ ...combineEdits(document, edits), revisions });
 };
 
 /** Apply a journal envelope only when its schema matches this reader. */
@@ -2811,14 +2598,11 @@ export const applyDocumentOps = (
   document: Document,
   ops: readonly DocumentOp[],
 ): Result<AppliedDocumentOp, DocumentOpRefusal> => {
-  const transfersCommentAnchors = ops.some(({ commentAnchorMove }) => commentAnchorMove);
   let current = document;
   const edits: DocumentEdit[] = [];
   const revisions: number[] = [];
   for (const op of ops) {
-    const applied = transfersCommentAnchors
-      ? applyDocumentOpInternal(current, op, { commentRetirement: "defer" })
-      : applyDocumentOp(current, op);
+    const applied = applyDocumentOp(current, op);
     if (applied.isErr()) {
       return applied;
     }
@@ -2826,8 +2610,5 @@ export const applyDocumentOps = (
     edits.push(applied.value);
     revisions.push(...applied.value.revisions);
   }
-  const combined = { ...combineEdits(document, edits), revisions };
-  return transfersCommentAnchors
-    ? retireExhaustedComments(document, combined, true)
-    : Result.ok(combined);
+  return Result.ok({ ...combineEdits(document, edits), revisions });
 };

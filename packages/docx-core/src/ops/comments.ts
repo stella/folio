@@ -42,7 +42,6 @@ import {
   type CreateCommentOp,
   type NewIds,
   type OpStory,
-  type RetiredCommentState,
   type RestoreCommentStateOp,
   type TextPosition,
 } from "./types";
@@ -77,33 +76,15 @@ const anchorsIn = (document: Document) => {
   return anchors;
 };
 
-/** The structural facts shared by comment-range lifecycle implementations. */
-export type CommentRangeCoverage = {
-  authoredAsPoint: boolean;
-  survivingNonCarrierContent: boolean;
-};
-
-/** Whether an edit has removed all content originally covered by a range comment. */
-export const commentRangeShouldRetire = (
-  before: CommentRangeCoverage,
-  after: CommentRangeCoverage,
-): boolean =>
-  !before.authoredAsPoint && before.survivingNonCarrierContent && !after.survivingNonCarrierContent;
-
 /** Range coverage in source order; comment anchors themselves are only carriers. */
-export const commentRangeCoverage = (document: Document): Map<number, CommentRangeCoverage> => {
-  const coverage = new Map<number, CommentRangeCoverage>();
+const coveredCommentIds = (document: Document): Set<number> => {
+  const covered = new Set<number>();
   for (const story of documentStories(document)) {
     const open = new Set<number>();
     for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
       for (const { node } of leafSpans(paragraph.content)) {
         if (node.type === "commentRangeStart") {
           open.add(node.id);
-          if (!coverage.has(node.id))
-            coverage.set(node.id, {
-              authoredAsPoint: true,
-              survivingNonCarrierContent: false,
-            });
           continue;
         }
         if (node.type === "commentRangeEnd") {
@@ -111,13 +92,30 @@ export const commentRangeCoverage = (document: Document): Map<number, CommentRan
           continue;
         }
         if (isCommentAnchor(node)) continue;
-        for (const id of open) {
-          coverage.set(id, { authoredAsPoint: false, survivingNonCarrierContent: true });
-        }
+        for (const id of open) covered.add(id);
       }
     }
   }
-  return coverage;
+  return covered;
+};
+
+/** Whether a statically ranged comment currently covers no document content. */
+export const isCommentExhausted = (document: Document, id: number): boolean => {
+  const comment = document.package.document.comments?.find((entry) => entry.id === id);
+  if (comment === undefined || comment.parentId !== undefined) return false;
+  return comment.anchorKind === "range" && !coveredCommentIds(document).has(id);
+};
+
+/** Comment definitions whose root range still has content, including their replies. */
+export const survivingComments = (document: Document): Comment[] => {
+  const comments = document.package.document.comments ?? [];
+  const exhausted = new Set(
+    comments.filter(({ id }) => isCommentExhausted(document, id)).map(({ id }) => id),
+  );
+  return comments.filter(
+    ({ id, parentId }) =>
+      !exhausted.has(id) && (parentId === undefined || !exhausted.has(parentId)),
+  );
 };
 
 /**
@@ -151,7 +149,6 @@ export const commentDocumentIssue = (
   if (comments.some(({ id }) => !validId(id)) || byId.size !== comments.length)
     return "Comment identities must be unique bounded integers.";
   const anchors = anchorsIn(document);
-  const coverage = commentRangeCoverage(document);
   if (anchors.some(({ node }) => !byId.has(anchorId(node) ?? -1)))
     return "A comment anchor has no definition.";
   for (const comment of comments) {
@@ -169,14 +166,6 @@ export const commentDocumentIssue = (
       (!sameStory(start.story, end.story) || anchors.indexOf(start) > anchors.indexOf(end))
     )
       return "Comment range boundaries must be ordered in one story.";
-    const rangeCoverage = coverage.get(comment.id);
-    if (
-      start &&
-      end &&
-      !rangeCoverage?.authoredAsPoint &&
-      !rangeCoverage?.survivingNonCarrierContent
-    )
-      return "A comment range must cover non-carrier content.";
     const parent = comment.parentId === undefined ? undefined : byId.get(comment.parentId);
     if (!parent && own.length === 0 && allowedOrphans !== "all" && !allowedOrphans.has(comment.id))
       return "A root or revision-associated comment needs an owned source anchor.";
@@ -286,32 +275,6 @@ const scaffoldDelta = (before: CommentState, after: CommentState): NewIds => {
   return { revision: values(IDENTITY_SPACES.REVISION), control: values(IDENTITY_SPACES.CONTROL) };
 };
 
-/** Build exact comment restoration after its owning inverse has restored content. */
-export const restoreRetiredCommentState = (
-  document: Document,
-  retired: RetiredCommentState,
-): RestoreCommentStateOp => {
-  const ids = new Set(retired.ids);
-  const expected = capture(document, ids, retired.state.anchors);
-  return {
-    type: DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
-    ids: retired.ids,
-    scaffoldIds: scaffoldDelta(expected, retired.state),
-    expected: cloneModel(expected),
-    state: cloneModel(retired.state),
-  };
-};
-
-/** Capture comment state whose anchors an inverse may remove. */
-export const captureRetiredCommentState = (
-  document: Document,
-  ids: readonly number[],
-  changedFrom: Document,
-): RetiredCommentState => ({
-  ids,
-  state: cloneModel(capture(document, new Set(ids), changedAnchors(changedFrom, document))),
-});
-
 /** Remove only owned anchors, then merge scaffolding with the shared exact field predicate. */
 const ownedSeams = (content: readonly InlineNode[], ids: ReadonlySet<number>): number[] => {
   let references = 0;
@@ -416,7 +379,7 @@ const edited = (
   if (invalid) return fail(op, invalid.message, invalid.reason);
   // An edit may keep a loaded orphan, never strand another comment.
   const issue = commentDocumentIssue(after, orphanRootCommentIds(before));
-  if (issue && op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE) return fail(op, issue);
+  if (issue) return fail(op, issue);
   const anchors = changedAnchors(before, after);
   const prior = capture(before, ids, anchors);
   const next = capture(after, ids, anchors);
@@ -865,7 +828,6 @@ export const applyCommentOp = (
   document: Document,
   op: CommentOp,
   applyOps: ApplyOps,
-  retiringCommentIds: ReadonlySet<number> = new Set(),
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   if (op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE) {
     if (
@@ -883,7 +845,7 @@ export const applyCommentOp = (
     return restore(document, op);
   }
   const issue = commentDocumentIssue(document, "all");
-  if (issue && op.type !== DOCUMENT_OP_TYPES.DELETE_COMMENT) return fail(op, issue);
+  if (issue) return fail(op, issue);
   const orphans = orphanRootCommentIds(document);
   if (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) {
     if (op.anchor?.kind === "reply" && orphans.has(op.anchor.parentId))
@@ -896,12 +858,33 @@ export const applyCommentOp = (
       typeof op.anchor !== "object"
     )
       return fail(op, "The comment creation payload is invalid.");
-    return create(document, op, applyOps);
+    return create(
+      document,
+      {
+        ...op,
+        comment: {
+          ...op.comment,
+          ...(op.anchor.kind === "reply"
+            ? {}
+            : {
+                anchorKind:
+                  op.anchor.kind === "point" ||
+                  (op.anchor.kind === "range" &&
+                    sameStory(op.anchor.from.story, op.anchor.to.story) &&
+                    op.anchor.from.blockId === op.anchor.to.blockId &&
+                    op.anchor.from.offset === op.anchor.to.offset)
+                    ? "point"
+                    : "range",
+              }),
+        },
+      },
+      applyOps,
+    );
   }
   const comments = document.package.document.comments ?? [];
   const comment = comments.find(({ id }) => id === op.id);
   if (!comment) return fail(op, "The comment does not exist.");
-  if (orphans.has(comment.id) && !retiringCommentIds.has(comment.id))
+  if (orphans.has(comment.id))
     return fail(op, "A comment without a source anchor is preserved read-only.");
   if (op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT) {
     if (

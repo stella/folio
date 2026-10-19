@@ -159,6 +159,7 @@ import { noteReferenceEditsAllowed } from "./note-references";
 import {
   anchoredCommentIdsInBlocks,
   anchoredCommentIdsInProseDoc,
+  coveredCommentIdsInProseDoc,
   withoutLostCommentThreads,
 } from "./comment-lifecycle";
 import {
@@ -221,6 +222,7 @@ const createReviewerComment = ({
   date,
 }: CreateReviewerCommentOptions): Comment => ({
   id,
+  anchorKind: "range",
   author,
   date: date ?? new Date().toISOString(),
   content: [commentTextParagraph(text)],
@@ -2109,18 +2111,27 @@ export class FolioDocxReviewer {
    * (nested tracked changes, hyperlinks) is out of scope.
    */
   getComments(filter?: FolioReviewCommentFilter): FolioReviewComment[] {
+    const anchors = this.commentAnchors();
+    const covered = new Set<number>();
+    for (const story of this.listStoryHandlesInternal()) {
+      const doc = story.type === "main" ? this.state.doc : this.readSecondaryStoryDoc(story);
+      if (!doc) continue;
+      for (const id of coveredCommentIdsInProseDoc(doc)) covered.add(id);
+    }
     const definitions = this.withResolvedOverrides(
       this.keptCommentThreads(
         [...(this.baseDocument.package.document.comments ?? []), ...this.createdComments],
         this.state,
         this.secondaryStoryStates.values(),
+      ).filter(
+        ({ id, parentId, anchorKind }) =>
+          anchorKind !== "range" || parentId !== undefined || covered.has(id),
       ),
     );
     if (definitions.length === 0) {
       return [];
     }
 
-    const anchors = this.commentAnchors();
     const repliesByParent = new Map<number, Comment[]>();
     const topLevel: Comment[] = [];
     for (const comment of definitions) {

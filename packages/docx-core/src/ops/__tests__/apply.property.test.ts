@@ -2016,10 +2016,9 @@ describe("document operations", () => {
                     content: [
                       { type: "run", content: [{ type: "text", text: "a" }] },
                       { type: "commentRangeStart", id: 7 },
-                      { type: "run", content: [{ type: "text", text: "b" }] },
                       { type: "commentRangeEnd", id: 7 },
                       { type: "commentReference", id: 7 },
-                      { type: "run", content: [{ type: "text", text: "cd" }] },
+                      { type: "run", content: [{ type: "text", text: "bcd" }] },
                     ],
                   },
                 ],
@@ -2100,7 +2099,11 @@ describe("document operations", () => {
             const remaining = text.slice(0, start.before.offset) + text.slice(end.after.offset);
             const rebased = targetOffset > end.after.offset ? targetOffset - 1 : targetOffset;
             expect(paragraphLogicalText(moved)).toBe(
-              inside || tracked ? text : remaining.slice(0, rebased) + remaining.slice(rebased),
+              inside || tracked
+                ? text
+                : remaining.slice(0, rebased) +
+                    text.slice(start.before.offset, end.after.offset) +
+                    remaining.slice(rebased),
             );
             if (tracked) {
               assertExactModel(edit.document, snapshot);
@@ -2109,22 +2112,16 @@ describe("document operations", () => {
                 anchors,
               );
             }
-            const exhausted = !inside && !tracked;
             assertExactModel(
               leafSpans(moved.content)
                 .filter(({ node }) => isCommentAnchor(node))
                 .map(({ node }) => node),
-              exhausted
-                ? []
-                : [
-                    { type: "commentRangeStart", id: 7 },
-                    { type: "commentRangeEnd", id: 7 },
-                    { type: "commentReference", id: 7 },
-                  ],
+              [
+                { type: "commentRangeStart", id: 7 },
+                { type: "commentRangeEnd", id: 7 },
+                { type: "commentReference", id: 7 },
+              ],
             );
-            expect(
-              edit.document.package.document.comments?.some(({ id }) => id === 7) ?? false,
-            ).toBe(!exhausted);
             const undo = applyDocumentOps(
               edit.document,
               JSON.parse(JSON.stringify(edit.inverse)),
@@ -2134,7 +2131,6 @@ describe("document operations", () => {
             assertExactModel(redo.document, edit.document);
             journal.push({ before, edit, ops: compiled.value.ops });
             document = redo.document;
-            if (exhausted) break;
           }
           for (const entry of journal.toReversed()) {
             document = applyDocumentOps(document, entry.edit.inverse).unwrap().document;

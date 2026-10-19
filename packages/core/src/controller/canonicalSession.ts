@@ -30,6 +30,7 @@ import {
   findStoryBody,
   documentStories,
   sameStory,
+  survivingComments,
   type OpStory,
   type DocumentOp,
   type EditorIntent,
@@ -805,7 +806,7 @@ class CanonicalSession {
 
   /** Render only the committed comment projection while provisional IME blocks document snapshots. */
   getCommittedComments() {
-    return structuredClone(this.currentDocument.package.document.comments ?? []);
+    return structuredClone(survivingComments(this.currentDocument));
   }
 
   setMode(mode: CanonicalSessionMode): void {

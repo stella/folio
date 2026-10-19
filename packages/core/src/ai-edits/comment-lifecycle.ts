@@ -27,7 +27,7 @@ import { RANGE_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/RangeAnc
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import type { BlockContent, Comment } from "../types/document";
 
-/** Whether an inline node locates a comment without being content covered by it. */
+/** Whether an inline node only locates a comment rather than being covered content. */
 export const isCommentAnchorCarrier = (node: PMNode): boolean =>
   node.type.name === COMMENT_REFERENCE_NODE_NAME || node.type.name === RANGE_ANCHOR_NODE_NAME;
 
@@ -51,6 +51,20 @@ export const anchoredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {
       if (mark.type.name === "comment" && typeof commentId === "number") {
         ids.add(commentId);
       }
+    }
+    return true;
+  });
+  return ids;
+};
+
+/** Ids whose mark covers content rather than a zero-width anchor carrier. */
+export const coveredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {
+  const ids = new Set<number>();
+  doc.descendants((node) => {
+    if (!node.isInline || isCommentAnchorCarrier(node)) return true;
+    for (const mark of node.marks) {
+      const commentId = mark.attrs["commentId"];
+      if (mark.type.name === "comment" && typeof commentId === "number") ids.add(commentId);
     }
     return true;
   });

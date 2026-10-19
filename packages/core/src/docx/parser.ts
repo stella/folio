@@ -43,6 +43,7 @@ import {
   MAX_PACKAGE_TIFF_PIXELS,
 } from "../utils/tiffConverter";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { isCommentExhausted } from "@stll/docx-core/ops";
 
 import { parseComments } from "./commentParser";
 import { type ParseContext, createParseWarningCollector } from "./parseContext";
@@ -786,6 +787,11 @@ export async function parseDocxWithPreviewBudget(
       ...(templateVariables !== undefined ? { templateVariables } : {}),
       ...(requiredFonts.length > 0 ? { requiredFonts } : {}),
     };
+    for (const comment of document.package.document.comments ?? []) {
+      if (comment.parentId !== undefined) continue;
+      comment.anchorKind = "range";
+      if (isCommentExhausted(document, comment.id)) comment.anchorKind = "point";
+    }
     const altChunkBudget = { remainingBytes: ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES };
     await attachAltChunkPlainText(pkg.document.content, {
       relationships: rels,

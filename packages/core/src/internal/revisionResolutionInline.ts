@@ -1,3 +1,4 @@
+import { commentPoint } from "../prosemirror/replacedAnnotations";
 import { resolvedPreservedXmlAttrs } from "../prosemirror/preservedXmlReview";
 import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
 import { panic } from "better-result";
@@ -15,7 +16,6 @@ import {
 } from "../prosemirror/contentControlRevisions";
 import { resolveEmptyFieldResultRuns } from "../prosemirror/emptyFieldResultRuns";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
-import { readCommentReferenceAttrs } from "../prosemirror/commentReferenceAttrs";
 import { continuedRunMarks } from "../prosemirror/rejoinRunCarriers";
 import {
   reconstructRejectedRunFormattingMarks,
@@ -231,13 +231,6 @@ const resolveInlineContent = ({
   context,
   inheritedParagraphScope,
 }: ResolveInlineContentOptions): PMNode | null => {
-  if (node.type.name === "commentReference") {
-    const attrs = readCommentReferenceAttrs(node);
-    if (attrs.ok && context.pointComments.has(attrs.value.commentId)) {
-      context.replacementRanges.push({ from: position, to: position + node.nodeSize, newSize: 0 });
-      return null;
-    }
-  }
   const paragraphScope =
     node.type.name === "paragraph" ? { paragraph: node } : inheritedParagraphScope;
   const replacementRangeStart = context.replacementRanges.length;
@@ -293,6 +286,25 @@ const resolveInlineContent = ({
     if (resolved !== child) {
       contentChanged = true;
       resolvedBoundaries.add(children.length);
+    }
+    if (resolved === null && child.isInline) {
+      const anchors: PMNode[] = [];
+      for (const mark of child.marks) {
+        const id = mark.attrs["commentId"];
+        if (mark.type.name !== "comment" || !context.pointComments.delete(id)) continue;
+        anchors.push(commentPoint(child.type.schema, id));
+      }
+      if (anchors.length > 0) {
+        const fragment = Fragment.fromArray(anchors);
+        const range = context.replacementRanges.at(-1);
+        if (!range || range.from !== contentStart + offset) panic("Missing resolved inline range");
+        range.newSize = fragment.size;
+        range.slice = new Slice(fragment, 0, 0);
+        for (const anchor of anchors) {
+          children.push(anchor);
+          positions.push(contentStart + offset);
+        }
+      }
     }
     if (resolved) {
       children.push(resolved);

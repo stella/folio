@@ -18,6 +18,7 @@ import type {
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { contractViolation, normalizeForOps } from "../contract";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
+import { isCommentExhausted } from "../comments";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
@@ -54,6 +55,7 @@ const commentedDocument = (content: ParagraphContent[]): Document => ({
       comments: [
         {
           id: 40,
+          anchorKind: "range",
           author: "Reviewer",
           content: [paragraph("00000040", [run("note")])],
         },
@@ -102,6 +104,13 @@ const refusalOf = (document: Document, op: DocumentOp): string | undefined => {
 const blocks = (document: Document): BlockContent[] => document.package.document.content;
 
 describe("tracked text", () => {
+  test("a point comment is not exhausted without covered content", () => {
+    const document = commentedDocument([{ type: "commentReference", id: 40 }]);
+    document.package.document.comments![0]!.anchorKind = "point";
+
+    expect(isCommentExhausted(document, 40)).toBe(false);
+  });
+
   // The L1 generator found an empty revision acting as a zero-width deletion
   // target. The input normalization must remove it for both operation modes.
   test.each(["insertion", "deletion", "moveFrom", "moveTo"] as const)(
@@ -157,7 +166,7 @@ describe("tracked text", () => {
     expect(resolved(tracked.document, [1], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
   });
 
-  test("rejecting a tracked insertion retires a comment that only covered inserted text", () => {
+  test("rejecting a tracked insertion exhausts a comment that only covered inserted text", () => {
     const document = commentedDocument([
       run("before "),
       { type: "commentRangeStart", id: 40 },
@@ -172,8 +181,7 @@ describe("tracked text", () => {
 
     const rejected = resolved(document, [1], REVISION_DECISIONS.REJECT);
 
-    expect(rejected.package.document.comments).toBeUndefined();
-    expect(blocks(rejected)).toEqual([paragraph("00000001", [run("before ")])]);
+    expect(isCommentExhausted(rejected, 40)).toBe(true);
   });
 
   test("rejecting a tracked insertion keeps a comment that also covered original text", () => {
@@ -432,7 +440,7 @@ describe("tracked text", () => {
     ]);
   });
 
-  test("accepting deletion of a comment's whole range retires it and undo restores it", () => {
+  test("accepting deletion of a comment's whole range exhausts it", () => {
     const document = commentedDocument([
       { type: "commentRangeStart", id: 40 },
       run("x"),
@@ -452,8 +460,7 @@ describe("tracked text", () => {
       document,
     );
     const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
-    expect(accepted.package.document.comments).toBeUndefined();
-    expect(blocks(accepted)).toEqual([paragraph("00000001", [run(" remains")])]);
+    expect(isCommentExhausted(accepted, 40)).toBe(true);
 
     const direct = applied(document, directly(deletion));
     expect(direct.document).toStrictEqual(accepted);
@@ -507,8 +514,8 @@ describe("tracked text", () => {
 
     const accepted = resolved(document, [9, 10], REVISION_DECISIONS.ACCEPT);
 
-    expect(accepted.package.document.comments).toBeUndefined();
-    expect(blocks(accepted)).toEqual([paragraph("00000001", []), paragraph("00000003", [])]);
+    expect(isCommentExhausted(accepted, 40)).toBe(true);
+    expect(blocks(accepted)).toHaveLength(2);
   });
 
   test("revisionIdDemand counts the ids a tracked operation takes past its stamp", () => {

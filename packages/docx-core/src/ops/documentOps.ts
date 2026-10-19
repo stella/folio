@@ -162,8 +162,7 @@ export { idKey, packageParagraphIds } from "./ids";
 
 export {
   commentDocumentIssue,
-  commentRangeCoverage,
-  commentRangeShouldRetire,
   freshCommentId,
-  type CommentRangeCoverage,
+  isCommentExhausted,
+  survivingComments,
 } from "./comments";
