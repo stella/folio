@@ -1,8 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
-import { aggregateTestTimings } from "./aggregate-ci-test-timings";
+import { aggregateTestTimings, createGraphqlRequest } from "./aggregate-ci-test-timings";
 import { assignTestShards, shardLoads } from "./ci-test-shards";
+
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true });
+});
 
 describe("measured test shard balancing", () => {
   test(
@@ -51,5 +60,52 @@ describe("measured test shard balancing", () => {
     const assigned = () =>
       assignTestShards(Object.keys(timings), timings).map((shard) => Array.from(shard));
     expect(assigned()).toEqual(assigned());
+  });
+
+  test("writes large timing contents into a GraphQL request without argv transport", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "folio-timing-request-"));
+    temporaryDirectories.push(directory);
+    const timingFile = path.join(directory, "timings.json");
+    const requestFile = path.join(directory, "request.json");
+    const timingBytes = Buffer.from(`${JSON.stringify({ sample: "x".repeat(210_000) })}\n`);
+    writeFileSync(timingFile, timingBytes);
+
+    const args = [
+      "bun",
+      path.join(import.meta.dir, "aggregate-ci-test-timings.ts"),
+      "--graphql-request",
+      requestFile,
+      "--timings",
+      timingFile,
+      "--repository",
+      "stella/folio",
+      "--branch",
+      "ci/test-timings",
+      "--base",
+      "0123456789abcdef0123456789abcdef01234567",
+    ];
+    expect(Math.max(...args.map((argument) => Buffer.byteLength(argument)))).toBeLessThan(4_096);
+    const result = Bun.spawnSync(args, { stderr: "pipe" });
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+
+    const request = JSON.parse(readFileSync(requestFile, "utf8"));
+    expect(request).toEqual(
+      createGraphqlRequest({
+        base: "0123456789abcdef0123456789abcdef01234567",
+        branch: "ci/test-timings",
+        repository: "stella/folio",
+        timingFile,
+      }),
+    );
+    expect(
+      Buffer.from(request.variables.input.fileChanges.additions[0].contents, "base64"),
+    ).toEqual(timingBytes);
+
+    const workflow = readFileSync(
+      path.resolve(import.meta.dir, "../.github/workflows/test-timing-refresh.yml"),
+      "utf8",
+    );
+    expect(workflow).toContain('--graphql-request "$request"');
+    expect(workflow).not.toContain("--arg contents");
   });
 });

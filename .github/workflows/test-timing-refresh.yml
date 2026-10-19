@@ -92,13 +92,14 @@ jobs:
           else
             gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/heads/${TIMING_BRANCH}" -f sha="$base" > /dev/null
           fi
-          jq -n --arg repo "$GITHUB_REPOSITORY" --arg branch "$TIMING_BRANCH" --arg base "$base" \
-            --arg contents "$(base64 -w0 scripts/ci-test-timings.json)" '{
-              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
-              variables: { input: { branch: { repositoryNameWithOwner: $repo, branchName: $branch }, expectedHeadOid: $base,
-                message: { headline: "perf(ci): refresh measured test timings" },
-                fileChanges: { additions: [{ path: "scripts/ci-test-timings.json", contents: $contents }] } } }
-            }' | gh api graphql --input - > /dev/null
+          request="$RUNNER_TEMP/test-timing-commit.json"
+          bun scripts/aggregate-ci-test-timings.ts \
+            --graphql-request "$request" \
+            --timings scripts/ci-test-timings.json \
+            --repository "$GITHUB_REPOSITORY" \
+            --branch "$TIMING_BRANCH" \
+            --base "$base"
+          gh api graphql --input "$request" > /dev/null
           if [[ -z "$(gh pr list --head "$TIMING_BRANCH" --state open --json number --jq '.[0].number // ""')" ]]; then
             gh pr create --base "$DEFAULT_BRANCH" --head "$TIMING_BRANCH" \
               --title "perf(ci): refresh measured test timings" \

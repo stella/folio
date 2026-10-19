@@ -6,6 +6,38 @@ import { discoverTestSuites, focusedTestFiles, type TestTimings } from "./ci-tes
 
 type TimingArtifact = { runId: string; timings: TestTimings };
 
+type GraphqlRequestOptions = {
+  base: string;
+  branch: string;
+  repository: string;
+  timingFile: string;
+};
+
+export const createGraphqlRequest = ({
+  base,
+  branch,
+  repository,
+  timingFile,
+}: GraphqlRequestOptions) => ({
+  query:
+    "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+  variables: {
+    input: {
+      branch: { repositoryNameWithOwner: repository, branchName: branch },
+      expectedHeadOid: base,
+      message: { headline: "perf(ci): refresh measured test timings" },
+      fileChanges: {
+        additions: [
+          {
+            path: "scripts/ci-test-timings.json",
+            contents: readFileSync(timingFile).toString("base64"),
+          },
+        ],
+      },
+    },
+  },
+});
+
 const median = (values: number[]) => {
   const sorted = values.toSorted((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
@@ -36,6 +68,28 @@ export const aggregateTestTimings = (artifacts: TimingArtifact[], files: string[
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
+  const requestIndex = args.indexOf("--graphql-request");
+  if (requestIndex !== -1) {
+    const valueFor = (name: string) => {
+      const index = args.indexOf(name);
+      return index === -1 ? undefined : args.at(index + 1);
+    };
+    const requestOutput = args.at(requestIndex + 1);
+    const timingFile = valueFor("--timings");
+    const repository = valueFor("--repository");
+    const branch = valueFor("--branch");
+    const base = valueFor("--base");
+    if (!requestOutput || !timingFile || !repository || !branch || !base) {
+      panic(
+        "Usage: bun scripts/aggregate-ci-test-timings.ts --graphql-request <file> --timings <file> --repository <owner/name> --branch <branch> --base <oid>",
+      );
+    }
+    writeFileSync(
+      requestOutput,
+      `${JSON.stringify(createGraphqlRequest({ base, branch, repository, timingFile }))}\n`,
+    );
+    process.exit(0);
+  }
   const outputIndex = args.indexOf("--output");
   const output = args.at(outputIndex + 1);
   const inputs = args.filter((_, index) => index !== outputIndex && index !== outputIndex + 1);
