@@ -1008,6 +1008,9 @@ export type NumberingLevelEntry = {
     level: ListLevel;
 };
 
+// @public
+export const numberingLevelHasMarkerSlot: (level: Pick<ListLevel, "numFmt">) => boolean;
+
 // @public (undocumented)
 export type NumberingLevelResolution = {
     kind: "level";

@@ -58,7 +58,8 @@ export const RESERVED_VALUE_READERS = {
   /** `w:sectPr/w:type` absent means `nextPage`. */
   sectionBreak: `${CORE}/layout-engine/section-breaks.ts#normalizeSectionBreakType`,
   /** `w:numFmt` `none` means the level renders no marker. */
-  numberingLevelMarker: `${CORE}/docx/numberingParser.ts#numberingLevelHasMarkerSlot`,
+  numberingLevelMarker:
+    "packages/docx-core/src/model/numberingLevels.ts#numberingLevelHasMarkerSlot",
   /** `w:lvl` `w:start`, `w:lvlRestart`, `w:suff`, `w:numFmt` `custom`. */
   numbering: `${CORE}/docx/numberingParser.ts#parseNumbering`,
   /** `w:spacing@line` counts 240ths of a line under `@lineRule="auto"` and twips otherwise. */

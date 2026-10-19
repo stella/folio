@@ -76,6 +76,17 @@ const visibleLabel = (
   return staticMarker(counterAttrs);
 };
 
+const inheritedNumberingReference = (attrs: Readonly<ParagraphAttrs>) => {
+  const previous = attrs._propertyChanges?.at(-1)?.previousFormatting;
+  if (!previous) return undefined;
+  return effectiveParagraphNumberingReference(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: previous.numPr,
+      numPrFromStyle: previous.numPrFromStyle,
+    }),
+  );
+};
+
 /**
  * The attrs the counter reads for a paragraph of the document model, as
  * `toProseDoc` projects them (`listRenderingAttrPatch`), without the layout
@@ -158,7 +169,12 @@ export const createListLabelCounter = (
       (attrs.listMarker != null || attrs.listIsBullet === true || attrs.listNumFmt != null
         ? listRenderingFromAttrs({ attrs, numId: effective?.numId ?? 1 })
         : undefined);
-    const list = resolveParagraphList(sources, numbering, projectedRendering);
+    const inheritedReference = inheritedNumberingReference(attrs);
+    const list = resolveParagraphList(
+      { ...sources, ...(inheritedReference ? { inheritedReference } : {}) },
+      numbering,
+      projectedRendering,
+    );
     const counterInput: ParagraphAttrs = { ...attrs };
     Object.assign(counterInput, CLEARED_LIST_RENDERING_ATTRS);
     const contentDerived = {
@@ -225,8 +241,12 @@ export const createListLabelCounter = (
       counterInput._propertyChanges?.length && counterAttrs !== counterInput && numbering === null
         ? listRenderingFromAttrs({ attrs: counterAttrs, numId: countedNumbering?.numId ?? 1 })
         : undefined;
+    const countedInheritedReference = inheritedNumberingReference(counterAttrs);
     const countedList = resolveParagraphList(
-      countedSources,
+      {
+        ...countedSources,
+        ...(countedInheritedReference ? { inheritedReference: countedInheritedReference } : {}),
+      },
       numbering,
       revisionSelectedRendering ?? projectedRendering,
     );

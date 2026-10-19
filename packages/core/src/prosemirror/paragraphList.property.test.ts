@@ -130,6 +130,39 @@ const assertReaders = (reviewer: FolioDocxReviewer, expected: Expected[]): void 
 };
 
 describe("paragraph list reader agreement", () => {
+  test("an inherited style reference resolves through the numbering owner", () => {
+    const definitions: NumberingDefinitions = {
+      abstractNums: [
+        {
+          abstractNumId: 1,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
+      ],
+      nums: [{ numId: 1, abstractNumId: 1 }],
+    };
+
+    expect(
+      resolveParagraphList(
+        {
+          numPr: undefined,
+          numPrFromStyle: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
+        },
+        createNumberingMap(definitions),
+      ).kind,
+    ).toBe("marker");
+
+    expect(
+      resolveParagraphList(
+        {
+          numPr: { kind: "levelOnly", ilvl: 0 },
+          numPrFromStyle: undefined,
+          inheritedReference: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
+        },
+        createNumberingMap(definitions),
+      ).kind,
+    ).toBe("marker");
+  });
+
   test("all readers and save/reopen follow the numbering-level owner", async () => {
     await assertProperty(
       fc.asyncProperty(

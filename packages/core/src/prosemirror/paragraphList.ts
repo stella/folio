@@ -47,16 +47,29 @@ export type ParagraphList =
  * definitions alone decide whether that reference paints a marker.
  */
 export const resolveParagraphList = (
-  sources: ParagraphNumberingSources,
+  sources: ParagraphNumberingSources & {
+    inheritedReference?: ParagraphListReference;
+  },
   numbering: NumberingMap | null,
   standaloneRendering?: ListRendering,
 ): ParagraphList => {
-  const effective = effectiveParagraphNumbering(sources);
+  const resolved = effectiveParagraphNumbering({
+    numPr: sources.numPr,
+    numPrFromStyle: sources.numPrFromStyle ?? sources.inheritedReference,
+  });
+  const effective =
+    resolved.kind === "none" &&
+    sources.numPr === undefined &&
+    sources.numPrFromStyle === undefined &&
+    standaloneRendering !== undefined
+      ? paragraphNumberingReference({
+          numId: standaloneRendering.numId,
+          ilvl: standaloneRendering.level,
+        })
+      : resolved;
   switch (effective.kind) {
     case "none": {
       // A package-free canonical model can carry its list projection directly.
-      // Package-backed documents must instead resolve the authored reference
-      // against their definitions, so this path cannot mask stale rendering.
       if (numbering === null && standaloneRendering !== undefined) {
         const reference = paragraphNumberingReference({
           numId: standaloneRendering.numId,

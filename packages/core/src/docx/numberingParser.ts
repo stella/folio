@@ -11,7 +11,7 @@
  * - w:lvl - Level definition with start, format, text pattern, etc.
  */
 
-import { resolveNumberingLevel } from "@stll/docx-core/model";
+import { numberingLevelHasMarkerSlot, resolveNumberingLevel } from "@stll/docx-core/model";
 import type {
   NumberingDefinitions,
   AbstractNumbering,
@@ -828,5 +828,4 @@ export const numberingLevelUsesBulletMarker = (
 ): boolean => level?.numFmt === "bullet";
 
 /** Whether a numbering level reserves horizontal space for a visible marker. */
-export const numberingLevelHasMarkerSlot = (level: Pick<ListLevel, "numFmt">): boolean =>
-  level.numFmt !== "none";
+export { numberingLevelHasMarkerSlot };

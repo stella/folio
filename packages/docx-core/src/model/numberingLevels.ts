@@ -17,6 +17,10 @@ export type NumberingLevelResolution =
 
 export type NumberingLevelEntry = { numId: number; ilvl: number; level: ListLevel };
 
+/** Whether a numbering level reserves space for a visible marker. */
+export const numberingLevelHasMarkerSlot = (level: Pick<ListLevel, "numFmt">): boolean =>
+  level.numFmt !== "none";
+
 const firstById = <Value>(values: readonly Value[], idOf: (value: Value) => number, id: number) =>
   values.find((value) => idOf(value) === id);
 
@@ -104,12 +108,12 @@ export const levelShowsMarker = (
   const resolution = resolveNumberingLevel(definitions, numId, ilvl);
   if (resolution.kind === "undefined" || resolution.level.rPr?.hidden === true) return false;
   const { level } = resolution;
-  if (level.lvlText.length === 0) return level.isLgl === true || level.numFmt !== "none";
+  if (level.lvlText.length === 0) return level.isLgl === true || numberingLevelHasMarkerSlot(level);
 
   const rendered = level.lvlText.replace(/%([1-9])/gu, (_placeholder, ordinal: string) => {
     const referenced = resolveNumberingLevel(definitions, numId, Number.parseInt(ordinal, 10) - 1);
     if (referenced.kind === "undefined") return "";
-    return level.isLgl === true || referenced.level.numFmt !== "none" ? "x" : "";
+    return level.isLgl === true || numberingLevelHasMarkerSlot(referenced.level) ? "x" : "";
   });
   return rendered.trim().length > 0;
 };

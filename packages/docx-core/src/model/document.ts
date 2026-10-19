@@ -186,6 +186,7 @@ export type {
 } from "./lists";
 export {
   levelShowsMarker,
+  numberingLevelHasMarkerSlot,
   numberingLevelEntries,
   resolveNumberingLevel,
   type NumberingLevelEntry,
