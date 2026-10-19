@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import editorWebPlaywright from "../packages/editor-web/playwright.config";
 import runContract from "./ci-run-contract.json";
+import { affectedPackagePlan } from "./ci-api-plan";
 import {
   BROWSER_INPUT_REGRESSIONS,
   PINNED_BROWSER_INPUT_TAG,
@@ -819,6 +820,40 @@ describe("CI plan", () => {
     expect(harness).toContain('import { PUBLISHED_PACKAGES } from "./lib/published-packages"');
     // Both packing and consumption must traverse the discovered publication set.
     expect(harness.match(/for \(const pkg of PUBLISHED_PACKAGES\)/gu)).toHaveLength(2);
+  });
+
+  test("packed consumer scenarios follow the pull-request package plan", () => {
+    const condition = "needs.ci-plan.outputs.packaged_consumer_required == 'true'";
+    expect(jobs["consumer-scenarios"]?.if).toBe(condition);
+    expect(jobs["consumer-scenarios-minimum"]?.if).toBe(condition);
+
+    const publishedPackagePaths = ["packages/public"];
+    for (const changedPath of [
+      "packages/public/src/index.ts",
+      "test/consumer-scenarios/scenarios/compare.test.ts",
+    ]) {
+      expect(
+        affectedPackagePlan({ changedPaths: [changedPath], publishedPackagePaths })
+          .packagedConsumerRequired,
+      ).toBe(true);
+    }
+    expect(
+      affectedPackagePlan({ changedPaths: ["docs/guide.md"], publishedPackagePaths })
+        .packagedConsumerRequired,
+    ).toBe(false);
+
+    const resultSteps = jobs["ci-result"]?.steps;
+    if (!Array.isArray(resultSteps)) throw new TypeError("Missing CI result steps");
+    const evaluation = resultSteps.find(
+      (step) => isRecord(step) && step["name"] === "Evaluate CI outcome",
+    );
+    if (!isRecord(evaluation) || !isRecord(evaluation["env"]))
+      throw new TypeError("Missing CI result environment");
+    const scopes = JSON.parse(String(evaluation["env"]["JOB_SCOPES"]));
+    expect(scopes["consumer-scenarios"]).toEqual({ area: "packaged_consumer_required" });
+    expect(scopes["consumer-scenarios-minimum"]).toEqual({
+      area: "packaged_consumer_required",
+    });
   });
 
   test("VS Code compatibility gates its selected area and exercises both API branches", () => {
