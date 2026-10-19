@@ -86,7 +86,11 @@ describe("reverse import closure", () => {
   });
 
   test("seeds files with unresolved or non-literal imports for every code change", () => {
-    for (const source of ['import "unknown-package";', "import(process.env.MODULE);"]) {
+    for (const source of [
+      'import "unknown-package";',
+      "import(process.env.MODULE);",
+      "const name = 'value'; import(`./${name}`);",
+    ]) {
       const root = fixture({
         "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
         "packages/app/src/value.ts": "export {};",
@@ -121,6 +125,28 @@ describe("reverse import closure", () => {
       expect(documentationOnly.suites).toEqual([]);
       expect(documentationOnly.cause).toBeUndefined();
     }
+  });
+
+  test("resolves a plain template literal dynamic import", () => {
+    const root = fixture({
+      "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
+      "packages/app/src/value.ts": "export {};",
+      "packages/app/src/one.test.ts": "import(`./value`);",
+      "packages/app/src/two.test.ts": "export {};",
+      "packages/app/src/three.test.ts": "export {};",
+    });
+    const result = selectFastTestSuitesWithReason({
+      suites: suite([
+        "packages/app/src/one.test.ts",
+        "packages/app/src/two.test.ts",
+        "packages/app/src/three.test.ts",
+      ]),
+      changedFiles: ["packages/app/src/value.ts"],
+      focusedFiles: [],
+      repoRoot: root,
+    });
+    expect(result.suites.flatMap(({ files }) => files)).toEqual(["packages/app/src/one.test.ts"]);
+    expect(result.cause).toBeUndefined();
   });
 
   test("selects every test in a suite when a reached preload depends on the change", () => {
@@ -162,6 +188,30 @@ describe("reverse import closure", () => {
       repoRoot: root,
     });
     expect(unrelated.suites).toEqual([]);
+  });
+
+  test("scans a suite preload outside the graph roots and follows its imports", () => {
+    const root = fixture({
+      "packages/app/package.json": JSON.stringify({
+        name: "@stll/app",
+        scripts: { test: "bun test --preload ./setup.ts src" },
+      }),
+      "packages/app/setup.ts": 'import "./src/value";',
+      "packages/app/src/value.ts": "export {};",
+      "packages/app/src/one.test.ts": "export {};",
+      "packages/app/src/two.test.ts": "export {};",
+    });
+    const suites = discoverTestSuites(root);
+    const result = selectFastTestSuitesWithReason({
+      suites,
+      changedFiles: ["packages/app/src/value.ts"],
+      focusedFiles: [],
+      repoRoot: root,
+    });
+    expect(result.suites.flatMap(({ files }) => files)).toEqual([
+      "packages/app/src/one.test.ts",
+      "packages/app/src/two.test.ts",
+    ]);
   });
 
   test("fails closed when a changed declaration source is excluded from the graph", () => {

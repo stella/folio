@@ -220,6 +220,7 @@ const resolveSpecifier = (
 };
 
 const hasNonLiteralDynamicImport = (source: string) => {
+  if (/\bimport\s*\(\s*`(?:\\.|[^`\\])*\$\{/u.test(source)) return true;
   const masked = source.replace(
     /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu,
     (match, literal: string | undefined) => literal ?? " ".repeat(match.length),
@@ -234,12 +235,19 @@ const transpilerLoader = (file: string) => {
 };
 
 /** Type-only imports are omitted by scanImports; they cannot affect runtime selection. */
-export const buildModuleGraph = (repoRoot = REPO_ROOT): ModuleGraph => {
+export const buildModuleGraph = (
+  repoRoot = REPO_ROOT,
+  additionalFiles: Iterable<string> = [],
+): ModuleGraph => {
   const codeFiles = new Set<string>();
   for (const root of GRAPH_ROOTS) {
     for (const file of new Bun.Glob(`${root}/**/*`).scanSync({ cwd: repoRoot, onlyFiles: true })) {
       if (CODE_FILE.test(file) && !/\.d\.[cm]?ts$/u.test(file)) codeFiles.add(normalize(file));
     }
+  }
+  for (const file of additionalFiles) {
+    if (CODE_FILE.test(file) && existsSync(path.join(repoRoot, file)))
+      codeFiles.add(normalize(file));
   }
   const reverse = new Map<string, Set<string>>();
   const unresolved = new Map<string, string[]>();
@@ -302,7 +310,12 @@ export const selectFastTestSuitesWithReason = ({
     focusedFiles.filter((file) => discovered.has(file) || existsSync(path.join(repoRoot, file))),
   );
   const fullCount = new Set([...discovered, ...focused]).size;
-  const graph = suppliedGraph ?? buildModuleGraph(repoRoot);
+  const preloadFiles = suites.flatMap(({ cwd, preloads }) =>
+    preloads.map((preload) =>
+      normalize(path.relative(repoRoot, path.resolve(repoRoot, cwd, preload))),
+    ),
+  );
+  const graph = suppliedGraph ?? buildModuleGraph(repoRoot, preloadFiles);
   const packageData = new Set<string>();
   for (const file of changedFiles) {
     const match = /^packages\/([^/]+)\/(.+)$/u.exec(file);
