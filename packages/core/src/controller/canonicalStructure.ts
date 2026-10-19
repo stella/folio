@@ -45,10 +45,10 @@ const selectedParagraphs = (session: CanonicalSession, state: EditorState) => {
     if (node.type.name === "paragraph" && typeof node.attrs["paraId"] === "string")
       ids.add(node.attrs["paraId"]);
   });
-  return session.document.package.document.content.filter(
-    (paragraph): paragraph is Paragraph =>
-      paragraph.type === "paragraph" && ids.has(paragraph.paraId ?? ""),
-  );
+  return [...ids].flatMap((id) => {
+    const paragraph = session.projection.paragraph(id)?.source;
+    return paragraph === undefined ? [] : [paragraph];
+  });
 };
 
 const effectiveNumbering = (paragraph: Paragraph | undefined) =>
@@ -196,6 +196,17 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "formatRun": {
+        const selection = session.projection.selectionAt(state);
+        if (selection.isErr()) return selection;
+        if (selection.value.type === "cell") {
+          intents.push({
+            type: "formatRun",
+            from: selection.value.anchor,
+            to: selection.value.head,
+            patch: command.patch,
+          });
+          break;
+        }
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;
         const to = session.projection.addressAt(command.to);

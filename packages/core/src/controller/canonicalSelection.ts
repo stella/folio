@@ -1,5 +1,6 @@
 import { panic } from "better-result";
 import { AllSelection, NodeSelection, TextSelection, type Transaction } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 import type { CanonicalProjection, CanonicalSelection } from "./canonicalSession";
 
 type RestoreCanonicalSelectionOptions = {
@@ -17,6 +18,23 @@ export const restoreCanonicalSelection = ({
   unavailable,
 }: RestoreCanonicalSelectionOptions): boolean => {
   switch (selection.type) {
+    case "cell": {
+      const anchor = projection.positionAt(selection.anchor);
+      const head = projection.positionAt(selection.head);
+      if (anchor.isErr() || head.isErr()) return false;
+      const cellPosition = (position: number): number | undefined => {
+        const resolved = transaction.doc.resolve(position);
+        for (let depth = resolved.depth; depth > 0; depth--) {
+          if (resolved.node(depth).type.spec["tableRole"] === "cell") return resolved.before(depth);
+        }
+        return undefined;
+      };
+      const anchorCell = cellPosition(anchor.value);
+      const headCell = cellPosition(head.value);
+      if (anchorCell === undefined || headCell === undefined) return false;
+      transaction.setSelection(CellSelection.create(transaction.doc, anchorCell, headCell));
+      return true;
+    }
     case "inlineNode": {
       const anchor = projection.positionAt(selection.anchor);
       const head = projection.positionAt(selection.head);

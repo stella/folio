@@ -8,10 +8,12 @@ import { Fragment, type Node as PMNode } from "prosemirror-model";
 import {
   AllSelection,
   NodeSelection,
+  Selection,
   TextSelection,
   type EditorState,
   type Transaction,
 } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 import {
   applyDocumentOps,
   combineEdits,
@@ -205,7 +207,7 @@ const operationChangesBodyProjection = (op: DocumentOp): boolean => {
 };
 
 export type CanonicalSelection = {
-  type: "text" | "inlineNode" | "all";
+  type: "text" | "inlineNode" | "cell" | "all";
   anchor: TextPosition;
   head: TextPosition;
 };
@@ -319,7 +321,17 @@ class CanonicalProjection {
     let anchorPosition = selection.anchor;
     let headPosition = selection.head;
     if (selection instanceof TextSelection) type = "text";
-    else if (
+    else if (selection instanceof CellSelection) {
+      type = "cell";
+      anchorPosition =
+        Selection.atStart(selection.$anchorCell.nodeAfter ?? panic("Missing anchor cell")).from +
+        selection.$anchorCell.pos +
+        1;
+      headPosition =
+        Selection.atEnd(selection.$headCell.nodeAfter ?? panic("Missing head cell")).to +
+        selection.$headCell.pos +
+        1;
+    } else if (
       selection instanceof NodeSelection &&
       selection.node.isInline &&
       selection.node.isAtom &&
@@ -396,20 +408,37 @@ const preservePropertySources = ({
   stories = documentStories(source),
   indentation = "derive",
 }: PreservePropertySourcesOptions): void => {
+  const collectParagraphs = (blocks: readonly BlockContent[]): Paragraph[] => {
+    const paragraphs: Paragraph[] = [];
+    for (const block of blocks) {
+      if (block.type === "paragraph") {
+        paragraphs.push(block);
+        continue;
+      }
+      if (block.type !== "table") continue;
+      for (const row of block.rows) {
+        for (const cell of row.cells) paragraphs.push(...collectParagraphs(cell.content));
+      }
+    }
+    return paragraphs;
+  };
   for (const story of stories) {
     const originals = findStoryBody(source, story)?.content ?? [];
     const derived = findStoryBody(target, story)?.content ?? [];
     if (originals === derived) continue;
+    const originalParagraphs = collectParagraphs(originals);
+    const derivedParagraphs = collectParagraphs(derived);
     const paragraphs = new Map(
-      derived.flatMap((block) =>
-        block.type === "paragraph" ? [[block.paraId, block] as const] : [],
+      derivedParagraphs.flatMap((paragraph) =>
+        paragraph.paraId === undefined ? [] : [[paragraph.paraId, paragraph] as const],
       ),
     );
-    for (const [index, original] of originals.entries()) {
-      if (original.type !== "paragraph") continue;
+    for (const [index, original] of originalParagraphs.entries()) {
       const next =
-        original.paraId === undefined ? derived.at(index) : paragraphs.get(original.paraId);
-      if (next?.type === "paragraph" && next !== original) {
+        original.paraId === undefined
+          ? derivedParagraphs.at(index)
+          : paragraphs.get(original.paraId);
+      if (next !== undefined && next !== original) {
         copyParagraphPropertySource(next, original);
         if (indentation === "restore")
           restoreParagraphIndentationProjection({ target: next, source: original });
@@ -1094,13 +1123,13 @@ class CanonicalSession {
       return refuse("Canonical input accepts a well-formed text replacement.");
     }
     if (from === to && text.length === 0) return noChange("The input makes no text change.");
-    const replacesAll =
-      state.selection instanceof AllSelection &&
+    const replacesStructuralSelection =
+      (state.selection instanceof AllSelection || state.selection instanceof CellSelection) &&
       from === state.selection.from &&
       to === state.selection.to;
     const range = canonicalSelectionRange(state);
-    const inputFrom = replacesAll ? range.from : from;
-    const inputTo = replacesAll ? range.to : to;
+    const inputFrom = replacesStructuralSelection ? range.from : from;
+    const inputTo = replacesStructuralSelection ? range.to : to;
     const start = projection.inputAddressAt(inputFrom);
     if (start.isErr()) return start;
     const end = projection.inputAddressAt(inputTo);
@@ -1889,7 +1918,8 @@ export const deletionRange = (
     selection.node.type.name !== "noteMarker"
   )
     return Result.ok({ from: selection.from, to: selection.to });
-  if (selection instanceof AllSelection) return Result.ok(canonicalSelectionRange(state));
+  if (selection instanceof AllSelection || selection instanceof CellSelection)
+    return Result.ok(canonicalSelectionRange(state));
   if (!(selection instanceof TextSelection))
     return refuse(
       "Canonical deletion requires text, an inline atom, or the whole document selection.",
