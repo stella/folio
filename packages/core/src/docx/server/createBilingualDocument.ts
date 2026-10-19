@@ -337,9 +337,12 @@ type BodyBlock = Exclude<BlockContent, { type: "blockSdt" | "blockCustomXml" }>;
 
 const canonicalizeBlockParagraphFormatting = (block: BlockContent): BlockContent => {
   if (block.type === "paragraph") {
-    const { formatting: _formatting, ...paragraph } = block;
     const formatting = finalizeParagraphFormatting(block.formatting);
-    return { ...paragraph, ...(formatting !== undefined && { formatting }) };
+    const paragraph = cloneParagraphWithoutPropertySource(block, {
+      ...(formatting !== undefined && { formatting }),
+    });
+    if (formatting === undefined) delete paragraph.formatting;
+    return paragraph;
   }
   if (block.type === "table") {
     return {
@@ -725,11 +728,12 @@ const cloneParagraphForTarget = (
     // place, which must not hit one shared node graph twice.
     content: remapClonedBookmarkIds(structuredClone(paragraph.content), bookmarkIds),
     paraId: targetParaId,
-    formatting: nextFormatting,
+    ...(nextFormatting && { formatting: nextFormatting }),
     ...(paragraph.listRendering && {
       listRendering: remapListRendering(paragraph.listRendering, cloner),
     }),
   });
+  if (nextFormatting === undefined) delete cloned.formatting;
   Reflect.deleteProperty(cloned, "textId");
   Reflect.deleteProperty(cloned, "sectionProperties");
   return cloned;
@@ -994,7 +998,11 @@ const projectParagraphIntoColumn = (
     }),
   });
 
-  return cloneParagraphWithoutPropertySource(paragraph, { formatting });
+  const projected = cloneParagraphWithoutPropertySource(paragraph, {
+    ...(formatting && { formatting }),
+  });
+  if (formatting === undefined) delete projected.formatting;
+  return projected;
 };
 
 const projectSideIndent = (value: number | undefined, scale: number, maximum: number): number =>

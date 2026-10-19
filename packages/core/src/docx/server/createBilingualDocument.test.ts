@@ -15,6 +15,7 @@ import type {
 import { createEmptyDocument } from "../../utils/createDocument";
 import { ensureParaIds } from "../ensureParaIds";
 import { getParagraphText } from "../paragraphParser";
+import { visitDocxParagraphs } from "../paragraphTraversal";
 import { parseDocx } from "../parser";
 import { createDocx } from "../rezip";
 import {
@@ -177,6 +178,23 @@ const abstractNumIdOf = (doc: Document, numId: number): number | undefined =>
   doc.package.numbering?.nums.find((num) => num.numId === numId)?.abstractNumId;
 
 describe("createBilingualDocument", () => {
+  test("omits empty paragraph formatting from the generated document", async () => {
+    const source = await buildSource();
+    const { document } = createBilingualDocument(source, await bilingualDocumentOptions(source));
+    const emptyFormatting: Paragraph[] = [];
+
+    visitDocxParagraphs({ documentBody: document.package.document }, (generatedParagraph) => {
+      if (
+        generatedParagraph.formatting &&
+        Object.keys(generatedParagraph.formatting).length === 0
+      ) {
+        emptyFormatting.push(generatedParagraph);
+      }
+    });
+
+    expect(emptyFormatting).toEqual([]);
+  });
+
   test("lays every non-empty block out as a two-column row, one table per section", async () => {
     const source = await buildSource();
     const { document, rows } = createBilingualDocument(

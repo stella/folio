@@ -1,7 +1,10 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+setDefaultTimeout(scanTestTimeout(10_000));
 
 const SOURCE_ROOTS = ["packages/core/src", "packages/docx-core/src"] as const;
 
