@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "unusedNumbering",
+  "mode": "tracked-changes",
+  "seed": 1576446700,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1512505503,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB"
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "483CD5EB",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        }
+      ]
+    }
+  ],
+  "title": "PINNED #1410, reported seed 1576446700: consumer flow unusedNumbering / tracked-changes: a batch targets a block removed earlier in that batch"
+}

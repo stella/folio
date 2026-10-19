@@ -600,46 +600,6 @@
       "firstSeen": "2026-10-02"
     },
     {
-      "fingerprint": "35240f905441125f",
-      "issueOrPr": "#1410",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1410,
-        "primary": "608356ec399f6db2",
-        "title": "consumer flow unusedNumbering / tracked-changes: a batch targets a block removed earlier in that batch",
-        "flow": {
-          "version": 1,
-          "kind": "collisions",
-          "generation": "targeted",
-          "fixture": "unusedNumbering",
-          "mode": "tracked-changes",
-          "seed": 1576446700,
-          "steps": [
-            {
-              "action": "story batch",
-              "seed": 1512505503,
-              "operations": [
-                {
-                  "type": "deleteBlock",
-                  "blockId": "483CD5EB"
-                },
-                {
-                  "type": "setBlockParagraphProperties",
-                  "blockId": "483CD5EB",
-                  "properties": {
-                    "styleId": "Heading2"
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        "type": "consumer",
-        "reportSeed": 1576446700,
-        "reportSeeds": [1576446700]
-      }
-    },
-    {
       "fingerprint": "608356ec399f6db2",
       "issueOrPr": "#1410",
       "firstSeen": "2026-10-02"
