@@ -247,8 +247,8 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
       listNumFmt: "decimal",
     } satisfies ParagraphAttrs;
 
-    expect(nextLabel(attrs)).toBe("(1)");
-    expect(nextLabel(attrs)).toBe("(2)");
+    expect(nextLabel(attrs).label).toBe("(1)");
+    expect(nextLabel(attrs).label).toBe("(2)");
   });
 
   test("style-sourced instances continue the shared abstract level", () => {

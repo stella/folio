@@ -95,6 +95,11 @@ type ApiRequiredForPathsOptions = {
   changedPaths: readonly string[];
   publishedPackagePaths: readonly string[];
 };
+
+export type AffectedPackagePlan = {
+  apiRequired: boolean;
+  packagedConsumerRequired: boolean;
+};
 export const apiRequiredForPaths = ({
   changedPaths,
   publishedPackagePaths: packages,
@@ -127,6 +132,8 @@ export const packagedConsumerRequiredForPaths = ({
   for (const file of changedPaths) validateChangedPath(file);
   for (const directory of packages) validateChangedPath(directory);
   return changedPaths.some((file) => {
+    if (file === "test/consumer-scenarios" || file.startsWith("test/consumer-scenarios/"))
+      return true;
     if (file === "bun.lock" || file === "bunfig.toml" || file === "package.json") return true;
     // Membership changes, deletions and a private package becoming public all need a proof.
     if (file.endsWith("/package.json")) return true;
@@ -139,6 +146,12 @@ export const packagedConsumerRequiredForPaths = ({
     );
   });
 };
+
+/** The shared changed-path decision used by CI and local affected-package checks. */
+export const affectedPackagePlan = (options: ApiRequiredForPathsOptions): AffectedPackagePlan => ({
+  apiRequired: apiRequiredForPaths(options),
+  packagedConsumerRequired: packagedConsumerRequiredForPaths(options),
+});
 
 type DiffOptions = { repoRoot: string; base: string; head: string };
 export const changedApiPaths = ({ repoRoot, base, head }: DiffOptions): string[] => {
@@ -164,6 +177,50 @@ export const changedApiPaths = ({ repoRoot, base, head }: DiffOptions): string[]
   if (names === "") return [];
   if (!names.endsWith("\0")) throw new TypeError("Git API diff is not NUL-terminated.");
   const files = names.slice(0, -1).split("\0");
+  for (const file of files) validateChangedPath(file);
+  return files;
+};
+
+type WorkingTreeDiffOptions = { repoRoot: string; base: string };
+export const changedWorkingTreePaths = ({ repoRoot, base }: WorkingTreeDiffOptions): string[] => {
+  const revision = Bun.spawnSync(["git", "rev-parse", "--verify", `${base}^{commit}`], {
+    cwd: repoRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (revision.exitCode !== 0)
+    throw new TypeError(
+      `Cannot resolve affected-package base: ${revision.stderr.toString().trim()}`,
+    );
+  const baseCommit = revision.stdout.toString().trim();
+  const tracked = Bun.spawnSync(
+    [
+      "git",
+      "--no-pager",
+      "diff",
+      "--no-ext-diff",
+      "--name-only",
+      "--no-renames",
+      "-z",
+      baseCommit,
+      "--",
+    ],
+    { cwd: repoRoot, stdout: "pipe", stderr: "pipe" },
+  );
+  if (tracked.exitCode !== 0)
+    throw new TypeError(`Cannot read affected-package diff: ${tracked.stderr.toString().trim()}`);
+  const untracked = Bun.spawnSync(
+    ["git", "ls-files", "--others", "--exclude-standard", "-z", "--"],
+    { cwd: repoRoot, stdout: "pipe", stderr: "pipe" },
+  );
+  if (untracked.exitCode !== 0)
+    throw new TypeError(`Cannot read untracked files: ${untracked.stderr.toString().trim()}`);
+  const bytes = Buffer.concat([tracked.stdout, untracked.stdout]);
+  if (bytes.length === 0) return [];
+  const names = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  if (!names.endsWith("\0"))
+    throw new TypeError("Git affected-package diff is not NUL-terminated.");
+  const files = [...new Set(names.slice(0, -1).split("\0"))].toSorted();
   for (const file of files) validateChangedPath(file);
   return files;
 };
@@ -211,11 +268,11 @@ if (import.meta.main) {
     if (root.exitCode !== 0)
       throw new TypeError(`Cannot locate API planner repository: ${root.stderr.toString().trim()}`);
     const repoRoot = root.stdout.toString().trim();
-    const scope = {
+    const plan = affectedPackagePlan({
       changedPaths: changedApiPaths({ repoRoot, base, head }),
       publishedPackagePaths: publishedPackagePaths(repoRoot),
-    };
-    emit(apiRequiredForPaths(scope), packagedConsumerRequiredForPaths(scope));
+    });
+    emit(plan.apiRequired, plan.packagedConsumerRequired);
   } catch (error) {
     process.exitCode = 1;
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

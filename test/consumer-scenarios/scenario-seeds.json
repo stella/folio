@@ -410,6 +410,55 @@
       "kind": "collisions",
       "generation": "targeted",
       "title": "suggested note styles share the saved Markdown projection"
+    },
+    {
+      "seed": 1101252671,
+      "steps": 16,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "a tracked merge into a numbered paragraph labels it with the list it shows"
+    },
+    {
+      "seed": 1809931145,
+      "steps": 20,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "a merge crosses blocks deleted by its batch"
+    },
+    {
+      "seed": 1809931025,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "a merge crosses blocks deleted by its batch"
+    },
+    {
+      "seed": 1809931181,
+      "steps": 20,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "a merge crosses blocks deleted by its batch"
+    },
+    {
+      "seed": 1101252716,
+      "steps": 16,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "a merge crosses blocks deleted by its batch"
+    },
+    {
+      "seed": 1101252706,
+      "steps": 16,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "a merge crosses blocks deleted by its batch"
+    },
+    {
+      "seed": 1101252753,
+      "steps": 16,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "batch replay preserves pre-batch positions across adjacent insertion, merge and replacement"
     }
   ]
 }

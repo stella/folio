@@ -57,12 +57,14 @@ jobs:
   # Separate so the fuzz jobs never hold a write token. Main only: a dispatch
   # on a branch reports in its run, not in the issue tracker.
   report-consumer-fuzz:
-    name: File failures by fingerprint
+    name: File failures by signature
     needs: consumer-fuzz
-    if: failure() && github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (failure() || github.event_name == 'schedule') }}
     permissions:
       contents: read
       issues: write
     uses: ./.github/workflows/fuzz-failure-report.yml
     with:
       artifact-pattern: nightly-consumer-fuzz
+      lane: nightly-consumer-fuzz
+      result: ${{ needs.consumer-fuzz.result }}

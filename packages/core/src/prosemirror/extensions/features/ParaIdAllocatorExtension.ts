@@ -38,8 +38,8 @@
 import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { panic } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
-import { Plugin } from "prosemirror-state";
-import type { EditorState, Transaction } from "prosemirror-state";
+import { Plugin, Transaction } from "prosemirror-state";
+import type { EditorState } from "prosemirror-state";
 
 import { deterministicHexId, generateHexId } from "../../../utils/hexId";
 import {
@@ -80,6 +80,17 @@ export const deterministicParaIdSeedKey = "stll.folio.meta.deterministicParaIdSe
 /** Ask the allocator to mint reproducible ids for the paragraphs `tr` creates. */
 export const requestDeterministicParaIds = (tr: Transaction, seed: string): Transaction =>
   tr.setMeta(deterministicParaIdSeedKey, seed);
+
+const deterministicSeedOf = (transaction: Transaction): string | undefined => {
+  const seed: unknown = transaction.getMeta(deterministicParaIdSeedKey);
+  if (typeof seed === "string") return seed;
+  // The allocator may already have seen the root when a later plugin repairs
+  // a table. ProseMirror gives every appended transaction its root explicitly.
+  const root: unknown = transaction.getMeta("appendedTransaction");
+  if (!(root instanceof Transaction)) return undefined;
+  const rootSeed: unknown = root.getMeta(deterministicParaIdSeedKey);
+  return typeof rootSeed === "string" ? rootSeed : undefined;
+};
 
 /**
  * A fresh id not already in `taken`: derived from `seed` and the paragraph's
@@ -500,9 +511,7 @@ const createParaIdAllocatorPlugin = (): Plugin<ParagraphPropertySourceSeed> =>
       }
       const keeperPositions = mapParagraphKeepers(oldState.doc, transactions, paragraphSourceSeed);
       const deterministicSeed =
-        transactions
-          .map((transaction) => transaction.getMeta(deterministicParaIdSeedKey))
-          .find((value) => typeof value === "string") ?? null;
+        transactions.map(deterministicSeedOf).find((value) => typeof value === "string") ?? null;
       const census = collectParagraphCensus(newState.doc, paragraphSourceSeed);
       const updates = collectParaIdUpdatesFromCensus(
         census,

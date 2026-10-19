@@ -1,9 +1,12 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { devNull } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { scanTestTimeout } from "../test/scan-timeout";
 
 const root = resolve(import.meta.dir, "..");
+
+setDefaultTimeout(scanTestTimeout(10_000));
 
 test("local env files are ignored at the root and every Vite config directory", () => {
   const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" })

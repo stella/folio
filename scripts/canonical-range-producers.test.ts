@@ -1,7 +1,11 @@
-import { expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, expect, test } from "bun:test";
 import path from "node:path";
 import ts from "typescript";
 import type { CanonicalCommandIntent } from "../packages/core/src/prosemirror/canonicalCommands";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const root = path.resolve(import.meta.dir, "..");
 const producers = {
