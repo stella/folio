@@ -1654,43 +1654,14 @@ const pendingAnchorMatches = (actual: string, old: string, replacement: string):
     : containsInOrder(actual, old + replacement);
 };
 
-const isRows = (entries: readonly Row[] | readonly Comment[]): entries is readonly Row[] =>
-  entries.every((entry) => "kind" in entry);
-
-export function compareComments(
-  model: Model,
-  before: readonly Comment[],
-  after: readonly Comment[],
-): string[];
-export function compareComments(
-  model: Model,
-  before: readonly Comment[],
-  after: readonly Comment[],
-  liveBefore: readonly Comment[],
-  mode?: Mode,
-): string[];
-export function compareComments(
+export const compareComments = (
   model: Model,
   before: readonly Comment[],
   after: readonly Comment[],
   afterRows: readonly Row[],
-  liveBefore?: readonly Comment[],
-  mode?: Mode,
-): string[];
-export function compareComments(
-  model: Model,
-  before: readonly Comment[],
-  after: readonly Comment[],
-  afterRowsOrLiveBefore: readonly Row[] | readonly Comment[] = [],
-  liveBeforeOrMode: readonly Comment[] | Mode = before,
-  explicitMode: Mode = "direct",
-): string[] {
-  const hasRows = isRows(afterRowsOrLiveBefore);
-  const afterRows = hasRows ? afterRowsOrLiveBefore : [];
-  let liveBefore: readonly Comment[];
-  if (!hasRows) liveBefore = afterRowsOrLiveBefore;
-  else liveBefore = typeof liveBeforeOrMode === "string" ? before : liveBeforeOrMode;
-  const mode = typeof liveBeforeOrMode === "string" ? liveBeforeOrMode : explicitMode;
+  liveBefore: readonly Comment[] = before,
+  mode: Mode = "direct",
+): string[] => {
   const problems: string[] = [];
   const remaining = [...after];
   const kept: Comment[] = [];
@@ -1759,6 +1730,13 @@ export function compareComments(
   const survivingBlockIds = new Set(afterRows.map(({ id }) => id));
   for (const { entry, located } of gone) {
     const survivor = remaining.find(({ id }) => id === entry.id);
+    // A block id locates the first paragraph containing an anchor; it does not
+    // own the whole range. Splits and joins can move the surviving part of a
+    // range to another paragraph before this batch deletes the old locator.
+    // In that case the comment is still anchored and must survive. A thread
+    // left on the deleted locator, moved to another block the batch also
+    // deleted, or left in no block at all, is the orphan this check is meant
+    // to catch.
     if (
       survivor &&
       (survivor.blockId === located.blockId ||
@@ -1769,7 +1747,7 @@ export function compareComments(
     }
   }
   return problems;
-}
+};
 
 const compareStyles = async (model: Model, bytes: Uint8Array): Promise<string[]> => {
   if (model.styles.size === 0) return [];
