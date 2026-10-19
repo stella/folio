@@ -33,7 +33,7 @@ test("rejecting an added adjacent boundary keeps both sections after save and re
   const { reopened } = await saveAndReopen(reviewer, "rejected adjacent section boundary");
 
   assert.deepEqual(
-    sectionPropertiesOf(reopened).map(({ properties }) => properties.pageWidth),
+    sectionPropertiesOf(reopened).map(({ properties }) => properties?.pageWidth),
     [10_000, 12_000, 14_000],
   );
 });
