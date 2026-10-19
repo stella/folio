@@ -198,8 +198,7 @@ export const prepareCanonicalCommands = (
         } as const);
         continue;
       }
-      if (!state.selection.empty) return refuse("Note insertion requires a caret.");
-      const at = session.projection.addressAt(state.selection.from);
+      const at = session.projection.addressAt(command.at);
       if (at.isErr()) return at;
       if (command.content.some((block) => block.type !== "paragraph"))
         return refuse("Canonical note insertion requires paragraph content.");

@@ -160,7 +160,7 @@ const insertNoteLikeHost = (kind: "footnote" | "endnote"): ConformanceOperation 
   const name = kind === "footnote" ? "insertFootnote" : "insertEndnote";
   return {
     id: `command:${name}`,
-    placements: CARET,
+    placements: ["caret-middle", "word"],
     run: ({ view, base }) => {
       const footnotes = base.package.footnotes ?? [];
       const endnotes = base.package.endnotes ?? [];

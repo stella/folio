@@ -142,6 +142,42 @@ test("section break commands apply to every selected paragraph in both editor mo
   }
 });
 
+test("note commands insert after selected text in both editor modes with exact undo", () => {
+  for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Reviewer" }] as const) {
+    for (const commandName of ["insertFootnote", "insertEndnote"] as const) {
+      const session = createCanonicalSession(seed()).unwrap();
+      session.setMode(mode);
+      let state = select(EditorState.create({ schema, doc: session.projection.doc }), 2, 3);
+      const original = session.document;
+      const originalDoc = state.doc;
+      const command = singletonManager.requireCommand(commandName)(1, [
+        {
+          type: "paragraph",
+          content: [{ type: "run", content: [{ type: "text", text: "A note." }] }],
+        },
+      ]);
+      const intents =
+        getCanonicalCommandIntents(command, state) ?? panic("Missing note insertion descriptor.");
+
+      state = accept(session, state, prepareCanonicalCommands(session, state, intents).unwrap());
+
+      expect(state.doc.textContent).toBe("ab1😀cdEF");
+      expect(state.selection.empty).toBe(true);
+      expect(state.selection.from).toBe(4);
+      if (mode.type === "suggesting") {
+        expect(JSON.stringify(session.document.package.document.content)).toContain(
+          '"author":"Reviewer"',
+        );
+      }
+
+      state = accept(session, state, session.prepareUndo(state).unwrap());
+      expect(session.document).toStrictEqual(original);
+      expect(state.doc.eq(originalDoc)).toBe(true);
+      expect(state.selection.toJSON()).toEqual({ type: "text", anchor: 2, head: 3 });
+    }
+  }
+});
+
 test("note-reference descriptors delete beside a caret or across a range with exact undo", () => {
   for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Reviewer" }] as const) {
     for (const selection of ["before", "after", "range"] as const) {

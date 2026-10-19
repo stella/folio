@@ -10,7 +10,7 @@ import {
 } from "../../noteReferenceOccurrences";
 
 import { panic } from "better-result";
-import type { Command } from "prosemirror-state";
+import { TextSelection, type Command } from "prosemirror-state";
 import type { BlockContent } from "../../../types/document";
 
 import { expectFootnoteRefMarkAttrs } from "../../attrs";
@@ -115,7 +115,6 @@ export const FootnoteRefExtension = createMarkExtension({
       ): Command =>
         withCanonicalCommand(
           (state, dispatch) => {
-            if (!state.selection.empty) return false;
             if (!dispatch) {
               return true;
             }
@@ -132,12 +131,13 @@ export const FootnoteRefExtension = createMarkExtension({
               vertAlign: "superscript",
             });
             const text = schema.text(String(id), [mark]);
-            const tr = state.tr.replaceSelectionWith(text, false);
+            const insertionEnd = state.selection.to + text.nodeSize;
+            const tr = state.tr.insert(state.selection.to, text);
+            tr.setSelection(TextSelection.create(tr.doc, insertionEnd));
             dispatch(tr.scrollIntoView());
             return true;
           },
-          (state) =>
-            state.selection.empty ? [{ type: "insertNote", kind: noteType, id, content }] : [],
+          (state) => [{ type: "insertNote", at: state.selection.to, kind: noteType, id, content }],
         );
     }
 

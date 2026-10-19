@@ -29,7 +29,13 @@ export type CanonicalCommandIntent =
       breakType: "nextPage" | "nextColumn" | "continuous" | "evenPage" | "oddPage";
     }
   | { type: "removeSectionBreak" }
-  | { type: "insertNote"; kind: "footnote" | "endnote"; id: number; content: BlockContent[] }
+  | {
+      type: "insertNote";
+      at: number;
+      kind: "footnote" | "endnote";
+      id: number;
+      content: BlockContent[];
+    }
   | { type: "deleteNote"; from: number; kind: "footnote" | "endnote"; id: number }
   | { type: "insertBreak"; from: number; to: number; breakType: "page" | "textWrapping" };
 

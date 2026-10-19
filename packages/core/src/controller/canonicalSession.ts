@@ -1477,11 +1477,27 @@ class CanonicalSession {
       }
       preparedOps = tracked;
     }
+    const addedNotes = preparedOps.filter((op) => op.type === DOCUMENT_OP_TYPES.ADD_NOTE);
+    const firstAddedNote = addedNotes.at(0);
+    const postSelection =
+      addedNotes.length === preparedOps.length && firstAddedNote !== undefined
+        ? {
+            type: "text" as const,
+            anchor: {
+              ...firstAddedNote.at,
+              offset: firstAddedNote.at.offset + addedNotes.length,
+            },
+            head: {
+              ...firstAddedNote.at,
+              offset: firstAddedNote.at.offset + addedNotes.length,
+            },
+          }
+        : selected.value;
     const preDocument = this.currentDocument;
     return this.stage({
       state,
       ops: preparedOps,
-      selection: selected.value,
+      selection: postSelection,
       origin: "input",
       onPublish: (inverse, version) => {
         this.applied.push({
@@ -1491,7 +1507,7 @@ class CanonicalSession {
               ops: preparedOps,
               inverse,
               preSelection: selected.value,
-              postSelection: selected.value,
+              postSelection,
               preDocument,
               postDocument: this.currentDocument,
               version,
@@ -1504,7 +1520,7 @@ class CanonicalSession {
           ],
           undo: { type: "entries" },
           preSelection: selected.value,
-          postSelection: selected.value,
+          postSelection,
         });
         this.undone.length = 0;
       },
