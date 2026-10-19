@@ -72,10 +72,12 @@ jobs:
   report:
     name: File public corpus findings
     needs: corpus-flows
-    if: failure() && github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (failure() || github.event_name == 'schedule') }}
     permissions:
       contents: read
       issues: write
     uses: ./.github/workflows/fuzz-failure-report.yml
     with:
       artifact-pattern: public-corpus-full-flows
+      lane: nightly-public-corpus-flows
+      result: ${{ needs.corpus-flows.result }}

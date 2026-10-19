@@ -177,7 +177,7 @@ export type FolioContentBlock<Kind extends FolioContentParagraphKind = FolioCont
     directSpacing?: FolioContentParagraphSpacing;
     /** Direct paragraph indentation; absent when every indentation value is inherited. */
     directIndentation?: FolioContentParagraphIndentation;
-    /** Effective list membership resolved from authored and inherited numbering. */
+    /** The list the shown label is counted in, from authored and inherited numbering. */
     listReference?: FolioContentListReference;
     /** Authored paragraph numbering override; `inherit` means no direct override. */
     statedNumbering: FolioContentStatedNumbering;

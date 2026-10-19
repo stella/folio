@@ -1,4 +1,6 @@
-import { expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -9,6 +11,8 @@ import {
   parsePermissionWorkflow,
   workflowReference,
 } from "./lib/reusable-workflow-permissions";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const SHA = "5764ab66e4df84cfd2e642c7d7e4678261e668f8";
 const USES = `stella/.github/.github/workflows/release.yml@${SHA}`;

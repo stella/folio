@@ -12,10 +12,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { consumerScenarioReplay } from "../support/replay-inputs.ts";
 import { readFlowDir } from "../support/corpus.ts";
 import { reportScenarioFailure } from "../support/failure-fingerprints.ts";
 import { type FlowFile, parseFlowFile } from "../support/flow-file.ts";
-import { flowReplay, flowTestName, relationEnv } from "../support/fuzz-loop.ts";
+import { flowReplay, flowTestName, relationInputs } from "../support/fuzz-loop.ts";
 import { type FlowRun, runFlowFile, unstableFixtureRefs, vacuousSteps } from "../support/fuzz.ts";
 import {
   expectedFailure,
@@ -122,12 +123,11 @@ if (requested !== undefined && requested !== "") {
   });
   for (const { file, flow } of corpus) {
     const name = `checked-in flow ${file}`;
-    const repro = [
-      relationEnv(),
-      `bun scripts/consumer-scenarios.ts --only '^${name.replaceAll(".", "\\.")}' -- flow-corpus.test.ts`,
-    ]
-      .filter((part) => part !== "")
-      .join(" ");
+    const repro = consumerScenarioReplay({
+      inputs: relationInputs(),
+      flags: [`--only '^${name.replaceAll(".", "\\.")}'`],
+      files: ["flow-corpus.test.ts"],
+    });
     const title = `${name}: ${flow.title ?? flow.origin ?? "regression flow"}`;
     const body = replay({ flow, repro, source: { type: "checked-in", file } });
     const finding = KNOWN_FAILING_CHECKED_IN_FLOWS[file];

@@ -24,15 +24,35 @@ minimumReleaseAge = 432_000
 # `bun run check:quarantine-excludes` enforces all of the above.
 minimumReleaseAgeExcludes = [
   # Keep Bun's compiler contract aligned with the runtime during this upgrade.
-  "bun-types", # quarantine-expires: 2026-10-15T05:25:00.000Z
   "@stll/agent-input",
+  "@stll/aho-corasick",
+  "@stll/aho-corasick-darwin-arm64",
+  "@stll/aho-corasick-darwin-x64",
+  "@stll/aho-corasick-linux-arm64-gnu",
+  "@stll/aho-corasick-linux-x64-gnu",
+  "@stll/aho-corasick-wasm32-wasi",
+  "@stll/aho-corasick-win32-x64-msvc",
   "@stll/conditions",
   "@stll/country-codes",
   "@stll/docx-utils",
+  "@stll/fuzzy-search",
+  "@stll/fuzzy-search-darwin-arm64",
+  "@stll/fuzzy-search-darwin-x64",
+  "@stll/fuzzy-search-linux-arm64-gnu",
+  "@stll/fuzzy-search-linux-x64-gnu",
   "@stll/oxlint-config",
+  "@stll/regex-set",
+  "@stll/regex-set-darwin-arm64",
+  "@stll/regex-set-darwin-x64",
+  "@stll/regex-set-linux-arm64-gnu",
+  "@stll/regex-set-linux-x64-gnu",
+  "@stll/regex-set-wasm32-wasi",
+  "@stll/regex-set-win32-x64-msvc",
   "@stll/template-conditions",
   "@stll/text-normalize",
   "@stll/time",
+  "@stll/fuzzy-search-wasm32-wasi",
+  "@stll/fuzzy-search-win32-x64-msvc",
   # Security patch for a dependency-audit finding. dompurify 3.4.13 is the only
   # release that fixes GHSA-55q2-fjhq-7xh7; publisher and repository ownership
   # match the preceding releases. Remove after quarantine expiry.
