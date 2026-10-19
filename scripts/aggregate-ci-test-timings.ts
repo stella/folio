@@ -12,7 +12,7 @@ type FetchJson = (url: string) => Promise<unknown>;
 
 type WorkflowRun = { event: string; id: number };
 
-type Artifact = { id: number; name: string };
+type Artifact = { id: number; name: string; expired?: boolean };
 
 type GraphqlRequestOptions = {
   base: string;
@@ -82,7 +82,8 @@ export const selectTimingArtifacts = async (
         artifact !== null &&
         typeof artifact.id === "number" &&
         typeof artifact.name === "string" &&
-        artifact.name.startsWith(prefix),
+        artifact.name.startsWith(prefix) &&
+        artifact.expired !== true,
     );
     if (artifacts.length !== 4) continue;
     selected.push(...artifacts.map(({ id }) => ({ artifactId: id, runId: run.id })));

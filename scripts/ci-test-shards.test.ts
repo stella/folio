@@ -88,6 +88,30 @@ describe("measured test shard balancing", () => {
     );
   });
 
+  test("timing artifact discovery skips runs whose artifacts have expired", async () => {
+    const fetchJson = async (url: string) => {
+      if (url.includes("/workflows/")) {
+        return {
+          workflow_runs: [
+            { event: "push", id: 3 },
+            { event: "merge_group", id: 4 },
+          ],
+        };
+      }
+      const runId = url.includes("/runs/3/") ? 3 : 4;
+      return {
+        artifacts: [1, 2, 3, 4].map((id) => ({
+          id: runId * 10 + id,
+          name: `test-timings-${runId}-${id}`,
+          expired: runId === 3,
+        })),
+      };
+    };
+    expect(await selectTimingArtifacts("stella/folio", fetchJson)).toEqual(
+      [1, 2, 3, 4].map((id) => ({ artifactId: 40 + id, runId: 4 })),
+    );
+  });
+
   test("assignment is deterministic for identical inputs", () => {
     const timings = { a: 10, b: 10, c: 5, d: 5, e: 1 };
     const assigned = () =>
