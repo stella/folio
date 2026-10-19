@@ -159,6 +159,11 @@ import type {
 } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { type BatchClaim, BatchClaims } from "./batch-claims";
+import {
+  getFolioDocumentOperationRemovedBlockIds,
+  getTrackedFolioDocumentOperationCarrierBlockId,
+  getTrackedFolioDocumentOperationRemovedBlockIds,
+} from "./removed-blocks";
 import { type CharacterBoundaryStrictness, describeCharacterSplit } from "./character-boundaries";
 import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
 import { separateRevisionStretches } from "./revisionStretches";
@@ -3913,6 +3918,7 @@ const applyFolioAIEditOperationsInternal = ({
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
   const batchClaims = new BatchClaims();
+  const removedBlocksBy = new Map<string, { id: string; type: FolioAIEditOperation["type"] }>();
   const diffText: ReturnType<typeof createWordDiffSession>["diff"] =
     wordDiffMode === "coarse" ? coarseWordDiff : wordDiffSessionFromOptions(wordDiff).diff;
 
@@ -4028,6 +4034,32 @@ const applyFolioAIEditOperationsInternal = ({
       }
     }
 
+    const targetBlockId = "range" in operation ? operation.range.blockId : operation.blockId;
+    const targetsBlockIdentity = ![
+      "insertAfterBlock",
+      "insertBeforeBlock",
+      "insertSignatureTable",
+      "insertTable",
+      "deleteTable",
+      "insertTableRow",
+      "deleteTableRow",
+      "insertTableColumn",
+      "deleteTableColumn",
+      "mergeTableCells",
+      "splitTableCell",
+    ].includes(operation.type);
+    const removedBy = targetsBlockIdentity ? removedBlocksBy.get(targetBlockId) : undefined;
+    const continuesMergeChain =
+      operation.type === "mergeBlockWithNext" && removedBy?.type === "mergeBlockWithNext";
+    if (removedBy !== undefined && !continuesMergeChain) {
+      skipped.push({
+        id: operation.id,
+        reason: "overlappingOperation",
+        message: `operation ${JSON.stringify(removedBy.id)}, earlier in this batch, already claims its target.`,
+      });
+      continue;
+    }
+
     // Every operation resolved against the document as it was read; one whose
     // target an earlier operation of the batch deletes, rewrites, splits,
     // merges or overlaps would be applied to positions that operation already
@@ -4047,6 +4079,18 @@ const applyFolioAIEditOperationsInternal = ({
       continue;
     }
     batchClaims.add(operation.id, claim);
+    const carrierBlockId = producesTrackedChanges
+      ? getTrackedFolioDocumentOperationCarrierBlockId(snapshot.blocks, operation, removedBlocksBy)
+      : undefined;
+    const getRemovedBlockIds = producesTrackedChanges
+      ? getTrackedFolioDocumentOperationRemovedBlockIds
+      : getFolioDocumentOperationRemovedBlockIds;
+    for (const removedBlockId of getRemovedBlockIds(snapshot.blocks, operation)) {
+      if (!removedBlocksBy.has(removedBlockId)) {
+        removedBlocksBy.set(removedBlockId, { id: operation.id, type: operation.type });
+      }
+    }
+    if (carrierBlockId !== undefined) removedBlocksBy.delete(carrierBlockId);
     if (deletion) {
       claimedTableRows.add(`${deletion.tablePosition}:${deletion.rowIndex}`);
     }

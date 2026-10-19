@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "direct",
+  "seed": 1809930860,
+  "steps": [
+    { "action": "new reviewer", "seed": 3009661003 },
+    { "action": "mistake", "seed": 546259520 },
+    { "action": "selective save", "seed": 4209391146 },
+    { "action": "suggest_changes", "seed": 1448564212 }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceRange",
+    "commentOnRange",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "deleteTableRow",
+    "insertTableColumn",
+    "deleteTable"
+  ],
+  "origin": "reseed+splice+splice of c09c9d6a455d3d1d",
+  "title": "PINNED #1750: refuse an operation on a block an earlier batch operation removed"
+}

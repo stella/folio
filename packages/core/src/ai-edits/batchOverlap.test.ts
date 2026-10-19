@@ -1214,7 +1214,8 @@ describe("a merge retracting an inserted break before the last paragraph the bat
               ["direct", direct],
             ] as const) {
               const operations = batchOf(extra, setup);
-              // The batch retires B's final break after its property edit.
+              // The tracked merge preserves B's identity; replay only the
+              // operations the batch accepted.
               for (const id of ["b", "delete", "merge"]) {
                 const operation = operations.find((candidate) => candidate.id === id);
                 if (!operation || !appliedIds.has(id)) continue;
