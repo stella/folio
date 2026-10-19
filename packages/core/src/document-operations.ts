@@ -2087,6 +2087,7 @@ export const applyFolioDocumentOperations = ({
     // canonical-gap: publicOps.comments
     // canonical-gap: publicOps.suggestedMode
     // canonical-gap: publicOps.unsupportedInline
+    // canonical-gap: publicOps.tableStructure
     // canonical-gap: publicOps.pendingParagraphMarkProperties
     // canonical-gap: publicOps.secondaryStories
     // canonical-gap: pm-document-operations
