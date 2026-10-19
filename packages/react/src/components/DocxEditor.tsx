@@ -70,6 +70,7 @@ import {
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import { withoutUnreferencedNotes } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { setDocumentBodyComments } from "@stll/folio-core/docx/canonicalModel";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
 import {
@@ -1734,9 +1735,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       doc.package.footnotes,
       doc.package.endnotes,
     );
-    doc.package.document.comments = pruneOrphanedComments(
-      commentsRef.current,
-      referencedCommentIds,
+    setDocumentBodyComments(
+      doc.package.document,
+      pruneOrphanedComments(commentsRef.current, referencedCommentIds),
     );
     return doc;
   }, [history.state, commentsRef, experimentalSession]);
