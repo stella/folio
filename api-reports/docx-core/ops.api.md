@@ -819,9 +819,7 @@ export type RemovedParagraphMarkSectionDestination = {
 } | {
     type: "preceding";
 } | {
-    type: "retained";
-} | {
-    type: "refuse";
+    type: "following";
 };
 
 // @public

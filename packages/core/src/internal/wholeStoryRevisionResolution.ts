@@ -465,24 +465,25 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     let sectionDestination: ReturnType<typeof removedParagraphMarkSectionDestination> = {
       type: "none",
     };
-    if (joins && markWasAdded && paragraphAttrs._sectionProperties !== undefined) {
-      const preceding = entries.at(index - 1)?.node;
-      const precedingAttrs =
-        preceding?.type.name === "paragraph" ? expectParagraphAttrs(preceding) : undefined;
-      const precedingMarkWasAdded =
-        precedingAttrs?.pPrMark?.kind === "ins" || precedingAttrs?.pPrMark?.kind === "moveTo";
-      const precedingJoins =
-        precedingAttrs?.pPrMark && precedingMarkWasAdded !== (context.mode === "accept");
+    if (
+      joins &&
+      markWasAdded &&
+      paragraphAttrs._sectionProperties !== undefined &&
+      paragraphAttrs._sectionProperties !== null &&
+      Object.keys(paragraphAttrs._sectionProperties).length > 0
+    ) {
+      const preceding = index > 0 ? entries.at(index - 1)?.node : undefined;
+      const precedingProperties =
+        preceding?.type.name === "paragraph"
+          ? expectParagraphAttrs(preceding)._sectionProperties
+          : undefined;
       sectionDestination = removedParagraphMarkSectionDestination({
         removedSectionProperties: paragraphAttrs._sectionProperties,
-        precedingSectionProperties: precedingJoins ? undefined : precedingAttrs?._sectionProperties,
-        hasPrecedingParagraph: preceding?.type.name === "paragraph",
+        precedingSectionProperties: precedingProperties,
+        followingSectionProperties: chain
+          ? expectParagraphAttrs(chain.node)._sectionProperties
+          : undefined,
       });
-      if (sectionDestination.type === "refuse") {
-        context.failed = true;
-        return null;
-      }
-      if (sectionDestination.type === "retained") joins = false;
     }
     if (joins && chain) {
       const boundaries = pendingBookmarks.toReversed();
@@ -514,11 +515,15 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
         closing: entry.position + paragraph.nodeSize - 1,
         bookmarks,
       });
+      if (sectionDestination.type === "following") {
+        chain.node = rebuild(chain.node, {
+          attrs: { ...chain.node.attrs, _sectionProperties: paragraphAttrs._sectionProperties },
+        });
+      }
       if (sectionDestination.type === "preceding") {
         restoredSectionProperties = paragraphAttrs._sectionProperties;
-      } else {
-        removedEndpoint(paragraph, context);
       }
+      removedEndpoint(paragraph, context);
       continue;
     }
     flushBookmarks();

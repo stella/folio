@@ -277,23 +277,22 @@ export const stageSectionBoundaryProperties = ({
       update.previous === undefined
         ? undefined
         : sectionReferenceHistory({ previous: update.previous, target: update.target });
-    const propertyChanges =
-      update.previous === undefined
-        ? undefined
-        : [
-            {
-              type: "sectionPropertyChange" as const,
-              info: { id: nextRevisionId++, author, date: revisionStamp.date },
-              previousProperties: update.previous,
-              ...(previousReferences !== undefined && { previousReferences }),
-              currentProperties: update.target,
-            },
-          ];
+    const propertyChanges = [
+      {
+        type: "sectionPropertyChange" as const,
+        info: { id: nextRevisionId++, author, date: revisionStamp.date },
+        ...(update.previous !== undefined && { previousProperties: update.previous }),
+        ...(update.previous === undefined
+          ? { previousReferences: {} }
+          : previousReferences !== undefined && { previousReferences }),
+        currentProperties: update.target,
+      },
+    ];
     transaction = transaction.setNodeMarkup(position, undefined, {
       ...node.attrs,
       _sectionProperties: {
         ...update.target,
-        ...(propertyChanges === undefined ? {} : { propertyChanges }),
+        propertyChanges,
       },
     });
   }

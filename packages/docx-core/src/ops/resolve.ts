@@ -28,6 +28,7 @@ import type {
 } from "../model/document";
 import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
+import { structurallyEqual } from "./equality";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
 import {
   alikeDepth,
@@ -77,30 +78,31 @@ const markWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
 export type RemovedParagraphMarkSectionDestination =
   | { type: "none" }
   | { type: "preceding" }
-  | { type: "retained" }
-  | { type: "refuse" };
+  | { type: "following" };
 
 type RemovedParagraphMarkSectionOptions = {
   removedSectionProperties: unknown;
   precedingSectionProperties: unknown;
-  hasPrecedingParagraph: boolean;
+  followingSectionProperties: unknown;
 };
 
 /**
- * Chooses a lossless carrier for the section ending at a removed paragraph mark.
- * An existing preceding boundary cannot carry a second section, even one with
- * equal properties (two equal sections are still two sections), so the marked
- * paragraph must remain as the adjacent boundary.
+ * Chooses the surviving owner for the section ending at a removed paragraph mark.
+ * When the preceding paragraph already ends a section, the removed boundary's
+ * properties belong to the following paragraph, whose mark survives the join.
  */
 export const removedParagraphMarkSectionDestination = ({
   removedSectionProperties,
   precedingSectionProperties,
-  hasPrecedingParagraph,
+  followingSectionProperties,
 }: RemovedParagraphMarkSectionOptions): RemovedParagraphMarkSectionDestination => {
   if (removedSectionProperties === undefined) return { type: "none" };
-  if (!hasPrecedingParagraph) return { type: "refuse" };
+  if (followingSectionProperties !== undefined) return { type: "none" };
   if (precedingSectionProperties === undefined) return { type: "preceding" };
-  return { type: "retained" };
+  if (structurallyEqual(removedSectionProperties, precedingSectionProperties)) {
+    return { type: "none" };
+  }
+  return { type: "following" };
 };
 
 type PropertyChange = RunPropertyChange | ParagraphPropertyChange;
@@ -1141,36 +1143,18 @@ const joinOps = (
     // one folded into its neighbour is rebuilt, and is no longer empty.
     ends.set(nextId, emptiedEndsOf(merged, emptied));
     const survivor: Paragraph = { ...next, content: asParagraphContent(merged) };
-    const previous = blocks.at(location.index - 1);
+    const previous = location.index > 0 ? blocks.at(location.index - 1) : undefined;
     const sectionDestination = removedParagraphMarkSectionDestination({
       removedSectionProperties: added ? paragraph.sectionProperties : undefined,
       precedingSectionProperties:
         previous?.type === "paragraph" ? previous.sectionProperties : undefined,
-      hasPrecedingParagraph: previous?.type === "paragraph",
+      followingSectionProperties: next.sectionProperties,
     });
-    if (sectionDestination.type === "refuse") {
-      return Result.err(
-        refusal(
-          op,
-          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          `The section ending at ${paraId} has no preceding paragraph to carry its boundary.`,
-        ),
-      );
-    }
-    if (sectionDestination.type === "retained") {
-      const review = reviewFieldsOf(paragraph);
-      delete review.pPrMark;
-      return Result.ok([
-        {
-          type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
-          story,
-          blockId: paraId,
-          expected: reviewFieldsOf(paragraph),
-          review,
-        },
-      ]);
-    }
-    const restoredCarrier =
+    const resolvedSurvivor =
+      sectionDestination.type === "following"
+        ? { ...survivor, sectionProperties: paragraph.sectionProperties }
+        : survivor;
+    const restoredPreceding =
       sectionDestination.type === "preceding" && previous?.type === "paragraph"
         ? {
             source: previous,
@@ -1182,10 +1166,13 @@ const joinOps = (
         type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
         story,
         expected:
-          restoredCarrier === undefined
+          restoredPreceding === undefined
             ? [paragraph, next]
-            : [restoredCarrier.source, paragraph, next],
-        blocks: restoredCarrier === undefined ? [survivor] : [restoredCarrier.paragraph, survivor],
+            : [restoredPreceding.source, paragraph, next],
+        blocks:
+          restoredPreceding === undefined
+            ? [resolvedSurvivor]
+            : [restoredPreceding.paragraph, resolvedSurvivor],
         ...(paragraph.sectionProperties === undefined
           ? {}
           : { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }),

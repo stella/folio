@@ -1169,7 +1169,7 @@ describe("section-aware tracked editor joins", () => {
     );
   });
 
-  test("rejecting an added adjacent boundary retains both sections", () => {
+  test("rejecting an added adjacent boundary moves the second section to the following mark", () => {
     const first = { pageWidth: 10_000 };
     const second = { pageWidth: 12_000 };
     const document = documentOf(
@@ -1184,8 +1184,7 @@ describe("section-aware tracked editor joins", () => {
     expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
       documentOf(
         paragraph("00000001", [run("before")], { sectionProperties: first }),
-        paragraph("00000002", [], { sectionProperties: second }),
-        paragraph("00000003", [run("after")]),
+        paragraph("00000003", [run("after")], { sectionProperties: second }),
       ),
     );
   });
@@ -1326,14 +1325,14 @@ test("a new first split half records its own review without moving the surviving
 describe("removedParagraphMarkSectionDestination", () => {
   const nextPage = { type: "nextPage", pageSize: { width: 11906, height: 16838 } };
 
-  test("an existing preceding boundary keeps the removed mark's section, even when equal", () => {
+  test("an equal preceding boundary already owns the removed mark's section", () => {
     expect(
       removedParagraphMarkSectionDestination({
         removedSectionProperties: nextPage,
         precedingSectionProperties: { ...nextPage },
-        hasPrecedingParagraph: true,
+        followingSectionProperties: undefined,
       }),
-    ).toEqual({ type: "retained" });
+    ).toEqual({ type: "none" });
   });
 
   test("a preceding paragraph without a boundary takes the section", () => {
@@ -1341,7 +1340,7 @@ describe("removedParagraphMarkSectionDestination", () => {
       removedParagraphMarkSectionDestination({
         removedSectionProperties: nextPage,
         precedingSectionProperties: undefined,
-        hasPrecedingParagraph: true,
+        followingSectionProperties: undefined,
       }),
     ).toEqual({ type: "preceding" });
   });
