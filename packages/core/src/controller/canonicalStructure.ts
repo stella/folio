@@ -41,14 +41,16 @@ const noChange = (message: string) =>
 
 const selectedParagraphs = (session: CanonicalSession, state: EditorState) => {
   const ids = new Set<string>();
+  const paragraphs: Paragraph[] = [];
   state.doc.nodesBetween(state.selection.from, state.selection.to, (node) => {
-    if (node.type.name === "paragraph" && typeof node.attrs["paraId"] === "string")
-      ids.add(node.attrs["paraId"]);
-  });
-  return [...ids].flatMap((id) => {
+    if (node.type.name !== "paragraph" || typeof node.attrs["paraId"] !== "string") return;
+    const id = node.attrs["paraId"];
+    if (ids.has(id)) return;
+    ids.add(id);
     const paragraph = session.projection.paragraph(id)?.source;
-    return paragraph === undefined ? [] : [paragraph];
+    if (paragraph !== undefined) paragraphs.push(paragraph);
   });
+  return paragraphs;
 };
 
 const effectiveNumbering = (paragraph: Paragraph | undefined) =>
@@ -196,17 +198,6 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "formatRun": {
-        const selection = session.projection.selectionAt(state);
-        if (selection.isErr()) return selection;
-        if (selection.value.type === "cell") {
-          intents.push({
-            type: "formatRun",
-            from: selection.value.anchor,
-            to: selection.value.head,
-            patch: command.patch,
-          });
-          break;
-        }
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;
         const to = session.projection.addressAt(command.to);

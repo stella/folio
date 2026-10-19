@@ -209,7 +209,10 @@ test("every canonical range producer normalizes selection endpoints", async () =
               ts.isPropertyAssignment(property) &&
               ["from", "to"].includes(property.name.getText())
             ) {
-              expect(owner).toBe("extensions/marks/markUtils.ts#canonicalSetMarkFormatting");
+              expect([
+                "canonicalCommands.ts#canonicalRunFormatting",
+                "extensions/marks/markUtils.ts#canonicalSetMarkFormatting",
+              ]).toContain(owner);
               expect(property.initializer.getText()).toBe(
                 `representation.${property.name.getText()}`,
               );
@@ -223,8 +226,11 @@ test("every canonical range producer normalizes selection endpoints", async () =
               }
             }
           }
-          if (owner.endsWith("#canonicalSetMarkFormatting")) {
-            expect(declaration?.getText()).toContain("canonicalSelectionRange(state)");
+          if (
+            owner.endsWith("#canonicalSetMarkFormatting") ||
+            owner.endsWith("#canonicalRunFormatting")
+          ) {
+            expect(declaration?.getText()).toContain("canonicalSelectionRanges(state)");
             expect(declaration?.getText()).not.toMatch(/state\.selection\.(from|to)/u);
           } else {
             expect(

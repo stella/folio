@@ -58,6 +58,7 @@ import {
 } from "../docx/paragraphPropertySource";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
+  canonicalCellSelectionRanges,
   canonicalContentPosition,
   canonicalSelectionRange,
 } from "../prosemirror/canonicalSelectionRange";
@@ -1124,9 +1125,26 @@ class CanonicalSession {
     }
     if (from === to && text.length === 0) return noChange("The input makes no text change.");
     const replacesStructuralSelection =
-      (state.selection instanceof AllSelection || state.selection instanceof CellSelection) &&
+      state.selection instanceof AllSelection &&
       from === state.selection.from &&
       to === state.selection.to;
+    if (
+      state.selection instanceof CellSelection &&
+      from === state.selection.from &&
+      to === state.selection.to
+    ) {
+      if (text.length > 0)
+        return refuse("Replacing a cell selection requires a per-cell replacement.");
+      const intents: EditorIntent[] = [];
+      for (const range of canonicalCellSelectionRanges(state.selection)) {
+        const cellFrom = projection.inputAddressAt(range.from);
+        if (cellFrom.isErr()) return cellFrom;
+        const cellTo = projection.inputAddressAt(range.to);
+        if (cellTo.isErr()) return cellTo;
+        intents.push({ type: "replaceText", from: cellFrom.value, to: cellTo.value, text: "" });
+      }
+      return this.prepareIntents(state, { intents, semantic });
+    }
     const range = canonicalSelectionRange(state);
     const inputFrom = replacesStructuralSelection ? range.from : from;
     const inputTo = replacesStructuralSelection ? range.to : to;
@@ -1918,8 +1936,9 @@ export const deletionRange = (
     selection.node.type.name !== "noteMarker"
   )
     return Result.ok({ from: selection.from, to: selection.to });
-  if (selection instanceof AllSelection || selection instanceof CellSelection)
-    return Result.ok(canonicalSelectionRange(state));
+  if (selection instanceof CellSelection)
+    return Result.ok({ from: selection.from, to: selection.to });
+  if (selection instanceof AllSelection) return Result.ok(canonicalSelectionRange(state));
   if (!(selection instanceof TextSelection))
     return refuse(
       "Canonical deletion requires text, an inline atom, or the whole document selection.",
