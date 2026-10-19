@@ -10,13 +10,14 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { consumerScenarioReplay, consumerScenarioReplayInputs } from "./replay-inputs.ts";
+
 import { admit, loadCorpus, prune } from "./corpus.ts";
 import {
   failureMarker,
   failureRecord,
   type FailureRecord,
   logFailureMarker,
-  shellQuote,
   writeFailureRecord,
 } from "./failure-fingerprints.ts";
 import { compactFlow, type FlowFile, flowId, type FlowKind, flowShape } from "./flow-file.ts";
@@ -25,43 +26,33 @@ import { describeFlow, FlowError, type FlowRun, runFlow, runFlowFile } from "./f
 import { createRandom } from "./random.ts";
 import { shrinkFlow } from "./shrink.ts";
 
-/** The relation settings a replay needs to fail the same way, as `NAME=value` words. */
-export const relationEnv = (): string =>
-  [
-    "FOLIO_SCENARIO_RELATIONS",
-    "FOLIO_SCENARIO_RELATIONS_DEPTH",
-    "FOLIO_SCENARIO_FEATURE_WEIGHTS",
-    "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR",
-  ]
-    .flatMap((name) => {
-      const value = process.env[name];
-      return value === undefined ? [] : [`${name}=${shellQuote(value)}`];
-    })
-    .join(" ");
-
-const words = (...parts: string[]): string => parts.filter((part) => part !== "").join(" ");
+/** The environment settings a replay needs to fail the same way. */
+export const relationInputs = (): Readonly<Record<string, string>> =>
+  consumerScenarioReplayInputs(process.env);
 
 /** The one line that replays a seeded flow through scenarios/fuzz.test.ts. */
 export const seedReplay = (seed: number, steps: number, kind: FlowKind): string => {
-  const [runs, label] =
-    kind === "random"
-      ? ["FOLIO_SCENARIO_FUZZ_RUNS=1 FOLIO_SCENARIO_COLLISION_RUNS=0", "fuzz"]
-      : ["FOLIO_SCENARIO_FUZZ_RUNS=0 FOLIO_SCENARIO_COLLISION_RUNS=1", "collision"];
-  return words(
-    `FOLIO_SCENARIO_SEED=${seed} FOLIO_SCENARIO_FUZZ_STEPS=${steps} ${runs}`,
-    relationEnv(),
-    process.env["FOLIO_SCENARIO_SWARM"] === "1" ? "FOLIO_SCENARIO_SWARM=1" : "",
-    `bun scripts/consumer-scenarios.ts --only '^${label} run 0 \\(' -- fuzz.test.ts`,
-  );
+  const label = kind === "random" ? "fuzz" : "collision";
+  return consumerScenarioReplay({
+    inputs: {
+      ...relationInputs(),
+      seed: String(seed),
+      steps: String(steps),
+      runs: kind === "random" ? "1" : "0",
+      collisionRuns: kind === "random" ? "0" : "1",
+    },
+    flags: [`--only '^${label} run 0 \\('`],
+    files: ["fuzz.test.ts"],
+  });
 };
 
 /** The one line that replays a flow file through scenarios/flow-corpus.test.ts. */
 export const flowReplay = (flow: FlowFile): string =>
-  words(
-    `FOLIO_SCENARIO_FLOW=${shellQuote(compactFlow(flow))}`,
-    relationEnv(),
-    "bun scripts/consumer-scenarios.ts --only '^replay FOLIO_SCENARIO_FLOW' -- flow-corpus.test.ts",
-  );
+  consumerScenarioReplay({
+    inputs: { ...relationInputs(), flow: compactFlow(flow) },
+    flags: ["--only '^replay FOLIO_SCENARIO_FLOW'"],
+    files: ["flow-corpus.test.ts"],
+  });
 
 /** The test name a flow's failures are fingerprinted under (as in fuzz.test.ts). */
 export const flowTestName = (flow: Pick<FlowFile, "fixture" | "mode">): string =>

@@ -156,6 +156,10 @@ bun run validate-dist
 
 Published-package source changes require a [Changeset](https://github.com/changesets/changesets).
 
+### Cloud setup
+
+On Ubuntu 24.04 cloud environments, `bash .agents/cloud-setup.sh install` provisions the pinned Bun, Node, Rust, wasm-bindgen and dependencies (networked); `bash .agents/cloud-setup.sh start` refreshes the shell environment at each session start (offline). Regenerate the script with `bunx --no-install stll-cloud-setup` after changing `stll-toolchain.json`.
+
 ## Acknowledgements
 
 Folio originated as a fork of [Eigenpal](https://eigenpal.com)'s

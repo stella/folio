@@ -58,10 +58,12 @@ jobs:
   report:
     name: File long-flow findings
     needs: long-fuzz
-    if: failure() && github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (failure() || github.event_name == 'schedule') }}
     permissions:
       contents: read
       issues: write
     uses: ./.github/workflows/fuzz-failure-report.yml
     with:
       artifact-pattern: long-fuzz-*
+      lane: nightly-long-fuzz
+      result: ${{ needs.long-fuzz.result }}

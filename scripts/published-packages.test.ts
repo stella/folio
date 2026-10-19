@@ -1,8 +1,12 @@
-import { expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { discoverPublishedPackages } from "./lib/published-packages";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 test("new public workspace packages are discovered and built after their dependencies", () => {
   const root = mkdtempSync(path.join(tmpdir(), "folio-public-workspaces-"));

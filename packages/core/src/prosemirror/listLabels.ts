@@ -11,9 +11,16 @@
  * until something reads the document.
  */
 
+import type { ResolvedParagraphNumbering } from "@stll/docx-core/model";
+
 import { bulletMarkerFontName, convertBulletToUnicode } from "../docx/bulletMarkers";
 import type { ListRendering } from "../types/document";
-import { paragraphNumberingAttr, type ParagraphNumberingSources } from "./numberingAttr";
+import {
+  effectiveParagraphNumberingReference,
+  paragraphNumberingAttr,
+  paragraphNumberingSourcesFromBoundary,
+  type ParagraphNumberingSources,
+} from "./numberingAttr";
 import {
   advanceVisibleListMarker,
   createListCounterState,
@@ -50,6 +57,20 @@ const staticMarker = (attrs: Readonly<ParagraphAttrs>): string | undefined => {
   return text || undefined;
 };
 
+const visibleLabel = (
+  counterAttrs: Readonly<ParagraphAttrs>,
+  marker: string | null,
+): string | undefined => {
+  if (counterAttrs.listMarkerHidden === true || !hasListRendering(counterAttrs)) return undefined;
+  const counted = marker?.trim();
+  if (counted) {
+    return `${counted}${foldedFieldSuffix(counterAttrs)}`;
+  }
+  // What the page paints when the counter resolves nothing: the marker as
+  // the paragraph carries it.
+  return staticMarker(counterAttrs);
+};
+
 /**
  * The attrs the counter reads for a paragraph of the document model, as
  * `toProseDoc` projects them (`listRenderingAttrPatch`), without the layout
@@ -84,11 +105,16 @@ export const listLabelAttrsFromRendering = (
   return attrs;
 };
 
+type VisibleListLabel = {
+  label: string | undefined;
+  numbering: Extract<ResolvedParagraphNumbering, { kind: "reference" }> | undefined;
+};
+
 /**
  * Advances past one paragraph and answers the label it shows, or `undefined`
- * when it shows none.
+ * when it shows none, with the numbering that label is counted in.
  */
-export type ListLabelCounter = (attrs: Readonly<ParagraphAttrs>) => string | undefined;
+export type ListLabelCounter = (attrs: Readonly<ParagraphAttrs>) => VisibleListLabel;
 
 /**
  * A counter over paragraph attrs in document order. Call it for every
@@ -103,15 +129,14 @@ export const createListLabelCounter =
     },
   ): ListLabelCounter =>
   (attrs) => {
-    const visible = advanceVisibleListMarker(attrs, streams);
-    const rendered = hasListRendering(visible.counterAttrs);
-    const marker = visible.marker;
-    if (visible.counterAttrs.listMarkerHidden === true || !rendered) return undefined;
-    const counted = marker?.trim();
-    if (counted) {
-      return `${counted}${foldedFieldSuffix(visible.counterAttrs)}`;
-    }
-    // What the page paints when the counter resolves nothing: the marker as
-    // the paragraph carries it.
-    return staticMarker(visible.counterAttrs);
+    const { counterAttrs, marker } = advanceVisibleListMarker(attrs, streams);
+    return {
+      label: visibleLabel(counterAttrs, marker),
+      numbering: effectiveParagraphNumberingReference(
+        paragraphNumberingSourcesFromBoundary({
+          numPr: counterAttrs.numPr,
+          numPrFromStyle: counterAttrs.numPrFromStyle,
+        }),
+      ),
+    };
   };

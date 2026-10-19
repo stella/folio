@@ -4,11 +4,12 @@ import path from "node:path";
 import { test } from "node:test";
 
 import { writeFailureRecord } from "../support/failure-fingerprints.ts";
-import { recordFailure, relationEnv } from "../support/fuzz-loop.ts";
+import { recordFailure, relationInputs } from "../support/fuzz-loop.ts";
+import { consumerScenarioReplay } from "../support/replay-inputs.ts";
 import { FlowError, runFlow } from "../support/fuzz.ts";
 import { LARGE_DOCUMENT_FIXTURE } from "../support/large-document.ts";
 
-const ENABLED = process.env["CI"] === "true" && process.env["FOLIO_SCENARIO_LONG_FUZZ"] === "1";
+const ENABLED = process.env["FOLIO_SCENARIO_LONG_FUZZ"] === "1";
 
 if (!ENABLED) {
   test(
@@ -34,13 +35,16 @@ if (!ENABLED) {
   }
   test(`long flow: seed ${seed}, ${steps} steps, 100 pages`, async () => {
     await mkdir(output, { recursive: true });
-    const repro = [
-      `CI=true FOLIO_SCENARIO_LONG_FUZZ=1 FOLIO_SCENARIO_SEED=${seed} FOLIO_SCENARIO_LONG_STEPS=${steps} FOLIO_SCENARIO_LONG_OUTPUT=test-results/long-fuzz`,
-      relationEnv(),
-      "bun scripts/consumer-scenarios.ts -- long-fuzz.test.ts",
-    ]
-      .filter(Boolean)
-      .join(" ");
+    const repro = consumerScenarioReplay({
+      inputs: {
+        ...relationInputs(),
+        longFuzz: "1",
+        seed: String(seed),
+        longSteps: String(steps),
+        longOutput: "test-results/long-fuzz",
+      },
+      files: ["long-fuzz.test.ts"],
+    });
     await writeFile(path.join(output, "replay.txt"), `${repro}\n`);
     try {
       const result = await runFlow(seed, steps, "collisions", {
