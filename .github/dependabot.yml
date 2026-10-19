@@ -17,9 +17,6 @@ updates:
         update-types: [minor, patch]
     # These pins are updated through the shared toolchain policy; security updates stay enabled.
     ignore:
-      # The API declarations follow the extension's engines.vscode floor.
-      - dependency-name: "@types/vscode"
-        versions: [">1.86.0"]
       - dependency-name: "typescript"
         update-types:
           [
