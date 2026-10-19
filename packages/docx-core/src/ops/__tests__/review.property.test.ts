@@ -44,7 +44,8 @@ import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { BlockContent, Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp, stampOf } from "../apply";
-import { storyParagraphs, withBodyContent } from "../blocks";
+import { paragraphMarkRemovesParagraph } from "../blockDeletion";
+import { blockListAt, storyParagraphs, withBodyContent } from "../blocks";
 import { contractViolation } from "../contract";
 import {
   IDENTITY_SPACES,
@@ -226,6 +227,18 @@ const follower = (document: Document, id: string): Paragraph | undefined => {
       candidate.index === at.index + 1 &&
       JSON.stringify(candidate.list) === JSON.stringify(at.list),
   )?.paragraph;
+};
+
+/** The first cell paragraph that can receive a paragraph retired before a table. */
+const tableRunInReceiver = (document: Document, id: string): Paragraph | undefined => {
+  const body = document.package.document;
+  const at = storyParagraphs(body).find(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(id),
+  );
+  if (at === undefined) return undefined;
+  let next = blockListAt(body.content, at.list).at(at.index + 1);
+  while (next?.type === "table") next = next.rows.at(0)?.cells.at(0)?.content.at(0);
+  return next?.type === "paragraph" ? next : undefined;
 };
 
 /** The leaves of a paragraph between two gaps. */
@@ -753,6 +766,23 @@ describe("tracked operations and their resolution", () => {
             holding.add(idKey(paragraph.paraId ?? ""));
             const next = follower(document, paragraph.paraId ?? "");
             if (next !== undefined) holding.add(idKey(next.paraId ?? ""));
+            const mark = paragraph.pPrMark;
+            const markWasAdded = mark?.kind === "ins" || mark?.kind === "moveTo";
+            const markGoes =
+              mark !== undefined &&
+              ids.includes(mark.info.id) &&
+              markWasAdded !== (decision === REVISION_DECISIONS.ACCEPT);
+            if (
+              markGoes &&
+              paragraphMarkRemovesParagraph({
+                followingKind: "table",
+                holdsNoContent: paragraphLength(paragraph) === 0,
+                markWasAdded,
+              })
+            ) {
+              const receiver = tableRunInReceiver(document, paragraph.paraId ?? "");
+              if (receiver !== undefined) holding.add(idKey(receiver.paraId ?? ""));
+            }
           }
           cases.push([resolveOp(ids, decision), holding]);
           for (const [candidate, named] of cases) {

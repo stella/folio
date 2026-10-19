@@ -1179,17 +1179,24 @@ const joinOps = (
   const canGo = !cellFinal && (added || !containerFinal);
   let followingKind: "table" | "other" | undefined;
   if (next !== undefined) followingKind = next.type === "table" ? "table" : "other";
+  const removesParagraph = paragraphMarkRemovesParagraph({
+    followingKind,
+    holdsNoContent: empty,
+    markWasAdded: added,
+  });
   const carrier = paragraphMarkCarrier({
     followingKind,
     endsContainer: containerFinal,
     removesCurrentMark: true,
-    removesParagraph: paragraphMarkRemovesParagraph({
-      followingKind,
-      holdsNoContent: empty,
-      markWasAdded: added,
-    }),
+    removesParagraph,
   });
-  if (canGo && blocks.length > 1 && followingKind === "table" && next?.type === "table") {
+  if (
+    canGo &&
+    removesParagraph &&
+    blocks.length > 1 &&
+    followingKind === "table" &&
+    next?.type === "table"
+  ) {
     const anchor = blocks.find(
       (block, index): block is Paragraph => index !== location.index && block.type === "paragraph",
     );

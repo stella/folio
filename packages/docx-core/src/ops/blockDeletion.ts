@@ -42,7 +42,7 @@ export const paragraphMarkRemovesParagraph = ({
   holdsNoContent,
   markWasAdded,
 }: ParagraphMarkRemovalOptions): boolean =>
-  holdsNoContent || (followingKind !== "table" && markWasAdded);
+  followingKind === "table" || holdsNoContent || markWasAdded;
 
 type ParagraphMarkCarrierOptions = {
   followingKind: "paragraph" | "table" | "other" | undefined;

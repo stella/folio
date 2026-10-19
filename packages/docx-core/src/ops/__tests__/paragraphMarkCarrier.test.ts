@@ -92,8 +92,8 @@ test("accepting a non-empty paragraph-mark deletion runs it into the first cell 
 describe("paragraphMarkRemovesParagraph", () => {
   test.each([
     { followingKind: "table", holdsNoContent: true, markWasAdded: false, expected: true },
-    { followingKind: "table", holdsNoContent: false, markWasAdded: false, expected: false },
-    { followingKind: "table", holdsNoContent: false, markWasAdded: true, expected: false },
+    { followingKind: "table", holdsNoContent: false, markWasAdded: false, expected: true },
+    { followingKind: "table", holdsNoContent: false, markWasAdded: true, expected: true },
     { followingKind: "paragraph", holdsNoContent: false, markWasAdded: true, expected: true },
     { followingKind: undefined, holdsNoContent: false, markWasAdded: true, expected: true },
   ] as const)(
