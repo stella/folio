@@ -44,6 +44,8 @@ import {
 } from "./canonicalInlineProjection";
 import { hasIllegalXmlCharacters } from "@stll/docx-core";
 import { rangedCommentIds, visitCommentMarkers } from "../docx/commentAnchorIndex";
+import { isCellMergeContinuation } from "../docx/tableParser";
+import { calculateRowSpans } from "../docx/verticalMergeProjection";
 
 import { splitsGraphemeCluster, splitsSurrogatePair } from "../ai-edits/character-boundaries";
 import {
@@ -510,21 +512,36 @@ const project = ({
       commentContext.pointIds.add(item.id);
   });
   const sources = new Map<string, { source: Paragraph; container: readonly BlockContent[] }>();
-  const collectSources = (blocks: readonly BlockContent[]): void => {
+  const allSources = new Set<Paragraph>();
+  const continuationSources = new Set<Paragraph>();
+  const collectSources = (
+    blocks: readonly BlockContent[],
+    insideSkippedContinuation = false,
+  ): void => {
     for (const block of blocks) {
       if (block.type === "paragraph") {
+        allSources.add(block);
+        if (insideSkippedContinuation) continuationSources.add(block);
         if (block.paraId !== undefined)
           sources.set(block.paraId, { source: block, container: blocks });
         continue;
       }
       if (block.type !== "table") continue;
-      for (const row of block.rows) {
-        for (const cell of row.cells) collectSources(cell.content);
+      const rowSpans = calculateRowSpans(block);
+      for (const [rowIndex, row] of block.rows.entries()) {
+        let column = row.formatting?.gridBefore ?? 0;
+        for (const cell of row.cells) {
+          const skippedContinuation =
+            isCellMergeContinuation(cell) && (rowSpans.get(`${rowIndex}-${column}`)?.skip ?? false);
+          collectSources(cell.content, insideSkippedContinuation || skippedContinuation);
+          column += cell.formatting?.gridSpan ?? 1;
+        }
       }
     }
   };
   collectSources(body.content);
   const paragraphs: ParagraphAddress[] = [];
+  const projectedSources = new Set<Paragraph>();
   let failure: CanonicalSessionError | undefined;
   converted.value.descendants((node, offset) => {
     if (failure !== undefined) return;
@@ -540,6 +557,15 @@ const project = ({
       return;
     }
     const { source, container } = located;
+    if (projectedSources.has(source)) {
+      failure = new CanonicalSessionError({
+        gap: CANONICAL_GAP.storyContentProjection,
+        reason: "refused",
+        message: "The projection changed paragraph structure.",
+      });
+      return;
+    }
+    projectedSources.add(source);
     const inline = projectCanonicalInline({
       source,
       paragraph: node,
@@ -568,6 +594,12 @@ const project = ({
     });
   });
   if (failure !== undefined) return Result.err(failure);
+  if (
+    projectedSources.size + continuationSources.size !== allSources.size ||
+    [...projectedSources].some((source) => continuationSources.has(source))
+  ) {
+    return refuse("The projection changed paragraph structure.");
+  }
   return Result.ok(new CanonicalProjection({ doc: converted.value, paragraphs, story }));
 };
 
