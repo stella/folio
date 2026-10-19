@@ -23,7 +23,7 @@ concurrency:
 jobs:
   scale-complexity:
     name: Scale complexity
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -50,7 +50,7 @@ jobs:
 
   benchmarks:
     name: Benchmarks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Least privilege: read the checkout, and mint an OIDC token for CodSpeed.
     permissions:
       contents: read

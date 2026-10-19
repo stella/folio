@@ -18,7 +18,7 @@ permissions: {}
 jobs:
   property-test:
     name: Property tests (extended budget)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -80,7 +80,7 @@ jobs:
 
   docx-kernel-property:
     name: DOCX kernel properties (extended budget)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -103,7 +103,7 @@ jobs:
 
   conformance-full:
     name: Editor-command conformance (full tier)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -157,7 +157,7 @@ jobs:
     name: Report property failures
     needs: property-test
     if: failure() && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
       group: nightly-property-failure-report
@@ -195,7 +195,7 @@ jobs:
     name: Report conformance failures
     needs: conformance-full
     if: failure() && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
       group: nightly-conformance-failure-report
@@ -232,7 +232,7 @@ jobs:
     name: Properties of the changed areas (5x runs)
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false

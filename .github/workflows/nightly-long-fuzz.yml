@@ -15,7 +15,7 @@ concurrency:
 jobs:
   long-fuzz:
     name: 100 pages / ${{ matrix.steps }} steps
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     permissions:
       contents: read

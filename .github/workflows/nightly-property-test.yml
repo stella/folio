@@ -12,7 +12,7 @@ permissions: {}
 jobs:
   consumer-fuzz:
     name: Generated consumer scenarios (nightly budget)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read

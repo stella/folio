@@ -28,7 +28,7 @@ jobs:
   changeset:
     name: Changeset present for published package src changes
     if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -99,7 +99,7 @@ jobs:
   # Drafts plan nothing until marked ready for review.
   ci-plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -209,7 +209,7 @@ jobs:
     name: Warm main dependency caches
     needs: ci-plan
     if: github.event_name == 'push' && needs.ci-plan.outputs.reused_run != '' && needs.ci-plan.outputs.warm_caches == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -236,7 +236,7 @@ jobs:
     name: Browser test discovery
     needs: ci-plan
     if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.ci-plan.outputs.browser_discovery_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -256,7 +256,7 @@ jobs:
     name: Format check (documentation only)
     needs: ci-plan
     if: needs.ci-plan.outputs.reused_run == '' && needs.ci-plan.outputs.code_required == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -277,7 +277,7 @@ jobs:
     name: Lint and source guards
     needs: ci-plan
     if: needs.ci-plan.outputs.reused_run == ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -470,7 +470,7 @@ jobs:
     name: Typecheck
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -491,7 +491,7 @@ jobs:
     name: Build reproducibility and API reports
     needs: ci-plan
     if: needs.ci-plan.outputs.api_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -534,7 +534,7 @@ jobs:
     name: Focused and full tests (1/4)
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -576,7 +576,7 @@ jobs:
     name: Focused and full tests (2/4)
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -618,7 +618,7 @@ jobs:
     name: Focused and full tests (3/4)
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -660,7 +660,7 @@ jobs:
     name: Focused and full tests (4/4)
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -702,7 +702,7 @@ jobs:
     name: Container contract and survival census
     needs: ci-plan
     if: needs.ci-plan.outputs.container_contract_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -735,7 +735,7 @@ jobs:
     name: DOCX kernel (Rust and WebAssembly)
     needs: ci-plan
     if: needs.ci-plan.outputs.docx_kernel_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       CARGO_NET_RETRY: "5"
       CARGO_HTTP_TIMEOUT: "120"
@@ -829,7 +829,7 @@ jobs:
     name: Pinned browser input replays
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -866,7 +866,7 @@ jobs:
     name: Canonical evaluation transport regressions
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -897,7 +897,7 @@ jobs:
     name: Interaction e2e (playground)
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -960,7 +960,7 @@ jobs:
     name: Generated compare fixture schema checks
     needs: ci-plan
     if: needs.ci-plan.outputs.differential_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -991,7 +991,7 @@ jobs:
     name: Consumer scenarios (tarballs)
     needs: ci-plan
     if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1063,7 +1063,7 @@ jobs:
     name: Consumer scenarios (minimum supported Node)
     needs: [ci-plan, consumer-scenarios]
     if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1107,7 +1107,7 @@ jobs:
     name: Packaged-consumer build (tarballs)
     needs: ci-plan
     if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1195,7 +1195,7 @@ jobs:
       - consumer-scenarios
       - consumer-scenarios-minimum
       - packaged-consumer
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       pull-requests: read
