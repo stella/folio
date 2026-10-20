@@ -98,8 +98,9 @@ test.each([
   preceding.formatting = {
     numPr: { kind: "reference", numId: command.type === "toggleList" ? 2 : 1, ilvl: 0 },
   };
-  target.formatting =
-    command.type === "toggleList" ? {} : { numPr: { kind: "reference", numId: 2, ilvl: 0 } };
+  // The canonical model has no empty formatting: an unformatted paragraph omits it.
+  if (command.type === "toggleList") Reflect.deleteProperty(target, "formatting");
+  else target.formatting = { numPr: { kind: "reference", numId: 2, ilvl: 0 } };
   cell.content = [preceding, target];
   let paragraphId = 1;
   for (const block of document.package.document.content) {
