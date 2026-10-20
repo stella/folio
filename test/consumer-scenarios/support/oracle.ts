@@ -513,6 +513,8 @@ export type Model = {
   liveTextById: ReadonlyMap<string, string>;
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
   deletedBlockIds: Set<string>;
+  /** A deleted body block owned a note story that disappears with its reference. */
+  removedNoteReference: boolean;
   /** Paragraph style ids the saved package must define. */
   styles: Set<string>;
   /** Comments that must exist, with their anchored text when it is known. */
@@ -573,6 +575,7 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
     ),
     liveTextById: new Map(live.map(({ id, text }) => [id, text])),
     deletedBlockIds: new Set(),
+    removedNoteReference: false,
     styles: new Set(),
     comments: [],
     unmodelled: [],
@@ -1694,12 +1697,24 @@ export const compareComments = (
   const remaining = [...after];
   const kept: Comment[] = [];
   const gone: { entry: Comment; located: Comment }[] = [];
+  const storyBlockIds = new Set(
+    model.rows.flatMap((row) => (row.pre === undefined ? [] : [row.pre.id])),
+  );
   for (const entry of before) {
     const live = liveBefore.find(({ id }) => id === entry.id);
     // The accepted quote belongs to the accepted model. Use a live quote
     // only when a pending paragraph join moved its anchor to another block.
     const located = live && live.blockId !== entry.blockId ? live : entry;
-    const disposition = mode === "suggested" ? "kept" : anchorDisposition(model, located);
+    let disposition = mode === "suggested" ? "kept" : anchorDisposition(model, located);
+    if (
+      (model.story === "removed" &&
+        located.blockId !== null &&
+        storyBlockIds.has(located.blockId)) ||
+      (model.removedNoteReference &&
+        located.blockId !== null &&
+        !storyBlockIds.has(located.blockId))
+    )
+      disposition = "removed";
     if (disposition === "removed") gone.push({ entry, located });
     else if (disposition === "kept") kept.push(entry);
   }
@@ -2124,6 +2139,9 @@ export const assertRequestedOutcome = async (
       }
     })();
     for (const removedBlockId of removal) {
+      if (pre.targets.features.get(removedBlockId)?.has("noteReference")) {
+        model.removedNoteReference = true;
+      }
       if (!removedBlocksBy.has(removedBlockId)) {
         removedBlocksBy.set(removedBlockId, {
           id: String(operation["id"] ?? index),

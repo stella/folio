@@ -323,6 +323,24 @@ describe("the requested-outcome oracle", () => {
     assert.match(problems.join("\n"), /no comment/u);
   });
 
+  test("a comment retires with its removed note story", () => {
+    const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
+    const model = modelOf([row("note", "Note text")]);
+    model.story = "removed";
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+    assert.match(
+      compareComments(model, [comment], [comment], []).join("\n"),
+      /outlived the block it anchored/u,
+    );
+  });
+
+  test("a note comment retires when its body reference is removed", () => {
+    const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
+    const model = modelOf([row("body", "Reference")]);
+    model.removedNoteReference = true;
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+  });
+
   test("a replaced paragraph's comment survives rejecting its tracked deletion", async () => {
     const reviewer = await openReviewer(await plainDocument());
     const block = reviewer.getContent().find(({ text }) => text.length > 0);
