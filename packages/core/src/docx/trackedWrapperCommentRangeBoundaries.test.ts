@@ -588,8 +588,8 @@ describe("comment-range boundaries inside tracked changes", () => {
         decision === "accept"
           ? wrapper.type === "deletion" || wrapper.type === "moveFrom"
           : wrapper.type === "insertion" || wrapper.type === "moveTo";
-      if (!removesCoveredText) continue;
-      test(`${decision} ${wrapper.type} follows the comment lifecycle when its text is removed`, () => {
+      const outcome = removesCoveredText ? "its text is removed" : "its text is kept";
+      test(`${decision} ${wrapper.type} follows the comment lifecycle when ${outcome}`, () => {
         const paragraph = parseParagraphXml(
           `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}"><w:${wrapper.tag} w:id="7" w:author="Reviewer">` +
             `<w:r><w:t>before</w:t></w:r><w:commentRangeStart w:id="5"/>` +
@@ -617,10 +617,21 @@ describe("comment-range boundaries inside tracked changes", () => {
           stylesheetSource: { type: "package" },
         });
 
-        expect(markerTypes(operation.value.document)).toEqual([]);
-        expect(operation.value.document.package.document.comments).toBeUndefined();
-        expect(markerTypes(editor)).toEqual([]);
-        expect(editor.package.document.comments).toBeUndefined();
+        if (removesCoveredText) {
+          expect(markerTypes(operation.value.document)).toEqual([]);
+          expect(operation.value.document.package.document.comments).toBeUndefined();
+          expect(markerTypes(editor)).toEqual([]);
+          expect(editor.package.document.comments).toBeUndefined();
+          return;
+        }
+        // The decision keeps the covered text, so the comment keeps its range and reference.
+        const kept = ["commentRangeStart", "commentRangeEnd", "commentReference"];
+        expect(markerTypes(operation.value.document)).toEqual(kept);
+        expect(operation.value.document.package.document.comments?.map(({ id }) => id)).toEqual([
+          5,
+        ]);
+        expect(markerTypes(editor)).toEqual(kept);
+        expect(editor.package.document.comments?.map(({ id }) => id)).toEqual([5]);
       });
     }
   }
