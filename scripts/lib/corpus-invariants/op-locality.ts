@@ -27,6 +27,7 @@ import {
   DOCUMENT_OP_TYPES,
   OP_STORIES,
   sameStory,
+  survivingComments,
   type OpStory,
 } from "../../../packages/docx-core/src/ops/documentOps";
 import type { PackageResources, StoryParts } from "../../../packages/docx-core/src/ops/types";
@@ -593,7 +594,14 @@ export const serializedLocalityFailures = ({
   const ownedRelationshipIds = new Set<string>();
   const ownedRelationshipTypes = new Set<string>();
   let lifecycle = false;
-  for (const { op, before } of sequence.steps) {
+  for (const { op, before, edit } of sequence.steps) {
+    if (!sameOpModel(survivingComments(before), survivingComments(edit.document))) {
+      lifecycle = true;
+      ownedPaths.add("word/comments.xml");
+      ownedPaths.add("word/commentsExtended.xml");
+      for (const { type } of Object.values(COMMENT_PART_RELATIONSHIPS))
+        ownedRelationshipTypes.add(type);
+    }
     if (isCommentOp(op)) {
       lifecycle = true;
       ownedPaths.add("word/comments.xml");

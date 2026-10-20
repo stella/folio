@@ -22,13 +22,13 @@ export const boundaryTextCases: (astral: string, suffix: string) => {
 }[];
 
 // @public (undocumented)
-export const combiningText: fc.Arbitrary<"é" | "ạ̈" | "क्ष">;
+export const combiningText: fc.Arbitrary<string>;
 
 // @public (undocumented)
 export const edgeText: fc.Arbitrary<string>;
 
 // @public (undocumented)
-export const rtlText: fc.Arbitrary<"שָׁלוֹם" | "مرحبا">;
+export const rtlText: fc.Arbitrary<string>;
 
 // @public (undocumented)
 export const TEXT_BOUNDARIES: readonly [7, 4096, number, number];

@@ -1,0 +1,19 @@
+{
+  "a signature issue body round-trips its state": [
+    {
+      "seed": -670382799,
+      "note": "Issue fields preserve Markdown-significant text across rendering and parsing",
+      "date": "2026-10-20"
+    },
+    {
+      "seed": 1769443812,
+      "note": "Issue fields preserve Markdown-significant text across rendering and parsing",
+      "date": "2026-10-20"
+    },
+    {
+      "seed": 861274338,
+      "note": "Issue fields preserve Markdown-significant text across rendering and parsing",
+      "date": "2026-10-20"
+    }
+  ]
+}

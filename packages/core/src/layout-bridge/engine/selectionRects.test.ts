@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { clearAllCaches } from "../../layout-engine/measure";
-import { resetCanvasContext } from "../../layout-engine/measure/measureContainer";
+import {
+  installCanvasMeasureProvider,
+  resetCanvasContext,
+} from "../../layout-engine/measure/measureContainer";
+import {
+  getMeasureProvider,
+  setMeasureProvider,
+} from "../../layout-engine/measure/measureProvider";
 import type {
   Layout,
   Measure,
@@ -13,6 +20,7 @@ import { hitTestTableCell } from "./hitTest";
 import { getCaretPosition, selectionToRects } from "./selectionRects";
 
 const originalDocument = globalThis.document;
+const originalMeasureProvider = getMeasureProvider();
 
 beforeEach(() => {
   Object.defineProperty(globalThis, "document", {
@@ -35,6 +43,7 @@ beforeEach(() => {
       },
     },
   });
+  installCanvasMeasureProvider();
   clearAllCaches();
   resetCanvasContext();
 });
@@ -44,6 +53,7 @@ afterEach(() => {
     configurable: true,
     value: originalDocument,
   });
+  setMeasureProvider(originalMeasureProvider);
   clearAllCaches();
   resetCanvasContext();
 });

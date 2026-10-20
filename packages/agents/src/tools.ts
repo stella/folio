@@ -53,7 +53,8 @@ import type {
  * string (the parser wraps it into `{ text }`). `suggestionId` is host-side
  * grouping state and is never exposed to the model.
  */
-export const SUGGEST_CHANGES_OPERATION_TYPES = DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES;
+export const SUGGEST_CHANGES_OPERATION_TYPES: readonly FolioDocumentOperationType[] =
+  DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES;
 
 /** One-line meaning of each contract operation type, for schemas and prompts. */
 const OPERATION_TYPE_SUMMARIES = {

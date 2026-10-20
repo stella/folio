@@ -13,7 +13,7 @@ permissions: {}
 jobs:
   edit-fuzz:
     name: Corpus edit fuzz (shard ${{ matrix.shard }}/4)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     permissions:
       contents: read
@@ -63,7 +63,7 @@ jobs:
   edit-fuzz-ratchet:
     name: Corpus edit fuzz baseline ratchet
     needs: edit-fuzz
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read

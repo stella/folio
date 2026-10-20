@@ -7,7 +7,7 @@
  * serializer owns the OOXML.
  */
 
-import { assertValidOoxmlNumericId } from "@stll/docx-core";
+import { assertValidOoxmlNumericId, finalizeParagraphFormatting } from "@stll/docx-core";
 import { mintBookmarkId, reserveBookmarkIds } from "../bookmarkIds";
 import { mintEndnoteId } from "../noteIds";
 
@@ -105,11 +105,14 @@ export const run = (text: string, formatting?: TextFormatting): Run => ({
 export const paragraph = (
   content: string | ParagraphContent[],
   formatting?: ParagraphFormatting,
-): Paragraph => ({
-  type: "paragraph",
-  ...(formatting ? { formatting } : {}),
-  content: typeof content === "string" ? [run(content)] : content,
-});
+): Paragraph => {
+  const finalizedFormatting = finalizeParagraphFormatting(formatting);
+  return {
+    type: "paragraph",
+    ...(finalizedFormatting === undefined ? {} : { formatting: finalizedFormatting }),
+    content: typeof content === "string" ? [run(content)] : content,
+  };
+};
 
 type HeadingOptions = {
   text: string;
