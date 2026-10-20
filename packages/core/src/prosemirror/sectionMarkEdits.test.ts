@@ -158,6 +158,19 @@ describe("editing across a section break", () => {
     ]);
   });
 
+  test("deleting the text beside a split still clears the leading copy", () => {
+    const state = threeSections();
+    const split = textStart(state, 0) + 2;
+    const next = state.apply(state.tr.split(split).delete(split - 1, split));
+
+    expect(paragraphs(next)).toEqual([
+      { text: "O", record: null },
+      { text: "e.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "Three.", record: null },
+    ]);
+  });
+
   test("split ownership is preserved across a batch of transactions", () => {
     const state = threeSections();
     const first = state.tr.split(textStart(state, 0) + 2);

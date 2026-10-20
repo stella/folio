@@ -65,12 +65,11 @@ export const sectionMarkEditsOf = (
       // the paragraph before the split is the one both halves hold, and a
       // record a paste brought onto one half is a different object, so
       // neither is lost.
+      // Text deleted beside the split does not remove either mark; a later join
+      // that does remove one leaves both positions in a single paragraph.
       const after = mapping.slice(mapIndex);
-      const left = after.mapResult(from, -1);
-      const right = after.mapResult(from, 1);
-      if (left.deleted || right.deleted) continue;
-      const $left = finalDoc.resolve(left.pos);
-      const $right = finalDoc.resolve(right.pos);
+      const $left = finalDoc.resolve(after.map(from, -1));
+      const $right = finalDoc.resolve(after.map(from, 1));
       if (
         !isParagraph($left.parent) ||
         !isParagraph($right.parent) ||
