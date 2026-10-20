@@ -90,7 +90,7 @@ export const paragraphHoldsContent = (paragraph: Paragraph): boolean => {
       (item) =>
         isRangeBoundary(item) ||
         item.type === "commentReference" ||
-        (isInlineContainer(item) && holds(item.content)),
+        (isInlineContainer(item) && holds(childrenOf(item))),
     );
   return paragraphLength(paragraph) > 0 || holds(paragraph.content);
 };
