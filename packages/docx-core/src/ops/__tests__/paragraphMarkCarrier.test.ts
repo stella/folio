@@ -53,6 +53,29 @@ test("accepting an emptied paragraph-mark deletion removes its paragraph before 
   ]);
 });
 
+test("rejecting an empty inserted final paragraph after a table keeps it", () => {
+  const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
+  const first = { type: "paragraph", paraId: "00000001", content: [] } as const;
+  const inserted: Paragraph = {
+    type: "paragraph",
+    paraId: "00000003",
+    content: [],
+    pPrMark: { kind: "ins", info },
+  };
+  const document: Document = {
+    package: { document: { content: [first, table, inserted] } },
+  };
+  const result = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [7],
+    decision: REVISION_DECISIONS.REJECT,
+  });
+  if (result.isErr()) throw result.error;
+
+  expect(result.value.document.package.document.content).toEqual([first, table, finalParagraph]);
+});
+
 test("accepting a non-empty paragraph-mark deletion runs it into the first cell paragraph", () => {
   const paragraph: Paragraph = {
     type: "paragraph",

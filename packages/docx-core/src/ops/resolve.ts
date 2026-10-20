@@ -1198,8 +1198,8 @@ const joinOps = (
     containerStillEndsWithParagraph:
       next?.type === "table"
         ? blocks.at(-1)?.type === "paragraph"
-        : containerFinal &&
-          blocks.some((block, index) => index !== location.index && block.type === "paragraph"),
+        : // Removing the final paragraph leaves the block before it last.
+          containerFinal && blocks.at(location.index - 1)?.type === "paragraph",
     followingTableCanReceiveRunIn:
       next?.type === "table" && tableCanReceiveParagraphRunIn(paragraph, next),
     tableRemovalIsTrackable:
