@@ -337,8 +337,23 @@ describe("the requested-outcome oracle", () => {
   test("a note comment retires when its body reference is removed", () => {
     const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
     const model = modelOf([row("body", "Reference")]);
-    model.removedNoteReference = true;
+    model.removedNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
     assert.deepEqual(compareComments(model, [comment], [], []), []);
+  });
+
+  test("removing one of two footnote references retires only that note's comment", () => {
+    const first = { id: 1, text: "first review", anchor: "First note", blockId: "note-1" };
+    const second = { id: 2, text: "second review", anchor: "Second note", blockId: "note-2" };
+    const model = modelOf([row("body-1", "First reference"), row("body-2", "Second reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([
+      ["note-1", "footnote:1"],
+      ["note-2", "footnote:2"],
+    ]);
+
+    assert.deepEqual(compareComments(model, [first, second], [second], []), []);
+    assert.match(compareComments(model, [first, second], [], []).join("\n"), /second review/u);
   });
 
   test("a replaced paragraph's comment survives rejecting its tracked deletion", async () => {

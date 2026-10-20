@@ -347,6 +347,8 @@ type Fields = { [Key in (typeof KEPT_FIELDS)[number] | "directAlignment"]?: Row[
 
 type Story = FolioDocumentStoryHandle;
 const MAIN: Story = { type: "main" };
+type NoteStory = Extract<Story, { type: "footnote" | "endnote" }>;
+const noteStoryKey = ({ type, noteId }: NoteStory): string => `${type}:${String(noteId)}`;
 
 /** The blocks of `story` (the body by default) a reader lists. */
 export const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] => {
@@ -513,8 +515,10 @@ export type Model = {
   liveTextById: ReadonlyMap<string, string>;
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
   deletedBlockIds: Set<string>;
-  /** A deleted body block owned a note story that disappears with its reference. */
-  removedNoteReference: boolean;
+  /** Note stories whose references were removed by applied structural operations. */
+  removedNoteStories: Set<string>;
+  /** Note story containing each comment-addressable block in the pre-state. */
+  noteStoryByBlockId: ReadonlyMap<string, string>;
   /** Paragraph style ids the saved package must define. */
   styles: Set<string>;
   /** Comments that must exist, with their anchored text when it is known. */
@@ -575,7 +579,8 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
     ),
     liveTextById: new Map(live.map(({ id, text }) => [id, text])),
     deletedBlockIds: new Set(),
-    removedNoteReference: false,
+    removedNoteStories: new Set(),
+    noteStoryByBlockId: new Map(),
     styles: new Set(),
     comments: [],
     unmodelled: [],
@@ -1710,9 +1715,8 @@ export const compareComments = (
       (model.story === "removed" &&
         located.blockId !== null &&
         storyBlockIds.has(located.blockId)) ||
-      (model.removedNoteReference &&
-        located.blockId !== null &&
-        !storyBlockIds.has(located.blockId))
+      (located.blockId !== null &&
+        model.removedNoteStories.has(model.noteStoryByBlockId.get(located.blockId) ?? ""))
     )
       disposition = "removed";
     if (disposition === "removed") gone.push({ entry, located });
@@ -2066,6 +2070,13 @@ export const assertRequestedOutcome = async (
     }
   }
   model.inTextBox = pre.targets.inTextBox;
+  model.noteStoryByBlockId = new Map(
+    [...pre.targets.noteStoryByBlockId].flatMap(([blockId, story]) =>
+      story.type === "footnote" || story.type === "endnote"
+        ? [[blockId, noteStoryKey(story)] as const]
+        : [],
+    ),
+  );
   model.mode = pre.mode;
   model.story = pre.resolvedStory;
   const removedBlocksBy = new Map<string, { id: string; type: string }>();
@@ -2139,8 +2150,10 @@ export const assertRequestedOutcome = async (
       }
     })();
     for (const removedBlockId of removal) {
-      if (pre.targets.features.get(removedBlockId)?.has("noteReference")) {
-        model.removedNoteReference = true;
+      for (const story of pre.targets.noteReferences.get(removedBlockId) ?? []) {
+        if (story.type === "footnote" || story.type === "endnote") {
+          model.removedNoteStories.add(noteStoryKey(story));
+        }
       }
       if (!removedBlocksBy.has(removedBlockId)) {
         removedBlocksBy.set(removedBlockId, {
