@@ -32,6 +32,7 @@ import type {
   TableCell,
   TableRow,
 } from "../model/document";
+import { finalizeParagraphFormatting } from "../model/document";
 import { headingOutlineLevel } from "../model/outlineLevel";
 import { paragraphNumberingReference } from "../model/paragraphNumbering";
 import { sanitizeXmlCharacters } from "../serialize/xmlEscape";
@@ -51,11 +52,14 @@ export type MarkdownContent = {
   warnings?: string[];
 };
 
-const para = (runs: ParagraphContent[], styleId?: string): Paragraph => ({
-  type: "paragraph",
-  formatting: styleId ? { styleId } : {},
-  content: runs.length > 0 ? runs : [textRun("")],
-});
+const para = (runs: ParagraphContent[], styleId?: string): Paragraph => {
+  const formatting = finalizeParagraphFormatting(styleId ? { styleId } : {});
+  return {
+    type: "paragraph",
+    ...(formatting === undefined ? {} : { formatting }),
+    content: runs.length > 0 ? runs : [textRun("")],
+  };
+};
 
 const listPara = (runs: ParagraphContent[], rendering: ListRendering): Paragraph => ({
   type: "paragraph",

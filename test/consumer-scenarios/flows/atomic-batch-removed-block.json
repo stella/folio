@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "direct",
+  "seed": 1101252750,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1101252625,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB"
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "483CD5EB",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "origin": "minimized from random flow seed 1101252750",
+  "title": "PINNED #1832: refuse a direct operation on a block an earlier operation removed"
+}

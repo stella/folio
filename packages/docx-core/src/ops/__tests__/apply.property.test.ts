@@ -46,6 +46,7 @@ import type {
   SectionProperties,
   TextFormatting,
 } from "../../model/document";
+import { finalizeParagraphFormatting } from "../../model/canonical";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { sameBlockList, storyBody, storyParagraphs } from "../blocks";
 import { contractViolation, normalizeForOps } from "../contract";
@@ -2383,8 +2384,10 @@ describe("document operations", () => {
     assertProperty(
       fc.property(
         fc.constantFrom("visible", "deleted", "empty"),
-        fc.constantFrom(undefined, {}, { alignment: "center" as const }),
-        fc.constantFrom(undefined, {}, { keepNext: true }),
+        fc
+          .constantFrom(undefined, {}, { alignment: "center" as const })
+          .map(finalizeParagraphFormatting),
+        fc.constantFrom(undefined, {}, { keepNext: true }).map(finalizeParagraphFormatting),
         fc.constantFrom(undefined, {}, { bold: false }),
         (contentKind, leadingProperties, trailingProperties, markProperties) => {
           const run = { type: "run", content: [{ type: "text", text: "a" }] } satisfies Run;
@@ -2423,15 +2426,16 @@ describe("document operations", () => {
           } as const satisfies EditorIntent;
           const sourceProperties =
             contentKind === "visible" ? leadingProperties : trailingProperties;
-          // Mark-only formatting still owns an empty paragraph-property set.
-          const expectedFormatting = (() => {
-            if (contentKind !== "visible") return trailingFormatting;
-            if (sourceProperties === undefined && markProperties === undefined) return undefined;
-            return {
-              ...sourceProperties,
-              ...(markProperties === undefined ? {} : { runProperties: markProperties }),
-            };
-          })();
+          const expectedFormatting = finalizeParagraphFormatting(
+            (() => {
+              if (contentKind !== "visible") return trailingFormatting;
+              if (sourceProperties === undefined && markProperties === undefined) return undefined;
+              return {
+                ...sourceProperties,
+                ...(markProperties === undefined ? {} : { runProperties: markProperties }),
+              };
+            })(),
+          );
           const allocation = allocateEditorIntentIds(document, intent);
           for (const mode of [
             { type: "editing", newIds: allocation.newIds },

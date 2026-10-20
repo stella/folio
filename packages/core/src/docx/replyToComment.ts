@@ -10,6 +10,7 @@
  */
 
 import { commentTextParagraph } from "./commentTextParagraph";
+import { setDocumentBodyComments } from "@stll/docx-core/model";
 import { allocateCommentId, seedCommentIdAbove } from "../prosemirror/commentIdAllocator";
 import type { Comment, Document } from "../types/document";
 import { generateHexId } from "../utils/hexId";
@@ -114,6 +115,6 @@ export const replyToComment = (
   if (!reply) {
     return null;
   }
-  doc.package.document.comments = [...comments, reply];
+  setDocumentBodyComments(doc.package.document, [...comments, reply]);
   return reply;
 };

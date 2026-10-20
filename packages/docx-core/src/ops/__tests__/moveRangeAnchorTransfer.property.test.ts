@@ -2,6 +2,7 @@ import { expect, test, setDefaultTimeout } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
 import type { Document, Paragraph, ParagraphContent, Run } from "../../model/document";
+import { setDocumentBodyComments } from "../../model/canonical";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import { RANGE_ANCHOR_FIXTURE_FACTORIES } from "../../../typecheck/range-anchor-fixtures.typecheck";
 import { applyDocumentOps } from "../apply";
@@ -134,9 +135,9 @@ test("generated mixed range transfers retain one original pair through suggested
           ]
         : [],
     );
-    const document = {
-      package: { document: { content: [paragraph], comments } },
-    } satisfies Document;
+    const body = { content: [paragraph] };
+    setDocumentBodyComments(body, comments);
+    const document = { package: { document: body } } satisfies Document;
     const original = structuredClone(document);
     const at = { story: OP_STORIES.MAIN, blockId: paragraph.paraId } as const;
     const insideOffset = 1 + Math.floor(text.length / 2);
