@@ -80,7 +80,15 @@ describe("shared toolchain CI selection", () => {
     }
     expect(workflow.jobs.typecheck.steps.filter((step) => step.run)).toEqual([
       { run: "bun install --frozen-lockfile" },
-      { name: "Typecheck", run: "bun run typecheck" },
+      {
+        name: "Typecheck",
+        run: 'bun scripts/ci-plan.ts --base "$TYPECHECK_BASE" --head "$GITHUB_SHA"',
+        env: {
+          TYPECHECK_BASE:
+            "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}",
+          TYPECHECK_PUSH: "${{ github.event_name == 'push' }}",
+        },
+      },
     ]);
   });
 
