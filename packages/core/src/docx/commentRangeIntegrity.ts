@@ -13,6 +13,7 @@ import type {
   TableRow,
 } from "../types/document";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
+import { setDocumentBodyComments } from "@stll/docx-core/model";
 import { survivingComments } from "@stll/docx-core/ops";
 
 type CommentMarker = Extract<
@@ -114,12 +115,11 @@ export const withoutOrphanCommentRanges = (doc: Document): Document => {
 export const withoutExhaustedComments = (doc: Document): Document => {
   const comments = survivingComments(doc);
   if (comments.length === (doc.package.document.comments ?? []).length) return doc;
+  const documentBody = { ...doc.package.document };
+  setDocumentBodyComments(documentBody, comments);
   return withoutOrphanCommentRanges({
     ...doc,
-    package: {
-      ...doc.package,
-      document: { ...doc.package.document, comments },
-    },
+    package: { ...doc.package, document: documentBody },
   });
 };
 
