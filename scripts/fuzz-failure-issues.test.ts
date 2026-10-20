@@ -558,20 +558,69 @@ test("markdown-significant signature fields round-trip without changing text", (
   expect(body).toContain('"\\u007c a \\u007c a:a \\u007c 0 \\u007c\\n"');
 });
 
-test("signature parser rejects noncanonical free-text encodings", () => {
+test("a body from the previous renderer is read and rewritten canonically", () => {
   const state: SignatureState = {
-    signature: signatureOf({ test: "plain text", assertion: "failure" }),
+    signature: signatureOf({ test: "legacy  test\nname", assertion: "legacy\tfailure" }),
+    occurrences: 2,
+    seeds: [3, 5],
+    lastSeen: { lane: "nightly", run: "https://example.test/runs/1" },
+    lanes: [{ lane: "nightly", lastRun: "https://example.test/runs/1", cleanRuns: 0 }],
+    assertion: "legacy failure",
+    repro: { seed: 5, command: "bun test legacy" },
+  };
+  // This is the exact free-text normalization used by the previous renderer.
+  const previousLine = (value: string): string => value.replaceAll(/\s+/gu, " ").trim();
+  const legacyBody = [
+    `Signature: ${state.signature.id}`,
+    `Test: ${previousLine(state.signature.test)}`,
+    `Failure: ${previousLine(state.signature.failure)}`,
+    `Occurrences: ${state.occurrences}`,
+    `Seeds: ${state.seeds.join(", ")}`,
+    `Last seen: ${state.lastSeen.lane} ${previousLine(state.lastSeen.run)}`,
+    "",
+    "| Lane | Last run | Clean scheduled runs |",
+    "| --- | --- | --- |",
+    ...state.lanes.map(
+      ({ lane: name, lastRun, cleanRuns }) =>
+        `| ${name} | ${previousLine(lastRun)} | ${cleanRuns} |`,
+    ),
+    "",
+    `Closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean scheduled runs in every lane.`,
+    "",
+    `Latest assertion:\n\`\`\`\n${state.assertion}\n\`\`\``,
+    "",
+    `Latest repro (seed ${state.repro.seed}):\n\`\`\`\n${state.repro.command}\n\`\`\``,
+  ].join("\n");
+  const expected = {
+    ...state,
+    signature: {
+      ...state.signature,
+      test: previousLine(state.signature.test),
+      failure: previousLine(state.signature.failure),
+    },
+  };
+
+  expect(parseSignatureState({ number: 1, body: legacyBody })).toEqual(expected);
+  const canonicalBody = renderSignatureIssue(expected).body;
+  expect(canonicalBody).not.toBe(legacyBody);
+  expect(parseSignatureState({ number: 1, body: canonicalBody })).toEqual(expected);
+});
+
+test("legacy parser census excludes every body the canonical writer produces", () => {
+  const state: SignatureState = {
+    signature: signatureOf({ test: '"quoted"', assertion: '"failure"' }),
     occurrences: 1,
     seeds: [],
-    lastSeen: { lane: "a", run: "run" },
-    lanes: [],
+    lastSeen: { lane: "a", run: '"run"' },
+    lanes: [{ lane: "a", lastRun: '"lane run"', cleanRuns: 0 }],
     assertion: "failure",
     repro: { seed: 1, command: "replay" },
   };
   const { body } = renderSignatureIssue(state);
 
+  expect(parseSignatureState({ number: 1, body })).toEqual(state);
   expect(() =>
-    parseSignatureState({ number: 1, body: body.replace(/^Test: .*$/mu, "Test: plain text") }),
+    parseSignatureState({ number: 1, body: body.replace(/^Failure: .*$/mu, "Failure: legacy") }),
   ).toThrow("malformed signature");
 });
 
