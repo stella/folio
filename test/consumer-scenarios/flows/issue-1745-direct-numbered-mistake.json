@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "direct",
+  "seed": 1502256264,
+  "steps": [{ "action": "mistake", "seed": 4270211132 }],
+  "swarm": [
+    "replaceInBlock",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from collisions flow seed 1502256264",
+  "title": "keeps direct numbered mistake handling aligned (#1745)"
+}

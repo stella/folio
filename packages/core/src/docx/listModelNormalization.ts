@@ -10,6 +10,7 @@ import {
   type DocumentOp,
 } from "@stll/docx-core/ops";
 import { panic } from "better-result";
+import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 import type { Document, DocumentBody, Footnote, Endnote } from "../types/document";
 import { computeListRendering, getCachedNumberingMap } from "./numberingParser";
 import {
@@ -191,7 +192,10 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
       }
       computeListMarker(next, counters);
       registerParagraphPropertySnapshot({ paragraph: next, snapshot: authoredFormatting });
+      const finalizedFormatting = finalizeParagraphFormatting(next.formatting);
+      if (finalizedFormatting === undefined) delete next.formatting;
       if (
+        finalizeParagraphFormatting(formatting) === formatting &&
         sameParagraphIndentationProjection({ left: next, right: paragraph }) &&
         canonicalJson(next.formatting) === canonicalJson(formatting) &&
         canonicalJson(next.listRendering) === canonicalJson(cached)

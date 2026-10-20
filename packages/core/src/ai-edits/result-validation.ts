@@ -26,7 +26,7 @@
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import type { ValidateDocumentModelIssue } from "@stll/docx-core";
 
-import { validateFolioDocumentModel } from "../docx/modelValidation";
+import { validateDocumentModel } from "@stll/docx-core";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
 import type { Comment, Document, HeaderFooter, NumberingDefinitions } from "../types/document";
@@ -172,7 +172,7 @@ const windowErrors = ({
       ...(knownParts && { headers: knownParts.headers, footers: knownParts.footers }),
     },
   };
-  return validateFolioDocumentModel(document)
+  return validateDocumentModel(document)
     .issues.filter(
       (issue) =>
         issue.severity === "error" &&

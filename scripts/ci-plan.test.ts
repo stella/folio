@@ -470,11 +470,13 @@ describe("CI plan", () => {
           typeof step["uses"] === "string" &&
           step["uses"].startsWith("actions/upload-artifact@"),
       );
-      expect(uploads).toHaveLength(1);
-      const upload = uploads.at(0);
+      expect(uploads).toHaveLength(2);
+      const upload = uploads.find(
+        (step) =>
+          isRecord(step["with"]) && step["with"]["name"] === `fuzz-log-full-test-suite-${shard}`,
+      );
       if (!isRecord(upload) || !isRecord(upload["with"]))
         throw new Error(`Missing upload for ${id}`);
-      expect(upload["with"]["name"]).toBe(`fuzz-log-full-test-suite-${shard}`);
       expect(upload["if"]).toBe(
         "failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'",
       );

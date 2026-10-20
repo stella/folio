@@ -6,6 +6,7 @@ import {
   type Comment,
   type Document,
   type ParagraphContent,
+  setDocumentBodyComments,
 } from "../model/document";
 import { replaceParagraphs, storyParagraphs } from "./blocks";
 import { contractViolation } from "./contract";
@@ -370,7 +371,7 @@ const withComments = (
   const body = { ...document.package.document };
   switch (presence) {
     case "present":
-      body.comments = comments;
+      setDocumentBodyComments(body, comments);
       break;
     case "undefined":
       Reflect.set(body, "comments", undefined);

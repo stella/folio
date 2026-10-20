@@ -4,6 +4,7 @@ import JSZip from "jszip";
 import { panic } from "better-result";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { paragraphLogicalText, type TextPosition } from "@stll/docx-core/ops";
+import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Document } from "../types/document";
 import { schema, singletonManager } from "../prosemirror/schema";
@@ -951,10 +952,12 @@ test("generated direction and tab command histories preserve authored values and
             return panic("Paragraph command seed has a nonparagraph.");
           const bidi = directions.at(index);
           const tabs = tabSets.at(index);
-          paragraph.formatting = {
+          const formatting = finalizeParagraphFormatting({
             ...(bidi === undefined ? {} : { bidi }),
             ...(tabs === undefined ? {} : { tabs }),
-          };
+          });
+          if (formatting === undefined) delete paragraph.formatting;
+          else paragraph.formatting = formatting;
           if (empty) paragraph.content = [];
         }
         for (const mode of [

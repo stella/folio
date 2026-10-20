@@ -58,7 +58,9 @@ export const consumerScenarioReplay = ({
     CONSUMER_SCENARIO_EXECUTABLE,
     ...CONSUMER_SCENARIO_REPLAY_INPUTS.flatMap(({ flag }) => {
       const value = inputs[optionForFlag(flag)];
-      return value == null ? [] : [`${flag} '${value.replaceAll("'", `'\\''`)}'`];
+      if (value == null) return [];
+      const quotedValue = value.replaceAll("'", `'\\''`);
+      return value.startsWith("-") ? [`'${flag}=${quotedValue}'`] : [`${flag} '${quotedValue}'`];
     }),
     ...flags.filter((flag) => flag !== ""),
     ...(files.length === 0 ? [] : ["--", ...files]),
