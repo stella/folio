@@ -1765,6 +1765,32 @@ export const compileEditorIntent = (
           }),
         );
       }
+      if (idKey(from.blockId) === idKey(to.blockId)) {
+        const fromGap = {
+          offset: from.offset,
+          zeroWidthBefore:
+            from.zeroWidthBefore ?? zeroWidthLeavesAt(paragraph.content, from.offset).length,
+        };
+        const toGap = { offset: to.offset, zeroWidthBefore: to.zeroWidthBefore ?? 0 };
+        const selected = leafSpans(paragraph.content).filter(
+          ({ before, after }) =>
+            compareGaps(fromGap, before) <= 0 && compareGaps(after, toGap) <= 0,
+        );
+        if (
+          selected.some(({ node }) => node.type === "noteMarker") &&
+          selected.every(
+            ({ node, ancestors }) =>
+              node.type === "noteMarker" || ancestors.some(isRemovedRevisionNode),
+          )
+        )
+          return Result.err(
+            new DocumentOpRefusal({
+              reason: DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+              message: "The range contains only the note story's automatic marker.",
+              opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
+            }),
+          );
+      }
       const runProps = intentRunFormatting(document, intent);
       // Both modes insert the same authored run; source XML attributes belong
       // to the existing run rather than to newly typed text.

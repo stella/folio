@@ -156,6 +156,7 @@ import {
   namesMarkFormatting,
   paragraphPropertiesOf,
   foldedParagraphPropertyChange,
+  isRemovedRevisionNode,
   paragraphPropertyChange,
   reviewFieldsOf,
   sameMarkFormatting,
@@ -861,6 +862,26 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
   if (removed.content.length === 0) {
     return unchanged(document);
   }
+  const protectedMark = automaticNoteMarkBetween(story, paragraph, from, to);
+  let content = remaining;
+  if (protectedMark !== undefined) {
+    const hasOtherSurvivingContent = leafSpans(paragraph.content).some(
+      ({ node, ancestors, before, after }) =>
+        compareGaps(from, before) <= 0 &&
+        compareGaps(after, to) <= 0 &&
+        node.type !== "noteMarker" &&
+        !ancestors.some(isRemovedRevisionNode),
+    );
+    if (!hasOtherSurvivingContent) {
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+        "The range contains only the note story's automatic marker.",
+      );
+    }
+    const afterRemoved = deleteBetween(paragraph.content, protectedMark.after, to).content;
+    content = deleteBetween(afterRemoved, from, protectedMark.before).content;
+  }
   if (op.revision !== undefined) {
     const wrapped = wrappedContent(op, {
       items: paragraph.content,
@@ -887,12 +908,6 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
       },
       (result) => Result.ok([contentRestoring(story, result, paragraph)]),
     );
-  }
-  const protectedMark = automaticNoteMarkBetween(story, paragraph, from, to);
-  let content = remaining;
-  if (protectedMark !== undefined) {
-    const afterRemoved = deleteBetween(paragraph.content, protectedMark.after, to).content;
-    content = deleteBetween(afterRemoved, from, protectedMark.before).content;
   }
   let retired: NewIds = {};
   if (join > 0) {
