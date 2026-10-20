@@ -28,6 +28,7 @@ import type {
 } from "../model/document";
 import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
+import { isCommentExhausted } from "./comments";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
 import {
   alikeDepth,
@@ -618,7 +619,6 @@ const removedCommentRangeIds = (
   resolution: Resolution,
 ): ReadonlySet<number> => {
   const ids = new Set<number>();
-  const survivingReferences = new Set<number>();
   const visit = (items: readonly InlineNode[], removedWithAncestor = false): void => {
     for (const node of items) {
       const removedHere =
@@ -626,7 +626,6 @@ const removedCommentRangeIds = (
         (isTrackedWrapper(node) &&
           resolution.ids.has(node.info.id) &&
           removesContent(node, resolution.decision));
-      if (node.type === "commentReference" && !removedHere) survivingReferences.add(node.id);
       if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
         if (removesContent(node, resolution.decision)) {
           const starts = new Set<number>();
@@ -646,7 +645,6 @@ const removedCommentRangeIds = (
     }
   };
   visit(nodes);
-  for (const id of survivingReferences) ids.delete(id);
   return ids;
 };
 
@@ -1537,6 +1535,20 @@ export const resolveRevision = (
     }
     edits.push(joined.value);
     current = joined.value.document;
+  }
+  const exhausted = (document.package.document.comments ?? []).filter(
+    ({ id, parentId }) =>
+      parentId === undefined &&
+      !isCommentExhausted({ type: "document", document, id }) &&
+      isCommentExhausted({ type: "document", document: current, id }),
+  );
+  for (const { id } of exhausted) {
+    const retired = applyOps(current, [
+      { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id, scope: "thread" },
+    ]);
+    if (retired.isErr()) return Result.err(retired.error);
+    edits.push(retired.value);
+    current = retired.value.document;
   }
   return Result.ok(combineEdits(document, edits));
 };

@@ -23,6 +23,7 @@ import {
   relationshipIdOf,
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
+import { survivingComments } from "@stll/docx-core/ops";
 import {
   assertNoteReferenceOccurrences,
   coalesceNoteReferenceOccurrences,
@@ -30,6 +31,7 @@ import {
 
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
+import { removeCommentMarkers } from "../../docx/commentAnchorIndex";
 import {
   marksToTextFormatting,
   sameFormattingValue,
@@ -963,6 +965,20 @@ export function fromProseDoc(
         ...(numbering ? { numbering } : {}),
       },
     };
+    const comments = survivingComments(updatedDocument);
+    const keptIds = new Set(comments.map(({ id }) => id));
+    const retiredIds = new Set(
+      (updatedDocument.package.document.comments ?? [])
+        .filter(({ id }) => !keptIds.has(id))
+        .map(({ id }) => id),
+    );
+    if (retiredIds.size > 0) {
+      updatedDocument.package.document.content = removeCommentMarkers(
+        updatedDocument.package.document.content,
+        retiredIds,
+      );
+      setDocumentBodyComments(updatedDocument.package.document, comments);
+    }
     copyDocumentParagraphPropertySourceContract(updatedDocument, baseDocument);
     return updatedDocument;
   }

@@ -71,7 +71,6 @@ import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
 import { expectParagraphAttrs, expectTableRowAttrs, expectTableCellAttrs } from "./attrs";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 import { isZeroWidthAnchor } from "./zeroWidthAnchors";
-import { expectCommentReferenceAttrs } from "./commentReferenceAttrs";
 
 /**
  * What a replacement does with each mark the schema declares
@@ -121,7 +120,6 @@ export const createResolvedCommentPointCollector = ({
 }: Omit<ResolvedCommentPointsOptions, "doc">) => {
   const points = new Map<number, number>();
   const retained = new Set<number>();
-  const removedReferences = new Set<number>();
   const removedStructures: { from: number; to: number }[] = [];
   const visit = (node: PMNode, position: number, previous?: PMNode): boolean => {
     if (node.type.name === "paragraph") {
@@ -172,9 +170,6 @@ export const createResolvedCommentPointCollector = ({
       if (attrs.ok && attrs.value.start.type === "commentRangeStart")
         retained.add(attrs.value.start.id);
     }
-    if (node.type.name === COMMENT_REFERENCE_NODE_NAME && removes(node, position)) {
-      removedReferences.add(expectCommentReferenceAttrs(node).commentId);
-    }
     if (!node.isInline || isCommentAnchorCarrier(node)) return true;
     const removedWithStructure = removedStructures.some(
       ({ from, to }) => position > from && position < to,
@@ -198,8 +193,6 @@ export const createResolvedCommentPointCollector = ({
       )
         points.delete(id);
     }
-    // A comment whose reference is removed with the content has no point left.
-    for (const id of removedReferences) points.delete(id);
     return points;
   };
   return { visit, finish };

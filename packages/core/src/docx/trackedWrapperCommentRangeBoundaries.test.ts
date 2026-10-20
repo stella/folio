@@ -61,7 +61,7 @@ const serializeInnerXml = (inner: string): string =>
 const wrapParagraph = (paragraph: Paragraph): Document => ({
   package: {
     document: {
-      comments: [{ id: 5, author: "Reviewer", content: [] }],
+      comments: [{ id: 5, anchorKind: "range", author: "Reviewer", content: [] }],
       content: [{ ...paragraph, paraId: "A1B2C3D4" }],
     },
   },
@@ -412,6 +412,9 @@ describe("comment-range boundaries inside tracked changes", () => {
         },
       ],
     });
+    input.package.document.comments = [
+      { id: 5, anchorKind: "point", author: "Reviewer", content: [] },
+    ];
 
     const reopened = fromProseDoc(toProseDoc(input), input, {
       stylesheetSource: { type: "package" },
@@ -581,6 +584,11 @@ describe("comment-range boundaries inside tracked changes", () => {
 
   for (const wrapper of TRACKED_WRAPPERS) {
     for (const decision of ["accept", "reject"] as const) {
+      const removesCoveredText =
+        decision === "accept"
+          ? wrapper.type === "deletion" || wrapper.type === "moveFrom"
+          : wrapper.type === "insertion" || wrapper.type === "moveTo";
+      if (!removesCoveredText) continue;
       test(`${decision} ${wrapper.type} follows the comment lifecycle when its text is removed`, () => {
         const paragraph = parseParagraphXml(
           `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}"><w:${wrapper.tag} w:id="7" w:author="Reviewer">` +
@@ -609,13 +617,10 @@ describe("comment-range boundaries inside tracked changes", () => {
           stylesheetSource: { type: "package" },
         });
 
-        const expected = ["commentRangeStart", "commentRangeEnd", "commentReference"];
-        expect(markerTypes(operation.value.document)).toEqual(expected);
-        const editorExpected =
-          decision === "reject" && (wrapper.type === "insertion" || wrapper.type === "moveTo")
-            ? ["commentReference"]
-            : expected;
-        expect(markerTypes(editor)).toEqual(editorExpected);
+        expect(markerTypes(operation.value.document)).toEqual([]);
+        expect(operation.value.document.package.document.comments).toBeUndefined();
+        expect(markerTypes(editor)).toEqual([]);
+        expect(editor.package.document.comments).toBeUndefined();
       });
     }
   }
