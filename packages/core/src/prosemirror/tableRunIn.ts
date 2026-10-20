@@ -181,6 +181,7 @@ export const runsIntoFollowingTable = (
       markWasAdded:
         expectParagraphAttrs(paragraph).pPrMark?.kind === "ins" ||
         expectParagraphAttrs(paragraph).pPrMark?.kind === "moveTo",
+      containerStillEndsWithParagraph: false,
       followingTableCanReceiveRunIn:
         expectParagraphAttrs(paragraph)._sectionProperties === undefined && !runInCellPending(next),
     }).kind === "run-in"

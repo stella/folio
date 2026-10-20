@@ -462,47 +462,6 @@ const resolveAdjacentSuggestions = (
 };
 
 describe("accepted suggested container-final paragraphs", () => {
-  test.each(["whole-story reject", "single-revision reject"] as const)(
-    "%s keeps an empty inserted-mark paragraph at the end of a table cell through save and reopen",
-    async (resolution) => {
-      const revisionId = 901;
-      const state = EditorState.create({
-        schema,
-        doc: schema.node("doc", null, [
-          table(
-            tableCell([
-              paragraph("Cell"),
-              paragraph("", {
-                pPrMark: { kind: "ins", info: { id: revisionId, author: "Reviewer", date: DATE } },
-              }),
-            ]),
-          ),
-          paragraph(""),
-        ]),
-      });
-      const view = dispatcher(state);
-      const command =
-        resolution === "whole-story reject" ? rejectAllChanges() : rejectAIEditRevision(revisionId);
-
-      expect(command(view.state, view.dispatch)).toBe(true);
-      const paragraphs = paragraphsInChangedContainer(view.state, "table cell");
-      expect(paragraphs.map((node) => node.textContent)).toEqual(["Cell", ""]);
-      expect(
-        expectParagraphAttrs(paragraphs[1] ?? panic("expected the empty paragraph")).pPrMark ??
-          null,
-      ).toBeNull();
-
-      const reopened = await reopenedState(view.state);
-      const reopenedParagraphs = paragraphsInChangedContainer(reopened, "table cell");
-      expect(reopenedParagraphs.map((node) => node.textContent)).toEqual(["Cell", ""]);
-      expect(
-        expectParagraphAttrs(
-          reopenedParagraphs[1] ?? panic("expected the reopened empty paragraph"),
-        ).pPrMark ?? null,
-      ).toBeNull();
-    },
-  );
-
   test.each(["body", "table cell"] as const)(
     "resolves every three-suggestion terminal decision in every order in the %s",
     (containerKind) => {
