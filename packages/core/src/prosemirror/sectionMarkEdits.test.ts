@@ -219,6 +219,27 @@ describe("editing across a section break", () => {
     expect(getTrackedSectionEndpointRemoval(next)?.expectedParagraphEndpointCount).toBe(1);
   });
 
+  test("a pasted break on the last pasted paragraph survives a paste inside a paragraph", () => {
+    const state = threeSections();
+    const pasted: SectionProperties = { sectionStart: "continuous" };
+    const slice = new Slice(
+      schema.node("doc", null, [paragraph("A"), paragraph("B", pasted)]).content,
+      1,
+      1,
+    );
+    const next = run(state, { anchor: textStart(state, 2) + 2 }, (current, dispatch) => {
+      dispatch(current.tr.replaceSelection(slice));
+      return true;
+    });
+
+    expect(paragraphs(next)).toEqual([
+      { text: "One.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "ThA", record: null },
+      { text: "Bree.", record: pasted },
+    ]);
+  });
+
   test("an undo that restores the break takes its removal back", () => {
     const state = threeSections();
     const joined = run(state, { anchor: textStart(state, 1) }, joinBackward);
