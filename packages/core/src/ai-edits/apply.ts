@@ -6293,7 +6293,11 @@ const insertCleanText = ({
     if (text.length === 0) {
       return { transaction: tr.delete(from, to), start: from, end: from };
     }
-    const replacement = tr.doc.type.schema.text(text, inheritedReplacementMarks(tr.doc, from, to));
+    // Explicit stored marks (formatting switched on at the caret) win over the replaced span.
+    const replacement = tr.doc.type.schema.text(
+      text,
+      tr.storedMarks ?? inheritedReplacementMarks(tr.doc, from, to),
+    );
     return {
       transaction: tr.replaceWith(from, to, replacement),
       start: from,
