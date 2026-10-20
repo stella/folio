@@ -81,6 +81,17 @@ export const sectionMarkEditsOf = (
       const record = isParagraph($split.parent) ? sectionPropertiesOf($split.parent) : null;
       if (record !== null && sectionPropertiesOf($left.parent) === record) {
         carriers.push({ position: $left.before(), record: null });
+        // A split at the end of the paragraph creates the trailing half fresh,
+        // without the record; that half ends with the authored mark and takes it.
+        const split = step.apply(doc).doc;
+        const $trailing = split?.resolve(step.getMap().map(from, 1));
+        if (
+          $trailing &&
+          isParagraph($trailing.parent) &&
+          sectionPropertiesOf($trailing.parent) !== record
+        ) {
+          carriers.push({ position: $right.before(), record });
+        }
       }
       continue;
     }

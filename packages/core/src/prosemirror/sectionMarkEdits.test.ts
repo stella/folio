@@ -195,6 +195,17 @@ describe("editing across a section break", () => {
     },
   );
 
+  test("Enter at the end of a section-ending paragraph moves the break to the new paragraph", () => {
+    const state = threeSections();
+    const end = textStart(state, 0) + "One.".length;
+    const next = state.apply(state.tr.split(end, 1, [{ type: schema.nodes.paragraph }]));
+
+    expect(paragraphs(next).slice(0, 2)).toEqual([
+      { text: "One.", record: null },
+      { text: "", record: sectionOne },
+    ]);
+  });
+
   test("split ownership is preserved across a batch of transactions", () => {
     const state = threeSections();
     const first = state.tr.split(textStart(state, 0) + 2);
