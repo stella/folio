@@ -771,8 +771,15 @@ export const paragraphLength: (paragraph: Paragraph) => number;
 // @public
 export const paragraphLogicalText: (paragraph: Paragraph) => string;
 
-// @public (undocumented)
-export type ParagraphMarkOutcome = {
+// @public
+export const paragraphMarkOutcome: (input: {
+    follows: "paragraph" | "table" | "nothing";
+    holdsContent: boolean;
+    markWasAdded: boolean;
+    containerStillEndsWithParagraph: boolean;
+    followingTableCanReceiveRunIn: boolean;
+    tableRemovalIsTrackable?: boolean;
+}) => {
     kind: "join";
 } | {
     kind: "remove";
@@ -783,19 +790,6 @@ export type ParagraphMarkOutcome = {
 } | {
     kind: "refuse";
     reason: "untrackable";
-};
-
-// @public
-export const paragraphMarkOutcome: (input: ParagraphMarkOutcomeInput) => ParagraphMarkOutcome;
-
-// @public (undocumented)
-export type ParagraphMarkOutcomeInput = {
-    follows: "paragraph" | "table" | "nothing";
-    holdsContent: boolean;
-    markWasAdded: boolean;
-    containerStillEndsWithParagraph: boolean;
-    followingTableCanReceiveRunIn: boolean;
-    tableRemovalIsTrackable?: boolean;
 };
 
 // @public

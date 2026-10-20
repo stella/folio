@@ -10,11 +10,7 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
  */
 
 export { withBodyContent } from "./blocks";
-export {
-  paragraphMarkOutcome,
-  type ParagraphMarkOutcome,
-  type ParagraphMarkOutcomeInput,
-} from "./blockDeletion";
+export { paragraphMarkOutcome } from "./blockDeletion";
 export { captureDocumentOp } from "./wire";
 export {
   compareGaps,

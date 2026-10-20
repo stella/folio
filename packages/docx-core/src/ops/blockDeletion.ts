@@ -28,22 +28,6 @@ type BlockDeletionOptions = {
   applyOps: ApplyOps;
 };
 
-export type ParagraphMarkOutcome =
-  | { kind: "join" }
-  | { kind: "remove" }
-  | { kind: "run-in" }
-  | { kind: "keep" }
-  | { kind: "refuse"; reason: "untrackable" };
-
-export type ParagraphMarkOutcomeInput = {
-  follows: "paragraph" | "table" | "nothing";
-  holdsContent: boolean;
-  markWasAdded: boolean;
-  containerStillEndsWithParagraph: boolean;
-  followingTableCanReceiveRunIn: boolean;
-  tableRemovalIsTrackable?: boolean;
-};
-
 /** The single structural outcome of resolving a paragraph mark. */
 export const paragraphMarkOutcome = ({
   follows,
@@ -52,7 +36,19 @@ export const paragraphMarkOutcome = ({
   containerStillEndsWithParagraph,
   followingTableCanReceiveRunIn,
   tableRemovalIsTrackable = true,
-}: ParagraphMarkOutcomeInput): ParagraphMarkOutcome => {
+}: {
+  follows: "paragraph" | "table" | "nothing";
+  holdsContent: boolean;
+  markWasAdded: boolean;
+  containerStillEndsWithParagraph: boolean;
+  followingTableCanReceiveRunIn: boolean;
+  tableRemovalIsTrackable?: boolean;
+}):
+  | { kind: "join" }
+  | { kind: "remove" }
+  | { kind: "run-in" }
+  | { kind: "keep" }
+  | { kind: "refuse"; reason: "untrackable" } => {
   switch (follows) {
     case "paragraph":
       return { kind: "join" };
@@ -147,7 +143,7 @@ export const deleteBlocks = ({
     { ...last.paragraph, content: previous?.content ?? [] },
     finalReview,
   );
-  let follows: ParagraphMarkOutcomeInput["follows"] = "nothing";
+  let follows: "paragraph" | "table" | "nothing" = "nothing";
   if (following?.type === "paragraph") follows = "paragraph";
   if (following?.type === "table") follows = "table";
   const outcome = paragraphMarkOutcome({
