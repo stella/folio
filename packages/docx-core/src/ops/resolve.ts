@@ -28,7 +28,7 @@ import type {
   Table,
 } from "../model/document";
 import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
-import { paragraphMarkCarrier, paragraphMarkRemovesParagraph } from "./blockDeletion";
+import { paragraphMarkOutcome } from "./blockDeletion";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
 import {
@@ -103,6 +103,27 @@ const runParagraphIntoTable = (paragraph: Paragraph, table: Table): Table | unde
       ...table.rows.slice(1),
     ],
   };
+};
+
+const tableCanReceiveParagraphRunIn = (paragraph: Paragraph, table: Table): boolean => {
+  if (paragraph.sectionProperties !== undefined) return false;
+  let current = table;
+  for (;;) {
+    const row = current.rows.at(0);
+    const cell = row?.cells.at(0);
+    if (!row || !cell) return false;
+    if (
+      row.structuralChange?.type === "tableRowInsertion" ||
+      row.structuralChange?.type === "tableRowDeletion" ||
+      cell.structuralChange !== undefined
+    ) {
+      return false;
+    }
+    const target = cell.content.at(0);
+    if (target?.type === "paragraph") return true;
+    if (target?.type !== "table") return false;
+    current = target;
+  }
 };
 
 /** Whether a decision removes the content of a tracked change of this kind. */
@@ -1097,19 +1118,15 @@ const joinOps = (
   const blocks = blockListAt(body.content, location.list);
   const next = blocks[location.index + 1];
   const empty = paragraphLength(paragraph) === 0;
-  if (
-    next?.type === "table" &&
-    next.rows.some((row) => row.structuralChange?.type === "tableRowInsertion")
-  ) {
-    return Result.err(
-      refusal(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        "Resolve the inserted table before removing its preceding paragraph break.",
-      ),
-    );
-  }
   if (next?.type === "paragraph") {
+    const outcome = paragraphMarkOutcome({
+      follows: "paragraph",
+      holdsContent: !empty,
+      markWasAdded: added,
+      containerStillEndsWithParagraph: true,
+      followingTableCanReceiveRunIn: false,
+    });
+    if (outcome.kind !== "join") return panic("A following paragraph always receives a join.");
     // The mark that goes takes the paragraph's properties with it: the next
     // paragraph is left, whole, with the first's content before its own.
     const firstEnds = ends.get(idKey(paraId)) ?? NO_EMPTIED_ENDS;
@@ -1173,28 +1190,20 @@ const joinOps = (
     );
   }
   // No paragraph to join: a table follows, or the paragraph ends its container.
-  // A cell-ending mark describes the terminator, not a paragraph to retire.
   const containerFinal = endsItsContainer(body, location);
-  const cellFinal = containerFinal && location.list.some((step) => step.kind === "tableCell");
-  const canGo = !cellFinal && (added || !containerFinal);
-  let followingKind: "table" | "other" | undefined;
-  if (next !== undefined) followingKind = next.type === "table" ? "table" : "other";
-  const removesParagraph = paragraphMarkRemovesParagraph({
-    followingKind,
-    holdsNoContent: empty,
+  const outcome = paragraphMarkOutcome({
+    follows: next?.type === "table" ? "table" : "nothing",
+    holdsContent: !empty,
     markWasAdded: added,
-  });
-  const carrier = paragraphMarkCarrier({
-    followingKind,
-    endsContainer: containerFinal,
-    removesCurrentMark: true,
-    removesParagraph,
+    containerStillEndsWithParagraph:
+      containerFinal &&
+      blocks.some((block, index) => index !== location.index && block.type === "paragraph"),
+    followingTableCanReceiveRunIn:
+      next?.type === "table" && tableCanReceiveParagraphRunIn(paragraph, next),
   });
   if (
-    canGo &&
-    removesParagraph &&
+    (outcome.kind === "remove" || outcome.kind === "run-in") &&
     blocks.length > 1 &&
-    followingKind === "table" &&
     next?.type === "table"
   ) {
     const anchor = blocks.find(
@@ -1209,7 +1218,7 @@ const joinOps = (
         ),
       );
     }
-    const replacement = empty ? next : runParagraphIntoTable(paragraph, next);
+    const replacement = outcome.kind === "remove" ? next : runParagraphIntoTable(paragraph, next);
     if (replacement === undefined) {
       return Result.err(
         refusal(
@@ -1232,14 +1241,21 @@ const joinOps = (
       },
     ]);
   }
-  if (canGo && blocks.length > 1 && carrier === "none") {
-    return Result.err(
-      refusal(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `Resolving the mark of ${paraId} has content without a paragraph carrier.`,
-      ),
+  if (outcome.kind === "remove" && blocks.length > 1) {
+    const anchor = blocks.find(
+      (block, index): block is Paragraph => index !== location.index && block.type === "paragraph",
     );
+    if (anchor !== undefined) {
+      return Result.ok([
+        {
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+          story,
+          blockId: anchor.paraId ?? "",
+          expected: blocks,
+          blocks: blocks.filter((_, index) => index !== location.index),
+        },
+      ]);
+    }
   }
   const review = reviewFieldsOf(paragraph);
   delete review.pPrMark;

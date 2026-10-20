@@ -28,40 +28,39 @@ type BlockDeletionOptions = {
   applyOps: ApplyOps;
 };
 
-export type ParagraphMarkCarrier = "following" | "current" | "none";
+export type ParagraphMarkOutcome =
+  | { kind: "join" }
+  | { kind: "remove" }
+  | { kind: "run-in" }
+  | { kind: "keep" };
 
-type ParagraphMarkRemovalOptions = {
-  followingKind: "paragraph" | "table" | "other" | undefined;
-  holdsNoContent: boolean;
+export type ParagraphMarkOutcomeInput = {
+  follows: "paragraph" | "table" | "nothing";
+  holdsContent: boolean;
   markWasAdded: boolean;
+  containerStillEndsWithParagraph: boolean;
+  followingTableCanReceiveRunIn: boolean;
 };
 
-/** Whether resolving a paragraph mark also retires its paragraph. */
-export const paragraphMarkRemovesParagraph = ({
-  followingKind,
-  holdsNoContent,
+/** The single structural outcome of resolving a paragraph mark. */
+export const paragraphMarkOutcome = ({
+  follows,
+  holdsContent,
   markWasAdded,
-}: ParagraphMarkRemovalOptions): boolean =>
-  followingKind === "table" || holdsNoContent || markWasAdded;
-
-type ParagraphMarkCarrierOptions = {
-  followingKind: "paragraph" | "table" | "other" | undefined;
-  endsContainer: boolean;
-  removesCurrentMark: boolean;
-  removesParagraph: boolean;
-};
-
-/** Selects the paragraph whose mark and properties survive deleting a paragraph break. */
-export const paragraphMarkCarrier = ({
-  followingKind,
-  endsContainer,
-  removesCurrentMark,
-  removesParagraph,
-}: ParagraphMarkCarrierOptions): ParagraphMarkCarrier => {
-  if (followingKind === "paragraph") return "following";
-  if (removesCurrentMark && removesParagraph && followingKind === undefined) return "none";
-  if (followingKind === "table") return removesParagraph ? "none" : "current";
-  return endsContainer ? "current" : "none";
+  containerStillEndsWithParagraph,
+  followingTableCanReceiveRunIn,
+}: ParagraphMarkOutcomeInput): ParagraphMarkOutcome => {
+  switch (follows) {
+    case "paragraph":
+      return { kind: "join" };
+    case "table":
+      if (!holdsContent) return { kind: "remove" };
+      return followingTableCanReceiveRunIn ? { kind: "run-in" } : { kind: "keep" };
+    case "nothing":
+      return !holdsContent && markWasAdded && containerStillEndsWithParagraph
+        ? { kind: "remove" }
+        : { kind: "keep" };
+  }
 };
 
 export const deleteBlocks = ({
@@ -143,20 +142,19 @@ export const deleteBlocks = ({
     { ...last.paragraph, content: previous?.content ?? [] },
     finalReview,
   );
-  let followingKind: ParagraphMarkCarrierOptions["followingKind"] = "other";
-  if (following === undefined) followingKind = undefined;
-  else if (following.type === "paragraph" || following.type === "table") {
-    followingKind = following.type;
-  }
-  const carrier = paragraphMarkCarrier({
-    followingKind,
-    endsContainer: terminal,
-    removesCurrentMark: false,
-    removesParagraph: !terminal,
+  let follows: ParagraphMarkOutcomeInput["follows"] = "nothing";
+  if (following?.type === "paragraph") follows = "paragraph";
+  if (following?.type === "table") follows = "table";
+  const outcome = paragraphMarkOutcome({
+    follows,
+    holdsContent: paragraphLength(survivor) > 0,
+    markWasAdded: false,
+    containerStillEndsWithParagraph: previous !== undefined,
+    followingTableCanReceiveRunIn: false,
   });
   let directBlocks: Paragraph[] = [];
-  if (carrier === "following" && following?.type === "paragraph") directBlocks = [following];
-  if (carrier === "current") directBlocks = [survivor];
+  if (outcome.kind === "join" && following?.type === "paragraph") directBlocks = [following];
+  if (outcome.kind === "keep") directBlocks = [survivor];
   const direct = applyOps(document, [replacement(directBlocks)]);
   if (direct.isErr()) return refuse(direct.error.reason, direct.error.message);
   if (op.revision === undefined) {

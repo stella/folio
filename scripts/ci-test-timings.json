@@ -1422,6 +1422,7 @@
   "scripts/packed-exports.test.ts": 2,
   "scripts/painted-text-lint.test.ts": 173,
   "scripts/painter-target-commit.property.test.ts": 15,
+  "scripts/paragraph-mark-outcome-owner.test.ts": 50,
   "scripts/paragraph-property-source-ownership.test.ts": 9866,
   "scripts/playground-build.test.ts": 124,
   "scripts/playwright-discovery.test.ts": 13286,

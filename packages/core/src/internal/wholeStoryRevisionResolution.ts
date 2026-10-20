@@ -1,6 +1,6 @@
 import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
-import { paragraphMarkCarrier, paragraphMarkRemovesParagraph } from "@stll/docx-core/ops";
+import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 import { Mapping, StepMap, ReplaceStep, Transform, type Step } from "prosemirror-transform";
 import {
@@ -487,27 +487,21 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       continue;
     }
     flushBookmarks();
-    let followingKind: "paragraph" | "table" | undefined;
-    if (chain) followingKind = "paragraph";
-    else if (followingContainerChild) followingKind = "table";
-    const carrier = paragraphMarkCarrier({
-      followingKind,
-      endsContainer: !followingContainerChild,
-      removesCurrentMark: joins === true,
-      removesParagraph:
-        joins === true &&
-        paragraphMarkRemovesParagraph({
-          followingKind,
-          holdsNoContent: holdsNoContent(paragraph),
-          markWasAdded,
-        }),
+    let follows: "paragraph" | "table" | "nothing" = "nothing";
+    if (chain) follows = "paragraph";
+    else if (followingContainerChild) follows = "table";
+    const outcome = paragraphMarkOutcome({
+      follows,
+      holdsContent: !holdsNoContent(paragraph),
+      markWasAdded,
+      containerStillEndsWithParagraph: index + reversed.length + 1 > 1,
+      followingTableCanReceiveRunIn: false,
     });
     if (
       marker &&
       holdsNoContent(paragraph) &&
-      carrier === "none" &&
+      outcome.kind === "remove" &&
       joins &&
-      (followingKind !== undefined || markWasAdded) &&
       index + reversed.length + 1 > 1
     ) {
       context.deleted.push({ from: entry.position, to: entry.position + paragraph.nodeSize });

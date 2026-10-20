@@ -14,6 +14,7 @@
 
 import { Fragment, Slice, type MarkType, type Node as PMNode } from "prosemirror-model";
 import { ReplaceAroundStep, StepMap, type Transform } from "prosemirror-transform";
+import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
 import {
   getProseParagraphPropertySourceToken,
@@ -165,10 +166,27 @@ export const runsIntoFollowingTable = (
   paragraph: PMNode,
   next: PMNode | null | undefined,
   mode: "accept" | "reject",
-): boolean =>
-  paragraph.type.name === "paragraph" &&
-  next?.type.spec["tableRole"] === "table" &&
-  markGoes(paragraph, mode);
+): boolean => {
+  if (
+    paragraph.type.name !== "paragraph" ||
+    next?.type.spec["tableRole"] !== "table" ||
+    !markGoes(paragraph, mode)
+  ) {
+    return false;
+  }
+  return (
+    paragraphMarkOutcome({
+      follows: "table",
+      holdsContent: !holdsNoContent(paragraph),
+      markWasAdded:
+        expectParagraphAttrs(paragraph).pPrMark?.kind === "ins" ||
+        expectParagraphAttrs(paragraph).pPrMark?.kind === "moveTo",
+      containerStillEndsWithParagraph: false,
+      followingTableCanReceiveRunIn:
+        expectParagraphAttrs(paragraph)._sectionProperties === undefined && !runInCellPending(next),
+    }).kind === "run-in"
+  );
+};
 
 /**
  * Before every change in a story is resolved: run each paragraph whose mark

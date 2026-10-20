@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOp } from "../apply";
-import { paragraphMarkCarrier, paragraphMarkRemovesParagraph } from "../blockDeletion";
+import { paragraphMarkOutcome } from "../blockDeletion";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
 const resolveAccepted = (document: Document, revisionIds = [7]): Document => {
@@ -89,85 +89,81 @@ test("accepting a non-empty paragraph-mark deletion runs it into the first cell 
   ]);
 });
 
-describe("paragraphMarkRemovesParagraph", () => {
+describe("paragraphMarkOutcome", () => {
   test.each([
-    { followingKind: "table", holdsNoContent: true, markWasAdded: false, expected: true },
-    { followingKind: "table", holdsNoContent: false, markWasAdded: false, expected: true },
-    { followingKind: "table", holdsNoContent: false, markWasAdded: true, expected: true },
-    { followingKind: "paragraph", holdsNoContent: false, markWasAdded: true, expected: true },
-    { followingKind: undefined, holdsNoContent: false, markWasAdded: true, expected: true },
-  ] as const)(
-    "returns $expected before $followingKind when empty=$holdsNoContent and added=$markWasAdded",
-    ({ expected, ...options }) => {
-      expect(paragraphMarkRemovesParagraph(options)).toBe(expected);
+    {
+      follows: "paragraph",
+      holdsContent: false,
+      markWasAdded: false,
+      containerStillEndsWithParagraph: false,
+      followingTableCanReceiveRunIn: false,
+      expected: "join",
     },
-  );
-});
-
-describe("paragraphMarkCarrier", () => {
-  test("the following paragraph owns a deleted break", () => {
-    expect(
-      paragraphMarkCarrier({
-        followingKind: "paragraph",
-        endsContainer: false,
-        removesCurrentMark: true,
-        removesParagraph: false,
-      }),
-    ).toBe("following");
-  });
-
-  test("a container-final paragraph keeps its required terminator", () => {
-    expect(
-      paragraphMarkCarrier({
-        followingKind: undefined,
-        endsContainer: true,
-        removesCurrentMark: true,
-        removesParagraph: false,
-      }),
-    ).toBe("current");
-  });
-
-  test("a cleared split paragraph's retained mark stays before a table", () => {
-    expect(
-      paragraphMarkCarrier({
-        followingKind: "table",
-        endsContainer: false,
-        removesCurrentMark: false,
-        removesParagraph: false,
-      }),
-    ).toBe("current");
-  });
-
-  test("a paragraph mark remains the carrier before a table while its review resolves", () => {
-    expect(
-      paragraphMarkCarrier({
-        followingKind: "table",
-        endsContainer: false,
-        removesCurrentMark: true,
-        removesParagraph: false,
-      }),
-    ).toBe("current");
-  });
-
-  test("a resolved inserted paragraph stays as the table's preceding carrier", () => {
-    expect(
-      paragraphMarkCarrier({
-        followingKind: "table",
-        endsContainer: false,
-        removesCurrentMark: true,
-        removesParagraph: false,
-      }),
-    ).toBe("current");
-  });
-
-  test("a removed inserted paragraph needs no container-final carrier", () => {
-    expect(
-      paragraphMarkCarrier({
-        followingKind: undefined,
-        endsContainer: true,
-        removesCurrentMark: true,
-        removesParagraph: true,
-      }),
-    ).toBe("none");
+    {
+      follows: "paragraph",
+      holdsContent: true,
+      markWasAdded: true,
+      containerStillEndsWithParagraph: true,
+      followingTableCanReceiveRunIn: false,
+      expected: "join",
+    },
+    {
+      follows: "table",
+      holdsContent: false,
+      markWasAdded: false,
+      containerStillEndsWithParagraph: false,
+      followingTableCanReceiveRunIn: false,
+      expected: "remove",
+    },
+    {
+      follows: "table",
+      holdsContent: true,
+      markWasAdded: false,
+      containerStillEndsWithParagraph: false,
+      followingTableCanReceiveRunIn: true,
+      expected: "run-in",
+    },
+    {
+      follows: "table",
+      holdsContent: true,
+      markWasAdded: true,
+      containerStillEndsWithParagraph: false,
+      followingTableCanReceiveRunIn: false,
+      expected: "keep",
+    },
+    {
+      follows: "nothing",
+      holdsContent: false,
+      markWasAdded: true,
+      containerStillEndsWithParagraph: true,
+      followingTableCanReceiveRunIn: false,
+      expected: "remove",
+    },
+    {
+      follows: "nothing",
+      holdsContent: false,
+      markWasAdded: false,
+      containerStillEndsWithParagraph: true,
+      followingTableCanReceiveRunIn: false,
+      expected: "keep",
+    },
+    {
+      follows: "nothing",
+      holdsContent: false,
+      markWasAdded: true,
+      containerStillEndsWithParagraph: false,
+      followingTableCanReceiveRunIn: false,
+      expected: "keep",
+    },
+    {
+      follows: "nothing",
+      holdsContent: true,
+      markWasAdded: true,
+      containerStillEndsWithParagraph: true,
+      followingTableCanReceiveRunIn: false,
+      expected: "keep",
+    },
+  ] as const)("returns $expected for $follows", ({ expected, ...input }) => {
+    expect(paragraphMarkOutcome(input).kind).toBe(expected);
   });
 });

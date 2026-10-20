@@ -44,7 +44,7 @@ import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { BlockContent, Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp, stampOf } from "../apply";
-import { paragraphMarkRemovesParagraph } from "../blockDeletion";
+import { paragraphMarkOutcome } from "../blockDeletion";
 import { blockListAt, storyParagraphs, withBodyContent } from "../blocks";
 import { contractViolation } from "../contract";
 import {
@@ -774,11 +774,13 @@ describe("tracked operations and their resolution", () => {
               markWasAdded !== (decision === REVISION_DECISIONS.ACCEPT);
             if (
               markGoes &&
-              paragraphMarkRemovesParagraph({
-                followingKind: "table",
-                holdsNoContent: paragraphLength(paragraph) === 0,
+              paragraphMarkOutcome({
+                follows: "table",
+                holdsContent: paragraphLength(paragraph) > 0,
                 markWasAdded,
-              })
+                containerStillEndsWithParagraph: false,
+                followingTableCanReceiveRunIn: true,
+              }).kind === "run-in"
             ) {
               const receiver = tableRunInReceiver(document, paragraph.paraId ?? "");
               if (receiver !== undefined) holding.add(idKey(receiver.paraId ?? ""));

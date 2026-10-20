@@ -11,9 +11,9 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
 
 export { withBodyContent } from "./blocks";
 export {
-  paragraphMarkCarrier,
-  paragraphMarkRemovesParagraph,
-  type ParagraphMarkCarrier,
+  paragraphMarkOutcome,
+  type ParagraphMarkOutcome,
+  type ParagraphMarkOutcomeInput,
 } from "./blockDeletion";
 export { captureDocumentOp } from "./wire";
 export {
