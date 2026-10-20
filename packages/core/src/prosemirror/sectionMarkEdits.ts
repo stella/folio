@@ -88,7 +88,9 @@ export const sectionMarkEditsOf = (
         if (
           $trailing &&
           isParagraph($trailing.parent) &&
-          sectionPropertiesOf($trailing.parent) !== record
+          sectionPropertiesOf($trailing.parent) !== record &&
+          // A record a later edit or paste put on that half stays.
+          sectionPropertiesOf($right.parent) === null
         ) {
           carriers.push({ position: $right.before(), record });
         }
