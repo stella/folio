@@ -76,6 +76,44 @@ test("rejecting an empty inserted final paragraph after a table keeps it", () =>
   expect(result.value.document.package.document.content).toEqual([first, table, finalParagraph]);
 });
 
+test("rejecting an empty inserted final paragraph in a cell keeps the cell terminator", () => {
+  const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
+  const kept = {
+    type: "paragraph",
+    paraId: "00000002",
+    content: [{ type: "run", content: [{ type: "text", text: "kept" }] }],
+  } as const;
+  const cell = (content: readonly Paragraph[]) => ({
+    type: "table",
+    rows: [{ type: "tableRow", cells: [{ type: "tableCell", content }] }],
+  });
+  const document = {
+    package: {
+      document: {
+        content: [
+          cell([
+            kept,
+            { type: "paragraph", paraId: "00000004", content: [], pPrMark: { kind: "ins", info } },
+          ]),
+          finalParagraph,
+        ],
+      },
+    },
+  } as Document;
+  const result = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [7],
+    decision: REVISION_DECISIONS.REJECT,
+  });
+  if (result.isErr()) throw result.error;
+
+  expect(result.value.document.package.document.content).toEqual([
+    cell([kept, { type: "paragraph", paraId: "00000004", content: [] }]),
+    finalParagraph,
+  ]);
+});
+
 test("accepting a non-empty paragraph-mark deletion runs it into the first cell paragraph", () => {
   const paragraph: Paragraph = {
     type: "paragraph",

@@ -1191,6 +1191,8 @@ const joinOps = (
   }
   // No paragraph to join: a table follows, or the paragraph ends its container.
   const containerFinal = endsItsContainer(body, location);
+  // A cell-ending mark describes the terminator, not a paragraph to retire.
+  const cellFinal = containerFinal && location.list.some((step) => step.kind === "tableCell");
   const outcome = paragraphMarkOutcome({
     follows: next?.type === "table" ? "table" : "nothing",
     holdsContent: !empty,
@@ -1199,7 +1201,7 @@ const joinOps = (
       next?.type === "table"
         ? blocks.at(-1)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last.
-          containerFinal && blocks.at(location.index - 1)?.type === "paragraph",
+          containerFinal && !cellFinal && blocks.at(location.index - 1)?.type === "paragraph",
     followingTableCanReceiveRunIn:
       next?.type === "table" && tableCanReceiveParagraphRunIn(paragraph, next),
     tableRemovalIsTrackable:
