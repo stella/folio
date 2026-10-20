@@ -1,3 +1,4 @@
+import { finalizeParagraphFormatting, setDocumentBodyComments } from "@stll/docx-core/model";
 import { reconcileDocumentPartRelationships } from "@stll/docx-core/ops";
 import { normalizeListModelRendering } from "../docx/listModelNormalization";
 import { commentTextParagraph } from "../docx/commentTextParagraph";
@@ -19,6 +20,7 @@ import {
   type ImportReferencedStyleDefinitionsResult,
 } from "../compare/style-resources";
 import { expectCharacterStyleMarkAttrs, expectFootnoteRefMarkAttrs } from "../prosemirror/attrs";
+import { visitDocxParagraphs } from "../docx/paragraphTraversal";
 /**
  * Headless `.docx` review path: buffer -> apply AI edits -> buffer, with
  * no `EditorView` and no DOM. A queue worker or agent can read a document,
@@ -159,6 +161,7 @@ import { noteReferenceEditsAllowed } from "./note-references";
 import {
   anchoredCommentIdsInBlocks,
   anchoredCommentIdsInProseDoc,
+  coveredCommentIdsInProseDoc,
   withoutLostCommentThreads,
 } from "./comment-lifecycle";
 import { removeCommentMarkers } from "../docx/commentAnchorIndex";
@@ -222,6 +225,7 @@ const createReviewerComment = ({
   date,
 }: CreateReviewerCommentOptions): Comment => ({
   id,
+  anchorKind: "range",
   author,
   date: date ?? new Date().toISOString(),
   content: [commentTextParagraph(text)],
@@ -2110,18 +2114,27 @@ export class FolioDocxReviewer {
    * (nested tracked changes, hyperlinks) is out of scope.
    */
   getComments(filter?: FolioReviewCommentFilter): FolioReviewComment[] {
+    const anchors = this.commentAnchors();
+    const covered = new Set<number>();
+    for (const story of this.listStoryHandlesInternal()) {
+      const doc = story.type === "main" ? this.state.doc : this.readSecondaryStoryDoc(story);
+      if (!doc) continue;
+      for (const id of coveredCommentIdsInProseDoc(doc)) covered.add(id);
+    }
     const definitions = this.withResolvedOverrides(
       this.keptCommentThreads(
         [...(this.baseDocument.package.document.comments ?? []), ...this.createdComments],
         this.state,
         this.secondaryStoryStates.values(),
+      ).filter(
+        ({ id, parentId, anchorKind }) =>
+          anchorKind !== "range" || parentId !== undefined || covered.has(id),
       ),
     );
     if (definitions.length === 0) {
       return [];
     }
 
-    const anchors = this.commentAnchors();
     const repliesByParent = new Map<number, Comment[]>();
     const topLevel: Comment[] = [];
     for (const comment of definitions) {
@@ -2802,6 +2815,20 @@ export class FolioDocxReviewer {
   toDocument(): Document {
     const document = this.documentFromStateSnapshot(this.captureReviewerState());
     applyReplyThreadMarkers(document);
+    visitDocxParagraphs(
+      {
+        documentBody: document.package.document,
+        headers: document.package.headers,
+        footers: document.package.footers,
+        footnotes: document.package.footnotes,
+        endnotes: document.package.endnotes,
+      },
+      (paragraph) => {
+        if (finalizeParagraphFormatting(paragraph.formatting) === undefined) {
+          delete paragraph.formatting;
+        }
+      },
+    );
     return document;
   }
 
@@ -2981,12 +3008,29 @@ export class FolioDocxReviewer {
       snapshot.createdComments.length > 0 ||
       snapshot.resolvedOverrides.size > 0
     ) {
-      document.package.document.comments = this.withResolvedOverrides(
-        kept,
-        snapshot.resolvedOverrides,
+      setDocumentBodyComments(
+        document.package.document,
+        this.withResolvedOverrides(kept, snapshot.resolvedOverrides),
       );
     }
-    return normalizeListModelRendering(reconcileDocumentPartRelationships(document)).document;
+    const normalized = normalizeListModelRendering(
+      reconcileDocumentPartRelationships(document),
+    ).document;
+    visitDocxParagraphs(
+      {
+        documentBody: normalized.package.document,
+        headers: normalized.package.headers,
+        footers: normalized.package.footers,
+        footnotes: normalized.package.footnotes,
+        endnotes: normalized.package.endnotes,
+      },
+      (paragraph) => {
+        if (finalizeParagraphFormatting(paragraph.formatting) === undefined) {
+          delete paragraph.formatting;
+        }
+      },
+    );
+    return normalized;
   }
 
   private captureSaveSnapshot(): FolioSaveSnapshot {

@@ -489,27 +489,25 @@ test("only scheduled runs register a lane; a merge-group repro never blocks clos
   expect(fake.edits).toHaveLength(0);
 });
 
-const word = fc.stringMatching(/^[A-Za-z0-9<>()•.[\]/-]{1,8}$/u);
-const sentence = fc.array(word, { minLength: 1, maxLength: 6 }).map((words) => words.join(" "));
 const lane = fc.stringMatching(/^[a-z0-9][a-z0-9-]{0,12}$/u);
-const run = fc.stringMatching(/^[a-z]{1,5}:[A-Za-z0-9/.-]{1,20}$/u);
+const freeText = fc.string({ maxLength: 120 });
 const signatureState = fc
   .record({
-    test: sentence,
-    failure: sentence,
+    test: freeText,
+    failure: freeText,
     occurrences: fc.nat(),
     seeds: fc.uniqueArray(fc.integer({ min: -(2 ** 31), max: 2 ** 31 }), {
       maxLength: MAX_LISTED_SEEDS,
     }),
-    lastSeen: fc.record({ lane, run }),
-    lanes: fc.uniqueArray(fc.record({ lane, lastRun: run, cleanRuns: fc.nat({ max: 99 }) }), {
+    lastSeen: fc.record({ lane, run: freeText }),
+    lanes: fc.uniqueArray(fc.record({ lane, lastRun: freeText, cleanRuns: fc.nat({ max: 99 }) }), {
       selector: ({ lane: name }) => name,
       maxLength: 4,
     }),
     assertion: fc.oneof(
       fc.string({ maxLength: 120 }),
       fc
-        .tuple(lane, run, fc.nat({ max: 99 }), fc.string({ maxLength: 40 }))
+        .tuple(lane, freeText, fc.nat({ max: 99 }), fc.string({ maxLength: 40 }))
         .map(([name, at, count, tail]) => `| ${name} | ${at} | ${count} |\n${tail}`),
     ),
     seed: fc.integer({ min: -(2 ** 31), max: 2 ** 31 }),
@@ -542,6 +540,116 @@ test(
   },
   propertyTestTimeout(5_000),
 );
+
+test("markdown-significant signature fields round-trip without changing text", () => {
+  const state: SignatureState = {
+    signature: signatureOf({ test: "•", assertion: "- >" }),
+    occurrences: 1,
+    seeds: [1],
+    lastSeen: { lane: "a", run: "a:a" },
+    lanes: [{ lane: "a", lastRun: "| a | a:a | 0 |\n", cleanRuns: 0 }],
+    assertion: "| a | a:a | 0 |\n",
+    repro: { seed: 1, command: " " },
+  };
+  const { body } = renderSignatureIssue(state);
+
+  expect(parseSignatureState({ number: 1, body })).toEqual(state);
+  expect(body).toContain('Test: "•"');
+  expect(body).toContain('"\\u007c a \\u007c a:a \\u007c 0 \\u007c\\n"');
+});
+
+test.each([
+  [
+    "normalized text",
+    "legacy  test\nname",
+    "legacy\tfailure",
+    "https://example.test/runs/1",
+    "legacy failure",
+  ],
+  ["quoted failure", "example", '"failure"', "https://example.test/runs/2", "legacy failure"],
+  [
+    "JSON-looking fields and run URL",
+    '"example"',
+    '"failure"',
+    '"https://example.test/runs/3"',
+    "legacy failure",
+  ],
+  [
+    "the format marker inside its assertion",
+    '"example"',
+    '"failure"',
+    "https://example.test/runs/4",
+    "before\n<!-- fuzz-issue-format: 2 -->\nafter",
+  ],
+])(
+  "a previous-renderer body with %s is read and rewritten canonically",
+  (_, testName, failure, run, assertion) => {
+    const state: SignatureState = {
+      signature: signatureOf({ test: testName, assertion: failure }),
+      occurrences: 2,
+      seeds: [3, 5],
+      lastSeen: { lane: "nightly", run },
+      lanes: [{ lane: "nightly", lastRun: run, cleanRuns: 0 }],
+      assertion,
+      repro: { seed: 5, command: "bun test legacy" },
+    };
+    // This is the exact free-text normalization used by the previous renderer.
+    const previousLine = (value: string): string => value.replaceAll(/\s+/gu, " ").trim();
+    const legacyBody = [
+      `Signature: ${state.signature.id}`,
+      `Test: ${previousLine(state.signature.test)}`,
+      `Failure: ${previousLine(state.signature.failure)}`,
+      `Occurrences: ${state.occurrences}`,
+      `Seeds: ${state.seeds.join(", ")}`,
+      `Last seen: ${state.lastSeen.lane} ${previousLine(state.lastSeen.run)}`,
+      "",
+      "| Lane | Last run | Clean scheduled runs |",
+      "| --- | --- | --- |",
+      ...state.lanes.map(
+        ({ lane: name, lastRun, cleanRuns }) =>
+          `| ${name} | ${previousLine(lastRun)} | ${cleanRuns} |`,
+      ),
+      "",
+      `Closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean scheduled runs in every lane.`,
+      "",
+      `Latest assertion:\n\`\`\`\n${state.assertion}\n\`\`\``,
+      "",
+      `Latest repro (seed ${state.repro.seed}):\n\`\`\`\n${state.repro.command}\n\`\`\``,
+    ].join("\n");
+    const expected = {
+      ...state,
+      signature: {
+        ...state.signature,
+        test: previousLine(state.signature.test),
+        failure: previousLine(state.signature.failure),
+      },
+    };
+
+    expect(parseSignatureState({ number: 1, body: legacyBody })).toEqual(expected);
+    const canonicalBody = renderSignatureIssue(expected).body;
+    expect(canonicalBody).not.toBe(legacyBody);
+    expect(canonicalBody).toContain("<!-- fuzz-issue-format: 2 -->");
+    expect(parseSignatureState({ number: 1, body: canonicalBody })).toEqual(expected);
+  },
+);
+
+test("legacy parser census excludes every body the canonical writer produces", () => {
+  const state: SignatureState = {
+    signature: signatureOf({ test: '"quoted"', assertion: '"failure"' }),
+    occurrences: 1,
+    seeds: [],
+    lastSeen: { lane: "a", run: '"run"' },
+    lanes: [{ lane: "a", lastRun: '"lane run"', cleanRuns: 0 }],
+    assertion: "failure",
+    repro: { seed: 1, command: "replay" },
+  };
+  const { body } = renderSignatureIssue(state);
+
+  expect(parseSignatureState({ number: 1, body })).toEqual(state);
+  expect(() =>
+    parseSignatureState({ number: 1, body: body.replace(/^Failure: .*$/mu, "Failure: legacy") }),
+  ).toThrow("malformed signature");
+});
 
 test("bodies stay bounded for large evidence and seed sets", async () => {
   const original = fixtureMarkers.at(0);

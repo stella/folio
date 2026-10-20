@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import { setDocumentBodyComments } from "@stll/docx-core/model";
 
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
@@ -99,7 +100,7 @@ describe("empty comment package preservation", () => {
     const parsed = await parseDocx(source, { preloadFonts: false });
     expect(parsed.package.document.comments).toHaveLength(1);
 
-    parsed.package.document.comments = [];
+    setDocumentBodyComments(parsed.package.document, []);
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const savedZip = await JSZip.loadAsync(saved);
     const savedComments = await savedZip.file("word/comments.xml")!.async("text");

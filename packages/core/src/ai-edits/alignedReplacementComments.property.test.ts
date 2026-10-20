@@ -83,7 +83,7 @@ test(
               .getComments()
               .map(({ id, text, anchoredText }) => ({ id, text, anchoredText }));
           expect(comments(tracked)).toEqual(comments(direct));
-          expect(comments(direct)).toHaveLength(ids.length);
+          expect(comments(direct)).toHaveLength(replacement === "" ? 0 : ids.length);
           const reopenedDirect = await FolioDocxReviewer.fromBuffer(await direct.toBuffer());
           const reopenedTracked = await FolioDocxReviewer.fromBuffer(await tracked.toBuffer());
           expect(comments(reopenedTracked)).toEqual(comments(reopenedDirect));

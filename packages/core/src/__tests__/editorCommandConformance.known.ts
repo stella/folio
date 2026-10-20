@@ -164,7 +164,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "command:applyStyle(Heading1)",
       "command:applyStyle(Heading2)",
       "command:clearStyle",
-      "host:clearFormatting",
     ],
     excludedCases: [
       {

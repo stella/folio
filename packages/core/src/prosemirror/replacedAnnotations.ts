@@ -59,7 +59,9 @@
  */
 
 import { Fragment, Mark, type Node as PMNode, type Schema } from "prosemirror-model";
+import { isCommentExhausted } from "@stll/docx-core/ops";
 
+import { isCommentAnchorCarrier } from "../ai-edits/comment-lifecycle";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
 import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
@@ -99,7 +101,7 @@ const isCarried = (mark: Mark): boolean =>
   NON_INCLUSIVE_MARK_DISPOSITION[mark.type.name as keyof typeof NON_INCLUSIVE_MARK_DISPOSITION] ===
   "carry";
 
-/** One typed point for a comment whose aligned coverage has no content left. */
+/** One typed anchor for a comment authored as a point. */
 export const commentPoint = (schema: Schema, id: number): PMNode =>
   schema.node(RANGE_ANCHOR_NODE_NAME, {
     start: { type: "commentRangeStart", id },
@@ -120,6 +122,7 @@ export const createResolvedCommentPointCollector = ({
   const points = new Map<number, number>();
   const retained = new Set<number>();
   const removedReferences = new Set<number>();
+  const removedStructures: { from: number; to: number }[] = [];
   const visit = (node: PMNode, position: number, previous?: PMNode): boolean => {
     if (node.type.name === "paragraph") {
       const mark = expectParagraphAttrs(node).pPrMark;
@@ -136,27 +139,34 @@ export const createResolvedCommentPointCollector = ({
         node.descendants((inline, offset) => {
           if (
             inline.isInline &&
-            !isZeroWidthAnchor(inline) &&
+            !isCommentAnchorCarrier(inline) &&
             !removes(inline, position + 1 + offset)
           )
             survivingContent = true;
           return !survivingContent;
         });
-        if (!survivingContent) return false;
+        // Keep walking an emptied carrier so its ranged comments are recorded
+        // for removal along with the carrier.
+        if (!survivingContent)
+          removedStructures.push({ from: position, to: position + node.nodeSize });
       }
     }
     if (
       node.type.name === "tableRow" &&
       expectTableRowAttrs(node).trDel &&
       retiresStructure(node, position)
-    )
-      return false;
+    ) {
+      removedStructures.push({ from: position, to: position + node.nodeSize });
+      return true;
+    }
     if (
       (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
       expectTableCellAttrs(node).cellMarker?.kind === "del" &&
       retiresStructure(node, position)
-    )
-      return false;
+    ) {
+      removedStructures.push({ from: position, to: position + node.nodeSize });
+      return true;
+    }
     if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
       const attrs = readRangeAnchorAttrs(node);
       if (attrs.ok && attrs.value.start.type === "commentRangeStart")
@@ -165,24 +175,37 @@ export const createResolvedCommentPointCollector = ({
     if (node.type.name === COMMENT_REFERENCE_NODE_NAME && removes(node, position)) {
       removedReferences.add(expectCommentReferenceAttrs(node).commentId);
     }
-    if (!node.isInline || isZeroWidthAnchor(node)) return true;
+    if (!node.isInline || isCommentAnchorCarrier(node)) return true;
+    const removedWithStructure = removedStructures.some(
+      ({ from, to }) => position > from && position < to,
+    );
     for (const mark of node.marks) {
       if (mark.type.name !== "comment") continue;
       const id = mark.attrs["commentId"];
-      if (!removes(node, position)) retained.add(id);
+      if (!removedWithStructure && !removes(node, position)) retained.add(id);
       else if (!points.has(id)) points.set(id, position);
     }
     return true;
   };
   const finish = (): Map<number, number> => {
-    for (const id of retained) points.delete(id);
+    for (const id of points.keys()) {
+      if (
+        !isCommentExhausted({
+          type: "coverage",
+          anchorKind: "range",
+          survivingNonCarrierContent: retained.has(id),
+        })
+      )
+        points.delete(id);
+    }
+    // A comment whose reference is removed with the content has no point left.
     for (const id of removedReferences) points.delete(id);
     return points;
   };
   return { visit, finish };
 };
 
-/** Point fallback excludes comments belonging to retired blocks and table cells. */
+/** Ranged comments whose covered non-carrier content is removed by a resolution. */
 export const resolvedCommentPoints = ({
   doc,
   removes,

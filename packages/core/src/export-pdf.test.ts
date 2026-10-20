@@ -7,10 +7,11 @@
  * an export's output, so nothing else in the suite would notice them breaking.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { exportDocxToPdf } from "./export-pdf";
 import type { HeadlessFontSource } from "./fonts/headlessMeasure";
+import { canvasMeasureProvider } from "./layout-engine/measure/measureContainer";
 import { getMeasureProvider, setMeasureProvider } from "./layout-engine/measure/measureProvider";
 import type { MeasureProvider } from "./layout-engine/measure/measureProvider";
 
@@ -21,6 +22,14 @@ const COMMENTS_FIXTURE = new URL(
 );
 
 const NO_FONTS: HeadlessFontSource = { load: () => [] };
+
+beforeEach(() => {
+  expect(getMeasureProvider()).toBe(canvasMeasureProvider);
+});
+
+afterEach(() => {
+  setMeasureProvider(canvasMeasureProvider);
+});
 
 /** A provider that is recognisable by identity and never actually measures. */
 const markerProvider = (): MeasureProvider => ({

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 1026398514,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2382280387,
+      "operations": [
+        { "type": "deleteBlock", "blockId": "483CD5EB" },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "483CD5EB",
+          "properties": { "styleId": "Heading2" }
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "weights": { "version": 1, "cells": {}, "operations": [] },
+  "origin": "shrunk from splice+splice of 0a12dbffcf82a3ef",
+  "title": "PINNED #1926: refuse a tracked operation on a block an earlier operation removed"
+}

@@ -13,6 +13,8 @@ import type {
   TableRow,
 } from "../types/document";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
+import { setDocumentBodyComments } from "@stll/docx-core/model";
+import { survivingComments } from "@stll/docx-core/ops";
 
 type CommentMarker = Extract<
   ParagraphContent,
@@ -107,6 +109,18 @@ export const withoutOrphanCommentRanges = (doc: Document): Document => {
       ...(endnotes ? { endnotes } : {}),
     },
   };
+};
+
+/** A save projection without exhausted definitions or any of their carriers. */
+export const withoutExhaustedComments = (doc: Document): Document => {
+  const comments = survivingComments(doc);
+  if (comments.length === (doc.package.document.comments ?? []).length) return doc;
+  const documentBody = { ...doc.package.document };
+  setDocumentBodyComments(documentBody, comments);
+  return withoutOrphanCommentRanges({
+    ...doc,
+    package: { ...doc.package, document: documentBody },
+  });
 };
 
 const withoutOrphanDocumentBodyMarkers = (

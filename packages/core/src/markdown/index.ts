@@ -27,6 +27,7 @@ import { newContext } from "./internals";
 import { renderBlocks } from "./renderBlock";
 import { appendTrailers } from "./trailers";
 import type { MarkdownOptions, MarkdownResult } from "./types";
+import { withoutExhaustedComments } from "../docx/commentRangeIntegrity";
 
 export type { ImageMeta, ImageRef, MarkdownOptions, MarkdownResult } from "./types";
 
@@ -52,6 +53,7 @@ export function toMarkdownResult(doc: Document, opts?: MarkdownOptions): Markdow
 }
 
 function renderDocument(doc: Document, opts: MarkdownOptions = {}): MarkdownResult {
+  doc = withoutExhaustedComments(doc);
   const ctx = newContext(opts, doc.package.styles);
   const body = renderBlocks(ctx, doc.package, doc.package.document.content);
   const markdown = appendTrailers(ctx, doc, body);

@@ -122,6 +122,17 @@ export type CommentAnchor = {
 // @public
 export const commentDocumentIssue: (document: Document_2, allowedOrphans?: ReadonlySet<number> | "all") => string | undefined;
 
+// @public (undocumented)
+export type CommentExhaustionInput = {
+    type: "document";
+    document: Document_2;
+    id: number;
+} | {
+    type: "coverage";
+    anchorKind: Comment_2["anchorKind"];
+    survivingNonCarrierContent: boolean;
+};
+
 // @public
 export type CommentState = {
     relationshipPresence: "absent" | "undefined" | "present";
@@ -608,6 +619,12 @@ export type InsertTextOp = {
     newIds?: NewIds;
     revision?: RevisionStamp;
 };
+
+// @public
+export const isCommentAnchorCarrierType: (type: string) => boolean;
+
+// @public
+export const isCommentExhausted: (input: CommentExhaustionInput) => boolean;
 
 // @public
 export function isTextOnlyRun(run: Run): boolean;
@@ -1115,6 +1132,9 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 
 // @public (undocumented)
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
+
+// @public
+export const survivingComments: (document: Document_2) => Comment_2[];
 
 // @public (undocumented)
 export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;

@@ -8,6 +8,7 @@ import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
 import { getDocumentBuiltInStyles } from "../../plugins/documentStyles";
 import { panic } from "better-result";
 import type { Command, EditorState } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import { expectHyperlinkMarkAttrs } from "../../attrs";
 import {
@@ -214,7 +215,7 @@ export const HyperlinkExtension = createMarkExtension({
           return true;
         },
         (state) =>
-          state.selection.empty
+          state.selection.empty || state.selection instanceof CellSelection
             ? []
             : [
                 {
@@ -227,6 +228,7 @@ export const HyperlinkExtension = createMarkExtension({
       );
 
     const removalRange = (state: EditorState) => {
+      if (state.selection instanceof CellSelection) return undefined;
       const { empty, $from } = state.selection;
       const { from, to } = canonicalSelectionRange(state);
       assertHyperlinkRemovalRange({ doc: state.doc, from, to });
@@ -286,15 +288,18 @@ export const HyperlinkExtension = createMarkExtension({
           }
           return true;
         },
-        (state) => [
-          {
-            type: "insertHyperlink",
-            ...canonicalSelectionRange(state),
-            text,
-            href: normalizeHyperlinkInput(href),
-            ...(tooltip ? { tooltip } : {}),
-          },
-        ],
+        (state) =>
+          state.selection instanceof CellSelection
+            ? []
+            : [
+                {
+                  type: "insertHyperlink",
+                  ...canonicalSelectionRange(state),
+                  text,
+                  href: normalizeHyperlinkInput(href),
+                  ...(tooltip ? { tooltip } : {}),
+                },
+              ],
       );
 
     return {
