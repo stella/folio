@@ -171,6 +171,30 @@ describe("editing across a section break", () => {
     ]);
   });
 
+  test.each([
+    ["replaced", { sectionStart: "continuous" } satisfies SectionProperties],
+    ["cleared", null],
+  ] as const)(
+    "a split whose trailing break is then %s leaves the leading half without one",
+    (_, trailing) => {
+      const state = threeSections();
+      const split = textStart(state, 0) + 2;
+      const transaction = state.tr.split(split);
+      const next = state.apply(
+        transaction.setNodeAttribute(
+          transaction.doc.child(0).nodeSize,
+          "_sectionProperties",
+          trailing,
+        ),
+      );
+
+      expect(paragraphs(next).slice(0, 2)).toEqual([
+        { text: "On", record: null },
+        { text: "e.", record: trailing },
+      ]);
+    },
+  );
+
   test("split ownership is preserved across a batch of transactions", () => {
     const state = threeSections();
     const first = state.tr.split(textStart(state, 0) + 2);
