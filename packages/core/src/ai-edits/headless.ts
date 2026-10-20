@@ -94,6 +94,7 @@ import {
   noteReferencesRestored,
   referenceDeletions,
   referencedNotes,
+  type NoteKey,
 } from "../prosemirror/noteReferenceReview";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
@@ -822,7 +823,7 @@ const MAIN_STORY = Object.freeze({ type: "main" } as const);
 const headerFooterStoryKey = ({ type, relationshipId }: FolioHeaderFooterStoryHandle): string =>
   `${type}:${relationshipId}`;
 
-const noteStoryKey = ({ type, noteId }: FolioNoteStoryHandle): string => `${type}:${noteId}`;
+const noteStoryKey = ({ type, noteId }: FolioNoteStoryHandle): NoteKey => `${type}:${noteId}`;
 
 /** The note story a {@link noteStoryKey} key names. */
 const noteStoryHandleOf = (key: string): FolioNoteStoryHandle | null => {
