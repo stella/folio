@@ -26,6 +26,7 @@ import {
   type IssueContent,
   MAX_LISTED_SEEDS,
   parseCommentPages,
+  parseClosingCommitPages,
   parseFailureRecord,
   parseIssuePages,
   parseIssueResponse,
@@ -195,6 +196,26 @@ test("paginated issue responses fail before matching malformed issue data", () =
   expect(parseIssuePages([[issue], [issue]])).toHaveLength(2);
 });
 
+test("the latest close event supplies the commit used for recurrence checks", () => {
+  const first = "1".repeat(40);
+  const latest = "2".repeat(40);
+  expect(
+    parseClosingCommitPages([
+      [
+        { event: "closed", commit_id: first },
+        { event: "reopened", commit_id: null },
+      ],
+      [{ event: "closed", commit_id: latest }],
+    ]),
+  ).toBe(latest);
+  expect(parseClosingCommitPages([[{ event: "closed", commit_id: null }]])).toBeNull();
+  expect(parseClosingCommitPages([[{ event: "commented" }]])).toBeNull();
+  expect(() => parseClosingCommitPages({})).toThrow("Invalid GitHub issue event pages");
+  expect(() => parseClosingCommitPages([[{ event: "closed", commit_id: "short" }]])).toThrow(
+    "Invalid GitHub closing commit",
+  );
+});
+
 test("failure records retain the deepest comparison diff without terminal styling", () => {
   const comparison = new Error(
     "\u001b[31mexpect(received).toEqual(expected)\u001b[0m\n\n- Expected field: before\n+ Received field: after",
@@ -212,10 +233,10 @@ const fixtureFindings = collectFindings([], fixtureMarkers);
 const RUN = "https://github.com/example/project/actions/runs/";
 const runContext = (
   run: number,
-  overrides: Partial<Pick<Context, "lane" | "trigger">> = {},
+  overrides: Partial<Pick<Context, "lane" | "sha" | "trigger">> = {},
 ): Context => ({
   runUrl: `${RUN}${run}`,
-  sha: null,
+  sha: overrides.sha ?? null,
   source: "test",
   date: "",
   lane: overrides.lane ?? "nightly-swarm-fuzz",
@@ -229,7 +250,10 @@ const CLOSED_AS = {
   duplicate: { type: "duplicate" },
 } as const satisfies Record<CloseReason, { type: string }>;
 
-const fakeClient = (initial: Issue[] = []) => {
+const fakeClient = (
+  initial: Issue[] = [],
+  closingCommits: ReadonlyMap<number, string | null> = new Map(),
+) => {
   const issues = [...initial];
   const creates: IssueContent[] = [];
   const edits: { number: number; content: IssueContent }[] = [];
@@ -283,6 +307,7 @@ const fakeClient = (initial: Issue[] = []) => {
       }));
       return Promise.resolve();
     },
+    closingCommit: (number) => Promise.resolve(closingCommits.get(number) ?? null),
   } satisfies SignatureIssueStore;
   return { store, issues, creates, edits, reopens, closes };
 };
@@ -421,6 +446,83 @@ test("a fixed signature reopens when it recurs; one closed without a fix only re
     expect(fake.reopens).toEqual(reopened ? [1] : []);
     expect(stateOf(fake.issues.at(0)).seeds).toEqual([1, 9]);
   }
+});
+
+test("a fixed signature ignores occurrences from commits before its closing commit", async () => {
+  const created = fakeClient();
+  await fileFindings({ findings: [flowFinding(1, "a")], context, store: created.store });
+  const issue = created.issues.at(0);
+  if (issue === undefined) throw new Error("Missing issue");
+  const closingCommit = "2".repeat(40);
+  const runCommit = "1".repeat(40);
+  const fake = fakeClient(
+    [{ ...issue, state: "closed", closedAt: "2026-10-20", disposition: { type: "fixed" } }],
+    new Map([[1, closingCommit]]),
+  );
+  const ancestry: [string, string][] = [];
+
+  const result = await fileFindings({
+    findings: [flowFinding(9, "b")],
+    context: runContext(200, { sha: runCommit }),
+    store: fake.store,
+    isAncestor: (ancestor, descendant) => {
+      ancestry.push([ancestor, descendant]);
+      return Promise.resolve(false);
+    },
+  });
+
+  expect(ancestry).toEqual([[closingCommit, runCommit]]);
+  expect(fake.reopens).toEqual([]);
+  expect(fake.edits).toEqual([]);
+  expect(fake.creates).toEqual([]);
+  expect(stateOf(fake.issues.at(0))).toEqual(stateOf(issue));
+  expect(result.filed).toEqual([
+    { fingerprint: flowFinding(9, "b").record.marker.fingerprint, issue: null },
+  ]);
+});
+
+test("a fixed signature reopens for a run commit containing its closing commit", async () => {
+  const created = fakeClient();
+  await fileFindings({ findings: [flowFinding(1, "a")], context, store: created.store });
+  const issue = created.issues.at(0);
+  if (issue === undefined) throw new Error("Missing issue");
+  const fake = fakeClient(
+    [{ ...issue, state: "closed", closedAt: "2026-10-20", disposition: { type: "fixed" } }],
+    new Map([[1, "2".repeat(40)]]),
+  );
+
+  await fileFindings({
+    findings: [flowFinding(9, "b")],
+    context: runContext(200, { sha: "3".repeat(40) }),
+    store: fake.store,
+    isAncestor: () => Promise.resolve(true),
+  });
+
+  expect(fake.reopens).toEqual([1]);
+  expect(fake.edits).toHaveLength(1);
+  expect(stateOf(fake.issues.at(0)).seeds).toEqual([1, 9]);
+});
+
+test("a fixed signature closed without a closing commit keeps reopening", async () => {
+  const created = fakeClient();
+  await fileFindings({ findings: [flowFinding(1, "a")], context, store: created.store });
+  const issue = created.issues.at(0);
+  if (issue === undefined) throw new Error("Missing issue");
+  const fake = fakeClient([
+    { ...issue, state: "closed", closedAt: "2026-10-20", disposition: { type: "fixed" } },
+  ]);
+
+  await fileFindings({
+    findings: [flowFinding(9, "b")],
+    context: runContext(200, { sha: "3".repeat(40) }),
+    store: fake.store,
+    isAncestor: () => {
+      throw new Error("manual closures must not run the ancestry check");
+    },
+  });
+
+  expect(fake.reopens).toEqual([1]);
+  expect(stateOf(fake.issues.at(0)).seeds).toEqual([1, 9]);
 });
 
 test(`a signature closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean scheduled runs`, async () => {
