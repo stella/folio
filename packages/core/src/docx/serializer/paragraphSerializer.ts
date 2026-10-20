@@ -41,7 +41,7 @@ import type {
   SectionProperties,
   TextFormatting,
 } from "../../types/document";
-import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
+import { finalizeParagraphFormatting, PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { SEQUENCE_CHILDREN } from "@stll/docx-core/schema";
 import { panic, TaggedError } from "better-result";
 import {
@@ -1408,9 +1408,10 @@ export function hasParagraphFormatting(paragraph: Paragraph): boolean {
  * Create an empty paragraph
  */
 export function createEmptyParagraph(formatting?: ParagraphFormatting): Paragraph {
+  const finalizedFormatting = finalizeParagraphFormatting(formatting);
   return {
     type: "paragraph",
-    ...(formatting !== undefined ? { formatting } : {}),
+    ...(finalizedFormatting !== undefined ? { formatting: finalizedFormatting } : {}),
     content: [],
   };
 }
@@ -1423,9 +1424,10 @@ export function createTextParagraph(
   paragraphFormatting?: ParagraphFormatting,
   textFormatting?: TextFormatting,
 ): Paragraph {
+  const finalizedFormatting = finalizeParagraphFormatting(paragraphFormatting);
   return {
     type: "paragraph",
-    ...(paragraphFormatting !== undefined ? { formatting: paragraphFormatting } : {}),
+    ...(finalizedFormatting !== undefined ? { formatting: finalizedFormatting } : {}),
     content: [
       {
         type: "run",

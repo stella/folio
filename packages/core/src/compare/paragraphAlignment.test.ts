@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
 import JSZip from "jszip";
 import { EditorState, type Transaction } from "prosemirror-state";
+import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 
 import { applyFolioAIEditOperations } from "../ai-edits/apply";
 import { FolioDocxReviewer } from "../ai-edits/headless";
@@ -319,16 +320,19 @@ const paragraphModel = ({
   paraId: string;
   directAlignment?: ParagraphAlignment;
   styleId?: string | null;
-}): Paragraph => ({
-  type: "paragraph",
-  paraId,
-  textId: paraId,
-  formatting: {
+}): Paragraph => {
+  const formatting = finalizeParagraphFormatting({
     ...(styleId === null ? {} : { styleId }),
     ...(directAlignment === undefined ? {} : { alignment: directAlignment }),
-  },
-  content: [{ type: "run", content: [{ type: "text", text }] }],
-});
+  });
+  return {
+    type: "paragraph",
+    paraId,
+    textId: paraId,
+    ...(formatting === undefined ? {} : { formatting }),
+    content: [{ type: "run", content: [{ type: "text", text }] }],
+  };
+};
 
 const bodyInsertionDocuments = async ({
   inheritedAlignment,
