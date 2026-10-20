@@ -7,7 +7,7 @@ import {
   registerParagraphPropertySnapshot,
   transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
-import { noteContentWithAutomaticMark } from "./noteMarks";
+import { noteContentWithAutomaticMark, removedNoteStories } from "./noteMarks";
 import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
 import { documentStories, findStoryBody, sameStory } from "./stories";
 /**
@@ -2312,24 +2312,11 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
   return storyLifecycleEdit(document, next, op);
 };
 
-const noteReferences = (document: Document): Set<string> => {
-  const references = new Set<string>();
-  for (const story of documentStories(document)) {
-    for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
-      for (const { node } of leafSpans(paragraph.content)) {
-        if (node.type === "footnoteRef") references.add(`footnote:${String(node.id)}`);
-        if (node.type === "endnoteRef") references.add(`endnote:${String(node.id)}`);
-      }
-    }
-  }
-  return references;
-};
-
 /** Direct text edits own the lifecycle of note bodies whose last reference they remove. */
 const withoutOrphanedNotes = (before: Document, after: Document): Document => {
-  const beforeReferences = noteReferences(before);
-  const afterReferences = noteReferences(after);
-  const removed = new Set([...beforeReferences].filter((key) => !afterReferences.has(key)));
+  const removed = new Set(
+    removedNoteStories(before, after).map(({ kind, id }) => `${kind}:${String(id)}`),
+  );
   if (removed.size === 0) return after;
   return {
     ...after,
@@ -2353,7 +2340,7 @@ const withoutOrphanedNotes = (before: Document, after: Document): Document => {
   };
 };
 
-const dispatch = (document: Document, op: DocumentOp): Applied => {
+const dispatchCore = (document: Document, op: DocumentOp): Applied => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
@@ -2428,6 +2415,30 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
       return unreachable;
     }
   }
+};
+
+/**
+ * A direct operation owns the note records made unreachable by its text edit.
+ * Keeping this in dispatch makes the lifecycle edit part of the operation's
+ * result, so its inverse and touched-story contract include the removed body.
+ */
+const dispatch = (document: Document, op: DocumentOp): Applied => {
+  const applied = dispatchCore(document, op);
+  if (applied.isErr()) return applied;
+  if (
+    op.type === DOCUMENT_OP_TYPES.ADD_NOTE ||
+    op.type === DOCUMENT_OP_TYPES.REMOVE_NOTE ||
+    op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS
+  )
+    return applied;
+  const inverseCleanup = withoutOrphanedNotes(applied.value.document, document);
+  if ("revision" in op && op.revision !== undefined) {
+    if (inverseCleanup === document) return applied;
+    return storyLifecycleEdit(document, applied.value.document, op, true);
+  }
+  const cleaned = withoutOrphanedNotes(document, applied.value.document);
+  if (cleaned === applied.value.document && inverseCleanup === document) return applied;
+  return storyLifecycleEdit(document, cleaned, op, true);
 };
 
 /** The stamp of a tracked operation; `undefined` for a direct one. */
@@ -2600,15 +2611,7 @@ export const applyDocumentOp = (
   if (applied.isErr()) {
     return Result.err(applied.error);
   }
-  let edit = applied.value;
-  if (stamp === undefined) {
-    const cleaned = withoutOrphanedNotes(document, edit.document);
-    if (cleaned !== edit.document) {
-      const lifecycle = storyLifecycleEdit(document, cleaned, op);
-      if (lifecycle.isErr()) return Result.err(lifecycle.error);
-      edit = lifecycle.value;
-    }
-  }
+  const edit = applied.value;
   const beforeSections = document.package.document.sections;
   const afterSections = edit.document.package.document.sections;
   const structural =

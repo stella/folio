@@ -1506,9 +1506,7 @@ export const resolveRevision = (
         if (packageParts.endnotes.length === 0 && removesAddedEndnote) delete packageParts.endnotes;
       }
       const cleaned = { ...current, package: packageParts };
-      const cleanup = storyLifecycleEdit(current, cleaned, op);
-      if (cleanup.isErr()) return cleanup;
-      edits.push(cleanup.value);
+      return storyLifecycleEdit(document, cleaned, op, true);
     }
   }
   return Result.ok(combineEdits(document, edits));
