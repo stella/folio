@@ -39,9 +39,11 @@ import {
   mergeAlike,
   mergeLists,
   rebuildNode,
+  isParagraphContent,
   sameOwnFields,
+  zeroWidthLeavesAt,
 } from "./leaves";
-import { paragraphLength } from "./offsets";
+import { isRangeBoundary, paragraphLength } from "./offsets";
 import { identitySlots, withInlineIdentity } from "./slots";
 import { canonicalDeferredGroups } from "./identity";
 import { joinParagraphSeam } from "./inline";
@@ -1118,6 +1120,14 @@ const joinOps = (
   const blocks = blockListAt(body.content, location.list);
   const next = blocks[location.index + 1];
   const empty = paragraphLength(paragraph) === 0;
+  // Range markers and comment references have no width but are content the
+  // paragraph must not lose with its mark.
+  const holdsMarkers =
+    empty &&
+    zeroWidthLeavesAt(paragraph.content, 0).some(
+      (leaf) =>
+        isParagraphContent(leaf) && (isRangeBoundary(leaf) || leaf.type === "commentReference"),
+    );
   if (next?.type === "paragraph") {
     const outcome = paragraphMarkOutcome({
       follows: "paragraph",
@@ -1195,7 +1205,7 @@ const joinOps = (
   const cellFinal = containerFinal && location.list.some((step) => step.kind === "tableCell");
   const outcome = paragraphMarkOutcome({
     follows: next?.type === "table" ? "table" : "nothing",
-    holdsContent: !empty,
+    holdsContent: !empty || holdsMarkers,
     markWasAdded: added,
     containerStillEndsWithParagraph:
       next?.type === "table"

@@ -114,6 +114,26 @@ test("rejecting an empty inserted final paragraph in a cell keeps the cell termi
   ]);
 });
 
+test("accepting a mark deletion before a table keeps a bookmark the paragraph holds", () => {
+  const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    content: [
+      { type: "bookmarkStart", id: 1, name: "kept" },
+      { type: "bookmarkEnd", id: 1 },
+    ],
+    pPrMark: { kind: "del", info },
+  };
+  const document: Document = {
+    package: { document: { content: [paragraph, table, finalParagraph] } },
+  };
+
+  const content = JSON.stringify(resolveAccepted(document).package.document.content);
+  expect(content).toContain('"bookmarkStart"');
+  expect(content).toContain('"bookmarkEnd"');
+});
+
 test("accepting a non-empty paragraph-mark deletion runs it into the first cell paragraph", () => {
   const paragraph: Paragraph = {
     type: "paragraph",
