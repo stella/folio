@@ -56,14 +56,31 @@ export const sectionMarkEditsOf = (
     }
   }
 
+  const authoredRecordsByFinalParagraph = new Map<number, SectionProperties>();
+  const authoredDoc = transactions.at(0)?.before;
+  authoredDoc?.descendants((node, position) => {
+    if (!isParagraph(node)) return true;
+    const record = sectionPropertiesOf(node);
+    if (record === null) return false;
+
+    const mark = mapping.mapResult(position + node.nodeSize - 1, 1);
+    if (mark.deleted) {
+      deletedMarks.add(record);
+      return false;
+    }
+    const $mark = finalDoc.resolve(mark.pos);
+    if (isParagraph($mark.parent)) authoredRecordsByFinalParagraph.set($mark.before(), record);
+    return false;
+  });
+
+  const addCarrier = (position: number): void => {
+    carriers.push({ position, record: authoredRecordsByFinalParagraph.get(position) ?? null });
+  };
+
   for (const { step, doc, mapIndex } of replacements) {
     const { from, to } = step;
     const after = mapping.slice(mapIndex);
     if (from === to) {
-      const $split = doc.resolve(from);
-      const record = isParagraph($split.parent) ? sectionPropertiesOf($split.parent) : null;
-      if (record === null) continue;
-
       const left = after.mapResult(from, -1);
       const right = after.mapResult(from, 1);
       if (left.deleted || right.deleted) continue;
@@ -77,28 +94,16 @@ export const sectionMarkEditsOf = (
         // Splitting inserts a new paragraph mark before the authored mark. The
         // new leading paragraph does not end the section; the trailing half,
         // which still owns the authored mark, does.
-        carriers.push({ position: $left.before(), record: null });
-        carriers.push({ position: $right.before(), record });
+        addCarrier($left.before());
+        addCarrier($right.before());
       }
       continue;
     }
-    doc.nodesBetween(from, to, (node, position) => {
-      if (!isParagraph(node)) return true;
-      const record = sectionPropertiesOf(node);
-      const markFrom = position + node.nodeSize - 1;
-      if (record && markFrom >= from && markFrom + 1 <= to) deletedMarks.add(record);
-      return false;
-    });
-
     const $from = doc.resolve(from);
     const $to = doc.resolve(to);
     if (!isParagraph($from.parent) || !isParagraph($to.parent) || $from.start() === $to.start()) {
       continue;
     }
-    const leftRecord = sectionPropertiesOf($from.parent);
-    const rightRecord = sectionPropertiesOf($to.parent);
-    if (leftRecord === null && rightRecord === null) continue;
-
     // The paragraph that ends with the right paragraph's mark holds its
     // record; a different paragraph left holding the first one's node ends
     // with a mark the replacement brought, and holds no break.
@@ -107,11 +112,11 @@ export const sectionMarkEditsOf = (
     if (right.deleted) continue;
     const $right = finalDoc.resolve(right.pos);
     if (!isParagraph($right.parent)) continue;
-    carriers.push({ position: $right.before(), record: rightRecord });
+    addCarrier($right.before());
     if (left.deleted) continue;
     const $left = finalDoc.resolve(left.pos);
     if (isParagraph($left.parent) && $left.start() !== $right.start()) {
-      carriers.push({ position: $left.before(), record: null });
+      addCarrier($left.before());
     }
   }
   return { deletedMarks, carriers };

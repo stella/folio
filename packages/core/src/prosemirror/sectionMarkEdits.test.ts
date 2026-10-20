@@ -19,6 +19,7 @@ import {
   ParagraphChangeTrackerExtension,
 } from "./extensions/features/ParagraphChangeTrackerExtension";
 import { sectionPropertiesOf } from "./sectionCarrier";
+import { sectionMarkEditsOf } from "./sectionMarkEdits";
 
 const schema = new Schema({
   nodes: {
@@ -104,6 +105,42 @@ describe("editing across a section break", () => {
       { text: "Three.", record: null },
     ]);
     expect(getTrackedSectionEndpointRemoval(next)).toBeNull();
+  });
+
+  test("splitting the leading half again keeps only the authored trailing mark", () => {
+    const state = threeSections();
+    const transaction = state.tr.split(textStart(state, 0) + 2).split(textStart(state, 0) + 1);
+    const next = state.apply(transaction);
+
+    expect(paragraphs(next)).toEqual([
+      { text: "O", record: null },
+      { text: "n", record: null },
+      { text: "e.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "Three.", record: null },
+    ]);
+  });
+
+  test("split ownership is preserved across a batch of transactions", () => {
+    const state = threeSections();
+    const first = state.tr.split(textStart(state, 0) + 2);
+    const afterFirst = state.apply(first);
+    const second = afterFirst.tr.split(textStart(afterFirst, 0) + 1);
+    const edits = sectionMarkEditsOf([first, second], second.doc);
+    const untracked = EditorState.create({ schema, doc: second.doc });
+    let correction = untracked.tr;
+    for (const { position, record } of edits.carriers) {
+      correction = correction.setNodeAttribute(position, "_sectionProperties", record);
+    }
+    const corrected = untracked.apply(correction);
+
+    expect(paragraphs(corrected)).toEqual([
+      { text: "O", record: null },
+      { text: "n", record: null },
+      { text: "e.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "Three.", record: null },
+    ]);
   });
 
   test("Backspace at the start of the next paragraph merges the section into the next", () => {
