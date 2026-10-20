@@ -3567,10 +3567,11 @@ export class FolioDocxReviewer {
       addAll(anchoredNow, anchoredCommentIdsInBlocks(source?.content ?? []));
     }
     // A note that went with its reference takes the comments anchored in it.
+    const referenceStates = noteReferenceStates(mainState.doc);
     for (const handle of this.removedNoteStories.values()) {
       const entry = loaded.get(secondaryStoryKey(handle));
       if (entry) {
-        if (noteReferenceStates(mainState.doc).get(noteStoryKey(handle)) === "deleted") {
+        if (referenceStates.get(noteStoryKey(handle)) === "deleted") {
           const source = (
             handle.type === "footnote"
               ? this.baseDocument.package.footnotes
@@ -3580,18 +3581,17 @@ export class FolioDocxReviewer {
         }
         continue;
       }
-      addAll(
-        anchoredBefore,
-        anchoredCommentIdsInBlocks(
-          (handle.type === "footnote"
-            ? this.baseDocument.package.footnotes
-            : this.baseDocument.package.endnotes
-          )?.find((note) => note.id === handle.noteId)?.content ?? [],
-        ),
+      const removed = anchoredCommentIdsInBlocks(
+        (handle.type === "footnote"
+          ? this.baseDocument.package.footnotes
+          : this.baseDocument.package.endnotes
+        )?.find((note) => note.id === handle.noteId)?.content ?? [],
       );
-    }
-    if ([...noteReferenceStates(mainState.doc).values()].includes("deleted")) {
-      addAll(anchoredNow, anchoredBefore);
+      addAll(anchoredBefore, removed);
+      // Only this note's own pending reference deletion keeps its comments.
+      if (referenceStates.get(noteStoryKey(handle)) === "deleted") {
+        addAll(anchoredNow, removed);
+      }
     }
     return withoutLostCommentThreads(comments, { anchoredBefore, anchoredNow });
   }

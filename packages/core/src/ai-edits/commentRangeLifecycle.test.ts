@@ -212,6 +212,61 @@ describe("a comment in a note whose reference is pending deletion", () => {
     expect(threads(reviewer.getComments())).toEqual([NOTE_COMMENT]);
     expect(threads((await reopen(reviewer)).getComments())).toEqual([NOTE_COMMENT]);
   });
+
+  test("does not keep a comment whose unrelated text is deleted directly", async () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            paragraph("31000001", [{ type: "run", content: [{ type: "footnoteRef", id: 1 }] }]),
+            paragraph("31000002", [run("Other text.")]),
+          ],
+        },
+        footnotes: [
+          {
+            type: "footnote",
+            id: 1,
+            noteType: "normal",
+            content: [paragraph("32000001", [run("Footnote text.")])],
+          },
+        ],
+      },
+    };
+    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document), {
+      author: "Editor",
+    });
+    const [reference, other] = reviewer.snapshot().blocks;
+    const commented = reviewer.applyOperations(
+      [
+        {
+          id: "comment",
+          type: "commentOnRange",
+          range: createFolioAITextRangeHandle({
+            blockId: other!.id,
+            text: other!.text,
+            startOffset: 0,
+            endOffset: 5,
+          }),
+          comment: { text: "On other text." },
+        },
+      ],
+      { undefinedReferences: "refuse", mode: "direct" },
+    );
+    expect(commented.applied).toHaveLength(1);
+    const tracked = reviewer.applyOperations(
+      [{ id: "delete-reference", type: "deleteBlock", blockId: reference!.id }],
+      { undefinedReferences: "refuse", mode: "tracked-changes" },
+    );
+    expect(tracked.applied).toHaveLength(1);
+    const direct = reviewer.applyOperations(
+      [{ id: "delete-other", type: "deleteBlock", blockId: other!.id }],
+      { undefinedReferences: "refuse", mode: "direct" },
+    );
+    expect(direct.applied).toHaveLength(1);
+
+    expect(reviewer.getComments()).toEqual([]);
+    expect((await reopen(reviewer)).getComments()).toEqual([]);
+  });
 });
 
 test("a batch insertion and deletion keep a comment on another block", async () => {
