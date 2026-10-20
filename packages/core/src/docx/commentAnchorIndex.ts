@@ -19,6 +19,7 @@ import type {
   TableRow,
   TrackedRunContent,
 } from "../types/document";
+import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { visitInlineContentSlots } from "./paragraphTraversal";
 
 export type CommentMarkerSlot = {
@@ -259,7 +260,9 @@ export const removeCommentMarkers = (
 
   const rebuildParagraph = (paragraph: Paragraph): Paragraph => {
     const content = rebuildParagraphContent(paragraph.content);
-    return content === paragraph.content ? paragraph : { ...paragraph, content };
+    return content === paragraph.content
+      ? paragraph
+      : cloneParagraphWithPropertySource(paragraph, { content });
   };
   const rebuildCell = (cell: TableCell): TableCell => {
     const content = rebuildBlocks(cell.content);
