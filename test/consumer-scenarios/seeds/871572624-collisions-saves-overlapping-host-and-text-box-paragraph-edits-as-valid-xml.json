@@ -1,0 +1,7 @@
+{
+  "seed": 871572624,
+  "steps": 10,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "saves overlapping host and text-box paragraph edits as valid XML"
+}

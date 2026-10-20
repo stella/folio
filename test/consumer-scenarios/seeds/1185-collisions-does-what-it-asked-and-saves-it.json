@@ -1,0 +1,8 @@
+{
+  "seed": 1185,
+  "steps": 10,
+  "kind": "collisions",
+  "generation": "legacy",
+  "skipKnownIssue": true,
+  "title": "does what it asked and saves it"
+}

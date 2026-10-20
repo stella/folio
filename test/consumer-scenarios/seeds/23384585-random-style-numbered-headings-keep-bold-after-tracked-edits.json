@@ -1,0 +1,7 @@
+{
+  "seed": 23384585,
+  "steps": 10,
+  "kind": "random",
+  "generation": "targeted",
+  "title": "style-numbered headings keep bold after tracked edits"
+}
