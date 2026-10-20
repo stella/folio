@@ -135,6 +135,7 @@ export type Column = {
 // @public
 type Comment_2 = {
     id: number;
+    anchorKind?: "point" | "range";
     author: string;
     initials?: string;
     date?: string;
@@ -437,6 +438,9 @@ export type FieldCharContent = {
 
 // @public
 export type FieldType = "PAGE" | "NUMPAGES" | "NUMWORDS" | "NUMCHARS" | "DATE" | "TIME" | "CREATEDATE" | "SAVEDATE" | "PRINTDATE" | "AUTHOR" | "TITLE" | "SUBJECT" | "KEYWORDS" | "COMMENTS" | "FILENAME" | "FILESIZE" | "TEMPLATE" | "DOCPROPERTY" | "DOCVARIABLE" | "REF" | "PAGEREF" | "NOTEREF" | "HYPERLINK" | "TOC" | "TOA" | "INDEX" | "SEQ" | "STYLEREF" | "AUTONUM" | "AUTONUMLGL" | "AUTONUMOUT" | "LISTNUM" | "IF" | "MERGEFIELD" | "NEXT" | "NEXTIF" | "ASK" | "SET" | "QUOTE" | "INCLUDETEXT" | "INCLUDEPICTURE" | "SYMBOL" | "ADVANCE" | "EDITTIME" | "REVNUM" | "SECTION" | "SECTIONPAGES" | "USERADDRESS" | "USERNAME" | "USERINITIALS" | "UNKNOWN";
+
+// @public
+export const finalizeParagraphFormatting: (formatting: ParagraphFormatting | undefined) => ParagraphFormatting | undefined;
 
 // @public
 export type FloatingTableProperties = {
@@ -758,6 +762,9 @@ export const isBorderNone: (style: BorderStyleValue | undefined) => boolean;
 
 // @public
 export const isBorderStyle: (value: string) => value is BorderStyle;
+
+// @public
+export const isCanonicallyEmptyParagraphFormatting: (formatting: ParagraphFormatting | undefined) => boolean;
 
 // @public
 export const isNumberingLevel: (value: number) => boolean;
@@ -1298,7 +1305,7 @@ export type PresetLineDashValue = PresetLineDashVal | UnrecognisedPresetLineDash
 
 // @public
 export type PreviewDescriptor = {
-    readonly kind: "diagram";
+    readonly kind: "chart" | "diagram";
     readonly extent: {
         readonly width: number;
         readonly height: number;
@@ -1306,13 +1313,23 @@ export type PreviewDescriptor = {
     readonly shapes: readonly PreviewShape[];
 };
 
-// @public
+// @public (undocumented)
 export type PreviewShape = {
+    readonly type?: "rect";
     readonly x: number;
     readonly y: number;
     readonly width: number;
     readonly height: number;
     readonly color: string;
+} | {
+    readonly type: "polygon";
+    readonly points: readonly PreviewPoint[];
+    readonly color: string;
+} | {
+    readonly type: "polyline";
+    readonly points: readonly PreviewPoint[];
+    readonly color: string;
+    readonly strokeWidth: number;
 };
 
 // @public
@@ -1559,6 +1576,9 @@ export type SectionPropertyChange = {
 
 // @public
 export type SectionStart = "continuous" | "nextPage" | "oddPage" | "evenPage" | "nextColumn";
+
+// @public
+export const setDocumentBodyComments: (body: DocumentBody, comments: Comment_2[]) => void;
 
 // @public
 export type ShadingProperties = {

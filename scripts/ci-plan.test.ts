@@ -1,14 +1,17 @@
+import { scanTestTimeout } from "../test/scan-timeout";
+
 // Binds the CI plan's areas to the jobs they gate. The planner (the shared
 // stella/.github ci-plan action) selects areas from `.github/ci-plan.json`;
 // `ci.yml` maps each area to a `ci-plan` output and gates a job on it. An area
 // no job reads, an output no area feeds, or a job that runs without asking the
 // plan would each drift in silence, so all three are checked here.
-import { describe, expect, test } from "bun:test";
+import { setDefaultTimeout, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import editorWebPlaywright from "../packages/editor-web/playwright.config";
 import runContract from "./ci-run-contract.json";
+import { affectedPackagePlan } from "./ci-api-plan";
 import {
   BROWSER_INPUT_REGRESSIONS,
   PINNED_BROWSER_INPUT_TAG,
@@ -23,6 +26,8 @@ import {
   focusedTestFiles,
   TEST_SHARD_COUNT,
 } from "./ci-test-shards";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PLAN_JOB = "ci-plan";
@@ -465,11 +470,13 @@ describe("CI plan", () => {
           typeof step["uses"] === "string" &&
           step["uses"].startsWith("actions/upload-artifact@"),
       );
-      expect(uploads).toHaveLength(1);
-      const upload = uploads.at(0);
+      expect(uploads).toHaveLength(2);
+      const upload = uploads.find(
+        (step) =>
+          isRecord(step["with"]) && step["with"]["name"] === `fuzz-log-full-test-suite-${shard}`,
+      );
       if (!isRecord(upload) || !isRecord(upload["with"]))
         throw new Error(`Missing upload for ${id}`);
-      expect(upload["with"]["name"]).toBe(`fuzz-log-full-test-suite-${shard}`);
       expect(upload["if"]).toBe(
         "failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'",
       );
@@ -498,57 +505,72 @@ describe("CI plan", () => {
     expect(jobs).not.toHaveProperty("browser-fuzzer-smoke");
   });
 
-  test("pinned browser inputs gate PRs and merge groups with exactly the standing registry", () => {
-    const pinned = jobs["browser-input-pinned"];
-    expect(pinned?.if).toBe("needs.ci-plan.outputs.interactions_required == 'true'");
-    const steps = pinned?.steps;
-    if (!Array.isArray(steps)) throw new TypeError("Missing pinned browser steps");
-    const commands = steps.flatMap((step) =>
-      isRecord(step) && typeof step["run"] === "string" ? [step["run"]] : [],
-    );
-    expect(commands.filter((command) => command.includes("playwright test"))).toEqual([
-      "bunx playwright test --project=browser-input-pinned --workers=1",
-    ]);
-    expect(pinned?.strategy).toBeUndefined();
-    expect(pinned?.["timeout-minutes"]).toBe(10);
+  test(
+    "pinned browser inputs gate PRs and merge groups with exactly the standing registry",
+    () => {
+      const pinned = jobs["browser-input-pinned"];
+      expect(pinned?.if).toBe("needs.ci-plan.outputs.interactions_required == 'true'");
+      const steps = pinned?.steps;
+      if (!Array.isArray(steps)) throw new TypeError("Missing pinned browser steps");
+      const commands = steps.flatMap((step) =>
+        isRecord(step) && typeof step["run"] === "string" ? [step["run"]] : [],
+      );
+      expect(commands.filter((command) => command.includes("playwright test"))).toEqual([
+        "bunx playwright test --project=browser-input-pinned --workers=1",
+      ]);
+      expect(pinned?.strategy).toBeUndefined();
+      expect(pinned?.["timeout-minutes"]).toBe(10);
 
-    const listing = Bun.spawnSync(
-      ["bunx", "playwright", "test", "--project=browser-input-pinned", "--list", "--reporter=json"],
-      { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" },
-    );
-    expect(listing.exitCode, listing.stderr.toString()).toBe(0);
-    const report: unknown = JSON.parse(listing.stdout.toString());
-    if (!isRecord(report)) throw new TypeError("Invalid pinned project report");
-    expect(report["errors"]).toEqual([]);
-    const titles: string[] = [];
-    const collect = (suites: unknown) => {
-      if (!Array.isArray(suites)) throw new TypeError("Invalid discovery suites");
-      for (const suite of suites) {
-        if (!isRecord(suite) || !Array.isArray(suite["specs"]))
-          throw new TypeError("Invalid discovery suite");
-        for (const spec of suite["specs"]) {
-          if (!isRecord(spec) || typeof spec["title"] !== "string" || !Array.isArray(spec["tests"]))
-            throw new TypeError("Invalid pinned spec");
-          expect(spec["tags"]).toEqual([PINNED_BROWSER_INPUT_TAG.slice(1)]);
-          for (const discovered of spec["tests"]) {
-            if (!isRecord(discovered)) throw new TypeError("Invalid pinned test");
-            expect(discovered["projectName"]).toBe("browser-input-pinned");
-            expect(discovered["timeout"]).toBe(60_000);
-            titles.push(spec["title"]);
+      const listing = Bun.spawnSync(
+        [
+          "bunx",
+          "playwright",
+          "test",
+          "--project=browser-input-pinned",
+          "--list",
+          "--reporter=json",
+        ],
+        { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" },
+      );
+      expect(listing.exitCode, listing.stderr.toString()).toBe(0);
+      const report: unknown = JSON.parse(listing.stdout.toString());
+      if (!isRecord(report)) throw new TypeError("Invalid pinned project report");
+      expect(report["errors"]).toEqual([]);
+      const titles: string[] = [];
+      const collect = (suites: unknown) => {
+        if (!Array.isArray(suites)) throw new TypeError("Invalid discovery suites");
+        for (const suite of suites) {
+          if (!isRecord(suite) || !Array.isArray(suite["specs"]))
+            throw new TypeError("Invalid discovery suite");
+          for (const spec of suite["specs"]) {
+            if (
+              !isRecord(spec) ||
+              typeof spec["title"] !== "string" ||
+              !Array.isArray(spec["tests"])
+            )
+              throw new TypeError("Invalid pinned spec");
+            expect(spec["tags"]).toEqual([PINNED_BROWSER_INPUT_TAG.slice(1)]);
+            for (const discovered of spec["tests"]) {
+              if (!isRecord(discovered)) throw new TypeError("Invalid pinned test");
+              expect(discovered["projectName"]).toBe("browser-input-pinned");
+              expect(discovered["timeout"]).toBe(60_000);
+              titles.push(spec["title"]);
+            }
           }
+          if (suite["suites"] !== undefined) collect(suite["suites"]);
         }
-        if (suite["suites"] !== undefined) collect(suite["suites"]);
-      }
-    };
-    collect(report["suites"]);
-    expect(titles.toSorted()).toEqual(
-      BROWSER_INPUT_REGRESSIONS.map(
-        ({ seed, path: replayPath, fingerprint }) =>
-          `regression seed ${seed} path ${replayPath} / ${fingerprint}`,
-      ).toSorted(),
-    );
-    expect(titles.length).toBeGreaterThan(0);
-  }, 30_000);
+      };
+      collect(report["suites"]);
+      expect(titles.toSorted()).toEqual(
+        BROWSER_INPUT_REGRESSIONS.map(
+          ({ seed, path: replayPath, fingerprint }) =>
+            `regression seed ${seed} path ${replayPath} / ${fingerprint}`,
+        ).toSorted(),
+      );
+      expect(titles.length).toBeGreaterThan(0);
+    },
+    scanTestTimeout(30_000),
+  );
 
   test("benchmarks and extended proofs run only on demand", () => {
     for (const file of [
@@ -800,6 +822,40 @@ describe("CI plan", () => {
     expect(harness).toContain('import { PUBLISHED_PACKAGES } from "./lib/published-packages"');
     // Both packing and consumption must traverse the discovered publication set.
     expect(harness.match(/for \(const pkg of PUBLISHED_PACKAGES\)/gu)).toHaveLength(2);
+  });
+
+  test("packed consumer scenarios follow the pull-request package plan", () => {
+    const condition = "needs.ci-plan.outputs.packaged_consumer_required == 'true'";
+    expect(jobs["consumer-scenarios"]?.if).toBe(condition);
+    expect(jobs["consumer-scenarios-minimum"]?.if).toBe(condition);
+
+    const publishedPackagePaths = ["packages/public"];
+    for (const changedPath of [
+      "packages/public/src/index.ts",
+      "test/consumer-scenarios/scenarios/compare.test.ts",
+    ]) {
+      expect(
+        affectedPackagePlan({ changedPaths: [changedPath], publishedPackagePaths })
+          .packagedConsumerRequired,
+      ).toBe(true);
+    }
+    expect(
+      affectedPackagePlan({ changedPaths: ["docs/guide.md"], publishedPackagePaths })
+        .packagedConsumerRequired,
+    ).toBe(false);
+
+    const resultSteps = jobs["ci-result"]?.steps;
+    if (!Array.isArray(resultSteps)) throw new TypeError("Missing CI result steps");
+    const evaluation = resultSteps.find(
+      (step) => isRecord(step) && step["name"] === "Evaluate CI outcome",
+    );
+    if (!isRecord(evaluation) || !isRecord(evaluation["env"]))
+      throw new TypeError("Missing CI result environment");
+    const scopes = JSON.parse(String(evaluation["env"]["JOB_SCOPES"]));
+    expect(scopes["consumer-scenarios"]).toEqual({ area: "packaged_consumer_required" });
+    expect(scopes["consumer-scenarios-minimum"]).toEqual({
+      area: "packaged_consumer_required",
+    });
   });
 
   test("VS Code compatibility gates its selected area and exercises both API branches", () => {

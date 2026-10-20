@@ -1483,6 +1483,8 @@ export type Table = {
 export type Comment = {
   /** Comment ID (matches commentRangeStart/End) */
   id: number;
+  /** Whether the author selected content or placed a point annotation. */
+  anchorKind?: "point" | "range";
   /** Author name */
   author: string;
   /** Author initials */

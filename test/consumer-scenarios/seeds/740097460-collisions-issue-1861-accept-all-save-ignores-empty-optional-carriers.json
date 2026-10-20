@@ -1,0 +1,7 @@
+{
+  "seed": 740097460,
+  "steps": 20,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "issue 1861: accept-all save ignores empty optional carriers"
+}

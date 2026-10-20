@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "lists",
+  "mode": "tracked-changes",
+  "seed": 1026399033,
+  "steps": [
+    { "action": "core batch", "seed": 2678616336 },
+    { "action": "core batch", "seed": 668579786 },
+    { "action": "mistake", "seed": 4267770215 },
+    { "action": "new reviewer", "seed": 1172533062 },
+    { "action": "reply and resolve", "seed": 3004098875 },
+    { "action": "story batch", "seed": 540697392 },
+    { "action": "suggest_changes", "seed": 2308322008 },
+    { "action": "core batch", "seed": 348873801 },
+    { "action": "reject one", "seed": 93109013 },
+    { "action": "save and reopen", "seed": 3756240639 }
+  ],
+  "weights": { "version": 1, "cells": {}, "operations": [] },
+  "origin": "delete+reseed+splice of 686a2692acb81e00",
+  "title": "keeps list review state aligned after reopen (#1770)"
+}

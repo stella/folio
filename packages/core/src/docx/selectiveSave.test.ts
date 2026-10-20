@@ -749,7 +749,6 @@ describe("Selective save with comments", () => {
         content: [
           {
             type: "paragraph",
-            formatting: {},
             content: [
               {
                 type: "run",
@@ -806,7 +805,6 @@ describe("Selective save with comments", () => {
         content: [
           {
             type: "paragraph",
-            formatting: {},
             content: [
               {
                 type: "run",
@@ -859,7 +857,6 @@ describe("Selective save with comments", () => {
         content: [
           {
             type: "paragraph",
-            formatting: {},
             content: [
               {
                 type: "run",
@@ -876,7 +873,6 @@ describe("Selective save with comments", () => {
         content: [
           {
             type: "paragraph",
-            formatting: {},
             content: [
               {
                 type: "run",

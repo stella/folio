@@ -42,7 +42,8 @@ import {
   isTiffMimeType,
   MAX_PACKAGE_TIFF_PIXELS,
 } from "../utils/tiffConverter";
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { PARSE_WARNING_CODES, setDocumentBodyComments } from "@stll/docx-core/model";
+import { isCommentExhausted } from "@stll/docx-core/ops";
 
 import { parseComments } from "./commentParser";
 import { type ParseContext, createParseWarningCollector } from "./parseContext";
@@ -597,7 +598,7 @@ export async function parseDocxWithPreviewBudget(
       });
     }
     if (comments.length > 0) {
-      documentBody.comments = comments;
+      setDocumentBodyComments(documentBody, comments);
     }
     normalizeDrawingIds({
       documentBody,
@@ -786,6 +787,12 @@ export async function parseDocxWithPreviewBudget(
       ...(templateVariables !== undefined ? { templateVariables } : {}),
       ...(requiredFonts.length > 0 ? { requiredFonts } : {}),
     };
+    for (const comment of document.package.document.comments ?? []) {
+      if (comment.parentId !== undefined) continue;
+      comment.anchorKind = "range";
+      if (isCommentExhausted({ type: "document", document, id: comment.id }))
+        comment.anchorKind = "point";
+    }
     const altChunkBudget = { remainingBytes: ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES };
     await attachAltChunkPlainText(pkg.document.content, {
       relationships: rels,
@@ -1071,12 +1078,14 @@ async function buildMediaMap(
     }
   }
 
-  // Diagram data is XML rather than media, but exposing the bounded extracted
+  // Diagram and chart data are XML rather than media, but exposing the bounded extracted
   // parts through the same resolver lets the run parser build a preview while
   // the original ZIP remains authoritative for save/round-trip.
   for (const [path, xml] of raw.allXml.entries()) {
     if (
-      !/^word\/diagrams\/[^/]+\.xml$/iu.test(path) ||
+      !/^word\/(?:diagrams\/[^/]+\.xml|charts\/(?:[^/]+\.xml|_rels\/[^/]+\.xml\.rels))$/iu.test(
+        path,
+      ) ||
       encodeUtf8(xml).byteLength > FOLIO_XML_RESOURCE_LIMITS.maxBytes
     ) {
       continue;

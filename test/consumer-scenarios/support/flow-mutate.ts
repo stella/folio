@@ -11,6 +11,7 @@ import {
   type FlowStep,
   flowId,
   LEGACY_ACTIONS,
+  rebindStepOperations,
   TARGETED_ACTIONS,
 } from "./flow-file.ts";
 import type { Random } from "./random.ts";
@@ -25,6 +26,12 @@ export const MUTATIONS = [
   "splice",
 ] as const;
 export type Mutation = (typeof MUTATIONS)[number];
+export const OPERATIONS_CHANGING_MUTATIONS = [
+  "reseed",
+  "unpin",
+  "dropOperation",
+  "splice",
+] as const satisfies readonly Mutation[];
 
 const newSeed = (random: Random): number => Math.floor(random.next() * 2 ** 32) >>> 0;
 
@@ -60,7 +67,7 @@ const mutateOnce = (
     }
     case "reseed": {
       const reseeded = [...steps];
-      reseeded[at] = { action: step.action, seed: newSeed(random) };
+      reseeded[at] = rebindStepOperations({ ...step, seed: newSeed(random) }, undefined);
       return reseeded;
     }
     case "unpin": {
@@ -70,8 +77,7 @@ const mutateOnce = (
       if (pinned.length === 0) return null;
       const index = random.pick(pinned);
       const unpinned = [...steps];
-      const { action, seed } = steps[index] as FlowStep;
-      unpinned[index] = { action, seed };
+      unpinned[index] = rebindStepOperations(steps[index] as FlowStep, undefined);
       return unpinned;
     }
     case "dropOperation": {
@@ -84,7 +90,7 @@ const mutateOnce = (
       const operations = [...(target.operations ?? [])];
       operations.splice(random.int(operations.length), 1);
       const dropped = [...steps];
-      dropped[index] = { ...target, operations };
+      dropped[index] = rebindStepOperations(target, operations);
       return dropped;
     }
     case "splice": {
@@ -100,7 +106,7 @@ const mutateOnce = (
         .slice(from)
         .filter((candidate) => actionsOf(flow).includes(candidate.action))
         .map((candidate) =>
-          sameDocument ? candidate : { action: candidate.action, seed: candidate.seed },
+          sameDocument ? candidate : rebindStepOperations(candidate, undefined),
         );
       return [...steps.slice(0, at + 1), ...tail];
     }

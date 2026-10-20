@@ -830,6 +830,7 @@ export type ExhaustiveTableReserved = ExhaustiveFields<Table, keyof typeof TABLE
 
 export const COMMENT_RESERVED = {
   id: NO_RESERVED_VALUE,
+  anchorKind: NO_RESERVED_VALUE,
   author: NO_RESERVED_VALUE,
   initials: NO_RESERVED_VALUE,
   date: NO_RESERVED_VALUE,

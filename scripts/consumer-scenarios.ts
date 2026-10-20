@@ -54,7 +54,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { installCleanRoomDependencies } from "./clean-room-install";
-import { parseConsumerArgs } from "./consumer-scenario-args";
+import { consumerScenarioInputs, parseConsumerArgs } from "./consumer-scenario-args";
 
 import { commitSeed } from "../test/commit-seed";
 import {
@@ -362,6 +362,7 @@ const reportCoverage = async (
 };
 
 const args = parseConsumerArgs(process.argv.slice(2), repoRoot);
+const scenarioInputs = consumerScenarioInputs(args, process.env);
 
 if (args.packOnly !== null) {
   const tarballs = await packAll(args.packOnly);
@@ -382,7 +383,7 @@ const ciSeed = (): string | null => {
   const derived = commitSeed("consumer-scenarios fuzz");
   return derived === undefined ? null : String(derived >>> 1);
 };
-const requestedSeed = process.env["FOLIO_SCENARIO_SEED"] ?? ciSeed() ?? DEFAULT_SEED;
+const requestedSeed = scenarioInputs.seed ?? ciSeed() ?? DEFAULT_SEED;
 const seed =
   requestedSeed === "random" ? String(Math.floor(Math.random() * 2 ** 31)) : requestedSeed;
 
@@ -392,6 +393,23 @@ const seed =
  */
 const flowEnvironment = async (): Promise<Record<string, string>> => {
   const environment: Record<string, string> = {};
+  const cliEnvironment = {
+    FOLIO_SCENARIO_FUZZ_STEPS: scenarioInputs.steps,
+    FOLIO_SCENARIO_FUZZ_RUNS: scenarioInputs.runs,
+    FOLIO_SCENARIO_COLLISION_RUNS: scenarioInputs.collisionRuns,
+    FOLIO_SCENARIO_SWARM: scenarioInputs.swarm,
+    FOLIO_SCENARIO_PUBLIC_CORPUS_DIR: scenarioInputs.publicCorpusDir,
+    FOLIO_SCENARIO_RELATIONS: scenarioInputs.relations,
+    FOLIO_SCENARIO_RELATIONS_DEPTH: scenarioInputs.relationsDepth,
+    FOLIO_SCENARIO_FEATURE_WEIGHTS: scenarioInputs.featureWeights,
+    FOLIO_SCENARIO_LONG_FUZZ: scenarioInputs.longFuzz,
+    FOLIO_SCENARIO_LONG_STEPS: scenarioInputs.longSteps,
+    FOLIO_SCENARIO_LONG_OUTPUT: scenarioInputs.longOutput,
+    FOLIO_SCENARIO_PUBLIC_CORPUS_FUZZ: scenarioInputs.publicCorpusFuzz,
+    FOLIO_SCENARIO_PUBLIC_CORPUS_STEPS: scenarioInputs.publicCorpusSteps,
+    FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT: scenarioInputs.publicCorpusOutput,
+    FOLIO_SCENARIO_PUBLIC_CORPUS_FIXTURE: scenarioInputs.publicCorpusFixture,
+  };
   for (const name of [
     "FOLIO_SCENARIO_CORPUS_DIR",
     "FOLIO_SCENARIO_FAILURES_DIR",
@@ -399,8 +417,13 @@ const flowEnvironment = async (): Promise<Record<string, string>> => {
     "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR",
     "FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT",
   ]) {
-    const value = process.env[name];
+    const value = cliEnvironment[name as keyof typeof cliEnvironment] ?? process.env[name];
     if (value !== undefined && value !== "") environment[name] = path.resolve(value);
+  }
+  for (const [name, value] of Object.entries(cliEnvironment)) {
+    if (value !== null && value !== "" && environment[name] === undefined) {
+      environment[name] = value;
+    }
   }
   // Fingerprints with an open issue: continuous-fuzz.test.ts records them without failing.
   const knownRegistryPath = path.join(repoRoot, "test", "known-failure-fingerprints.json");
@@ -411,7 +434,7 @@ const flowEnvironment = async (): Promise<Record<string, string>> => {
   environment["FOLIO_SCENARIO_KNOWN_FINGERPRINTS"] = known.known
     .map(({ fingerprint }) => fingerprint)
     .join(",");
-  const flow = process.env["FOLIO_SCENARIO_FLOW"]?.trim();
+  const flow = scenarioInputs.flow?.trim();
   if (flow !== undefined && flow !== "") {
     environment["FOLIO_SCENARIO_FLOW"] = flow.startsWith("{")
       ? flow
@@ -466,11 +489,9 @@ try {
         FOLIO_SCENARIO_SAMPLE_DIR:
           process.env["FOLIO_SCENARIO_SAMPLE_DIR"] ??
           path.join(repoRoot, "test-results", "consumer-scenario-samples"),
-        ...(process.env["FOLIO_SCENARIO_FEATURE_WEIGHTS"]
+        ...(scenarioInputs.featureWeights
           ? {
-              FOLIO_SCENARIO_FEATURE_WEIGHTS: path.resolve(
-                process.env["FOLIO_SCENARIO_FEATURE_WEIGHTS"],
-              ),
+              FOLIO_SCENARIO_FEATURE_WEIGHTS: path.resolve(scenarioInputs.featureWeights),
             }
           : {}),
       })

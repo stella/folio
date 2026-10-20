@@ -45,7 +45,7 @@ permissions: {}
 jobs:
   pack:
     name: Build and pack ${{ matrix.pkg }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         pkg: [utf8-boundaries, docx-core, core, react, agents, cli, vue, nuxt]
@@ -135,7 +135,7 @@ jobs:
     # bumps the CLI publishes it; any other release is a skipped duplicate.
     # Started as its own run rather than called: a called workflow does not
     # see the open-vsx environment's OVSX_PAT, so Open VSX was skipped.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       actions: write # Start publish-vscode.yml, which owns the registry environments.
     steps:

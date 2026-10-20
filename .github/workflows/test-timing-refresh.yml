@@ -1,0 +1,105 @@
+name: Test Timing Refresh
+
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: test-timing-refresh
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  TIMING_BRANCH: perf/refresh-test-timings
+  DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+jobs:
+  refresh:
+    name: Refresh measured test timings
+    if: github.repository == 'stella/folio'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: package.json
+
+      - run: bun install --frozen-lockfile
+
+      - name: Download five successful full-run timing sets
+        id: measurements
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p test-timing-artifacts
+          manifest="$RUNNER_TEMP/test-timing-artifacts.tsv"
+          bun scripts/aggregate-ci-test-timings.ts \
+            --artifact-manifest "$manifest" \
+            --repository "$GITHUB_REPOSITORY"
+          if [[ ! -s "$manifest" ]]; then
+            echo "No complete timing sets are available; skipping refresh." >> "$GITHUB_STEP_SUMMARY"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          while IFS=$'\t' read -r run_id artifact_id; do
+            mkdir -p "test-timing-artifacts/${run_id}"
+            gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "${RUNNER_TEMP}/${artifact_id}.zip"
+            unzip -q "${RUNNER_TEMP}/${artifact_id}.zip" -d "test-timing-artifacts/${run_id}"
+          done < "$manifest"
+          inputs_file="$RUNNER_TEMP/test-timing-inputs.txt"
+          find test-timing-artifacts -name 'test-timings-*.json' -type f | sort > "$inputs_file"
+          mapfile -t inputs < "$inputs_file"
+          bun scripts/aggregate-ci-test-timings.ts --output scripts/ci-test-timings.json "${inputs[@]}"
+          if git diff --quiet -- scripts/ci-test-timings.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Reuse the repository's existing maintenance-app identity.
+      - name: Mint app token
+        if: steps.measurements.outputs.changed == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CHANGELOG_APP_ID }}
+          private-key: ${{ secrets.CHANGELOG_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Open or update the timing PR
+        if: steps.measurements.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          base=$(git rev-parse HEAD)
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${TIMING_BRANCH}" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${TIMING_BRANCH}" -f sha="$base" -F force=true > /dev/null
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/heads/${TIMING_BRANCH}" -f sha="$base" > /dev/null
+          fi
+          request="$RUNNER_TEMP/test-timing-commit.json"
+          bun scripts/aggregate-ci-test-timings.ts \
+            --graphql-request "$request" \
+            --timings scripts/ci-test-timings.json \
+            --repository "$GITHUB_REPOSITORY" \
+            --branch "$TIMING_BRANCH" \
+            --base "$base"
+          gh api graphql --input "$request" > /dev/null
+          if [[ -z "$(gh pr list --head "$TIMING_BRANCH" --state open --json number --jq '.[0].number // ""')" ]]; then
+            gh pr create --base "$DEFAULT_BRANCH" --head "$TIMING_BRANCH" \
+              --title "perf(ci): refresh measured test timings" \
+              --body "Refreshes per-file test duration medians from recent successful full-suite runs so shard scheduling follows current measurements."
+          fi

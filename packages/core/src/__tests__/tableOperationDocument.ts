@@ -40,7 +40,6 @@ export type TableSpec = {
 
 const paragraph = (text: string): Paragraph => ({
   type: "paragraph",
-  formatting: {},
   content:
     text.length === 0 ? [] : [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
 });

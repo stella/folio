@@ -21,6 +21,9 @@ import type { XmlElement } from "./xmlParser";
  */
 export const MAX_PREVIEW_SHAPES = 128;
 
+/** Maximum polygon and polyline points held by one preview descriptor. */
+export const MAX_PREVIEW_POINTS = 512;
+
 const DRAWINGML_NAMESPACE_URIS = new Set([
   "http://schemas.openxmlformats.org/drawingml/2006/main",
   "http://purl.oclc.org/ooxml/drawingml/main",
@@ -214,6 +217,7 @@ const cachedDiagramShapes = (
     const fill = findChildByNamespaceUri(properties, DRAWINGML_NAMESPACE_URIS, "solidFill");
     const color = findChildByNamespaceUri(fill, DRAWINGML_NAMESPACE_URIS, "srgbClr");
     shapes.push({
+      type: "rect",
       x: parseNumericAttribute(offset, null, "x") ?? 0,
       y: parseNumericAttribute(offset, null, "y") ?? 0,
       width,

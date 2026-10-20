@@ -11,7 +11,10 @@ import {
   parseFlowFile,
   TARGETED_ACTIONS,
 } from "../test/consumer-scenarios/support/flow-file";
-import { mutateFlow } from "../test/consumer-scenarios/support/flow-mutate";
+import {
+  mutateFlow,
+  OPERATIONS_CHANGING_MUTATIONS,
+} from "../test/consumer-scenarios/support/flow-mutate";
 import { createRandom } from "../test/consumer-scenarios/support/random";
 import { shrinkFlow, shrinkSequence } from "../test/consumer-scenarios/support/shrink";
 
@@ -151,6 +154,24 @@ describe("shrinking", () => {
     ]);
     expect(await fails(shrunk.flow)).toBe(true);
   });
+
+  test("shrinking rebinds the expected applied count to retained operations", async () => {
+    const original = flow([
+      {
+        action: "suggest_changes",
+        seed: 5,
+        operations: [{ type: "a" }, { type: "b" }, { type: "c" }],
+        expectedApplied: 3,
+      },
+    ]);
+    const shrunk = await shrinkFlow(original, {
+      holds: (candidate) =>
+        Promise.resolve(candidate.steps[0]?.operations?.some(({ type }) => type === "c") ?? false),
+      materialize: (candidate) => Promise.resolve(candidate),
+      budget: budget(),
+    });
+    expect(shrunk.flow.steps[0]).toMatchObject({ operations: [{ type: "c" }], expectedApplied: 1 });
+  });
 });
 
 describe("mutation", () => {
@@ -196,6 +217,40 @@ describe("mutation", () => {
       const spliced = mutant.steps.find((step) => step.seed === 9);
       expect(spliced).toEqual({ action: "core batch", seed: 9 });
     }
+  });
+
+  test("every operations-changing mutation rebinds expectedApplied", () => {
+    const pinned = flow([
+      {
+        action: "suggest_changes",
+        seed: 1,
+        operations: [{ type: "a" }, { type: "b" }],
+        expectedApplied: 2,
+      },
+    ]);
+    const donor = flow([
+      {
+        action: "suggest_changes",
+        seed: 9,
+        operations: [{ type: "x" }],
+        expectedApplied: 1,
+      },
+    ]);
+    const observed = new Set<string>();
+    for (let seed = 0; seed < 2_000; seed += 1) {
+      const { flow: mutant, mutations } = mutateFlow(pinned, createRandom(seed), {
+        donors: [donor],
+      });
+      for (const mutation of mutations) {
+        if (OPERATIONS_CHANGING_MUTATIONS.includes(mutation)) observed.add(mutation);
+      }
+      for (const step of mutant.steps) {
+        if (step.expectedApplied !== undefined) {
+          expect(step.expectedApplied).toBe(step.operations?.length);
+        }
+      }
+    }
+    expect([...observed].sort()).toEqual([...OPERATIONS_CHANGING_MUTATIONS].sort());
   });
 });
 
