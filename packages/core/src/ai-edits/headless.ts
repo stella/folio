@@ -3593,18 +3593,6 @@ export class FolioDocxReviewer {
         addAll(anchoredNow, removed);
       }
     }
-    // A note whose reference is pending deletion keeps the comments anchored in
-    // it until the deletion is resolved, also when it is not loaded.
-    for (const [key, state] of referenceStates) {
-      if (state !== "deleted") continue;
-      const [type, id] = key.split(":");
-      const handle: FolioNoteStoryHandle = {
-        type: type === "endnote" ? "endnote" : "footnote",
-        noteId: Number(id),
-      };
-      if (loaded.has(secondaryStoryKey(handle))) continue;
-      addAll(anchoredNow, anchoredCommentIdsInBlocks(this.getNoteStory(handle)?.content ?? []));
-    }
     return withoutLostCommentThreads(comments, { anchoredBefore, anchoredNow });
   }
 
