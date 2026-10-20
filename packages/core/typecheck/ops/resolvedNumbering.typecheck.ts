@@ -4,7 +4,10 @@ import type {
   FolioAIEditOperation,
   FolioAIResolvedEditOperation,
 } from "../../src/ai-edits/types";
-import { resolveNewListOperations } from "../../src/ai-edits/newListNumbering";
+import {
+  resolveNewListOperations,
+  stageNewListOperations,
+} from "../../src/ai-edits/newListNumbering";
 import { listLevelAttrPatch } from "../../src/prosemirror/styles/resolvedStyleAttrs";
 
 const request = {
@@ -17,7 +20,7 @@ const request = {
 // @ts-expect-error the allocator must resolve newList before application
 const unresolved: FolioAIResolvedEditOperation = request;
 
-const resolved = resolveNewListOperations([request], null).operations;
+const resolved = resolveNewListOperations(stageNewListOperations([request]), null).operations;
 const applied: readonly FolioAIResolvedEditOperation[] = resolved;
 
 export type ResolvedNumberingProof = typeof applied | typeof unresolved;

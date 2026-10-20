@@ -10,6 +10,8 @@ const root = path.resolve(import.meta.dir, "../packages/core/src");
 test("AI new-list allocation has one resolver and one batch owner", async () => {
   const resolverFiles: string[] = [];
   const newListMintFiles: string[] = [];
+  const deferredValueFiles: string[] = [];
+  const negativePlaceholderFiles: string[] = [];
   for await (const relative of new Bun.Glob("**/*.ts").scan({ cwd: root })) {
     if (relative.endsWith(".test.ts") || relative.endsWith(".property.test.ts")) continue;
     const source = await Bun.file(path.join(root, relative)).text();
@@ -17,8 +19,14 @@ test("AI new-list allocation has one resolver and one batch owner", async () => 
     if (source.includes('"newList"') && source.includes("mintListInstance")) {
       newListMintFiles.push(relative);
     }
+    if (source.includes('"deferredNewList"')) deferredValueFiles.push(relative);
+    if (/placeholder\s*=\s*-\d|numId\s*[<>]=?\s*0/.test(source)) {
+      negativePlaceholderFiles.push(relative);
+    }
   }
 
   expect(resolverFiles.toSorted()).toEqual(["ai-edits/apply.ts", "ai-edits/newListNumbering.ts"]);
   expect(newListMintFiles).toEqual(["ai-edits/newListNumbering.ts"]);
+  expect(deferredValueFiles).toEqual(["ai-edits/newListNumbering.ts"]);
+  expect(negativePlaceholderFiles).toEqual([]);
 });

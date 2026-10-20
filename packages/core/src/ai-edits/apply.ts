@@ -33,6 +33,7 @@ import {
 } from "../prosemirror/plugins/revisionIds";
 
 import type { NumberingMap } from "../docx/numberingParser";
+import { isNumberingReference } from "../docx/numberingReference";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { formattingEquals } from "../docx/runConsolidator";
 import {
@@ -75,7 +76,12 @@ import {
   getDocumentNumbering,
   getDocumentNumberingInstanceIds,
 } from "../prosemirror/plugins/documentNumbering";
-import { resolveNewListOperations, stageNewListOperations } from "./newListNumbering";
+import {
+  assertNewListsAllocated,
+  resolveNewListOperations,
+  stageNewListOperations,
+  type FolioAIStagedEditOperation,
+} from "./newListNumbering";
 import {
   readAuthoredRunFormatting,
   readAuthoredRunPropertySnapshot,
@@ -239,11 +245,11 @@ import type {
   FolioAIEditApplyResult,
   FolioAIEditNormalization,
   FolioAIEditOperation as RequestedEditOperation,
-  FolioAIResolvedEditOperation as FolioAIEditOperation,
   FolioAIEditSnapshot,
   FolioAIInlineFormattingPatch,
   FolioAIEditSkipReason,
   FolioAIEditSkippedOperation,
+  FolioAIResolvedEditOperation as FolioAIEditOperation,
   FolioAISignatureParty,
 } from "./types";
 import {
@@ -253,6 +259,10 @@ import {
 } from "./word-diff";
 
 type FolioAIBlockParagraphProperties = RequestParagraphProperties<FolioContentStatedNumbering>;
+type StagedOperation = FolioAIStagedEditOperation;
+type StagedOperationNumbering = NonNullable<
+  Extract<StagedOperation, { type: "insertAfterBlock" | "insertBeforeBlock" }>["numbering"]
+>;
 
 /**
  * The only editor surface the apply logic touches: a current `state`
@@ -477,7 +487,7 @@ const ANNOTATION_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["type"]> = ne
 ]);
 
 type ResolvedOperationFields = {
-  operation: FolioAIEditOperation;
+  operation: StagedOperation;
   from: number;
   to: number;
   blockFrom: number;
@@ -526,8 +536,8 @@ const REPLACE_BLOCK_IMPACT = {
 } as const;
 
 type ReplaceBlockImpact = keyof typeof REPLACE_BLOCK_IMPACT;
-type ReplaceBlockOperation = Extract<FolioAIEditOperation, { type: "replaceBlock" }>;
-type NonReplaceBlockOperation = Exclude<FolioAIEditOperation, ReplaceBlockOperation>;
+type ReplaceBlockOperation = Extract<StagedOperation, { type: "replaceBlock" }>;
+type NonReplaceBlockOperation = Exclude<StagedOperation, ReplaceBlockOperation>;
 
 type ResolvedReplaceBlockOperation = Omit<ResolvedOperationFields, "operation"> & {
   operation: ReplaceBlockOperation;
@@ -3498,6 +3508,7 @@ const buildInsertedParagraphs = ({
   numbering,
   styleResolver,
 }: BuildInsertedParagraphsOptions): BuiltInsertedParagraphs => {
+  assertNewListsAllocated(item.operation);
   const operation = item.operation;
   if (operation.type !== "insertAfterBlock" && operation.type !== "insertBeforeBlock") {
     panic("Only paragraph insertions can build inserted paragraphs", { type: operation.type });
@@ -4075,12 +4086,18 @@ const applyFolioAIEditOperationsInternal = ({
     }
     batchClaims.add(operation.id, claim);
     const carrierBlockId = producesTrackedChanges
-      ? getTrackedFolioDocumentOperationCarrierBlockId(snapshot.blocks, operation, removedBlocksBy)
+      ? getTrackedFolioDocumentOperationCarrierBlockId(
+          snapshot.blocks,
+          requestedOperations[index] ?? panic("A planned operation lost its input", { index }),
+          removedBlocksBy,
+        )
       : undefined;
     const getRemovedBlockIds = producesTrackedChanges
       ? getTrackedFolioDocumentOperationRemovedBlockIds
       : getFolioDocumentOperationRemovedBlockIds;
-    for (const removedBlockId of getRemovedBlockIds(snapshot.blocks, operation)) {
+    const requestedOperation =
+      requestedOperations[index] ?? panic("A planned operation lost its input", { index });
+    for (const removedBlockId of getRemovedBlockIds(snapshot.blocks, requestedOperation)) {
       if (!removedBlocksBy.has(removedBlockId)) {
         removedBlocksBy.set(removedBlockId, { id: operation.id, type: operation.type });
       }
@@ -4278,11 +4295,8 @@ const applyFolioAIEditOperationsInternal = ({
     };
   };
   const executionOrder = orderBatchOperations(executableResolved, batchAddress);
-  const requestedInExecutionOrder = executionOrder.map(({ originalIndex }) => {
-    const operation = requestedOperations[originalIndex];
-    return operation ?? panic("A planned operation lost its input", { originalIndex });
-  });
-  const allocated = resolveNewListOperations(requestedInExecutionOrder, numbering);
+  const stagedInExecutionOrder = executionOrder.map(({ operation }) => operation);
+  const allocated = resolveNewListOperations(stagedInExecutionOrder, numbering);
   numbering = allocated.numbering;
   for (const [index, item] of executionOrder.entries()) {
     item.operation =
@@ -4297,6 +4311,7 @@ const applyFolioAIEditOperationsInternal = ({
     if (!item) {
       panic("The operation execution group was empty");
     }
+    assertNewListsAllocated(item.operation);
     continueSharedRevisionIds();
     if (mode === "tracked-changes" && writesParagraphPropertyChange(item)) {
       const appliedIds = new Set(applied.map(({ id }) => id));
@@ -7419,7 +7434,7 @@ const clearTouchedBackground = ({
 
 type ResolveOperationArgs = {
   snapshot: FolioAIEditSnapshot;
-  operation: FolioAIEditOperation;
+  operation: StagedOperation;
   liveBlocks: Map<string, LiveBlockEntry[]>;
   liveBlocksByParaId: Map<string, LiveBlockEntry>;
   noteReferences: NoteReferenceLabels;
@@ -8229,7 +8244,7 @@ const getTextRangeFromCleanBlock = (cleanBlock: {
   return { from, to };
 };
 
-const getOperationCommentText = (operation: FolioAIEditOperation): string | undefined =>
+const getOperationCommentText = (operation: StagedOperation): string | undefined =>
   "comment" in operation ? operation.comment?.text : undefined;
 
 type UndefinedParagraphStyleReference = {
@@ -8248,7 +8263,7 @@ type StyleDefinitionLookup = ReturnType<typeof getDocumentStyleDefinitions>;
  * construction.
  */
 const operationParagraphStyleReferences = (
-  operation: FolioAIEditOperation,
+  operation: StagedOperation,
 ): { path: string; styleId: string | null | undefined }[] => {
   switch (operation.type) {
     case "insertAfterBlock":
@@ -8281,7 +8296,7 @@ const operationParagraphStyleReferences = (
 };
 
 type FindUndefinedParagraphStyleReferenceOptions = {
-  operation: FolioAIEditOperation;
+  operation: StagedOperation;
   definitions: StyleDefinitionLookup;
   undefinedReferences: FolioUndefinedReferencePolicy;
 };
@@ -8345,17 +8360,19 @@ type UndefinedNumberingReference = { path: string; numId: number };
 
 /** The `w:num` id a stated numbering names, when it names one. */
 const statedNumberingInstance = (
-  numbering: FolioContentStatedNumbering | undefined,
+  numbering: StagedOperationNumbering | undefined,
 ): number | undefined =>
-  numbering?.kind === "reference" && numbering.numId >= 0 ? numbering.numId : undefined;
+  numbering?.kind === "reference" && isNumberingReference(numbering.numId)
+    ? numbering.numId
+    : undefined;
 
 /**
  * Every numbering instance an operation names, with the field that names it.
  * Only reference variants name an instance; inheritance, cancellation and level-only do not.
  */
 const operationNumberingReferences = (
-  operation: FolioAIEditOperation,
-): { path: string; numbering: FolioContentStatedNumbering | undefined }[] => {
+  operation: StagedOperation,
+): { path: string; numbering: StagedOperationNumbering | undefined }[] => {
   switch (operation.type) {
     case "insertAfterBlock":
     case "insertBeforeBlock":
@@ -8392,7 +8409,7 @@ const operationNumberingReferences = (
  * check nothing.
  */
 type FindUndefinedNumberingReferenceOptions = {
-  operation: FolioAIEditOperation;
+  operation: StagedOperation;
   instanceIds: ReadonlySet<number> | null;
   undefinedReferences: FolioUndefinedReferencePolicy;
 };
@@ -8436,7 +8453,7 @@ const describeUndefinedNumbering = (
   return `${path}.numId ${String(numId)} names no numbering instance in this document (${available}).`;
 };
 
-const getOperationQuote = (operation: FolioAIEditOperation): string | undefined => {
+const getOperationQuote = (operation: StagedOperation): string | undefined => {
   if (operation.type === "replaceInBlock") {
     return operation.find;
   }
