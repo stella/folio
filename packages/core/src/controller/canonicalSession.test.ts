@@ -961,6 +961,40 @@ describe("canonical session", () => {
     },
   );
 
+  test.each(["editing", "suggesting"] as const)(
+    "typing over a footnote's automatic marker keeps the marker and inserts the text in %s mode",
+    (mode) => {
+      const source = seed("Body");
+      source.package.footnotes = [
+        {
+          type: "footnote",
+          id: 12,
+          content: [
+            {
+              type: "paragraph",
+              paraId: "34567890",
+              content: [{ type: "run", content: [{ type: "noteMarker", kind: "footnote" }] }],
+            },
+          ],
+        },
+      ];
+      const session = createCanonicalSession(source).unwrap();
+      session.setMode(
+        mode === "editing" ? { type: "editing" } : { type: "suggesting", author: "Reviewer" },
+      );
+      const story = { kind: "footnote", id: 12 } as const;
+      const state = EditorState.create({ schema, doc: session.projectStory(story).unwrap().doc });
+      accept(
+        state,
+        session.prepareReplace(state, { from: 1, to: 2, text: "hello", story }).unwrap(),
+      );
+      const note = JSON.stringify(session.document.package.footnotes?.at(0));
+      expect(note).toContain('"noteMarker"');
+      expect(note).toContain("hello");
+      expect(session.canUndo).toBe(true);
+    },
+  );
+
   test("canonical input sequences keep the projection, inverse history and refusal atomic", async () => {
     await assertProperty(
       fc.asyncProperty(

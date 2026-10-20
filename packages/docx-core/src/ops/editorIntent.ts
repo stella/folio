@@ -1776,7 +1776,10 @@ export const compileEditorIntent = (
           ({ before, after }) =>
             compareGaps(fromGap, before) <= 0 && compareGaps(after, toGap) <= 0,
         );
+        // Only an empty replacement can be a no-op here: typed text over the marker is
+        // inserted beside the protected marker.
         if (
+          text.length === 0 &&
           selected.some(({ node }) => node.type === "noteMarker") &&
           selected.every(
             ({ node, ancestors }) =>
