@@ -772,13 +772,31 @@ export const paragraphLength: (paragraph: Paragraph) => number;
 export const paragraphLogicalText: (paragraph: Paragraph) => string;
 
 // @public (undocumented)
-export type ParagraphMarkCarrier = "following" | "current" | "none";
+export type ParagraphMarkOutcome = {
+    kind: "join";
+} | {
+    kind: "remove";
+} | {
+    kind: "run-in";
+} | {
+    kind: "keep";
+} | {
+    kind: "refuse";
+    reason: "untrackable";
+};
 
 // @public
-export const paragraphMarkCarrier: (input: ParagraphMarkCarrierOptions) => ParagraphMarkCarrier;
+export const paragraphMarkOutcome: (input: ParagraphMarkOutcomeInput) => ParagraphMarkOutcome;
 
-// @public
-export const paragraphMarkRemovesParagraph: (input: ParagraphMarkRemovalOptions) => boolean;
+// @public (undocumented)
+export type ParagraphMarkOutcomeInput = {
+    follows: "paragraph" | "table" | "nothing";
+    holdsContent: boolean;
+    markWasAdded: boolean;
+    containerStillEndsWithParagraph: boolean;
+    followingTableCanReceiveRunIn: boolean;
+    tableRemovalIsTrackable?: boolean;
+};
 
 // @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;

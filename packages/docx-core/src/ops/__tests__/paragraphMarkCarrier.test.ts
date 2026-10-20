@@ -89,6 +89,31 @@ test("accepting a non-empty paragraph-mark deletion runs it into the first cell 
   ]);
 });
 
+test("refuses one owned reason when an empty mark precedes a section-ending table cell", () => {
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    content: [],
+    pPrMark: { kind: "ins", info: { id: 7, author: "Reviewer" } },
+  };
+  const sectionTable = structuredClone(table);
+  const target = sectionTable.rows[0]?.cells[0]?.content[0];
+  if (target?.type !== "paragraph") throw new Error("The fixture has a first-cell paragraph.");
+  target.sectionProperties = { pageWidth: 11_906 };
+  const document: Document = {
+    package: { document: { content: [paragraph, sectionTable, finalParagraph] } },
+  };
+
+  const result = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [7],
+    decision: REVISION_DECISIONS.REJECT,
+  });
+
+  expect(result.isErr() && result.error.reason).toBe("untrackable");
+});
+
 describe("paragraphMarkOutcome", () => {
   test.each([
     {
@@ -113,6 +138,15 @@ describe("paragraphMarkOutcome", () => {
       markWasAdded: false,
       containerStillEndsWithParagraph: false,
       followingTableCanReceiveRunIn: false,
+      tableRemovalIsTrackable: false,
+      expected: "refuse",
+    },
+    {
+      follows: "table",
+      holdsContent: false,
+      markWasAdded: true,
+      containerStillEndsWithParagraph: true,
+      followingTableCanReceiveRunIn: true,
       expected: "remove",
     },
     {

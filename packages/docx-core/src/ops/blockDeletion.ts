@@ -32,7 +32,8 @@ export type ParagraphMarkOutcome =
   | { kind: "join" }
   | { kind: "remove" }
   | { kind: "run-in" }
-  | { kind: "keep" };
+  | { kind: "keep" }
+  | { kind: "refuse"; reason: "untrackable" };
 
 export type ParagraphMarkOutcomeInput = {
   follows: "paragraph" | "table" | "nothing";
@@ -40,6 +41,7 @@ export type ParagraphMarkOutcomeInput = {
   markWasAdded: boolean;
   containerStillEndsWithParagraph: boolean;
   followingTableCanReceiveRunIn: boolean;
+  tableRemovalIsTrackable?: boolean;
 };
 
 /** The single structural outcome of resolving a paragraph mark. */
@@ -49,11 +51,14 @@ export const paragraphMarkOutcome = ({
   markWasAdded,
   containerStillEndsWithParagraph,
   followingTableCanReceiveRunIn,
+  tableRemovalIsTrackable = true,
 }: ParagraphMarkOutcomeInput): ParagraphMarkOutcome => {
   switch (follows) {
     case "paragraph":
       return { kind: "join" };
     case "table":
+      if (!tableRemovalIsTrackable)
+        return { kind: "refuse", reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE };
       if (!holdsContent) return { kind: "remove" };
       return followingTableCanReceiveRunIn ? { kind: "run-in" } : { kind: "keep" };
     case "nothing":

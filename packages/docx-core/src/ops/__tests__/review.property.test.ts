@@ -760,7 +760,8 @@ describe("tracked operations and their resolution", () => {
           const op = trackedOpFor(document, seed);
           cases.push([op, namedParagraphs(op)]);
           const holding = new Set<string>();
-          for (const { paragraph } of storyParagraphs(document.package.document)) {
+          for (const location of storyParagraphs(document.package.document)) {
+            const { paragraph } = location;
             const own = revisionIdsIn(paragraph);
             if (!ids.some((id) => own.has(id))) continue;
             holding.add(idKey(paragraph.paraId ?? ""));
@@ -778,7 +779,9 @@ describe("tracked operations and their resolution", () => {
                 follows: "table",
                 holdsContent: paragraphLength(paragraph) > 0,
                 markWasAdded,
-                containerStillEndsWithParagraph: false,
+                containerStillEndsWithParagraph:
+                  blockListAt(document.package.document.content, location.list).at(-1)?.type ===
+                  "paragraph",
                 followingTableCanReceiveRunIn: true,
               }).kind === "run-in"
             ) {

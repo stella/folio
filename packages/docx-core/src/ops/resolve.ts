@@ -120,7 +120,7 @@ const tableCanReceiveParagraphRunIn = (paragraph: Paragraph, table: Table): bool
       return false;
     }
     const target = cell.content.at(0);
-    if (target?.type === "paragraph") return true;
+    if (target?.type === "paragraph") return target.sectionProperties === undefined;
     if (target?.type !== "table") return false;
     current = target;
   }
@@ -1196,11 +1196,25 @@ const joinOps = (
     holdsContent: !empty,
     markWasAdded: added,
     containerStillEndsWithParagraph:
-      containerFinal &&
-      blocks.some((block, index) => index !== location.index && block.type === "paragraph"),
+      next?.type === "table"
+        ? blocks.at(-1)?.type === "paragraph"
+        : containerFinal &&
+          blocks.some((block, index) => index !== location.index && block.type === "paragraph"),
     followingTableCanReceiveRunIn:
       next?.type === "table" && tableCanReceiveParagraphRunIn(paragraph, next),
+    tableRemovalIsTrackable:
+      next?.type !== "table" ||
+      (blocks.at(-1)?.type === "paragraph" && tableCanReceiveParagraphRunIn(paragraph, next)),
   });
+  if (outcome.kind === "refuse") {
+    return Result.err(
+      refusal(
+        op,
+        outcome.reason,
+        `Resolving the mark of ${paraId} would leave its container without a final paragraph.`,
+      ),
+    );
+  }
   if (
     (outcome.kind === "remove" || outcome.kind === "run-in") &&
     blocks.length > 1 &&
