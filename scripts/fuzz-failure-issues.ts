@@ -598,7 +598,8 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   const malformed = (what: string) =>
     new SignatureStateError({ message: `Issue #${number} has a malformed ${what}` });
   if (!SIGNATURE.test(id)) throw malformed("signature");
-  const format = body.split("\n").includes(ISSUE_BODY_FORMAT_MARKER) ? "canonical" : "legacy";
+  // The writer emits the marker as the first line; a marker elsewhere is body text.
+  const format = body.split("\n", 1)[0] === ISSUE_BODY_FORMAT_MARKER ? "canonical" : "legacy";
   const encodedTest = fieldOf(body, "Test") ?? "";
   const encodedFailure = fieldOf(body, "Failure") ?? "";
   const parseBodyField = format === "canonical" ? parseInlineText : parseLegacyField;

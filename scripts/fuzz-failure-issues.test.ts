@@ -559,19 +559,38 @@ test("markdown-significant signature fields round-trip without changing text", (
 });
 
 test.each([
-  ["normalized text", "legacy  test\nname", "legacy\tfailure", "https://example.test/runs/1"],
-  ["quoted failure", "example", '"failure"', "https://example.test/runs/2"],
-  ["JSON-looking fields and run URL", '"example"', '"failure"', '"https://example.test/runs/3"'],
+  [
+    "normalized text",
+    "legacy  test\nname",
+    "legacy\tfailure",
+    "https://example.test/runs/1",
+    "legacy failure",
+  ],
+  ["quoted failure", "example", '"failure"', "https://example.test/runs/2", "legacy failure"],
+  [
+    "JSON-looking fields and run URL",
+    '"example"',
+    '"failure"',
+    '"https://example.test/runs/3"',
+    "legacy failure",
+  ],
+  [
+    "the format marker inside its assertion",
+    '"example"',
+    '"failure"',
+    "https://example.test/runs/4",
+    "before\n<!-- fuzz-issue-format: 2 -->\nafter",
+  ],
 ])(
   "a previous-renderer body with %s is read and rewritten canonically",
-  (_, testName, failure, run) => {
+  (_, testName, failure, run, assertion) => {
     const state: SignatureState = {
       signature: signatureOf({ test: testName, assertion: failure }),
       occurrences: 2,
       seeds: [3, 5],
       lastSeen: { lane: "nightly", run },
       lanes: [{ lane: "nightly", lastRun: run, cleanRuns: 0 }],
-      assertion: "legacy failure",
+      assertion,
       repro: { seed: 5, command: "bun test legacy" },
     };
     // This is the exact free-text normalization used by the previous renderer.
