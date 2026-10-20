@@ -39,4 +39,11 @@ test("local env files are ignored at the root and every Vite config directory", 
     .filter(Boolean);
 
   expect(new Set(ignored)).toEqual(new Set(candidates));
+
+  // An ignore rule does not untrack a file Git already tracks.
+  expect(
+    tracked.filter(
+      (file) => /^\.env(?:[.-]|$)/u.test(basename(file)) && basename(file) !== ".env.example",
+    ),
+  ).toEqual([]);
 });
