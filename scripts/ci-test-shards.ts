@@ -4,6 +4,7 @@
 import { panic } from "better-result";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 import focusedTests from "./ci-focused-tests.json";
 import timings from "./ci-test-timings.json";
 
@@ -261,21 +262,63 @@ const resolveSpecifier = (
   return null;
 };
 
-const hasNonLiteralDynamicImport = (source: string) => {
-  const masked = source.replace(
-    /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\$]|\$(?!\{))*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu,
-    (match) => " ".repeat(match.length),
-  );
-  for (const match of masked.matchAll(/\bimport\s*\(/gu)) {
-    const argument = source.slice((match.index ?? 0) + match[0].length);
-    if (
-      /^\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\$]|\$(?!\{))*`)\s*\)/u.test(argument)
-    ) {
-      continue;
+const unsafeModuleLoads = (source: string, file: string) => {
+  const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, false);
+  const failures = new Set<string>();
+  const visit = (node: ts.Node, parent?: ts.Node) => {
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const argument = node.arguments.at(0);
+      if (
+        node.arguments.length !== 1 ||
+        argument === undefined ||
+        (!ts.isStringLiteral(argument) && !ts.isNoSubstitutionTemplateLiteral(argument))
+      ) {
+        failures.add("non-literal dynamic import");
+      }
     }
-    return true;
-  }
-  return false;
+    if (ts.isIdentifier(node) && node.text === "require") {
+      const argument = parent && ts.isCallExpression(parent) ? parent.arguments.at(0) : undefined;
+      if (
+        !parent ||
+        !ts.isCallExpression(parent) ||
+        parent.expression !== node ||
+        parent.arguments.length !== 1 ||
+        argument === undefined ||
+        !ts.isStringLiteral(argument)
+      ) {
+        failures.add("unsafe require reference");
+      }
+    }
+    if (ts.isIdentifier(node) && node.text === "createRequire") {
+      failures.add("createRequire reference");
+    }
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "module" &&
+      node.name.text === "require"
+    ) {
+      failures.add("module.require reference");
+    }
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      node.name.text === "resolve" &&
+      ts.isMetaProperty(node.expression) &&
+      node.expression.keywordToken === ts.SyntaxKind.ImportKeyword
+    ) {
+      failures.add("import.meta.resolve reference");
+    }
+    if (
+      ts.isNewExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "Worker"
+    ) {
+      failures.add("Worker constructor");
+    }
+    ts.forEachChild(node, (child) => visit(child, node));
+  };
+  visit(sourceFile);
+  return [...failures];
 };
 
 const transpilerLoader = (file: string) => {
@@ -317,8 +360,7 @@ export const buildModuleGraph = (
       transpilers.set(loader, transpiler);
     }
     const failures: string[] = [];
-    // scanImports intentionally omits non-literal imports, so detect that unsafe form separately.
-    if (hasNonLiteralDynamicImport(source)) failures.push("non-literal dynamic import");
+    failures.push(...unsafeModuleLoads(source, importer));
     let imports = transpiler.scanImports("");
     try {
       imports = transpiler.scanImports(source);

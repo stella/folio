@@ -203,6 +203,67 @@ describe("reverse import closure", () => {
     expect(result.cause).toBeUndefined();
   });
 
+  test("fails closed for module-loading forms outside the static allowlist", () => {
+    for (const [loader, changedFile] of [
+      ['const target = "./value"; require(target);', "packages/app/src/value.ts"],
+      ['const load = require; load("./value");', "packages/app/src/value.ts"],
+      [
+        'import { createRequire } from "node:module"; createRequire(import.meta.url)("./value");',
+        "packages/app/src/value.ts",
+      ],
+      ['new Worker(new URL("./worker.ts", import.meta.url));', "packages/app/src/worker.ts"],
+    ]) {
+      const root = fixture({
+        "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
+        "packages/app/src/value.ts": "export {};",
+        "packages/app/src/worker.ts": "export {};",
+        "packages/app/src/loader.ts": loader,
+        "packages/app/src/selected.test.ts": 'import "./loader";',
+        "packages/app/src/other.test.ts": "export {};",
+        "packages/app/src/third.test.ts": "export {};",
+      });
+      const result = selectFastTestSuitesWithReason({
+        suites: suite([
+          "packages/app/src/selected.test.ts",
+          "packages/app/src/other.test.ts",
+          "packages/app/src/third.test.ts",
+        ]),
+        changedFiles: [changedFile],
+        focusedFiles: [],
+        repoRoot: root,
+      });
+      expect(result.suites.flatMap(({ files }) => files)).toEqual([
+        "packages/app/src/selected.test.ts",
+      ]);
+      expect(result.cause).toBe("unknown dependencies in 1 file: packages/app/src/loader.ts");
+    }
+  });
+
+  test("keeps selection precise when a module uses only static loading forms", () => {
+    const root = fixture({
+      "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
+      "packages/app/src/value.ts": "export {};",
+      "packages/app/src/unrelated.ts": "export {};",
+      "packages/app/src/loader.ts":
+        'import "./value"; export { value } from "./value"; import("./value"); require("./value");',
+      "packages/app/src/selected.test.ts": 'import "./loader";',
+      "packages/app/src/other.test.ts": "export {};",
+      "packages/app/src/third.test.ts": "export {};",
+    });
+    const result = selectFastTestSuitesWithReason({
+      suites: suite([
+        "packages/app/src/selected.test.ts",
+        "packages/app/src/other.test.ts",
+        "packages/app/src/third.test.ts",
+      ]),
+      changedFiles: ["packages/app/src/unrelated.ts"],
+      focusedFiles: [],
+      repoRoot: root,
+    });
+    expect(result.suites).toEqual([]);
+    expect(result.cause).toBeUndefined();
+  });
+
   test("follows a tsconfig path alias that resolves inside the repository", () => {
     const root = fixture({
       "tsconfig.json": JSON.stringify({
