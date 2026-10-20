@@ -93,6 +93,19 @@ const paragraphs = (state: EditorState) => {
 };
 
 describe("editing across a section break", () => {
+  test("splitting a section-ending paragraph keeps the break on the trailing half", () => {
+    const state = threeSections();
+    const next = state.apply(state.tr.split(textStart(state, 0) + 2));
+
+    expect(paragraphs(next)).toEqual([
+      { text: "On", record: null },
+      { text: "e.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "Three.", record: null },
+    ]);
+    expect(getTrackedSectionEndpointRemoval(next)).toBeNull();
+  });
+
   test("Backspace at the start of the next paragraph merges the section into the next", () => {
     const state = threeSections();
     const next = run(state, { anchor: textStart(state, 1) }, joinBackward);

@@ -48,7 +48,7 @@ export const sectionMarkEditsOf = (
   for (const transaction of transactions) {
     for (const [index, step] of transaction.steps.entries()) {
       const doc = transaction.docs[index];
-      if (step instanceof ReplaceStep && step.from < step.to && doc) {
+      if (step instanceof ReplaceStep && doc) {
         replacements.push({ step, doc, mapIndex: mapping.maps.length });
       }
       const map = transaction.mapping.maps[index];
@@ -58,6 +58,30 @@ export const sectionMarkEditsOf = (
 
   for (const { step, doc, mapIndex } of replacements) {
     const { from, to } = step;
+    const after = mapping.slice(mapIndex);
+    if (from === to) {
+      const $split = doc.resolve(from);
+      const record = isParagraph($split.parent) ? sectionPropertiesOf($split.parent) : null;
+      if (record === null) continue;
+
+      const left = after.mapResult(from, -1);
+      const right = after.mapResult(from, 1);
+      if (left.deleted || right.deleted) continue;
+      const $left = finalDoc.resolve(left.pos);
+      const $right = finalDoc.resolve(right.pos);
+      if (
+        isParagraph($left.parent) &&
+        isParagraph($right.parent) &&
+        $left.start() !== $right.start()
+      ) {
+        // Splitting inserts a new paragraph mark before the authored mark. The
+        // new leading paragraph does not end the section; the trailing half,
+        // which still owns the authored mark, does.
+        carriers.push({ position: $left.before(), record: null });
+        carriers.push({ position: $right.before(), record });
+      }
+      continue;
+    }
     doc.nodesBetween(from, to, (node, position) => {
       if (!isParagraph(node)) return true;
       const record = sectionPropertiesOf(node);
@@ -78,7 +102,6 @@ export const sectionMarkEditsOf = (
     // The paragraph that ends with the right paragraph's mark holds its
     // record; a different paragraph left holding the first one's node ends
     // with a mark the replacement brought, and holds no break.
-    const after = mapping.slice(mapIndex);
     const left = after.mapResult(from, -1);
     const right = after.mapResult(to, 1);
     if (right.deleted) continue;
