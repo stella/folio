@@ -216,6 +216,43 @@ describe("setRunProps", () => {
   });
 });
 
+describe("setParagraphProps", () => {
+  test.each([
+    {
+      name: "an empty property set kept by request",
+      patch: {},
+      whenEmpty: EMPTY_PROPERTY_SETS.KEEP,
+      revision: undefined,
+    },
+    {
+      name: "source replay metadata only",
+      patch: { sourceXml: "<w:pPr/>" },
+      whenEmpty: undefined,
+      revision: undefined,
+    },
+    {
+      name: "a tracked source replay metadata patch",
+      patch: { sourceXml: "<w:pPr/>" },
+      whenEmpty: undefined,
+      revision: { id: 1, author: "Reviewer" },
+    },
+  ])("treats $name as a canonical no-op", ({ patch, whenEmpty, revision }) => {
+    const document = documentOf({ type: "paragraph", paraId: "00000001", content: [] });
+    const result = applied(document, {
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      patch,
+      ...(whenEmpty === undefined ? {} : { whenEmpty }),
+      ...(revision === undefined ? {} : { revision }),
+    });
+
+    expect(result.document).toBe(document);
+    expect(result.inverse).toEqual([]);
+    expect(paragraphs(result.document)[0]?.propertyChanges).toBeUndefined();
+  });
+});
+
 describe("splitBlock and joinBlocks", () => {
   const sectionProperties = { pageWidth: 11906 };
   const pPrMark = { kind: "ins" as const, info: { id: 5, author: "A" } };

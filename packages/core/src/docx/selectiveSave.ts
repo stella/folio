@@ -17,7 +17,7 @@ import type { Document } from "../types/document";
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 import { detectDocxConformanceClass } from "./conformance";
 import { parseCommentsExtended, type CommentExtendedInfo } from "./commentParser";
-import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
+import { withoutExhaustedComments, withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { parseNumbering } from "./numberingParser";
@@ -387,6 +387,7 @@ export async function attemptSelectiveSave(
   originalBuffer: ArrayBuffer,
   options: SelectiveSaveOptions,
 ): Promise<ArrayBuffer | null> {
+  doc = withoutExhaustedComments(doc);
   const { changedParaIds, structuralChange, hasUntrackedChanges } = options;
   const maxBytes = options.maxBytes ?? DEFAULT_SELECTIVE_SAVE_MAX_BYTES;
 

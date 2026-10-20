@@ -34,6 +34,7 @@ test(
                     (_, id) =>
                       ({
                         id,
+                        anchorKind: "range",
                         author: "Reviewer",
                         content: [
                           {
@@ -87,6 +88,7 @@ test(
               });
               expect(published.isErr() ? published.error : undefined).toBeUndefined();
               state = published.unwrap().state;
+              expect(state.selection.empty).toBe(true);
             }
             const { ids: revisionIds } = getTrackedChangeStatsFromDoc(toProseDoc(session.document));
             if (revisionIds.length > 0) {
@@ -115,7 +117,8 @@ test(
             });
             coveredText.set(type, covered.join(""));
           }
-          expect(coveredText.get("suggesting")).toBe(coveredText.get("editing"));
+          expect(coveredText.get("editing")).toBe("");
+          expect(coveredText.get("suggesting")).toBe(first);
         },
       ),
       {

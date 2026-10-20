@@ -140,7 +140,7 @@ describe("table operation source coordinates", () => {
             : before;
           const after = outsideFirst ? [{ ...sourceComment, blockId: next.id }] : [];
           assert.deepEqual(
-            compareComments(model, before, after, liveBefore, "tracked-changes"),
+            compareComments(model, before, after, following, liveBefore, "tracked-changes"),
             [],
           );
           assert.ok(
@@ -148,6 +148,7 @@ describe("table operation source coordinates", () => {
               model,
               before,
               [...after, cellComment],
+              following,
               liveBefore,
               "tracked-changes",
             ).some((problem) => problem.includes("outlived the block")),
@@ -275,6 +276,7 @@ describe("table operation source coordinates", () => {
                 model,
                 [...cellComments, outsideComment],
                 [{ ...outsideComment, blockId: tail.id }],
+                [{ ...tail, text: prefix + tail.text }],
                 [...cellComments, { ...outsideComment, blockId: outsideSource.id }],
                 "tracked-changes",
               ),

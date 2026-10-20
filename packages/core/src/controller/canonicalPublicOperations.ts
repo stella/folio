@@ -63,15 +63,15 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS = {
   deleteBlock: CANONICAL_GAP.publicUnsupportedInline,
   commentOnBlock: "compile",
   commentOnRange: "compile",
-  insertTable: CANONICAL_GAP.publicTableProjection,
-  insertSignatureTable: CANONICAL_GAP.publicTableProjection,
-  deleteTable: CANONICAL_GAP.publicTableProjection,
-  insertTableRow: CANONICAL_GAP.publicTableProjection,
-  deleteTableRow: CANONICAL_GAP.publicTableProjection,
-  insertTableColumn: CANONICAL_GAP.publicTableProjection,
-  deleteTableColumn: CANONICAL_GAP.publicTableProjection,
-  mergeTableCells: CANONICAL_GAP.publicTableProjection,
-  splitTableCell: CANONICAL_GAP.publicTableProjection,
+  insertTable: CANONICAL_GAP.publicTableStructure,
+  insertSignatureTable: CANONICAL_GAP.publicTableStructure,
+  deleteTable: CANONICAL_GAP.publicTableStructure,
+  insertTableRow: CANONICAL_GAP.publicTableStructure,
+  deleteTableRow: CANONICAL_GAP.publicTableStructure,
+  insertTableColumn: CANONICAL_GAP.publicTableStructure,
+  deleteTableColumn: CANONICAL_GAP.publicTableStructure,
+  mergeTableCells: CANONICAL_GAP.publicTableStructure,
+  splitTableCell: CANONICAL_GAP.publicTableStructure,
 } as const satisfies Record<FolioDocumentOperation["type"], "compile" | CanonicalGap>;
 
 export type CanonicalPublicOperationOptions = Omit<
@@ -700,17 +700,9 @@ export class CanonicalPublicOperations {
         };
         break;
       case "mergeBlockWithNext": {
-        const body = this.options.session.document.package.document.content;
-        if (story !== "main")
-          return refusal(
-            "unsupportedBlock",
-            "Canonical public joins currently require the main story.",
-          );
-        const next = body.at(
-          body.findIndex((block) => block.type === "paragraph" && block.paraId === blockId) + 1,
-        );
-        if (next?.type !== "paragraph" || !next.paraId) return refusal("missingBlock");
-        intent = { type: "joinParagraphs", story, blockId, nextBlockId: next.paraId };
+        const next = projection.value.nextParagraphInContainer(blockId);
+        if (next === undefined) return refusal("missingBlock");
+        intent = { type: "joinParagraphs", story, blockId, nextBlockId: next.blockId };
         break;
       }
       case "formatRange": {

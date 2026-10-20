@@ -20,11 +20,11 @@ const INSERTION_CASES = [false, true].flatMap((removal) =>
   [false, true].map((independent) => ({ removal, independent })),
 );
 
-const paragraph = (paraId: string, text: string, styleId = NORMAL_STYLE) => ({
+const paragraph = (paraId: string, text: string, styleId: string | null = NORMAL_STYLE) => ({
   type: "paragraph" as const,
   paraId,
   textId: paraId,
-  formatting: { styleId },
+  ...(styleId === null ? {} : { formatting: { styleId } }),
   content: [{ type: "run" as const, content: [{ type: "text" as const, text }] }],
 });
 
@@ -211,7 +211,7 @@ test("unstyled redline insertions preserve differing default paragraph styles in
               document.package.document.content = [
                 paragraph("93000001", `Leading anchor ${suffix}`, "Anchor"),
                 ...(side === "revised"
-                  ? [{ ...paragraph("93000002", `Unstyled insertion ${suffix}`), formatting: {} }]
+                  ? [paragraph("93000002", `Unstyled insertion ${suffix}`, null)]
                   : []),
                 paragraph("93000003", `Trailing anchor ${suffix}`, "Anchor"),
               ];

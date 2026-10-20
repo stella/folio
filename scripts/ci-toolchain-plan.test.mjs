@@ -368,7 +368,7 @@ describe("required shared toolchain policy", () => {
     const writeWorkflow = (selector) =>
       writeFileSync(
         workflowFile,
-        `name: Example\non: push\njobs:\n  example:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${selector} # ${action.version}\n`,
+        `name: Example\non: push\njobs:\n  example:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/checkout@${selector} # ${action.version}\n`,
       );
     try {
       mkdirSync(path.dirname(workflowFile), { recursive: true });
@@ -448,8 +448,7 @@ describe("published Node minimum", () => {
         .map((step) => step.run),
     ).toEqual([`bun scripts/consumer-scenarios.ts --typecheck --tarballs ${download.with.path}`]);
     expect(JSON.parse(evaluationForMinimum().env.JOB_SCOPES)[floor.job]).toEqual({
-      area: "consumer_scenarios_required",
-      depth: "full",
+      area: "packaged_consumer_required",
     });
     const root = JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8"));
     expect(root.scripts["check:toolchain"]).toBe(

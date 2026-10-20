@@ -23,6 +23,11 @@
       "path": "18:0:0:0:0:0:0:0:3:3:2:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:4:4:4:4:4:4:4:4:4:3:3:3:3:3:3:3:3:3:4:7:12:8:5:5:7:4:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:15:9:11:9:11:9:9:11:13:11:29:3:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:12:11:11:11:11:11:11:11:11:11",
       "date": "2026-10-02",
       "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": 1500882896,
+      "date": "2026-10-18",
+      "note": "Restore retired comment anchors before compound inverse operations that address their original structure."
     }
   ],
   "an operation's inverse restores the document exactly": [
