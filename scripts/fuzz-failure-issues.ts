@@ -379,7 +379,6 @@ const parseInlineText = (value: string, limit = FIELD_LIMIT): string | undefined
 
 const parseLegacyField = (value: string, limit = FIELD_LIMIT): string | undefined => {
   // Remove this read-only path once no open fuzz-failure issue has a legacy body.
-  if (parseInlineText(value, limit) !== undefined) return undefined;
   return line(value, limit) === value ? value : undefined;
 };
 
@@ -405,6 +404,7 @@ export type SignatureState = {
 };
 
 const ISSUE_BODY_LIMIT = 65_535;
+const ISSUE_BODY_FORMAT_MARKER = "<!-- fuzz-issue-format: 2 -->";
 const LANE_TABLE_HEADER = ["| Lane | Last run | Clean scheduled runs |", "| --- | --- | --- |"];
 
 type ShellWord = { raw: string; value: string };
@@ -540,6 +540,7 @@ export const renderSignatureIssue = (state: SignatureState): IssueContent => {
   const { signature } = state;
   const title = `${TITLE_PREFIX} [${signature.id}]: ${line(signature.test, 200)}: ${line(signature.failure, 200)}`;
   const prefix = [
+    ISSUE_BODY_FORMAT_MARKER,
     `Signature: ${signature.id}`,
     `Test: ${inlineText(signature.test)}`,
     `Failure: ${inlineText(signature.failure)}`,
@@ -597,14 +598,12 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   const malformed = (what: string) =>
     new SignatureStateError({ message: `Issue #${number} has a malformed ${what}` });
   if (!SIGNATURE.test(id)) throw malformed("signature");
+  const format = body.split("\n").includes(ISSUE_BODY_FORMAT_MARKER) ? "canonical" : "legacy";
   const encodedTest = fieldOf(body, "Test") ?? "";
   const encodedFailure = fieldOf(body, "Failure") ?? "";
-  const canonicalTest = parseInlineText(encodedTest);
-  const canonicalFailure = parseInlineText(encodedFailure);
-  const format =
-    canonicalTest !== undefined && canonicalFailure !== undefined ? "canonical" : "legacy";
-  const test = format === "canonical" ? canonicalTest : parseLegacyField(encodedTest);
-  const failure = format === "canonical" ? canonicalFailure : parseLegacyField(encodedFailure);
+  const parseBodyField = format === "canonical" ? parseInlineText : parseLegacyField;
+  const test = parseBodyField(encodedTest);
+  const failure = parseBodyField(encodedFailure);
   const occurrences = Number(fieldOf(body, "Occurrences"));
   const seeds = seedsOf(fieldOf(body, "Seeds") ?? "");
   const lastSeen = /^Last seen: (\S+) (.*)$/mu.exec(body);
