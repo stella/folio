@@ -1772,9 +1772,9 @@ export const compileEditorIntent = (
             from.zeroWidthBefore ?? zeroWidthLeavesAt(paragraph.content, from.offset).length,
         };
         const toGap = { offset: to.offset, zeroWidthBefore: to.zeroWidthBefore ?? 0 };
+        // Every leaf the selection touches, including a partly selected text leaf.
         const selected = leafSpans(paragraph.content).filter(
-          ({ before, after }) =>
-            compareGaps(fromGap, before) <= 0 && compareGaps(after, toGap) <= 0,
+          ({ before, after }) => compareGaps(before, toGap) < 0 && compareGaps(fromGap, after) < 0,
         );
         // Only an empty replacement can be a no-op here: typed text over the marker is
         // inserted beside the protected marker.

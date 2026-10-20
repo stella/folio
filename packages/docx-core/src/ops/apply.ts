@@ -865,10 +865,11 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
   const protectedMark = automaticNoteMarkBetween(story, paragraph, from, to);
   let content = remaining;
   if (protectedMark !== undefined) {
+    // A leaf counts when the range covers any part of it, including part of a text leaf.
     const hasOtherSurvivingContent = leafSpans(paragraph.content).some(
       ({ node, ancestors, before, after }) =>
-        compareGaps(from, before) <= 0 &&
-        compareGaps(after, to) <= 0 &&
+        compareGaps(before, to) < 0 &&
+        compareGaps(from, after) < 0 &&
         node.type !== "noteMarker" &&
         !ancestors.some(isRemovedRevisionNode),
     );
