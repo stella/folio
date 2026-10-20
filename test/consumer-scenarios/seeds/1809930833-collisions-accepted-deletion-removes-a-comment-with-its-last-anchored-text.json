@@ -1,0 +1,7 @@
+{
+  "seed": 1809930833,
+  "steps": 20,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "accepted deletion removes a comment with its last anchored text"
+}

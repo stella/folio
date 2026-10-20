@@ -1,0 +1,7 @@
+{
+  "seed": 1026398003,
+  "steps": 16,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "range deletions preserve saved revision ancestry"
+}
