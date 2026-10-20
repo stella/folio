@@ -24,18 +24,25 @@ import { isCommentAnchorCarrierType } from "@stll/docx-core/ops";
 import { visitCommentMarkers } from "../docx/commentAnchorIndex";
 import { readCommentReferenceAttrs } from "../prosemirror/commentReferenceAttrs";
 import { COMMENT_REFERENCE_NODE_NAME } from "../prosemirror/extensions/nodes/CommentReferenceExtension";
+import { RANGE_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/RangeAnchorExtension";
+import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import type { BlockContent, Comment } from "../types/document";
 
 /** Comment ids anchored by one editor node, regardless of anchor representation. */
 export const commentAnchorIdsForNode = (node: PMNode): readonly number[] => {
+  const ids: number[] = [];
   if (node.type.name === COMMENT_REFERENCE_NODE_NAME) {
     const attrs = readCommentReferenceAttrs(node);
-    return attrs.ok ? [attrs.value.commentId] : [];
+    if (attrs.ok) ids.push(attrs.value.commentId);
+  } else if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+    const attrs = readRangeAnchorAttrs(node);
+    if (attrs.ok && attrs.value.start.type === "commentRangeStart") ids.push(attrs.value.start.id);
   }
-  return node.marks.flatMap((mark) => {
+  for (const mark of node.marks) {
     const commentId = mark.attrs["commentId"];
-    return mark.type.name === "comment" && typeof commentId === "number" ? [commentId] : [];
-  });
+    if (mark.type.name === "comment" && typeof commentId === "number") ids.push(commentId);
+  }
+  return ids;
 };
 
 /** Whether an inline node only locates a comment rather than being covered content. */
