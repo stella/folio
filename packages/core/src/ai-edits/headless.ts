@@ -3500,14 +3500,19 @@ export class FolioDocxReviewer {
         target.add(id);
       }
     };
+    // Read every loaded story directly. Its current document still owns anchors
+    // inside pending tracked deletions, even when another projection no longer
+    // lists the story as reachable.
+    for (const entry of loaded.values()) {
+      addAll(anchoredBefore, anchoredCommentIdsInProseDoc(entry.initialState.doc));
+      addAll(anchoredNow, anchoredCommentIdsInProseDoc(entry.state.doc, entry.initialState.doc));
+    }
     for (const handle of this.listStoryHandlesInternal()) {
       if (handle.type === "main") {
         continue;
       }
       const entry = loaded.get(secondaryStoryKey(handle));
       if (entry) {
-        addAll(anchoredBefore, anchoredCommentIdsInProseDoc(entry.initialState.doc));
-        addAll(anchoredNow, anchoredCommentIdsInProseDoc(entry.state.doc));
         continue;
       }
       const source =
@@ -3519,17 +3524,29 @@ export class FolioDocxReviewer {
     // A note that went with its reference takes the comments anchored in it.
     for (const handle of this.removedNoteStories.values()) {
       const entry = loaded.get(secondaryStoryKey(handle));
+      if (entry) {
+        if (noteReferenceStates(mainState.doc).get(noteStoryKey(handle)) === "deleted") {
+          const source = (
+            handle.type === "footnote"
+              ? this.baseDocument.package.footnotes
+              : this.baseDocument.package.endnotes
+          )?.find((note) => note.id === handle.noteId);
+          addAll(anchoredNow, anchoredCommentIdsInBlocks(source?.content ?? []));
+        }
+        continue;
+      }
       addAll(
         anchoredBefore,
-        entry
-          ? anchoredCommentIdsInProseDoc(entry.initialState.doc)
-          : anchoredCommentIdsInBlocks(
-              (handle.type === "footnote"
-                ? this.baseDocument.package.footnotes
-                : this.baseDocument.package.endnotes
-              )?.find((note) => note.id === handle.noteId)?.content ?? [],
-            ),
+        anchoredCommentIdsInBlocks(
+          (handle.type === "footnote"
+            ? this.baseDocument.package.footnotes
+            : this.baseDocument.package.endnotes
+          )?.find((note) => note.id === handle.noteId)?.content ?? [],
+        ),
       );
+    }
+    if ([...noteReferenceStates(mainState.doc).values()].includes("deleted")) {
+      addAll(anchoredNow, anchoredBefore);
     }
     return withoutLostCommentThreads(comments, { anchoredBefore, anchoredNow });
   }
@@ -3541,15 +3558,31 @@ export class FolioDocxReviewer {
    */
   private commentAnchors(): Map<number, FolioCommentAnchor> {
     const anchors = new Map<number, FolioCommentAnchor>();
+    const add = (doc: PMNode, story: FolioEditableDocumentStoryHandle) => {
+      for (const anchor of getCommentAnchorsFromDoc(doc)) {
+        if (!anchors.has(anchor.commentId)) {
+          anchors.set(anchor.commentId, {
+            text: anchor.quote,
+            blockId: anchor.blockId,
+            story,
+          });
+        }
+      }
+    };
     for (const story of this.listStoryHandlesInternal()) {
       const doc = story.type === "main" ? this.state.doc : this.readSecondaryStoryDoc(story);
       if (!doc) {
         continue;
       }
-      for (const anchor of getCommentAnchorsFromDoc(doc)) {
-        if (!anchors.has(anchor.commentId)) {
-          anchors.set(anchor.commentId, { text: anchor.quote, blockId: anchor.blockId, story });
-        }
+      add(doc, story);
+    }
+    for (const story of this.removedNoteStories.values()) {
+      if (noteReferenceStates(this.state.doc).get(noteStoryKey(story)) !== "deleted") {
+        continue;
+      }
+      const entry = this.secondaryStoryStates.get(secondaryStoryKey(story));
+      if (entry) {
+        add(entry.initialState.doc, story);
       }
     }
     return anchors;

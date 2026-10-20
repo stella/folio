@@ -23,6 +23,7 @@ import JSZip from "jszip";
 import { createDocx } from "../docx/rezip";
 import type { Comment, Document, Paragraph, ParagraphContent, Table } from "../types/document";
 import { FolioDocxReviewer, type FolioReviewComment } from "./headless";
+import { createFolioAITextRangeHandle } from "./snapshot";
 
 const run = (text: string): ParagraphContent => ({
   type: "run",
@@ -126,6 +127,92 @@ const commentOnTrackedInsertion = async (): Promise<FolioDocxReviewer> => {
 };
 
 const SURVIVOR = { id: 1, text: "On surviving text.", anchoredText: "Keep.", replies: [] };
+
+const footnoteComment = async (): Promise<FolioDocxReviewer> => {
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          paragraph("31000001", [{ type: "run", content: [{ type: "footnoteRef", id: 1 }] }]),
+        ],
+      },
+      footnotes: [
+        {
+          type: "footnote",
+          id: 1,
+          noteType: "normal",
+          content: [paragraph("32000001", [run("Footnote text.")])],
+        },
+      ],
+    },
+  };
+  const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document), {
+    author: "Editor",
+  });
+  const story = { type: "footnote", noteId: 1 } as const;
+  const [block] = reviewer.snapshotStory(story)!.blocks;
+  const result = reviewer.applyDocumentOperationsToStory({
+    story,
+    batch: {
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "comment",
+          type: "commentOnRange",
+          range: createFolioAITextRangeHandle({
+            blockId: block!.id,
+            text: block!.text,
+            startOffset: 0,
+            endOffset: 8,
+          }),
+          comment: { text: "On note text." },
+        },
+      ],
+    },
+    undefinedReferences: "refuse",
+  });
+  expect(result.applied).toHaveLength(1);
+  return reopen(reviewer);
+};
+
+const NOTE_COMMENT = {
+  id: expect.any(Number),
+  text: "On note text.",
+  anchoredText: "Footnote",
+  replies: [],
+};
+
+describe("a comment in a note whose reference is pending deletion", () => {
+  const pending = async () => {
+    const reviewer = await footnoteComment();
+    const [body] = reviewer.snapshot().blocks;
+    const result = reviewer.applyOperations(
+      [{ id: "delete", type: "deleteBlock", blockId: body!.id }],
+      { undefinedReferences: "refuse", mode: "tracked-changes" },
+    );
+    expect(result.applied).toHaveLength(1);
+    return reviewer;
+  };
+
+  test("stays through save and is retired when the deletion is accepted", async () => {
+    const reviewer = await pending();
+    expect(threads(reviewer.getComments())).toEqual([NOTE_COMMENT]);
+    const reopened = await reopen(reviewer);
+    expect(threads(reopened.getComments())).toEqual([NOTE_COMMENT]);
+
+    reopened.acceptAll();
+    expect(reopened.getComments()).toEqual([]);
+    expect((await reopen(reopened)).getComments()).toEqual([]);
+  });
+
+  test("stays when the deletion is rejected", async () => {
+    const reviewer = await reopen(await pending());
+    reviewer.rejectAll();
+    expect(threads(reviewer.getComments())).toEqual([NOTE_COMMENT]);
+    expect(threads((await reopen(reviewer)).getComments())).toEqual([NOTE_COMMENT]);
+  });
+});
 
 test("a batch insertion and deletion keep a comment on another block", async () => {
   const reviewer = await twoParagraphs();
