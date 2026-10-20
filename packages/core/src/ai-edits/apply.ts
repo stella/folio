@@ -3212,17 +3212,19 @@ const withRotatedAddedFinalBreaks = ({
   }[] = [];
   const collectSupersededDeletedBreaks = (parent: PMNode, contentStart: number): void => {
     let previous: { node: PMNode; position: number } | null = null;
+    let carriedDeletedMark: unknown = null;
     parent.forEach((node, offset) => {
       const position = contentStart + offset;
       if (node.type.name !== "paragraph") {
         previous = null;
+        carriedDeletedMark = null;
         if (!node.isTextblock && node.childCount > 0) {
           collectSupersededDeletedBreaks(node, position + 1);
         }
         return;
       }
       if (previous) {
-        const deletedMark: unknown = previous.node.attrs["pPrMark"];
+        const deletedMark: unknown = carriedDeletedMark ?? previous.node.attrs["pPrMark"];
         const insertedMark: unknown = node.attrs["pPrMark"];
         const insertedRevisionId = addedBreakRevisionId(insertedMark);
         const trackedInsertion =
@@ -3243,6 +3245,9 @@ const withRotatedAddedFinalBreaks = ({
             deletedMark,
             precedingMark: trackedInsertion ? insertedMark : null,
           });
+          carriedDeletedMark = deletedMark;
+        } else {
+          carriedDeletedMark = null;
         }
       }
       previous = { node, position };
