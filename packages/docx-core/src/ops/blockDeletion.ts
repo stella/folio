@@ -39,7 +39,6 @@ export type ParagraphMarkOutcomeInput = {
   follows: "paragraph" | "table" | "nothing";
   holdsContent: boolean;
   markWasAdded: boolean;
-  containerStillEndsWithParagraph: boolean;
   followingTableCanReceiveRunIn: boolean;
   tableRemovalIsTrackable?: boolean;
 };
@@ -48,8 +47,6 @@ export type ParagraphMarkOutcomeInput = {
 export const paragraphMarkOutcome = ({
   follows,
   holdsContent,
-  markWasAdded,
-  containerStillEndsWithParagraph,
   followingTableCanReceiveRunIn,
   tableRemovalIsTrackable = true,
 }: ParagraphMarkOutcomeInput): ParagraphMarkOutcome => {
@@ -62,9 +59,7 @@ export const paragraphMarkOutcome = ({
       if (!holdsContent) return { kind: "remove" };
       return followingTableCanReceiveRunIn ? { kind: "run-in" } : { kind: "keep" };
     case "nothing":
-      return !holdsContent && markWasAdded && containerStillEndsWithParagraph
-        ? { kind: "remove" }
-        : { kind: "keep" };
+      return { kind: "keep" };
   }
 };
 
@@ -154,7 +149,6 @@ export const deleteBlocks = ({
     follows,
     holdsContent: paragraphLength(survivor) > 0,
     markWasAdded: false,
-    containerStillEndsWithParagraph: previous !== undefined,
     followingTableCanReceiveRunIn: false,
   });
   let directBlocks: Paragraph[] = [];

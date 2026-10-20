@@ -793,7 +793,6 @@ export type ParagraphMarkOutcomeInput = {
     follows: "paragraph" | "table" | "nothing";
     holdsContent: boolean;
     markWasAdded: boolean;
-    containerStillEndsWithParagraph: boolean;
     followingTableCanReceiveRunIn: boolean;
     tableRemovalIsTrackable?: boolean;
 };

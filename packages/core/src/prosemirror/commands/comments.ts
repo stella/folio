@@ -640,13 +640,10 @@ function resolveChange(
         let follows: "paragraph" | "table" | "nothing" = "nothing";
         if (joinable) follows = "paragraph";
         else if (nextNode?.type.spec["tableRole"] === "table") follows = "table";
-        const resolved = tr.doc.resolve(mappedPos);
         const outcome = paragraphMarkOutcome({
           follows,
           holdsContent: !holdsNoContent(paragraph),
           markWasAdded: op.markWasAdded,
-          containerStillEndsWithParagraph:
-            resolved.parent.childCount > 1 && resolved.parent.lastChild?.type.name === "paragraph",
           followingTableCanReceiveRunIn:
             follows === "table" &&
             boundaries.length === 0 &&

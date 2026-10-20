@@ -236,29 +236,20 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
     expect(view.state.doc.child(1).attrs["pPrMark"]).toBeNull();
   });
 
-  test("rejectAll still removes an emptied paragraph an insertion ADDED at the end", () => {
-    // The mirror case: the break was added, so the paragraph it ends was not
-    // there before it and taking the addition back leaves the container ending
-    // where it did.
-    const insertion = schema.marks["insertion"]!;
+  test("rejectAll keeps an emptied paragraph whose inserted mark ends the container", () => {
     const state = EditorState.create({
       schema,
       doc: schema.node("doc", null, [
         schema.node("paragraph", null, schema.text("first")),
-        schema.node(
-          "paragraph",
-          { pPrMark: insMark({ id: 1 }) },
-          schema.text("added", [
-            insertion.create({ revisionId: 1, author: "Alice", date: "2026-05-01" }),
-          ]),
-        ),
+        schema.node("paragraph", { pPrMark: insMark({ id: 1 }) }),
       ]),
     });
     const view = dispatcher(state);
     rejectAllChanges()(view.state, view.dispatch);
 
-    expect(view.state.doc.childCount).toBe(1);
-    expect(view.state.doc.child(0).textContent).toBe("first");
+    expect(view.state.doc.childCount).toBe(2);
+    expect(view.state.doc.child(1).textContent).toBe("");
+    expect(view.state.doc.child(1).attrs["pPrMark"]).toBeNull();
   });
 
   // A zero-width anchor holds a position and shows nothing. Counting one as

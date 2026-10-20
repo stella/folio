@@ -779,9 +779,6 @@ describe("tracked operations and their resolution", () => {
                 follows: "table",
                 holdsContent: paragraphLength(paragraph) > 0,
                 markWasAdded,
-                containerStillEndsWithParagraph:
-                  blockListAt(document.package.document.content, location.list).at(-1)?.type ===
-                  "paragraph",
                 followingTableCanReceiveRunIn: true,
               }).kind === "run-in"
             ) {

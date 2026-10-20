@@ -27,7 +27,7 @@ import type {
   RunPropertyChange,
   Table,
 } from "../model/document";
-import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
+import { blockListAt, storyBody, storyParagraphs } from "./blocks";
 import { paragraphMarkOutcome } from "./blockDeletion";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
@@ -1123,7 +1123,6 @@ const joinOps = (
       follows: "paragraph",
       holdsContent: !empty,
       markWasAdded: added,
-      containerStillEndsWithParagraph: true,
       followingTableCanReceiveRunIn: false,
     });
     if (outcome.kind !== "join") return panic("A following paragraph always receives a join.");
@@ -1190,16 +1189,10 @@ const joinOps = (
     );
   }
   // No paragraph to join: a table follows, or the paragraph ends its container.
-  const containerFinal = endsItsContainer(body, location);
   const outcome = paragraphMarkOutcome({
     follows: next?.type === "table" ? "table" : "nothing",
     holdsContent: !empty,
     markWasAdded: added,
-    containerStillEndsWithParagraph:
-      next?.type === "table"
-        ? blocks.at(-1)?.type === "paragraph"
-        : containerFinal &&
-          blocks.some((block, index) => index !== location.index && block.type === "paragraph"),
     followingTableCanReceiveRunIn:
       next?.type === "table" && tableCanReceiveParagraphRunIn(paragraph, next),
     tableRemovalIsTrackable:

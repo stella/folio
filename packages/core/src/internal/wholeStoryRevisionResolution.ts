@@ -494,7 +494,6 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       follows,
       holdsContent: !holdsNoContent(paragraph),
       markWasAdded,
-      containerStillEndsWithParagraph: index + reversed.length + 1 > 1,
       followingTableCanReceiveRunIn: false,
     });
     if (
