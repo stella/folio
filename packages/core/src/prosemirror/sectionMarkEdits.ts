@@ -57,13 +57,11 @@ export const sectionMarkEditsOf = (
   }
 
   const authoredRecordsByFinalParagraph = new Map<number, SectionProperties>();
-  const authoredRecords = new Set<SectionProperties>();
   const authoredDoc = transactions.at(0)?.before;
   authoredDoc?.descendants((node, position) => {
     if (!isParagraph(node)) return true;
     const record = sectionPropertiesOf(node);
     if (record === null) return false;
-    authoredRecords.add(record);
 
     const mark = mapping.mapResult(position + node.nodeSize - 1, 1);
     if (mark.deleted) {
@@ -75,15 +73,8 @@ export const sectionMarkEditsOf = (
     return false;
   });
 
-  // A paragraph holds an authored record only when it ends with that record's
-  // mark. An authored record it holds otherwise was copied by a split and is
-  // cleared; a record the edit itself brought in, such as a pasted break, stays.
   const addCarrier = (position: number): void => {
-    const owned = authoredRecordsByFinalParagraph.get(position);
-    const node = finalDoc.nodeAt(position);
-    const current = node ? sectionPropertiesOf(node) : null;
-    const brought = current !== null && !authoredRecords.has(current) ? current : null;
-    carriers.push({ position, record: owned ?? brought });
+    carriers.push({ position, record: authoredRecordsByFinalParagraph.get(position) ?? null });
   };
 
   for (const { step, doc, mapIndex } of replacements) {
