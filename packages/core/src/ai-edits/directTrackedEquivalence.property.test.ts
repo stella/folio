@@ -71,6 +71,47 @@ const markdownAfter = async (source: string, mode: Mode, find: string, replace: 
 };
 
 describe("a replacement across a formatting boundary", () => {
+  test("a whole-block replacement inherits from the replaced block, not its predecessor", async () => {
+    const reviewer = await openReviewer(
+      await paragraphsDocx([[textRun("Heading", { fontSize: 40 })], [textRun("🚀")]]),
+    );
+    const blockId = reviewer.snapshot().blocks.at(1)?.id ?? "";
+    const headingId = reviewer.snapshot().blocks.at(0)?.id ?? "";
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "empty-heading",
+            type: "replaceInBlock",
+            blockId: headingId,
+            find: "Heading",
+            replace: "",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          { id: "replace", type: "replaceInBlock", blockId, find: "🚀", replace: "Customer" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+
+    expect(reviewer.snapshot().blocks.at(1)?.previewRuns).toEqual([
+      expect.objectContaining({ text: "Customer", fontSizePt: 11 }),
+    ]);
+    expect((await reopened(reviewer)).snapshot().blocks.at(1)?.previewRuns).toEqual([
+      expect.objectContaining({ text: "Customer", fontSizePt: 11 }),
+    ]);
+  });
+
   test.each([
     [
       "a link",

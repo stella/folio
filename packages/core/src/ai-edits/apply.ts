@@ -6290,7 +6290,15 @@ const insertCleanText = ({
     replaced.length === 0 &&
     !hasCleanTextControls(text)
   ) {
-    return { transaction: tr.insertText(text, from, to), start: from, end: from + text.length };
+    if (text.length === 0) {
+      return { transaction: tr.delete(from, to), start: from, end: from };
+    }
+    const replacement = tr.doc.type.schema.text(text, inheritedReplacementMarks(tr.doc, from, to));
+    return {
+      transaction: tr.replaceWith(from, to, replacement),
+      start: from,
+      end: from + text.length,
+    };
   }
   const schema = tr.doc.type.schema;
   const { fragment, leadingSize, contentSize } = annotatedReplacement({
