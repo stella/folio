@@ -1128,11 +1128,9 @@ class CanonicalSession {
       state.selection instanceof AllSelection &&
       from === state.selection.from &&
       to === state.selection.to;
-    if (
-      state.selection instanceof CellSelection &&
-      from === state.selection.from &&
-      to === state.selection.to
-    ) {
+    if (state.selection instanceof CellSelection) {
+      if (from !== state.selection.from || to !== state.selection.to)
+        return refuse("A replacement range cannot partially address a cell selection.");
       if (text.length > 0)
         return refuse("Replacing a cell selection requires a per-cell replacement.");
       const intents: EditorIntent[] = [];

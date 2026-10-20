@@ -1,5 +1,6 @@
 import { describe, expect, test, setDefaultTimeout, spyOn } from "bun:test";
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import {
   createParagraphChangeTrackerPlugin,
@@ -30,8 +31,48 @@ import { visitParagraphRuns } from "../docx/paragraphTraversal";
 import { canonicalReviewBlocks } from "../../../../test/reviewProjection";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { FIRST_ID, fixture, seedArbitrary } from "../../typecheck/ops/reviewGenerators.typecheck";
+import { fromMarkdown } from "../markdown/fromMarkdown";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
+
+test.each(["editing", "suggesting"] as const)(
+  "a non-matching cell replacement range is refused in %s mode",
+  (mode) => {
+    const document = fromMarkdown("| A | B |\n|---|---|\n| C | D |");
+    const table = document.package.document.content.at(0);
+    if (table?.type !== "table") throw new TypeError("Expected the table fixture.");
+    let paragraphId = 1;
+    for (const row of table.rows)
+      for (const cell of row.cells)
+        for (const paragraph of cell.content)
+          if (paragraph.type === "paragraph")
+            paragraph.paraId = (paragraphId++).toString(16).padStart(8, "0");
+    const session = createCanonicalSession(document).unwrap();
+    session.setMode(
+      mode === "editing" ? { type: "editing" } : { type: "suggesting", author: "Reviewer" },
+    );
+    let state = EditorState.create({ schema, doc: session.projection.doc });
+    const positions = new Map<string, number>();
+    state.doc.descendants((node, position) => {
+      if (node.type.name === "tableCell") positions.set(node.textContent, position);
+    });
+    const selection = CellSelection.create(
+      state.doc,
+      positions.get("A") ?? -1,
+      positions.get("D") ?? -1,
+    );
+    state = state.apply(state.tr.setSelection(selection));
+
+    const prepared = session.prepareReplace(state, {
+      from: selection.from + 1,
+      to: selection.to,
+      text: "replacement",
+    });
+
+    expect(prepared.isErr()).toBe(true);
+    if (prepared.isErr()) expect(prepared.error.reason).toBe("refused");
+  },
+);
 import {
   assignDocumentParagraphPropertySourceContract,
   assignParagraphPropertySource,

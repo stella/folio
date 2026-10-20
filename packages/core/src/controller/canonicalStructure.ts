@@ -15,7 +15,7 @@ import {
   type EditorIntent,
 } from "@stll/docx-core/ops";
 import { headingOutlineLevel, paragraphNumberingReference } from "@stll/docx-core/model";
-import type { Paragraph, ListLevel } from "../types/document";
+import type { BlockContent, Paragraph, ListLevel } from "../types/document";
 import { getCachedNumberingMap, numberingLevelUsesBulletMarker } from "../docx/numberingParser";
 import { listRequestsForMarker } from "../prosemirror/listAutoformatMarkers";
 import type { ListRequest } from "../prosemirror/listNumbering";
@@ -61,17 +61,43 @@ const effectiveNumbering = (paragraph: Paragraph | undefined) =>
     }),
   );
 
-const numberingIntent = (
+type ParagraphPosition = {
+  container: readonly BlockContent[];
+  index: number;
+  paragraph: Paragraph;
+};
+
+/** List structure is local to the block container that owns each paragraph. */
+const paragraphPositions = (
   session: CanonicalSession,
   paragraphs: readonly Paragraph[],
+): Result<readonly ParagraphPosition[], CanonicalSessionError> => {
+  if (paragraphs.length === 0) return noChange("List changes require a paragraph selection.");
+  const positions: ParagraphPosition[] = [];
+  for (const paragraph of paragraphs) {
+    const address = session.projection.paragraph(paragraph.paraId ?? "");
+    if (address === undefined) return refuse("A selected paragraph has no canonical address.");
+    const index = address.container.findIndex((item) => item === paragraph);
+    if (index < 0) return refuse("A selected paragraph is missing from its block container.");
+    positions.push({ container: address.container, index, paragraph });
+  }
+  const container = positions.at(0)?.container;
+  if (positions.some((position) => position.container !== container))
+    return refuse("A list command cannot span multiple block containers.");
+  return Result.ok(positions);
+};
+
+const numberingIntent = (
+  session: CanonicalSession,
+  positions: readonly ParagraphPosition[],
   request: ListRequest,
 ): EditorIntent => {
   const definitions = session.document.package.numbering;
   const map = definitions === undefined ? undefined : getCachedNumberingMap(definitions);
-  const body = session.document.package.document.content;
-  const first = body.findIndex((item) => item === paragraphs.at(0));
-  const last = body.findIndex((item) => item === paragraphs.at(-1));
-  const neighbors = [first > 0 ? body.at(first - 1) : undefined, body.at(last + 1)];
+  const container = positions.at(0)?.container ?? [];
+  const first = positions.at(0)?.index ?? 0;
+  const last = positions.at(-1)?.index ?? first;
+  const neighbors = [first > 0 ? container.at(first - 1) : undefined, container.at(last + 1)];
   const neighbor = neighbors.find((item) => {
     if (
       item?.type !== "paragraph" ||
@@ -118,7 +144,7 @@ const numberingIntent = (
   return {
     type: "setList",
     target,
-    items: paragraphs.map((paragraph) => ({
+    items: positions.map(({ paragraph }) => ({
       at: { story: OP_STORIES.MAIN, blockId: paragraph.paraId ?? "", offset: 0 },
       ilvl,
     })),
@@ -212,6 +238,8 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "toggleList": {
+        const positions = paragraphPositions(session, paragraphs);
+        if (positions.isErr()) return positions;
         const definitions = session.document.package.numbering;
         const map = definitions === undefined ? undefined : getCachedNumberingMap(definitions);
         const already =
@@ -226,7 +254,7 @@ export const prepareCanonicalCommands = (
           });
         if (!already) {
           intents.push(
-            numberingIntent(session, paragraphs, {
+            numberingIntent(session, positions.value, {
               kind: command.kind === "bullet" ? "bullet" : "numbered",
             }),
           );
@@ -241,6 +269,10 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "removeList":
+        {
+          const positions = paragraphPositions(session, paragraphs);
+          if (positions.isErr()) return positions;
+        }
         for (const paragraph of paragraphs)
           intents.push({
             type: "formatParagraph",
@@ -249,6 +281,10 @@ export const prepareCanonicalCommands = (
           });
         break;
       case "changeListLevel":
+        {
+          const positions = paragraphPositions(session, paragraphs);
+          if (positions.isErr()) return positions;
+        }
         for (const paragraph of paragraphs) {
           const numPr = effectiveNumbering(paragraph);
           if (numPr?.kind !== "reference") continue;
@@ -278,14 +314,15 @@ export const prepareCanonicalCommands = (
         break;
       case "restartNumbering":
       case "continueNumbering": {
+        const positions = paragraphPositions(session, paragraphs);
+        if (positions.isErr()) return positions;
         const source = paragraphs.at(0);
         const numPr = effectiveNumbering(source);
         const definitions = session.document.package.numbering;
         if (source === undefined || numPr?.kind !== "reference" || definitions === undefined)
           return noChange("Numbering changes require a list paragraph.");
-        const body = session.document.package.document.content;
-        const index = body.findIndex((item) => item === source);
-        const affected = body.slice(index).filter((item): item is Paragraph => {
+        const { container, index } = positions.value.at(0) ?? panic("Missing paragraph position");
+        const affected = container.slice(index).filter((item): item is Paragraph => {
           if (item.type !== "paragraph") return false;
           const effective = effectiveNumbering(item);
           return effective?.kind === "reference" && effective.numId === numPr.numId;
@@ -295,7 +332,7 @@ export const prepareCanonicalCommands = (
         if (command.type === "continueNumbering") {
           const map = getCachedNumberingMap(definitions);
           const bullet = numberingLevelUsesBulletMarker(map.getLevel(numPr.numId, numPr.ilvl ?? 0));
-          const earlier = body.slice(0, index).findLast((item) => {
+          const earlier = container.slice(0, index).findLast((item) => {
             if (item.type !== "paragraph") return false;
             const effective = effectiveNumbering(item);
             return (
@@ -385,12 +422,15 @@ export const prepareCanonicalAutoformat = (
   const request = requests?.at(0);
   const styleId = `Heading${heading?.length ?? 1}`;
   if (request === undefined && !session.hasStyle(styleId)) return undefined;
+  let paragraphIntent: EditorIntent;
+  if (request === undefined) {
+    paragraphIntent = { type: "formatParagraph", at: start, patch: { styleId } };
+  } else {
+    const positions = paragraphPositions(session, [source]);
+    if (positions.isErr()) return undefined;
+    paragraphIntent = numberingIntent(session, positions.value, request);
+  }
   return session.prepareIntents(state, {
-    intents: [
-      { type: "replaceText", from: start, to: at.value, text: "" },
-      request === undefined
-        ? { type: "formatParagraph", at: start, patch: { styleId } }
-        : numberingIntent(session, [source], request),
-    ],
+    intents: [{ type: "replaceText", from: start, to: at.value, text: "" }, paragraphIntent],
   });
 };
