@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "direct",
+  "seed": 1502256799,
+  "steps": [{ "action": "mistake", "seed": 2502587051 }],
+  "swarm": [
+    "commentOnRange",
+    "insertAfterBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow",
+    "insertTableColumn",
+    "deleteTable"
+  ],
+  "origin": "shrunk from random flow seed 1502256799",
+  "title": "keeps direct tracked-change mistake handling aligned (#1830)"
+}

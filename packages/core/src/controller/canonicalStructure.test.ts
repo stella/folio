@@ -4,6 +4,7 @@ import JSZip from "jszip";
 import { panic } from "better-result";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { paragraphIdsIn, paragraphLogicalText, type TextPosition } from "@stll/docx-core/ops";
+import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Document } from "../types/document";
 import { schema, singletonManager } from "../prosemirror/schema";
@@ -13,6 +14,7 @@ import { directionToAuthoredBidi } from "../prosemirror/paragraphDirection";
 import { TAB_STOP_ALIGNMENT_VALUES, TAB_LEADER_VALUES } from "../types/documentEnumValues";
 import { createDocx } from "../docx/rezip";
 import { parseDocx } from "../docx/parser";
+import { fromMarkdown } from "../markdown/fromMarkdown";
 import {
   assignDocumentParagraphPropertySourceContract,
   cloneDocumentWithParagraphPropertySources,
@@ -83,6 +85,79 @@ const accept = (session: CanonicalSession, state: EditorState, commit: Canonical
 };
 const select = (state: EditorState, from: number, to = from) =>
   state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)));
+
+test.each([
+  ["toggle bullet", { type: "toggleList", kind: "bullet" } as const],
+  ["toggle numbered", { type: "toggleList", kind: "decimal" } as const],
+  ["restart numbering", { type: "restartNumbering", start: 4 } as const],
+  ["continue numbering", { type: "continueNumbering" } as const],
+])("%s stays inside a table-cell block container with exact undo", (_name, command) => {
+  const document = fromMarkdown("1. Before\n\n| Head |\n|---|\n| Target |\n\n1. After");
+  const table = document.package.document.content.at(1);
+  if (table?.type !== "table") return panic("Expected the table fixture.");
+  const cell = table.rows.at(1)?.cells.at(0);
+  const target = cell?.content.at(0);
+  if (cell === undefined || target?.type !== "paragraph")
+    return panic("Expected the target cell paragraph.");
+  const preceding = structuredClone(target);
+  preceding.content = [{ type: "run", content: [{ type: "text", text: "Cell list" }] }];
+  preceding.formatting = {
+    numPr: { kind: "reference", numId: command.type === "toggleList" ? 2 : 1, ilvl: 0 },
+  };
+  // The canonical model has no empty formatting: an unformatted paragraph omits it.
+  if (command.type === "toggleList") Reflect.deleteProperty(target, "formatting");
+  else target.formatting = { numPr: { kind: "reference", numId: 2, ilvl: 0 } };
+  cell.content = [preceding, target];
+  let paragraphId = 1;
+  for (const block of document.package.document.content) {
+    if (block.type === "paragraph") block.paraId = (paragraphId++).toString(16).padStart(8, "0");
+    if (block.type !== "table") continue;
+    for (const row of block.rows)
+      for (const tableCell of row.cells)
+        for (const paragraph of tableCell.content)
+          if (paragraph.type === "paragraph")
+            paragraph.paraId = (paragraphId++).toString(16).padStart(8, "0");
+  }
+
+  const session = createCanonicalSession(document).unwrap();
+  let state = EditorState.create({ schema, doc: session.projection.doc });
+  let targetPosition: number | undefined;
+  state.doc.descendants((node, position) => {
+    if (node.type.name === "paragraph" && node.textContent === "Target") targetPosition = position;
+  });
+  if (targetPosition === undefined) return panic("Projection lost the target cell paragraph.");
+  state = select(state, targetPosition + 1);
+  const before = session.document;
+  const bodyBefore = [before.package.document.content.at(0), before.package.document.content.at(2)];
+  state = publishCanonicalProjection({
+    session,
+    state,
+    commit: prepareCanonicalCommands(session, state, [command]).unwrap(),
+  }).unwrap().state;
+  expect([
+    session.document.package.document.content.at(0),
+    session.document.package.document.content.at(2),
+  ]).toStrictEqual(bodyBefore);
+  const changedTable = session.document.package.document.content.at(1);
+  const changed =
+    changedTable?.type === "table"
+      ? changedTable.rows.at(1)?.cells.at(0)?.content.at(1)
+      : undefined;
+  expect(changed).not.toStrictEqual(target);
+  if (command.type === "toggleList" && command.kind === "decimal")
+    expect(changed?.type === "paragraph" ? changed.formatting?.numPr : undefined).toEqual({
+      kind: "reference",
+      numId: 2,
+      ilvl: 0,
+    });
+  state = publishCanonicalProjection({
+    session,
+    state,
+    commit: session.prepareUndo(state).unwrap(),
+  }).unwrap().state;
+  expect(session.document).toStrictEqual(before);
+  expect(session.canUndo).toBe(false);
+});
 
 const kinds = ["split", "join", "run", "paragraph", "atom", "list", "input"] as const;
 const inputArbitrary = fc.record({
@@ -1122,10 +1197,12 @@ test("generated direction and tab command histories preserve authored values and
             return panic("Paragraph command seed has a nonparagraph.");
           const bidi = directions.at(index);
           const tabs = tabSets.at(index);
-          paragraph.formatting = {
+          const formatting = finalizeParagraphFormatting({
             ...(bidi === undefined ? {} : { bidi }),
             ...(tabs === undefined ? {} : { tabs }),
-          };
+          });
+          if (formatting === undefined) delete paragraph.formatting;
+          else paragraph.formatting = formatting;
           if (empty) paragraph.content = [];
         }
         for (const mode of [

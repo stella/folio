@@ -19,6 +19,7 @@
 
 import { fontFamiliesMatch, normalizeFontName, observedSatisfiesRequested } from "./fontNames";
 import { normalizeLineText, textSimilarity } from "./textNorm";
+import { createLiteralSearchScope } from "./literalSearch";
 import type {
   AttributedDivergence,
   Cluster,
@@ -829,20 +830,31 @@ const findTocFieldParagraph = (
   return shareFeatureSet(matches) ? matches[0]?.paragraph : undefined;
 };
 
+type FindMatchingParagraphOptions = {
+  searchText: string;
+  candidates: ParagraphCandidate[];
+  search: ReturnType<typeof createLiteralSearchScope>;
+};
+
 /** Prefer unambiguous substring matches. Fuzzy attribution is limited to
  * similarly sized, high-confidence candidates with a clear winner. */
-const findMatchingParagraph = (
-  searchText: string,
-  candidates: ParagraphCandidate[],
-): ParagraphFeatures | undefined => {
+const findMatchingParagraph = ({
+  searchText,
+  candidates,
+  search,
+}: FindMatchingParagraphOptions): ParagraphFeatures | undefined => {
   const normalizedSearchText = normalizeAttributionText(searchText);
   const tocFieldParagraph = findTocFieldParagraph(normalizedSearchText, candidates);
   if (tocFieldParagraph) return tocFieldParagraph;
 
+  const isContained = search.createCandidateContainment(
+    normalizedSearchText,
+    candidates.map(({ normText }) => normText),
+  );
   const substringMatches = candidates.filter(({ normText }) => {
     const shorterLen = Math.min(normText.length, normalizedSearchText.length);
     if (shorterLen < MIN_MATCH_LEN) return false;
-    return normText.includes(normalizedSearchText) || normalizedSearchText.includes(normText);
+    return isContained(normText);
   });
   if (substringMatches.length > 0) {
     if (substringMatches.length === 1) return substringMatches[0]?.paragraph;
@@ -878,11 +890,12 @@ export const attributeDivergences = (
   const docPrefixed =
     doc.docFeatures.length > 0 ? doc.docFeatures.map((f) => `doc:${f}`) : ["doc:unattributed"];
   const candidates = buildParagraphCandidates(doc.paragraphs);
+  const search = createLiteralSearchScope();
 
   const attributed: AttributedDivergence[] = result.divergences.map((divergence) => {
     const searchText = divergenceSearchText(divergence);
     if (searchText === undefined) return { divergence, features: docPrefixed };
-    const matched = findMatchingParagraph(searchText, candidates);
+    const matched = findMatchingParagraph({ searchText, candidates, search });
     return { divergence, features: matched ? matched.features : docPrefixed };
   });
 

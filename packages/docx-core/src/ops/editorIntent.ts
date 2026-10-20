@@ -1811,6 +1811,37 @@ export const compileEditorIntent = (
         }
         break;
       }
+      const replacesWholeParagraph =
+        idKey(from.blockId) === idKey(to.blockId) &&
+        from.offset === 0 &&
+        to.offset === paragraphLength(paragraph) &&
+        paragraphLength(paragraph) > 0 &&
+        text.length > 0 &&
+        (from.zeroWidthBefore ?? 0) > 0 &&
+        !(document.package.document.comments ?? []).some(
+          ({ parentId, anchorKind }) => parentId === undefined && anchorKind !== "range",
+        );
+      if (replacesWholeParagraph) {
+        ops = [
+          {
+            type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+            story: from.story,
+            blockId: from.blockId,
+            expected: paragraph.content,
+            content: [
+              ...paragraph.content.filter(
+                (node) => isParagraphContent(node) && isRangeBoundary(node),
+              ),
+              ...content,
+              ...paragraph.content.filter(
+                (node) => isParagraphContent(node) && node.type === "commentReference",
+              ),
+            ],
+          },
+        ];
+        selection = { ...from, offset: text.length, zeroWidthBefore: 0 };
+        break;
+      }
       ops = [];
       let survivorId = from.blockId;
       if (

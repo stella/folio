@@ -1,7 +1,7 @@
 /** Explicit story lifecycle and section property edits, with exact JSON-safe inverses. */
 import { cloneModel } from "./modelClone";
 import { panic, Result } from "better-result";
-import { DEFAULT_TAB_STOP_TWIPS } from "../model/document";
+import { DEFAULT_TAB_STOP_TWIPS, setDocumentBodyComments } from "../model/document";
 import type {
   Document,
   DocumentBody,
@@ -172,7 +172,7 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
     }
     if (fields.comments !== undefined) {
       if (fields.comments === null) delete body.comments;
-      else body.comments = fields.comments;
+      else setDocumentBodyComments(body, fields.comments);
     }
   }
   if (parts.headers !== undefined) {

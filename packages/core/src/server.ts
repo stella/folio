@@ -41,6 +41,10 @@ export {
 } from "./ai-edits/snapshot";
 export { getFolioDocumentOutline, readFolioDocumentSection } from "./ai-edits/scoped-reading";
 export {
+  getFolioDocumentOperationRemovedBlockIds,
+  getTrackedFolioDocumentOperationRemovedBlockIds,
+} from "./ai-edits/removed-blocks";
+export {
   deriveBlockId,
   getFolioParaIdFromBlockId,
   isFolioBlockId,

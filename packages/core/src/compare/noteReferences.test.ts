@@ -30,7 +30,6 @@ const ENDNOTE_IDS = [7] as const;
 
 const noteBody = (text: string): Paragraph => ({
   type: "paragraph",
-  formatting: {},
   content: [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
 });
 

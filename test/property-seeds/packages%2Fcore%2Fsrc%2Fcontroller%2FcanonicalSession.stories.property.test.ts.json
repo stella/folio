@@ -11,6 +11,12 @@
       "path": "3:0:0:1:1:0:0:0:1:3:0:6:4",
       "note": "Nested revisions without hyperlinks retain authored wrapper grouping across save/reopen.",
       "date": "2026-10-08"
+    },
+    {
+      "seed": 1025496079,
+      "path": "6:0:0:0:0:0:0:0:1:2:2:2:4:4:3",
+      "note": "Automatic note markers are surviving covered content and remain owned by their note story across direct and tracked replacements. The replay also fails on the base revision.",
+      "date": "2026-10-19"
     }
   ]
 }

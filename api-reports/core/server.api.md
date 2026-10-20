@@ -1707,10 +1707,16 @@ export const getFolioDocumentOperationIssues: (operations: readonly FolioDocumen
 export const getFolioDocumentOperationReceipts: (operations: readonly FolioDocumentOperation[], applied: readonly FolioAIEditAppliedOperation[]) => FolioDocumentOperationReceipt[];
 
 // @public
+export const getFolioDocumentOperationRemovedBlockIds: (blocks: readonly BlockIdentity[], operation: FolioDocumentOperation) => ReadonlySet<string>;
+
+// @public
 export const getFolioDocumentOutline: (snapshot: FolioAIEditSnapshot) => FolioDocumentOutline;
 
 // @public
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
+
+// @public (undocumented)
+export const getTrackedFolioDocumentOperationRemovedBlockIds: (blocks: readonly BlockIdentity[], operation: FolioDocumentOperation) => ReadonlySet<string>;
 
 // @public (undocumented)
 export const hashFolioAIBlockText: (text: string) => string;

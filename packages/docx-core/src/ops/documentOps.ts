@@ -11,7 +11,13 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
 
 export { withBodyContent } from "./blocks";
 export { captureDocumentOp } from "./wire";
-export { compareGaps, defaultInsertionGap, inlineLeafSpans, zeroWidthLeavesAt } from "./leaves";
+export {
+  compareGaps,
+  defaultInsertionGap,
+  inlineLeafSpans,
+  isCommentAnchorCarrierType,
+  zeroWidthLeavesAt,
+} from "./leaves";
 export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
@@ -167,4 +173,10 @@ export {
 
 export { idKey, packageParagraphIds, paragraphIdsIn } from "./ids";
 
-export { commentDocumentIssue, freshCommentId } from "./comments";
+export {
+  commentDocumentIssue,
+  freshCommentId,
+  isCommentExhausted,
+  survivingComments,
+  type CommentExhaustionInput,
+} from "./comments";

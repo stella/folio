@@ -108,35 +108,19 @@ test.each(["key:Enter", "host:cut"])(
   },
 );
 
-test.each(EDITOR_MODES)(
-  "table activation contracts match the declared fixture features in %s",
-  (mode) => {
-    const cases = DOCUMENT_SHAPES.map(({ id }) => ({ ...CASE, shape: id, mode }));
-    const rows = declareCanonicalRefusalCases(cases);
-    const activationShapes = cases
-      .filter((key) =>
-        rows
-          .get(canonicalRefusalCaseId(key))
-          ?.some(({ gap }) => gap === CANONICAL_GAP.tableActivation),
-      )
-      .map(({ shape }) => shape);
-    const tableShapes = DOCUMENT_SHAPES.filter(
-      ({ features }) =>
-        features.includes("table") ||
-        features.includes("nested-table") ||
-        features.includes("merged-cells"),
-    ).map(({ id }) => id);
-    expect(activationShapes.toSorted()).toEqual(tableShapes.toSorted());
-    expect(rows.get(canonicalRefusalCaseId({ ...CASE, shape: "tables", mode }))).toEqual([
-      {
-        id: "table-session-activation",
-        gap: CANONICAL_GAP.tableActivation,
-        message: "Canonical sessions cannot activate documents containing tables.",
-      },
-    ]);
-    expect(rows.get(canonicalRefusalCaseId({ ...CASE, mode }))).toEqual([]);
-  },
-);
+test.each(EDITOR_MODES)("table fixtures have no activation refusal in %s", (mode) => {
+  const cases = DOCUMENT_SHAPES.map(({ id }) => ({ ...CASE, shape: id, mode }));
+  const rows = declareCanonicalRefusalCases(cases);
+  const tableShapes = DOCUMENT_SHAPES.filter(
+    ({ features }) =>
+      features.includes("table") ||
+      features.includes("nested-table") ||
+      features.includes("merged-cells"),
+  ).map(({ id }) => id);
+  for (const shape of tableShapes)
+    expect(rows.get(canonicalRefusalCaseId({ ...CASE, shape, mode }))).toEqual([]);
+  expect(rows.get(canonicalRefusalCaseId({ ...CASE, mode }))).toEqual([]);
+});
 
 // Inject the same ledger ids the old planner preview automatically allowed.
 // The control proves bold is supported; the ablation must fail the conformance oracle.

@@ -138,6 +138,14 @@ test("repeated replay flags are rejected", () => {
   );
 });
 
+test("replay flags accept dash-leading values joined with an equals sign", () => {
+  const command = consumerScenarioReplay({ inputs: { seed: "--" } });
+
+  expect(command).toContain("'--seed=--'");
+  expect(parseConsumerArgs(argvOf(command), "/repo").seed).toBe("--");
+  expect(parseConsumerArgs(["--seed=--"], "/repo").seed).toBe("--");
+});
+
 test("flow replay inputs override overlapping run inputs", () => {
   const runInputs = { seed: "792792449", runs: "12", collisionRuns: "8" };
   const flowInputs = { seed: "20260933", runs: "0", collisionRuns: "0" };

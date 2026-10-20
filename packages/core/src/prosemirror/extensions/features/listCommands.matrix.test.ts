@@ -26,6 +26,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, TextSelection, type Command, type Transaction } from "prosemirror-state";
+import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 
 import { assertProperty, propertyTestTimeout } from "../../../../../../test/property-testing";
 import { ensureParaIds } from "../../../docx/ensureParaIds";
@@ -727,7 +728,10 @@ describe("list changes while suggesting", () => {
             const model = fromMarkdown(TARGET);
             const paragraph = targetParagraph(model);
             if (source === "direct") {
-              paragraph.formatting = { ...paragraph.formatting, ...indentation };
+              paragraph.formatting = finalizeParagraphFormatting({
+                ...paragraph.formatting,
+                ...indentation,
+              });
             } else {
               model.package.styles = {
                 ...model.package.styles,

@@ -28,9 +28,9 @@ const isGraphicFrameLockKey = (key: string): key is keyof typeof GRAPHIC_FRAME_L
   key in GRAPHIC_FRAME_LOCK_ATTRIBUTES;
 
 /** Every modeled lock, in schema order: the total map above keeps it exhaustive. */
-export const GRAPHIC_FRAME_LOCK_KEYS = Object.keys(GRAPHIC_FRAME_LOCK_ATTRIBUTES).filter(
-  isGraphicFrameLockKey,
-);
+export const GRAPHIC_FRAME_LOCK_KEYS: readonly (keyof ImageFrameLocks)[] = Object.keys(
+  GRAPHIC_FRAME_LOCK_ATTRIBUTES,
+).filter(isGraphicFrameLockKey);
 
 const DRAWINGML_NAMESPACE = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
 
