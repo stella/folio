@@ -774,7 +774,6 @@ describe("readers agree on numbered headings and lists", () => {
  */
 const noteParagraph = (text: string): Paragraph => ({
   type: "paragraph",
-  formatting: {},
   content: [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
 });
 

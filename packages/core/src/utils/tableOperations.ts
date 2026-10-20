@@ -16,6 +16,7 @@ import type {
   TableRow,
   TableWidthType,
 } from "../types/document";
+import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 import { TABLE_JUSTIFICATION_VALUES } from "../types/documentEnumValues";
 
 export type TablePropertiesCommand = {
@@ -190,9 +191,18 @@ export const createTableContext = (table: Table, selection: TableSelection): Tab
   };
 };
 
+const emptyCellParagraph = (): TableCell["content"][number] => {
+  const formatting = finalizeParagraphFormatting({});
+  return {
+    type: "paragraph",
+    content: [],
+    ...(formatting === undefined ? {} : { formatting }),
+  };
+};
+
 const createEmptyCell = (): TableCell => ({
   type: "tableCell",
-  content: [{ type: "paragraph" as const, content: [], formatting: {} }],
+  content: [emptyCellParagraph()],
   formatting: {},
 });
 
@@ -202,7 +212,7 @@ const createEmptyRow = (templateRow: TableRow, columnCount: number): TableRow =>
   for (const templateCell of templateRow.cells) {
     cells.push({
       type: "tableCell",
-      content: [{ type: "paragraph" as const, content: [], formatting: {} }],
+      content: [emptyCellParagraph()],
       formatting: (() => {
         if (!templateCell.formatting) {
           return {};
@@ -386,16 +396,7 @@ export const splitCell = (table: Table, rowIndex: number, columnIndex: number): 
           for (let i = 0; i < gridSpan; i++) {
             newCells.push({
               type: "tableCell",
-              content:
-                i === 0
-                  ? rowCell.content
-                  : [
-                      {
-                        type: "paragraph" as const,
-                        content: [],
-                        formatting: {},
-                      },
-                    ],
+              content: i === 0 ? rowCell.content : [emptyCellParagraph()],
               formatting: (() => {
                 if (!rowCell.formatting) {
                   return {};
@@ -420,7 +421,7 @@ export const splitCell = (table: Table, rowIndex: number, columnIndex: number): 
           const { vMerge: _vm, ...restFormatting } = rowCell.formatting;
           newCells.push({
             type: "tableCell",
-            content: [{ type: "paragraph" as const, content: [], formatting: {} }],
+            content: [emptyCellParagraph()],
             formatting: restFormatting,
           });
         } else {

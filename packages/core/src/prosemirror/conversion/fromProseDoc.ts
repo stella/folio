@@ -17,7 +17,12 @@ import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
  */
 
 import { panic, TaggedError } from "better-result";
-import { DRAWING_RAW_XML_MODES, relationshipIdOf } from "@stll/docx-core/model";
+import {
+  DRAWING_RAW_XML_MODES,
+  finalizeParagraphFormatting,
+  relationshipIdOf,
+  setDocumentBodyComments,
+} from "@stll/docx-core/model";
 import {
   assertNoteReferenceOccurrences,
   coalesceNoteReferenceOccurrences,
@@ -922,6 +927,11 @@ export function fromProseDoc(
       linkedSources.sources,
     );
   }
+  visitDocxParagraphs({ documentBody: { content: blocks } }, (paragraph) => {
+    if (finalizeParagraphFormatting(paragraph.formatting) === undefined) {
+      delete paragraph.formatting;
+    }
+  });
 
   // Preserve section properties (margins, headers, footers) from base document
   const documentBody: DocumentBody = { content: blocks };
@@ -935,7 +945,7 @@ export function fromProseDoc(
     documentBody.sections = buildSections(blocks, documentBody.finalSectionProperties);
   }
   if (baseDocument?.package.document.comments) {
-    documentBody.comments = baseDocument.package.document.comments;
+    setDocumentBodyComments(documentBody, baseDocument.package.document.comments);
   }
 
   // A list command that found no instance of its kind defined one on the
@@ -2123,6 +2133,12 @@ function convertPMParagraph(
     paragraph.preservedAttributes = attrs._preservedAttributes;
   }
 
+  const finalizedFormatting = finalizeParagraphFormatting(paragraph.formatting);
+  if (finalizedFormatting === undefined) {
+    delete paragraph.formatting;
+  } else {
+    paragraph.formatting = finalizedFormatting;
+  }
   linkParagraphPropertySourceCandidate(paragraph, node);
   return paragraph;
 }
@@ -2445,7 +2461,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
       }
     }
 
-    return result;
+    return finalizeParagraphFormatting(result);
   }
 
   // Fallback: reconstruct formatting from individual attrs (e.g. for
@@ -2621,7 +2637,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   if (suppressAutoHyphens != null) {
     f.suppressAutoHyphens = suppressAutoHyphens;
   }
-  return f;
+  return finalizeParagraphFormatting(f);
 }
 
 /**

@@ -23,6 +23,7 @@
  */
 
 import { Result, TaggedError } from "better-result";
+import { survivingComments } from "@stll/docx-core/ops";
 
 import { buildDisplayList } from "./display-list/build/buildDisplayList";
 import { displayCommentsFrom } from "./display-list/build/commentAnnotations";
@@ -231,7 +232,7 @@ const buildWithHeadlessProvider = async (
     embeddedFonts: laidOut.value.embeddedFonts,
     ...(laidOut.value.document.package.document.comments === undefined
       ? {}
-      : { comments: displayCommentsFrom(laidOut.value.document.package.document.comments) }),
+      : { comments: displayCommentsFrom(survivingComments(laidOut.value.document)) }),
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
   });
 

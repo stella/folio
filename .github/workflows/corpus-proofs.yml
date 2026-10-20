@@ -8,7 +8,7 @@ permissions: {}
 jobs:
   shard:
     name: Corpus invariants (shard ${{ matrix.shard }}/4)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Eight more invariants per file than the gate shipped with, over a corpus
     # that has grown: a shard is now most of an hour rather than minutes.
     timeout-minutes: 90
@@ -33,7 +33,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -81,7 +81,7 @@ jobs:
 
   tier2:
     name: Corpus invariants, tier 2 (shard ${{ matrix.shard }}/4)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Tier 2 more than doubles the corpus, so a shard runs longer than a
     # tier-1 one.
     timeout-minutes: 150
@@ -100,7 +100,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -127,7 +127,7 @@ jobs:
   ratchet:
     name: Corpus baseline ratchet
     needs: shard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -137,7 +137,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 

@@ -5,8 +5,12 @@ export const TEXT_BOUNDARIES = [7, 4096, 16 * 1024, 64 * 1024] as const;
 export const astralText = fc
   .integer({ min: 0x10000, max: 0x10ffff })
   .map((point) => String.fromCodePoint(point));
-export const combiningText = fc.constantFrom("e\u0301", "a\u0308\u0323", "क्ष");
-export const rtlText = fc.constantFrom("שָׁלוֹם", "مرحبا");
+export const combiningText: fc.Arbitrary<string> = fc.constantFrom(
+  "e\u0301",
+  "a\u0308\u0323",
+  "क्ष",
+);
+export const rtlText: fc.Arbitrary<string> = fc.constantFrom("שָׁלוֹם", "مرحبا");
 export const edgeText = fc.oneof(astralText, combiningText, rtlText, fc.constantFrom("👩🏽‍⚖️", "🇨🇿"));
 
 export const boundaryOffset = fc

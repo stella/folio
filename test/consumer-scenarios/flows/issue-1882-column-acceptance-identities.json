@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "large-100-pages",
+  "mode": "tracked-changes",
+  "seed": 558646913,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2664460911,
+      "operations": [
+        {
+          "type": "insertTableColumn",
+          "blockId": "2FC321B0",
+          "position": "after",
+          "cellTexts": ["Column cell 1", "Column cell 2", "Column cell 3"]
+        }
+      ],
+      "atomic": false
+    },
+    { "action": "accept one", "seed": 505612813 }
+  ],
+  "origin": "shrunk from collisions flow seed 558646913",
+  "title": "keeps inserted column identities stable after acceptance (#1882)"
+}
