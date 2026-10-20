@@ -489,27 +489,25 @@ test("only scheduled runs register a lane; a merge-group repro never blocks clos
   expect(fake.edits).toHaveLength(0);
 });
 
-const word = fc.stringMatching(/^[A-Za-z0-9<>()•.[\]/-]{1,8}$/u);
-const sentence = fc.array(word, { minLength: 1, maxLength: 6 }).map((words) => words.join(" "));
 const lane = fc.stringMatching(/^[a-z0-9][a-z0-9-]{0,12}$/u);
-const run = fc.stringMatching(/^[a-z]{1,5}:[A-Za-z0-9/.-]{1,20}$/u);
+const freeText = fc.string({ maxLength: 120 });
 const signatureState = fc
   .record({
-    test: sentence,
-    failure: sentence,
+    test: freeText,
+    failure: freeText,
     occurrences: fc.nat(),
     seeds: fc.uniqueArray(fc.integer({ min: -(2 ** 31), max: 2 ** 31 }), {
       maxLength: MAX_LISTED_SEEDS,
     }),
-    lastSeen: fc.record({ lane, run }),
-    lanes: fc.uniqueArray(fc.record({ lane, lastRun: run, cleanRuns: fc.nat({ max: 99 }) }), {
+    lastSeen: fc.record({ lane, run: freeText }),
+    lanes: fc.uniqueArray(fc.record({ lane, lastRun: freeText, cleanRuns: fc.nat({ max: 99 }) }), {
       selector: ({ lane: name }) => name,
       maxLength: 4,
     }),
     assertion: fc.oneof(
       fc.string({ maxLength: 120 }),
       fc
-        .tuple(lane, run, fc.nat({ max: 99 }), fc.string({ maxLength: 40 }))
+        .tuple(lane, freeText, fc.nat({ max: 99 }), fc.string({ maxLength: 40 }))
         .map(([name, at, count, tail]) => `| ${name} | ${at} | ${count} |\n${tail}`),
     ),
     seed: fc.integer({ min: -(2 ** 31), max: 2 ** 31 }),
@@ -542,6 +540,40 @@ test(
   },
   propertyTestTimeout(5_000),
 );
+
+test("markdown-significant signature fields round-trip without changing text", () => {
+  const state: SignatureState = {
+    signature: signatureOf({ test: "•", assertion: "- >" }),
+    occurrences: 1,
+    seeds: [1],
+    lastSeen: { lane: "a", run: "a:a" },
+    lanes: [{ lane: "a", lastRun: "| a | a:a | 0 |\n", cleanRuns: 0 }],
+    assertion: "| a | a:a | 0 |\n",
+    repro: { seed: 1, command: " " },
+  };
+  const { body } = renderSignatureIssue(state);
+
+  expect(parseSignatureState({ number: 1, body })).toEqual(state);
+  expect(body).toContain('Test: "•"');
+  expect(body).toContain('"\\u007c a \\u007c a:a \\u007c 0 \\u007c\\n"');
+});
+
+test("signature parser rejects noncanonical free-text encodings", () => {
+  const state: SignatureState = {
+    signature: signatureOf({ test: "plain text", assertion: "failure" }),
+    occurrences: 1,
+    seeds: [],
+    lastSeen: { lane: "a", run: "run" },
+    lanes: [],
+    assertion: "failure",
+    repro: { seed: 1, command: "replay" },
+  };
+  const { body } = renderSignatureIssue(state);
+
+  expect(() =>
+    parseSignatureState({ number: 1, body: body.replace(/^Test: .*$/mu, "Test: plain text") }),
+  ).toThrow("malformed signature");
+});
 
 test("bodies stay bounded for large evidence and seed sets", async () => {
   const original = fixtureMarkers.at(0);
