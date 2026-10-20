@@ -33,33 +33,20 @@ type ResolvedNewLists = {
   numbering: NumberingMap | null;
 };
 
-/**
- * Replace every new-list request with a reference to an instance minted for
- * its operation: one instance per operation and kind. `numbering` is the map
- * the batch applies against; the result's map adds the minted instances.
- */
-export const resolveNewListOperations = (
+const replaceNewListRequests = (
   operations: readonly FolioAIEditOperation[],
-  numbering: NumberingMap | null,
-): ResolvedNewLists => {
-  let definitions: NumberingDefinitions | undefined = numbering?.definitions;
-  let minted = false;
-
+  allocate: (kind: ListKind) => number,
+): FolioAIResolvedEditOperation[] => {
   const resolveOperation = (operation: FolioAIEditOperation): FolioAIResolvedEditOperation => {
     const instances = new Map<ListKind, number>();
     const resolve = (
       value: FolioAIListNumbering | undefined,
     ): FolioContentStatedNumbering | undefined => {
-      if (value === undefined || !isFolioAINewListReference(value)) {
-        return value;
-      }
+      if (value === undefined || !isFolioAINewListReference(value)) return value;
       let numId = instances.get(value.format);
       if (numId === undefined) {
-        const instance = mintListInstance(definitions, { kind: value.format });
-        definitions = instance.definitions;
-        numId = instance.numId;
+        numId = allocate(value.format);
         instances.set(value.format, numId);
-        minted = true;
       }
       return paragraphNumberingReference({ numId, ilvl: value.level ?? 0 });
     };
@@ -78,9 +65,8 @@ export const resolveNewListOperations = (
         const resolved = resolve(request);
         return { ...rest, ...(resolved !== undefined && { numbering: resolved }) };
       }
-      case "setBlockParagraphProperties": {
+      case "setBlockParagraphProperties":
         return { ...operation, properties: resolveProperties(operation.properties) };
-      }
       case "splitBlock": {
         const {
           firstParagraphProperties: firstRequest,
@@ -108,8 +94,35 @@ export const resolveNewListOperations = (
         return operation;
     }
   };
+  return operations.map(resolveOperation);
+};
 
-  const resolved = operations.map(resolveOperation);
+/** Make requests structurally plannable without allocating document resources. */
+export const stageNewListOperations = (
+  operations: readonly FolioAIEditOperation[],
+): FolioAIResolvedEditOperation[] => {
+  let placeholder = -1;
+  return replaceNewListRequests(operations, () => placeholder--);
+};
+
+/**
+ * Replace every new-list request with a reference to an instance minted for
+ * its operation: one instance per operation and kind. `numbering` is the map
+ * the batch applies against; the result's map adds the minted instances.
+ */
+export const resolveNewListOperations = (
+  operations: readonly FolioAIEditOperation[],
+  numbering: NumberingMap | null,
+): ResolvedNewLists => {
+  let definitions: NumberingDefinitions | undefined = numbering?.definitions;
+  let minted = false;
+
+  const resolved = replaceNewListRequests(operations, (kind) => {
+    const instance = mintListInstance(definitions, { kind });
+    definitions = instance.definitions;
+    minted = true;
+    return instance.numId;
+  });
   return {
     operations: resolved,
     numbering: minted && definitions ? createNumberingMap(definitions) : numbering,

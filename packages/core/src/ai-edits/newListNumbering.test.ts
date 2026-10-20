@@ -31,6 +31,46 @@ const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
   return block.id;
 };
 
+const listInstancesByText = async (
+  reviewer: FolioDocxReviewer,
+): Promise<Record<string, number>> => {
+  const reparsed = await parseDocx(await reviewer.toBuffer(), {
+    preloadFonts: false,
+    detectVariables: false,
+  });
+  const instances: Record<string, number> = {};
+  for (const block of reparsed.package.document.content) {
+    if (block.type !== "paragraph") continue;
+    const numId = paragraphNumberingReferenceId(block.formatting?.numPr);
+    const text = block.content
+      .flatMap((item) =>
+        item.type === "run"
+          ? item.content.flatMap((part) => (part.type === "text" ? [part.text] : []))
+          : [],
+      )
+      .join("");
+    if (numId !== undefined) instances[text] = numId;
+  }
+  return instances;
+};
+
+const twoNewLists = (reviewer: FolioDocxReviewer): FolioDocumentOperation[] => [
+  {
+    id: "left",
+    type: "insertAfterBlock",
+    blockId: blockId(reviewer, "Left."),
+    text: "Left list",
+    numbering: { kind: "newList", format: "bullet" },
+  },
+  {
+    id: "right",
+    type: "insertAfterBlock",
+    blockId: blockId(reviewer, "Right."),
+    text: "Right list",
+    numbering: { kind: "newList", format: "bullet" },
+  },
+];
+
 /** Apply, save, check every reference is defined, and read the labels back. */
 const savedLabels = async (
   reviewer: FolioDocxReviewer,
@@ -107,6 +147,44 @@ describe("an operation that starts a new list", () => {
     ]);
 
     expect(labels).toEqual(["Intro.", "• First", "• Second"]);
+  });
+
+  test("allocates a batch in the same right-to-left order as one-at-a-time replay", async () => {
+    const batch = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
+    const replay = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
+    const operations = twoNewLists(batch);
+    batch.applyDocumentOperations({ version: 1, mode: "direct", operations }, {});
+
+    const replayOperations = twoNewLists(replay);
+    for (const operation of [...replayOperations].reverse()) {
+      replay.applyDocumentOperations({ version: 1, mode: "direct", operations: [operation] }, {});
+    }
+
+    expect(await listInstancesByText(batch)).toEqual(await listInstancesByText(replay));
+  });
+
+  test("allocates direct and accepted tracked batches alike after save and reopen", async () => {
+    const direct = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
+    const tracked = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
+    direct.applyDocumentOperations(
+      { version: 1, mode: "direct", operations: twoNewLists(direct) },
+      {},
+    );
+    tracked.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: twoNewLists(tracked),
+      },
+      {},
+    );
+    tracked.acceptAll();
+
+    const reopenedDirect = await FolioDocxReviewer.fromBuffer(await direct.toBuffer());
+    const reopenedTracked = await FolioDocxReviewer.fromBuffer(await tracked.toBuffer());
+    expect(await listInstancesByText(reopenedTracked)).toEqual(
+      await listInstancesByText(reopenedDirect),
+    );
   });
 
   test("numbers existing paragraphs, one list per operation", async () => {

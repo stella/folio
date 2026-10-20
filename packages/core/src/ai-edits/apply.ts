@@ -75,7 +75,7 @@ import {
   getDocumentNumbering,
   getDocumentNumberingInstanceIds,
 } from "../prosemirror/plugins/documentNumbering";
-import { resolveNewListOperations } from "./newListNumbering";
+import { resolveNewListOperations, stageNewListOperations } from "./newListNumbering";
 import {
   readAuthoredRunFormatting,
   readAuthoredRunPropertySnapshot,
@@ -3895,12 +3895,10 @@ const applyFolioAIEditOperationsInternal = ({
   const styleResolver = getDocumentStyleResolver(view.state);
   // A state without the styles plugin cannot say which definitions exist.
   const styleDefinitions = getDocumentStyleDefinitions(view.state);
-  // A new-list request becomes a reference to the instance minted for it, so
-  // everything below applies one kind of numbering.
-  const { operations, numbering } = resolveNewListOperations(
-    requestedOperations,
-    getDocumentNumbering(view.state),
-  );
+  // Stage new-list requests as private references so planning stays pure;
+  // the batch-order owner below replaces them with minted instances.
+  const operations = stageNewListOperations(requestedOperations);
+  let numbering = getDocumentNumbering(view.state);
   const formattingFromStyleForInsertion = (item: ResolvedOperation) => {
     if (item.operation.type !== "insertAfterBlock" && item.operation.type !== "insertBeforeBlock") {
       return undefined;
@@ -4280,6 +4278,17 @@ const applyFolioAIEditOperationsInternal = ({
     };
   };
   const executionOrder = orderBatchOperations(executableResolved, batchAddress);
+  const requestedInExecutionOrder = executionOrder.map(({ originalIndex }) => {
+    const operation = requestedOperations[originalIndex];
+    return operation ?? panic("A planned operation lost its input", { originalIndex });
+  });
+  const allocated = resolveNewListOperations(requestedInExecutionOrder, numbering);
+  numbering = allocated.numbering;
+  for (const [index, item] of executionOrder.entries()) {
+    item.operation =
+      allocated.operations[index] ??
+      panic("A planned operation lost its new-list allocation", { id: item.operation.id });
+  }
   const executionGroups = groupInsertionRuns(executionOrder, (candidate) =>
     isBatchableParagraphInsertion(candidate, mode) ? candidate.from : null,
   );
@@ -8337,7 +8346,8 @@ type UndefinedNumberingReference = { path: string; numId: number };
 /** The `w:num` id a stated numbering names, when it names one. */
 const statedNumberingInstance = (
   numbering: FolioContentStatedNumbering | undefined,
-): number | undefined => (numbering?.kind === "reference" ? numbering.numId : undefined);
+): number | undefined =>
+  numbering?.kind === "reference" && numbering.numId >= 0 ? numbering.numId : undefined;
 
 /**
  * Every numbering instance an operation names, with the field that names it.
