@@ -363,6 +363,25 @@ const code = (value: string, limit = FIELD_LIMIT): string => {
   return `${fence}\n${bounded}\n${fence}`;
 };
 
+/** JSON strings keep label text on one line; escaped pipes keep table cells structural. */
+const inlineText = (value: string, limit = FIELD_LIMIT): string =>
+  JSON.stringify(field(value, limit)).replaceAll("|", "\\u007c");
+
+const parseInlineText = (value: string, limit = FIELD_LIMIT): string | undefined => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  return typeof parsed === "string" && inlineText(parsed, limit) === value ? parsed : undefined;
+};
+
+const parseLegacyField = (value: string, limit = FIELD_LIMIT): string | undefined => {
+  // Remove this read-only path once no open fuzz-failure issue has a legacy body.
+  return line(value, limit) === value ? value : undefined;
+};
+
 export type Signature = { id: string; test: string; failure: string };
 
 export const signatureOf = ({ test, assertion }: Pick<FailureMarker, "test" | "assertion">) => {
@@ -385,6 +404,7 @@ export type SignatureState = {
 };
 
 const ISSUE_BODY_LIMIT = 65_535;
+const ISSUE_BODY_FORMAT_MARKER = "<!-- fuzz-issue-format: 2 -->";
 const LANE_TABLE_HEADER = ["| Lane | Last run | Clean scheduled runs |", "| --- | --- | --- |"];
 
 type ShellWord = { raw: string; value: string };
@@ -520,16 +540,17 @@ export const renderSignatureIssue = (state: SignatureState): IssueContent => {
   const { signature } = state;
   const title = `${TITLE_PREFIX} [${signature.id}]: ${line(signature.test, 200)}: ${line(signature.failure, 200)}`;
   const prefix = [
+    ISSUE_BODY_FORMAT_MARKER,
     `Signature: ${signature.id}`,
-    `Test: ${line(signature.test)}`,
-    `Failure: ${line(signature.failure)}`,
+    `Test: ${inlineText(signature.test)}`,
+    `Failure: ${inlineText(signature.failure)}`,
     `Occurrences: ${state.occurrences}`,
     `Seeds: ${state.seeds.join(", ")}`,
-    `Last seen: ${state.lastSeen.lane} ${line(state.lastSeen.run, 500)}`,
+    `Last seen: ${state.lastSeen.lane} ${inlineText(state.lastSeen.run, 500)}`,
     "",
     ...LANE_TABLE_HEADER,
     ...state.lanes.map(
-      ({ lane, lastRun, cleanRuns }) => `| ${lane} | ${line(lastRun, 500)} | ${cleanRuns} |`,
+      ({ lane, lastRun, cleanRuns }) => `| ${lane} | ${inlineText(lastRun, 500)} | ${cleanRuns} |`,
     ),
     "",
     `Closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean scheduled runs in every lane.`,
@@ -577,8 +598,13 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   const malformed = (what: string) =>
     new SignatureStateError({ message: `Issue #${number} has a malformed ${what}` });
   if (!SIGNATURE.test(id)) throw malformed("signature");
-  const test = fieldOf(body, "Test");
-  const failure = fieldOf(body, "Failure");
+  // The writer emits the marker as the first line; a marker elsewhere is body text.
+  const format = body.split("\n", 1)[0] === ISSUE_BODY_FORMAT_MARKER ? "canonical" : "legacy";
+  const encodedTest = fieldOf(body, "Test") ?? "";
+  const encodedFailure = fieldOf(body, "Failure") ?? "";
+  const parseBodyField = format === "canonical" ? parseInlineText : parseLegacyField;
+  const test = parseBodyField(encodedTest);
+  const failure = parseBodyField(encodedFailure);
   const occurrences = Number(fieldOf(body, "Occurrences"));
   const seeds = seedsOf(fieldOf(body, "Seeds") ?? "");
   const lastSeen = /^Last seen: (\S+) (.*)$/mu.exec(body);
@@ -590,8 +616,14 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   if (test === undefined || failure === undefined) throw malformed("signature");
   if (!Number.isSafeInteger(occurrences) || occurrences < 0) throw malformed("occurrence count");
   if (!seeds.every(Number.isSafeInteger)) throw malformed("seed list");
-  const [, seenLane, seenRun] = lastSeen ?? [];
-  if (seenLane === undefined || seenRun === undefined) throw malformed("last seen run");
+  const [, seenLane, encodedSeenRun] = lastSeen ?? [];
+  const seenRun =
+    format === "canonical"
+      ? parseInlineText(encodedSeenRun ?? "", 500)
+      : parseLegacyField(encodedSeenRun ?? "", 500);
+  if (seenLane === undefined || !LANE.test(seenLane) || seenRun === undefined) {
+    throw malformed("last seen run");
+  }
   const [, reproSeed, , command] = repro ?? [];
   if (assertion === undefined || reproSeed === undefined || command === undefined) {
     throw malformed("evidence");
@@ -601,9 +633,15 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   const rows = body.slice(tableStart).split("\n").slice(LANE_TABLE_HEADER.length);
   const end = rows.findIndex((row) => !row.startsWith("|"));
   const lanes = rows.slice(0, end < 0 ? rows.length : end).map((row) => {
-    const [, lane = "", lastRun = "", cleanRuns = ""] =
-      /^\| (\S+) \| (.+) \| (\d+) \|$/u.exec(row) ?? [];
-    if (!LANE.test(lane) || lastRun === "") throw malformed("lane table");
+    const canonicalRow = /^\| (\S+) \| ((?:\\.|[^|])+) \| (\d+) \|$/u.exec(row);
+    const legacyRow = /^\| (\S+) \| (.+) \| (\d+) \|$/u.exec(row);
+    const [, lane = "", encodedLastRun = "", cleanRuns = ""] =
+      (format === "canonical" ? canonicalRow : legacyRow) ?? [];
+    const lastRun =
+      format === "canonical"
+        ? parseInlineText(encodedLastRun, 500)
+        : parseLegacyField(encodedLastRun, 500);
+    if (!LANE.test(lane) || lastRun === undefined) throw malformed("lane table");
     return { lane, lastRun, cleanRuns: Number(cleanRuns) };
   });
   return {

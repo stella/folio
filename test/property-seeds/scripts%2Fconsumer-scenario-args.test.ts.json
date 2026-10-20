@@ -5,6 +5,12 @@
       "path": "44:3:2:3:2:2",
       "note": "Replay values beginning with a dash must remain attached to their flags during command parsing",
       "date": "2026-10-19"
+    },
+    {
+      "seed": 1527555107,
+      "path": "11:3:1:5:8:5:5",
+      "note": "Flag-like merged replay values such as -- stay distinct from option delimiters",
+      "date": "2026-10-20"
     }
   ]
 }

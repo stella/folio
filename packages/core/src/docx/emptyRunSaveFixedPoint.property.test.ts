@@ -18,6 +18,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import { setDocumentBodyComments } from "@stll/docx-core/model";
 
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Document, Paragraph, Run } from "../types/document";
@@ -112,18 +113,19 @@ const bodyXml = ({
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
-  document.package.document.comments = [
-    ...body.matchAll(/<w:commentReference w:id="(?<id>\d+)"/gu),
-  ].map((match) => ({
-    id: Number(match.groups?.["id"]),
-    author: "Reviewer",
-    content: [
-      {
-        type: "paragraph",
-        content: [{ type: "run", content: [{ type: "text", text: "Check." }] }],
-      },
-    ],
-  }));
+  setDocumentBodyComments(
+    document.package.document,
+    [...body.matchAll(/<w:commentReference w:id="(?<id>\d+)"/gu)].map((match) => ({
+      id: Number(match.groups?.["id"]),
+      author: "Reviewer",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "run", content: [{ type: "text", text: "Check." }] }],
+        },
+      ],
+    })),
+  );
   const zip = await JSZip.loadAsync(await createDocx(document));
   zip.file(
     "word/document.xml",

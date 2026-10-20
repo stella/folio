@@ -573,6 +573,104 @@
       "title": "accepted deletion removes a comment with its last anchored text"
     },
     {
+      "seed": 1809930855,
+      "steps": 20,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "issue 1751: accept-all save ignores empty optional carriers"
+    },
+    {
+      "seed": 746947904,
+      "steps": 16,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "issue 1773: accept-all save ignores empty optional carriers"
+    },
+    {
+      "seed": 746948032,
+      "steps": 16,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "issue 1775: accept-all save ignores empty optional carriers"
+    },
+    {
+      "seed": 1101252766,
+      "steps": 16,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "issue 1834: accept-all save ignores empty optional carriers"
+    },
+    {
+      "seed": 1101252863,
+      "steps": 16,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "issue 1836: accept-all save ignores empty optional carriers"
+    },
+    {
+      "seed": 740097460,
+      "steps": 20,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "issue 1861: accept-all save ignores empty optional carriers"
+    },
+    {
+      "seed": 740097627,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "issue 1865: accept-all save ignores empty optional carriers"
+    },
+    {
+      "seed": 740097319,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "issue 1874: accept-all save ignores empty optional carriers"
+    },
+    {
+      "seed": 1339715993,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "issue 1808: reject-all save keeps canonical optional carriers"
+    },
+    {
+      "seed": 1502256685,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "issue 1922: reject-all save keeps canonical optional carriers"
+    },
+    {
+      "seed": 1502256226,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "issue 1927: reject-all save keeps canonical optional carriers"
+    },
+    {
+      "seed": 1502256688,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "issue 1927: reject-all save keeps canonical optional carriers"
+    },
+    {
+      "seed": 1502256418,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "issue 1934: reject-all save keeps canonical optional carriers"
+    },
+    {
+      "seed": 1502256382,
+      "steps": 20,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "issue 1936: reject-all save keeps canonical optional carriers"
+    },
+    {
       "seed": 1339715958,
       "steps": 20,
       "kind": "collisions",

@@ -1,3 +1,4 @@
+import { finalizeParagraphFormatting, setDocumentBodyComments } from "@stll/docx-core/model";
 import { reconcileDocumentPartRelationships } from "@stll/docx-core/ops";
 import { normalizeListModelRendering } from "../docx/listModelNormalization";
 import { commentTextParagraph } from "../docx/commentTextParagraph";
@@ -19,6 +20,7 @@ import {
   type ImportReferencedStyleDefinitionsResult,
 } from "../compare/style-resources";
 import { expectCharacterStyleMarkAttrs, expectFootnoteRefMarkAttrs } from "../prosemirror/attrs";
+import { visitDocxParagraphs } from "../docx/paragraphTraversal";
 /**
  * Headless `.docx` review path: buffer -> apply AI edits -> buffer, with
  * no `EditorView` and no DOM. A queue worker or agent can read a document,
@@ -2812,6 +2814,20 @@ export class FolioDocxReviewer {
   toDocument(): Document {
     const document = this.documentFromStateSnapshot(this.captureReviewerState());
     applyReplyThreadMarkers(document);
+    visitDocxParagraphs(
+      {
+        documentBody: document.package.document,
+        headers: document.package.headers,
+        footers: document.package.footers,
+        footnotes: document.package.footnotes,
+        endnotes: document.package.endnotes,
+      },
+      (paragraph) => {
+        if (finalizeParagraphFormatting(paragraph.formatting) === undefined) {
+          delete paragraph.formatting;
+        }
+      },
+    );
     return document;
   }
 
@@ -2935,12 +2951,29 @@ export class FolioDocxReviewer {
       snapshot.createdComments.length > 0 ||
       snapshot.resolvedOverrides.size > 0
     ) {
-      document.package.document.comments = this.withResolvedOverrides(
-        kept,
-        snapshot.resolvedOverrides,
+      setDocumentBodyComments(
+        document.package.document,
+        this.withResolvedOverrides(kept, snapshot.resolvedOverrides),
       );
     }
-    return normalizeListModelRendering(reconcileDocumentPartRelationships(document)).document;
+    const normalized = normalizeListModelRendering(
+      reconcileDocumentPartRelationships(document),
+    ).document;
+    visitDocxParagraphs(
+      {
+        documentBody: normalized.package.document,
+        headers: normalized.package.headers,
+        footers: normalized.package.footers,
+        footnotes: normalized.package.footnotes,
+        endnotes: normalized.package.endnotes,
+      },
+      (paragraph) => {
+        if (finalizeParagraphFormatting(paragraph.formatting) === undefined) {
+          delete paragraph.formatting;
+        }
+      },
+    );
+    return normalized;
   }
 
   private captureSaveSnapshot(): FolioSaveSnapshot {

@@ -11,6 +11,10 @@ blob-report/
 .DS_Store
 .claude/worktrees/
 
+# Local environment files, including Vite modes; samples remain trackable.
+.env*
+!.env.example
+
 # Rust cross-language benchmark build artifacts
 benchmarks/cross-language/rust/target/
 

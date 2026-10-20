@@ -64,6 +64,7 @@ import {
   type Paragraph,
   type ParagraphContent,
   type ParagraphFormatting,
+  finalizeParagraphFormatting,
   type Run,
   type RunPropertyChange,
 } from "../model/document";
@@ -1259,10 +1260,11 @@ const withParagraphFormatting = (
   formatting: ParagraphFormatting | undefined,
 ): Paragraph => {
   const next: Paragraph = { ...paragraph };
-  if (formatting === undefined) {
+  const finalized = finalizeParagraphFormatting(formatting);
+  if (finalized === undefined) {
     delete next.formatting;
   } else {
-    next.formatting = formatting;
+    next.formatting = finalized;
   }
   return next;
 };
@@ -1288,8 +1290,11 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
       "A paragraph property change does not record the paragraph mark's run properties.",
     );
   }
-  const formatting = patchedSet(paragraph.formatting, op.patch, op.whenEmpty);
-  if (structurallyEqual(formatting, paragraph.formatting)) {
+  const formatting = finalizeParagraphFormatting(
+    patchedSet(paragraph.formatting, op.patch, op.whenEmpty),
+  );
+  const currentFormatting = finalizeParagraphFormatting(paragraph.formatting);
+  if (structurallyEqual(formatting, currentFormatting)) {
     return unchanged(document);
   }
   const next = withParagraphFormatting(paragraph, formatting);

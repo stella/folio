@@ -13,6 +13,7 @@ import {
   type Document,
   type Paragraph,
 } from "../../model/document";
+import { setDocumentBodyComments } from "../../model/canonical";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { allocateCommentAnchorIds, planTrackedDeletion } from "../plan";
 import { commentDocumentIssue, freshCommentId, orphanRootCommentIds } from "../comments";
@@ -46,7 +47,7 @@ const seed = (presence: "absent" | "undefined" | "present"): Document => {
       footnotes: [{ type: "footnote", id: 1, content: [paragraph("00000004", "note")] }],
     },
   };
-  if (presence === "present") document.package.document.comments = [];
+  if (presence === "present") setDocumentBodyComments(document.package.document, []);
   if (presence === "undefined") Reflect.set(document.package.document, "comments", undefined);
   return document;
 };

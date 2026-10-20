@@ -36,6 +36,10 @@ const externalHyperlinkRel = (relsXml: string | undefined, href: string): boolea
       rel.includes('TargetMode="External"'),
   );
 
+test("paragraph omits empty formatting", () => {
+  expect(paragraph([], {}).formatting).toBeUndefined();
+});
+
 const firstHyperlinkHref = (blocks: HeaderFooter["content"]): string | undefined => {
   for (const block of blocks) {
     if (block.type !== "paragraph") {
