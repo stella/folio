@@ -56,67 +56,65 @@ export const sectionMarkEditsOf = (
     }
   }
 
-  const authoredRecordsByFinalParagraph = new Map<number, SectionProperties>();
-  const authoredDoc = transactions.at(0)?.before;
-  authoredDoc?.descendants((node, position) => {
-    if (!isParagraph(node)) return true;
-    const record = sectionPropertiesOf(node);
-    if (record === null) return false;
-
-    const mark = mapping.mapResult(position + node.nodeSize - 1, 1);
-    if (mark.deleted) {
-      deletedMarks.add(record);
-      return false;
-    }
-    const $mark = finalDoc.resolve(mark.pos);
-    if (isParagraph($mark.parent)) authoredRecordsByFinalParagraph.set($mark.before(), record);
-    return false;
-  });
-
-  const addCarrier = (position: number): void => {
-    carriers.push({ position, record: authoredRecordsByFinalParagraph.get(position) ?? null });
-  };
-
   for (const { step, doc, mapIndex } of replacements) {
     const { from, to } = step;
-    const after = mapping.slice(mapIndex);
     if (from === to) {
+      // A split inside a paragraph leaves both halves holding the same record
+      // object. Only the trailing half ends with the mark that owns it; the
+      // leading half ends with a new mark and holds no break. A record set on
+      // the paragraph before the split is the one both halves hold, and a
+      // record a paste brought onto one half is a different object, so
+      // neither is lost.
+      const after = mapping.slice(mapIndex);
       const left = after.mapResult(from, -1);
       const right = after.mapResult(from, 1);
       if (left.deleted || right.deleted) continue;
       const $left = finalDoc.resolve(left.pos);
       const $right = finalDoc.resolve(right.pos);
       if (
-        isParagraph($left.parent) &&
-        isParagraph($right.parent) &&
-        $left.start() !== $right.start()
+        !isParagraph($left.parent) ||
+        !isParagraph($right.parent) ||
+        $left.start() === $right.start()
       ) {
-        // Splitting inserts a new paragraph mark before the authored mark. The
-        // new leading paragraph does not end the section; the trailing half,
-        // which still owns the authored mark, does.
-        addCarrier($left.before());
-        addCarrier($right.before());
+        continue;
+      }
+      const record = sectionPropertiesOf($right.parent);
+      if (record !== null && sectionPropertiesOf($left.parent) === record) {
+        carriers.push({ position: $left.before(), record: null });
       }
       continue;
     }
+    doc.nodesBetween(from, to, (node, position) => {
+      if (!isParagraph(node)) return true;
+      const record = sectionPropertiesOf(node);
+      const markFrom = position + node.nodeSize - 1;
+      if (record && markFrom >= from && markFrom + 1 <= to) deletedMarks.add(record);
+      return false;
+    });
+
     const $from = doc.resolve(from);
     const $to = doc.resolve(to);
     if (!isParagraph($from.parent) || !isParagraph($to.parent) || $from.start() === $to.start()) {
       continue;
     }
+    const leftRecord = sectionPropertiesOf($from.parent);
+    const rightRecord = sectionPropertiesOf($to.parent);
+    if (leftRecord === null && rightRecord === null) continue;
+
     // The paragraph that ends with the right paragraph's mark holds its
     // record; a different paragraph left holding the first one's node ends
     // with a mark the replacement brought, and holds no break.
+    const after = mapping.slice(mapIndex);
     const left = after.mapResult(from, -1);
     const right = after.mapResult(to, 1);
     if (right.deleted) continue;
     const $right = finalDoc.resolve(right.pos);
     if (!isParagraph($right.parent)) continue;
-    addCarrier($right.before());
+    carriers.push({ position: $right.before(), record: rightRecord });
     if (left.deleted) continue;
     const $left = finalDoc.resolve(left.pos);
     if (isParagraph($left.parent) && $left.start() !== $right.start()) {
-      addCarrier($left.before());
+      carriers.push({ position: $left.before(), record: null });
     }
   }
   return { deletedMarks, carriers };

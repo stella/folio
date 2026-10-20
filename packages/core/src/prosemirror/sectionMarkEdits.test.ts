@@ -121,6 +121,43 @@ describe("editing across a section break", () => {
     ]);
   });
 
+  test("a break set on a paragraph and then split stays on the trailing half", () => {
+    const state = threeSections();
+    const added: SectionProperties = { sectionStart: "continuous" };
+    const transaction = state.tr
+      .setNodeAttribute(textStart(state, 2) - 1, "_sectionProperties", added)
+      .split(textStart(state, 2) + 2);
+    const next = state.apply(transaction);
+
+    expect(paragraphs(next)).toEqual([
+      { text: "One.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "Th", record: null },
+      { text: "ree.", record: added },
+    ]);
+  });
+
+  test("a pasted break on the last pasted paragraph survives a paste inside a paragraph", () => {
+    const state = threeSections();
+    const pasted: SectionProperties = { sectionStart: "continuous" };
+    const slice = new Slice(
+      schema.node("doc", null, [paragraph("A"), paragraph("B", pasted)]).content,
+      1,
+      1,
+    );
+    const next = run(state, { anchor: textStart(state, 2) + 2 }, (current, dispatch) => {
+      dispatch(current.tr.replaceSelection(slice));
+      return true;
+    });
+
+    expect(paragraphs(next)).toEqual([
+      { text: "One.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "ThA", record: null },
+      { text: "Bree.", record: pasted },
+    ]);
+  });
+
   test("split ownership is preserved across a batch of transactions", () => {
     const state = threeSections();
     const first = state.tr.split(textStart(state, 0) + 2);
