@@ -134,6 +134,36 @@ test("accepting a mark deletion before a table keeps a bookmark the paragraph ho
   expect(content).toContain('"bookmarkEnd"');
 });
 
+test("directly deleting a block before a table keeps a bookmark-only paragraph's bookmarks", () => {
+  const bookmarks: Paragraph = {
+    type: "paragraph",
+    paraId: "00000004",
+    content: [
+      { type: "bookmarkStart", id: 1, name: "kept" },
+      { type: "bookmarkEnd", id: 1 },
+    ],
+  };
+  const deleted: Paragraph = {
+    type: "paragraph",
+    paraId: "00000005",
+    content: [{ type: "run", content: [{ type: "text", text: "gone" }] }],
+  };
+  const document: Document = {
+    package: { document: { content: [bookmarks, deleted, table, finalParagraph] } },
+  };
+  const result = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+    story: OP_STORIES.MAIN,
+    blockIds: ["00000005"],
+  });
+  if (result.isErr()) throw result.error;
+
+  const content = JSON.stringify(result.value.document.package.document.content);
+  expect(content).not.toContain("gone");
+  expect(content).toContain('"bookmarkStart"');
+  expect(content).toContain('"bookmarkEnd"');
+});
+
 test("accepting a non-empty paragraph-mark deletion runs it into the first cell paragraph", () => {
   const paragraph: Paragraph = {
     type: "paragraph",

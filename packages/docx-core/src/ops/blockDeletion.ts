@@ -6,7 +6,7 @@ import { blockListAt, sameBlockList, storyBody, storyParagraphs } from "./blocks
 import type { DocumentEdit } from "./edits";
 import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
-import { paragraphLength } from "./offsets";
+import { paragraphHoldsContent, paragraphLength } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
@@ -148,7 +148,7 @@ export const deleteBlocks = ({
   if (following?.type === "table") follows = "table";
   const outcome = paragraphMarkOutcome({
     follows,
-    holdsContent: paragraphLength(survivor) > 0,
+    holdsContent: paragraphHoldsContent(survivor),
     markWasAdded: false,
     containerStillEndsWithParagraph: previous !== undefined,
     followingTableCanReceiveRunIn: false,

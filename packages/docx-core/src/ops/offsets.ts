@@ -80,6 +80,21 @@ export const isOpeningMarker = (item: ParagraphContent): boolean =>
 export const isRangeBoundary = (item: ParagraphContent): boolean =>
   INLINE_KINDS[item.type] === "openingMarker" || INLINE_KINDS[item.type] === "closingMarker";
 
+/**
+ * Whether a paragraph holds content its mark must not take away: visible text
+ * or a range marker or comment reference, which have no width.
+ */
+export const paragraphHoldsContent = (paragraph: Paragraph): boolean => {
+  const holds = (items: readonly ParagraphContent[]): boolean =>
+    items.some(
+      (item) =>
+        isRangeBoundary(item) ||
+        item.type === "commentReference" ||
+        (isInlineContainer(item) && holds(item.content)),
+    );
+  return paragraphLength(paragraph) > 0 || holds(paragraph.content);
+};
+
 /** Tracked content that direct text must not join: it is on its way out. */
 export const isRemovedRevision = (item: ParagraphContent): boolean =>
   item.type === "deletion" || item.type === "moveFrom";
