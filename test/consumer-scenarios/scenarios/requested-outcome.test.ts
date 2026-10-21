@@ -381,6 +381,18 @@ describe("the requested-outcome oracle", () => {
     assert.equal(references.size, 0);
   });
 
+  test("a note referenced from two blocks retires only with its last reference", () => {
+    const footnote = { type: "footnote", noteId: 1 } as const;
+    const references: Parameters<typeof retireNoteReferences>[0] = new Map([
+      ["first", [footnote]],
+      ["second", [footnote]],
+    ]);
+    assert.deepEqual(retireNoteReferences(references, "deleteBlock", "first", ["first"]), []);
+    assert.deepEqual(retireNoteReferences(references, "deleteBlock", "second", ["second"]), [
+      "footnote:1",
+    ]);
+  });
+
   test("removing one of two footnote references retires only that note's comment", () => {
     const first = { id: 1, text: "first review", anchor: "First note", blockId: "note-1" };
     const second = { id: 2, text: "second review", anchor: "Second note", blockId: "note-2" };

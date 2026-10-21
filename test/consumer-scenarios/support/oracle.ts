@@ -362,7 +362,7 @@ export const retireNoteReferences = (
   blockId: string,
   removal: readonly string[],
 ): string[] => {
-  const retired: string[] = [];
+  const candidates = new Set<string>();
   for (const removedBlockId of removal) {
     const held = references.get(removedBlockId) ?? [];
     references.delete(removedBlockId);
@@ -371,10 +371,19 @@ export const retireNoteReferences = (
       continue;
     }
     for (const story of held) {
-      if (story.type === "footnote" || story.type === "endnote") retired.push(noteStoryKey(story));
+      if (story.type === "footnote" || story.type === "endnote")
+        candidates.add(noteStoryKey(story));
     }
   }
-  return retired;
+  // A note stays while any live block still references it.
+  for (const held of references.values()) {
+    for (const story of held) {
+      if (story.type === "footnote" || story.type === "endnote") {
+        candidates.delete(noteStoryKey(story));
+      }
+    }
+  }
+  return [...candidates];
 };
 
 /** The blocks of `story` (the body by default) a reader lists. */
