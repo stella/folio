@@ -351,6 +351,20 @@ type NoteStory = Extract<Story, { type: "footnote" | "endnote" }>;
 const noteStoryKey = ({ type, noteId }: NoteStory): string => `${type}:${String(noteId)}`;
 
 /**
+ * Operations that leave every note reference in their target block where it
+ * is: formatting, comments and insertions beside the block. Any other edit of
+ * a block holding a reference leaves that note's comments unpredicted.
+ */
+export const KEEPS_NOTE_REFERENCES: ReadonlySet<string> = new Set([
+  "formatRange",
+  "setBlockParagraphProperties",
+  "commentOnRange",
+  "commentOnBlock",
+  "insertAfterBlock",
+  "insertBeforeBlock",
+]);
+
+/**
  * Update `references` (the note references each live block holds) for one
  * operation that removed `removal`, and return the note stories whose last
  * reference it removed. A merge moves the next block's content, and the note
@@ -2207,7 +2221,7 @@ export const assertRequestedOutcome = async (
     for (const story of retireNoteReferences(noteReferences, operation.type, blockId, removedIds)) {
       model.removedNoteStories.add(story);
     }
-    if (removedIds.length === 0) {
+    if (removedIds.length === 0 && !KEEPS_NOTE_REFERENCES.has(operation.type)) {
       // A split, replacement or other edit of a block may move or delete the
       // note references it holds; the oracle does not follow them.
       for (const story of noteReferences.get(blockId) ?? []) {

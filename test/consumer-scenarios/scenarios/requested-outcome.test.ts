@@ -35,6 +35,7 @@ import {
   compareWithModel,
   EXPECTATIONS,
   expectOperation,
+  KEEPS_NOTE_REFERENCES,
   modelOf,
   OPERATION_TYPES,
   retireNoteReferences,
@@ -389,6 +390,12 @@ describe("the requested-outcome oracle", () => {
     model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
     assert.deepEqual(compareComments(model, [comment], [comment], []), []);
     assert.deepEqual(compareComments(model, [comment], [], []), []);
+  });
+
+  test("every operation that keeps note references in place is a real operation type", () => {
+    for (const type of KEEPS_NOTE_REFERENCES) assert.ok(OPERATION_TYPES.includes(type), type);
+    assert.equal(KEEPS_NOTE_REFERENCES.has("splitBlock"), false);
+    assert.equal(KEEPS_NOTE_REFERENCES.has("replaceBlock"), false);
   });
 
   test("a note referenced from two blocks retires only with its last reference", () => {
