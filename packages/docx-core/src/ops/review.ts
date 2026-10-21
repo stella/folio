@@ -11,13 +11,14 @@
  * each piece keeping every field of the record, as a direct edit cuts them.
  */
 
-import type {
-  Paragraph,
-  ParagraphContent,
-  ParagraphFormatting,
-  ParagraphPropertyChange,
-  TrackedChangeInfo,
-  TrackedRunContent,
+import {
+  finalizeParagraphFormatting,
+  type Paragraph,
+  type ParagraphContent,
+  type ParagraphFormatting,
+  type ParagraphPropertyChange,
+  type TrackedChangeInfo,
+  type TrackedRunContent,
 } from "../model/document";
 import { structurallyEqual } from "./equality";
 import { getParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
@@ -228,9 +229,10 @@ export const foldedParagraphPropertyChange = ({
 };
 
 /** The review fields a paragraph states, each only when present. */
-export const reviewFieldsOf = (paragraph: Paragraph): ParagraphReviewFields => {
+export const reviewFieldsOf = (paragraph: ParagraphReviewFields): ParagraphReviewFields => {
   const fields: ParagraphReviewFields = {};
-  if (paragraph.formatting !== undefined) fields.formatting = paragraph.formatting;
+  const formatting = finalizeParagraphFormatting(paragraph.formatting);
+  if (formatting !== undefined) fields.formatting = formatting;
   if (paragraph.propertyChanges !== undefined) fields.propertyChanges = paragraph.propertyChanges;
   if (paragraph.pPrMark !== undefined) fields.pPrMark = paragraph.pPrMark;
   return fields;
@@ -245,7 +247,8 @@ export const withReviewFields = (
   delete next.formatting;
   delete next.propertyChanges;
   delete next.pPrMark;
-  if (review.formatting !== undefined) next.formatting = review.formatting;
+  const formatting = finalizeParagraphFormatting(review.formatting);
+  if (formatting !== undefined) next.formatting = formatting;
   if (review.propertyChanges !== undefined) next.propertyChanges = review.propertyChanges;
   if (review.pPrMark !== undefined) next.pPrMark = review.pPrMark;
   return next;
