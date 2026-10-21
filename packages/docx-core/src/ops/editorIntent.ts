@@ -1754,7 +1754,8 @@ export const compileEditorIntent = (
       break;
     }
     case "replaceText": {
-      const { from, to, text } = intent;
+      const { text } = intent;
+      let { from, to } = intent;
       const paragraph = paragraphAt(document, from);
       if (paragraph === undefined) {
         return Result.err(
@@ -1764,6 +1765,39 @@ export const compileEditorIntent = (
             opType: DOCUMENT_OP_TYPES.INSERT_TEXT,
           }),
         );
+      }
+      if (idKey(from.blockId) === idKey(to.blockId)) {
+        const fromGap = {
+          offset: from.offset,
+          zeroWidthBefore:
+            from.zeroWidthBefore ?? zeroWidthLeavesAt(paragraph.content, from.offset).length,
+        };
+        const toGap = { offset: to.offset, zeroWidthBefore: to.zeroWidthBefore ?? 0 };
+        // Every leaf the selection touches, including a partly selected text leaf.
+        const selected = leafSpans(paragraph.content).filter(
+          ({ before, after }) => compareGaps(before, toGap) < 0 && compareGaps(fromGap, after) < 0,
+        );
+        const marker = selected.find(({ node }) => node.type === "noteMarker");
+        if (
+          marker !== undefined &&
+          selected.every(
+            ({ node, ancestors }) =>
+              node.type === "noteMarker" || ancestors.some(isRemovedRevisionNode),
+          )
+        ) {
+          // Only an empty replacement is a no-op: typed text over the protected marker
+          // is an insertion right after it, in both modes.
+          if (text.length === 0)
+            return Result.err(
+              new DocumentOpRefusal({
+                reason: DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+                message: "The range contains only the note story's automatic marker.",
+                opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
+              }),
+            );
+          from = { ...from, ...marker.after };
+          to = from;
+        }
       }
       const runProps = intentRunFormatting(document, intent);
       // Both modes insert the same authored run; source XML attributes belong

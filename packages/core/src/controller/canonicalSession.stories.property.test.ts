@@ -175,62 +175,61 @@ test("generated tracked secondary replacements preserve shared history and saved
               gaps.at(Math.min(index + input.count, gaps.length - 1)) ??
               panic("The story generator lost its end gap.");
             if (from === to && input.text === "") continue;
-            directState = accept(
-              directState,
-              direct
-                .prepareReplace(directState, {
-                  from: direct
-                    .projectStory(story)
-                    .unwrap()
-                    .positionAt({
-                      story,
-                      blockId: current.paraId ?? panic("Story paragraph id missing."),
-                      offset: from,
-                    })
-                    .unwrap(),
-                  to: direct
-                    .projectStory(story)
-                    .unwrap()
-                    .positionAt({
-                      story,
-                      blockId: current.paraId ?? panic("Story paragraph id missing."),
-                      offset: to,
-                    })
-                    .unwrap(),
-                  text: input.text,
+            const directPrepared = direct.prepareReplace(directState, {
+              from: direct
+                .projectStory(story)
+                .unwrap()
+                .positionAt({
                   story,
+                  blockId: current.paraId ?? panic("Story paragraph id missing."),
+                  offset: from,
                 })
                 .unwrap(),
-            );
-            trackedState = accept(
-              trackedState,
-              tracked
-                .prepareReplace(trackedState, {
-                  from: tracked
-                    .projectStory(story)
-                    .unwrap()
-                    .positionAt({
-                      story,
-                      blockId: current.paraId ?? panic("Story paragraph id missing."),
-                      offset: physicalOffsetAtVisibleOffset(current, from),
-                    })
-                    .unwrap(),
-                  to: tracked
-                    .projectStory(story)
-                    .unwrap()
-                    .positionAt({
-                      story,
-                      blockId: current.paraId ?? panic("Story paragraph id missing."),
-                      offset: physicalOffsetAtVisibleOffset(current, to),
-                    })
-                    .unwrap(),
-                  text: input.text,
+              to: direct
+                .projectStory(story)
+                .unwrap()
+                .positionAt({
                   story,
+                  blockId: current.paraId ?? panic("Story paragraph id missing."),
+                  offset: to,
                 })
                 .unwrap(),
-            );
-            snapshots.push(tracked.document);
-            selections.push(trackedState.selection.toJSON());
+              text: input.text,
+              story,
+            });
+            const trackedPrepared = tracked.prepareReplace(trackedState, {
+              from: tracked
+                .projectStory(story)
+                .unwrap()
+                .positionAt({
+                  story,
+                  blockId: current.paraId ?? panic("Story paragraph id missing."),
+                  offset: physicalOffsetAtVisibleOffset(current, from),
+                })
+                .unwrap(),
+              to: tracked
+                .projectStory(story)
+                .unwrap()
+                .positionAt({
+                  story,
+                  blockId: current.paraId ?? panic("Story paragraph id missing."),
+                  offset: physicalOffsetAtVisibleOffset(current, to),
+                })
+                .unwrap(),
+              text: input.text,
+              story,
+            });
+            // A mode may find nothing to change (for example only the protected note marker is
+            // covered); the other mode's edit still applies and the final accepted comparison
+            // checks that both agree.
+            if (directPrepared.isErr()) expect(directPrepared.error.reason).toBe("noChange");
+            else directState = accept(directState, directPrepared.value);
+            if (trackedPrepared.isErr()) expect(trackedPrepared.error.reason).toBe("noChange");
+            else {
+              trackedState = accept(trackedState, trackedPrepared.value);
+              snapshots.push(tracked.document);
+              selections.push(trackedState.selection.toJSON());
+            }
             for (const other of [OP_STORIES.MAIN, ...STORIES].filter(
               (candidate) => candidate !== story,
             )) {
