@@ -1482,7 +1482,8 @@ function convertTrackedChange(
     moveKind,
     _docxOuterWrapperCount: wrappedBy.length,
     _docxResolutionJoins: change.resolutionJoins ?? null,
-    _docxCommentRangeBoundaries: commentRangeBoundaries.length > 0 ? commentRangeBoundaries : null,
+    _docxCommentRangeBoundaries:
+      commentRangeBoundaries.length > 0 ? commentRangeBoundaries : undefined,
     ...(markType === "deletion" ? { _historicalFormatting: true } : {}),
   });
 

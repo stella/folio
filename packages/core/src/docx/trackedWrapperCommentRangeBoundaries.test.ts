@@ -10,6 +10,7 @@
 import { describe, expect, test } from "bun:test";
 import { applyDocumentOps, OP_STORIES, REVISION_DECISIONS } from "@stll/docx-core/ops";
 import fc from "fast-check";
+import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
 
 import {
@@ -29,6 +30,8 @@ import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph } from "../types/document";
 
 import { parseParagraph } from "./paragraphParser";
+import { parseDocx } from "./parser";
+import { createEmptyDocx, repackDocx } from "./rezip";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -52,6 +55,11 @@ const parseParagraphXml = (xml: string): Paragraph => {
 const REVISION_ATTRIBUTES = 'w:id="7" w:author="Reviewer"';
 const COMMENT_REFERENCE =
   '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="5"/></w:r>';
+const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const COMMENTS_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml";
+const COMMENTS_RELATIONSHIP =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments";
 
 const serializeInnerXml = (inner: string): string =>
   serializeParagraph(
@@ -138,6 +146,57 @@ const markedText = (document: ReturnType<typeof toProseDoc>, commentId: number):
 };
 
 describe("comment-range boundaries inside tracked changes", () => {
+  test("an unedited range crossing an insertion saves its affected parts byte for byte", async () => {
+    const zip = await JSZip.loadAsync(await createEmptyDocx());
+    const emptyDocumentXml = await zip.file("word/document.xml")?.async("text");
+    if (emptyDocumentXml === undefined) throw new Error("The empty package lost document.xml");
+    const bodyXml =
+      `<w:body><w:p>` +
+      `<w:commentRangeStart w:id="5"/><w:ins ${REVISION_ATTRIBUTES}>` +
+      '<w:r><w:t>A</w:t></w:r><w:commentRangeEnd w:id="5"/></w:ins>' +
+      `${COMMENT_REFERENCE}</w:p><w:sectPr/></w:body>`;
+    const documentXml = emptyDocumentXml.replace(/<w:body>[\s\S]*<\/w:body>/u, bodyXml);
+    const commentsXml =
+      `${XML_DECLARATION}<w:comments xmlns:w="${WORDPROCESSINGML_NAMESPACE}">` +
+      '<w:comment w:id="5" w:author="Reviewer"><w:p><w:r><w:t>Note</w:t></w:r></w:p></w:comment>' +
+      "</w:comments>";
+    zip.file("word/document.xml", documentXml);
+    zip.file("word/comments.xml", commentsXml);
+    const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
+    const relationships = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    if (contentTypes === undefined || relationships === undefined) {
+      throw new Error("The empty package lost its packaging parts");
+    }
+    zip.file(
+      "[Content_Types].xml",
+      contentTypes.replace(
+        "</Types>",
+        `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
+      ),
+    );
+    zip.file(
+      "word/_rels/document.xml.rels",
+      relationships.replace(
+        "</Relationships>",
+        `<Relationship Id="rIdComments" Type="${COMMENTS_RELATIONSHIP}" Target="comments.xml"/></Relationships>`,
+      ),
+    );
+    const seeded = await zip.generateAsync({ type: "arraybuffer" });
+    const source = await repackDocx(await parseDocx(seeded, { preloadFonts: false }), {
+      updateModifiedDate: false,
+    });
+    const sourceZip = await JSZip.loadAsync(source);
+    const loaded = await parseDocx(source, { preloadFonts: false });
+    const unedited = fromProseDoc(toProseDoc(loaded), loaded, {
+      stylesheetSource: { type: "package" },
+    });
+    const saved = await JSZip.loadAsync(await repackDocx(unedited, { updateModifiedDate: false }));
+
+    for (const part of ["word/document.xml", "word/comments.xml"]) {
+      expect(await saved.file(part)?.async("text")).toBe(await sourceZip.file(part)?.async("text"));
+    }
+  });
+
   for (const { name, xml } of [
     {
       name: "w:commentRangeStart inside w:ins and the closing range markup outside it",
