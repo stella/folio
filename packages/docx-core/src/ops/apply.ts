@@ -171,6 +171,7 @@ import {
 } from "./review";
 import {
   DOCUMENT_OP_TYPES,
+  EMPTY_PROPERTY_SETS,
   PROPERTY_REVIEW_POLICIES,
   DOCUMENT_OP_SCHEMA_VERSION,
   SECTION_BOUNDARY_POLICIES,
@@ -1274,13 +1275,14 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
 const withParagraphFormatting = (
   paragraph: Paragraph,
   formatting: ParagraphFormatting | undefined,
+  preserveEmpty = false,
 ): Paragraph => {
   const next: Paragraph = { ...paragraph };
   const finalized = finalizeParagraphFormatting(formatting);
-  if (finalized === undefined) {
+  if (finalized === undefined && !(preserveEmpty && formatting !== undefined)) {
     delete next.formatting;
   } else {
-    next.formatting = finalized;
+    next.formatting = finalized ?? {};
   }
   return next;
 };
@@ -1306,14 +1308,20 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
       "A paragraph property change does not record the paragraph mark's run properties.",
     );
   }
-  const formatting = finalizeParagraphFormatting(
-    patchedSet(paragraph.formatting, op.patch, op.whenEmpty),
-  );
-  const currentFormatting = finalizeParagraphFormatting(paragraph.formatting);
+  const patchedFormatting = patchedSet(paragraph.formatting, op.patch, op.whenEmpty);
+  const formatting =
+    finalizeParagraphFormatting(patchedFormatting) ??
+    (patchedFormatting !== undefined && Object.keys(patchedFormatting).length === 0
+      ? {}
+      : undefined);
+  const preserveEmpty = op.whenEmpty === EMPTY_PROPERTY_SETS.KEEP;
+  const currentFormatting = preserveEmpty
+    ? paragraph.formatting
+    : finalizeParagraphFormatting(paragraph.formatting);
   if (structurallyEqual(formatting, currentFormatting)) {
     return unchanged(document);
   }
-  const next = withParagraphFormatting(paragraph, formatting);
+  const next = withParagraphFormatting(paragraph, formatting, preserveEmpty);
   registerParagraphPropertySnapshot({
     paragraph: next,
     snapshot: patchedSet(getParagraphPropertySnapshot(paragraph), op.patch, op.whenEmpty),
