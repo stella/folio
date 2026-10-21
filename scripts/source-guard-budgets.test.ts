@@ -7,7 +7,8 @@ import { scanTestTimeout } from "../test/scan-timeout";
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const BUDGET_HELPERS = new Set(["propertyTestTimeout", "scanTestTimeout"]);
 const WALK_METHODS = new Set(["readDirectory", "readdir", "readdirSync", "scan", "scanSync"]);
-const SUBPROCESS_METHODS = new Set(["execFile", "execFileSync", "spawn", "spawnSync"]);
+// `$` is the shell template tag (`Bun.$` or an imported `$`).
+const SUBPROCESS_METHODS = new Set(["$", "execFile", "execFileSync", "spawn", "spawnSync"]);
 
 setDefaultTimeout(scanTestTimeout(10_000));
 
@@ -31,8 +32,8 @@ const callsAny = (sourceFile: ts.SourceFile, names: ReadonlySet<string>): boolea
   let found = false;
   const visit = (node: ts.Node): void => {
     if (found) return;
-    if (ts.isCallExpression(node)) {
-      const name = callName(node.expression);
+    if (ts.isCallExpression(node) || ts.isTaggedTemplateExpression(node)) {
+      const name = callName(ts.isCallExpression(node) ? node.expression : node.tag);
       if (name !== undefined && names.has(name)) {
         found = true;
         return;
@@ -71,4 +72,14 @@ test("a repository walk without a budget is rejected", () => {
     ],
   ]);
   expect(missingBudgets(fixture)).toEqual(["scripts/unbudgeted.test.ts"]);
+});
+
+test("a shell subprocess without a budget is rejected", () => {
+  const fixture = new Map([
+    [
+      "scripts/unbudgeted-shell.test.ts",
+      'import { test } from "bun:test";\ntest("shell", () => Bun.$`bun scripts/check.ts`.quiet());',
+    ],
+  ]);
+  expect(missingBudgets(fixture)).toEqual(["scripts/unbudgeted-shell.test.ts"]);
 });

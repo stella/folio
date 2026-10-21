@@ -1733,7 +1733,7 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   }
   if (
     op.expectedSurvivor !== undefined &&
-    !equalForStaleness(reviewFieldsOf(survivor), op.expectedSurvivor)
+    !equalForStaleness(reviewFieldsOf(survivor), reviewFieldsOf(op.expectedSurvivor))
   ) {
     return refuse(
       op,
@@ -2041,7 +2041,7 @@ const setParagraphReview = (document: Document, op: SetParagraphReviewOp): Appli
     return Result.err(located.error);
   }
   const { paragraph } = located.value;
-  if (!equalForStaleness(reviewFieldsOf(paragraph), op.expected)) {
+  if (!equalForStaleness(reviewFieldsOf(paragraph), reviewFieldsOf(op.expected))) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,

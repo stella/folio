@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 533671496,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1605519245,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "numbering": { "kind": "reference", "numId": 2, "ilvl": 0 }
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 1534001748,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "412DDC7F",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2669790694,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "First added clause."
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "Second added clause."
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "commentOnRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "origin": "issue 1740 seed 533671496"
+}
