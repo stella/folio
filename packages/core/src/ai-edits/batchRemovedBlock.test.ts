@@ -12,6 +12,10 @@ import { paragraph } from "../docx/server/build";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
+import {
+  getFolioDocumentOperationRemovedBlockIds,
+  getTrackedFolioDocumentOperationRemovedBlockIds,
+} from "./removed-blocks";
 
 const buildReviewer = async (): Promise<FolioDocxReviewer> => {
   const document = createEmptyDocument();
@@ -79,5 +83,154 @@ describe("a batch that removes a block and then formats it", () => {
       }),
     ).toBe(false);
     await reviewer.toBuffer();
+  });
+
+  test("refuses an edit of the block an earlier direct merge removes", async () => {
+    const reviewer = await buildReviewer();
+    const [first, second] = reviewer.getContent();
+    if (!first || !second) throw new Error("the fixture paragraphs are missing");
+
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
+          {
+            id: "format-removed",
+            type: "setBlockParagraphProperties",
+            blockId: second.id,
+            properties: { alignment: "center" },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+
+    expect(result.applied.map(({ id }) => id)).toEqual(["merge"]);
+    expect(result.skipped).toEqual([
+      {
+        id: "format-removed",
+        reason: "overlappingOperation",
+        message: 'operation "merge", earlier in this batch, already claims its target.',
+      },
+    ]);
+  });
+
+  test("allows an edit of the neighbor preserved by a tracked merge", async () => {
+    const reviewer = await buildReviewer();
+    const [first, second] = reviewer.getContent();
+    if (!first || !second) throw new Error("the fixture paragraphs are missing");
+
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
+          {
+            id: "format-neighbor",
+            type: "setBlockParagraphProperties",
+            blockId: second.id,
+            properties: { alignment: "center" },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["format-neighbor", "merge"]);
+    expect(result.skipped).toEqual([]);
+  });
+
+  test("allows formatting the tracked carrier after deleting its content", async () => {
+    const reviewer = await buildReviewer();
+    const blocks = reviewer.getContent();
+    const beforeCarrier = blocks.at(-2);
+    const carrier = blocks.at(-1);
+    if (!beforeCarrier || !carrier) throw new Error("the fixture carrier is missing");
+
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          { id: "delete-content", type: "deleteBlock", blockId: carrier.id },
+          { id: "merge-into-carrier", type: "mergeBlockWithNext", blockId: beforeCarrier.id },
+          {
+            id: "format-carrier",
+            type: "setBlockParagraphProperties",
+            blockId: carrier.id,
+            properties: { alignment: "center" },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "delete-content",
+      "format-carrier",
+      "merge-into-carrier",
+    ]);
+    expect(result.skipped).toEqual([]);
+  });
+});
+
+describe("getFolioDocumentOperationRemovedBlockIds", () => {
+  const blocks = [{ id: "A" }, { id: "B" }, { id: "C" }];
+
+  test("a merge removes the block after its anchor", () => {
+    expect([
+      ...getFolioDocumentOperationRemovedBlockIds(blocks, {
+        type: "mergeBlockWithNext",
+        blockId: "A",
+      } as never),
+    ]).toEqual(["B"]);
+  });
+
+  test("a merge does not remove its anchor", () => {
+    expect(
+      getFolioDocumentOperationRemovedBlockIds(blocks, {
+        type: "mergeBlockWithNext",
+        blockId: "A",
+      } as never).has("A"),
+    ).toBe(false);
+  });
+
+  test("a tracked merge keeps the following block addressable", () => {
+    expect([
+      ...getTrackedFolioDocumentOperationRemovedBlockIds(blocks, {
+        type: "mergeBlockWithNext",
+        blockId: "B",
+      } as never),
+    ]).toEqual([]);
+  });
+
+  test("a merge with an unknown anchor removes nothing", () => {
+    expect([
+      ...getFolioDocumentOperationRemovedBlockIds(blocks, {
+        type: "mergeBlockWithNext",
+        blockId: "missing",
+      } as never),
+    ]).toEqual([]);
+  });
+
+  test("deleting carrier content removes its identity until a merge preserves it", () => {
+    expect([
+      ...getTrackedFolioDocumentOperationRemovedBlockIds(blocks, {
+        type: "deleteBlock",
+        blockId: "C",
+      } as never),
+    ]).toEqual(["C"]);
+  });
+
+  test("deleting a non-carrier removes its identity", () => {
+    expect([
+      ...getFolioDocumentOperationRemovedBlockIds(blocks, {
+        type: "deleteBlock",
+        blockId: "B",
+      } as never),
+    ]).toEqual(["B"]);
   });
 });

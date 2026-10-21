@@ -64,6 +64,7 @@ import {
   type Paragraph,
   type ParagraphContent,
   type ParagraphFormatting,
+  finalizeParagraphFormatting,
   type Run,
   type RunPropertyChange,
 } from "../model/document";
@@ -124,6 +125,7 @@ import {
 } from "./inline";
 import {
   asParagraphContent,
+  compareGaps,
   leafSpans,
   childNodes,
   type Gap,
@@ -154,6 +156,7 @@ import {
   namesMarkFormatting,
   paragraphPropertiesOf,
   foldedParagraphPropertyChange,
+  isRemovedRevisionNode,
   paragraphPropertyChange,
   reviewFieldsOf,
   sameMarkFormatting,
@@ -807,6 +810,23 @@ const joinedContent = (
 
 const isCount = (value: number): boolean => Number.isInteger(value) && value >= 0;
 
+/** Find a note story's source-owned automatic mark inside a replacement range. */
+const automaticNoteMarkBetween = (
+  story: OpStory,
+  paragraph: Paragraph,
+  from: Gap,
+  to: Gap,
+): { before: Gap; after: Gap } | undefined => {
+  if (story === "main" || (story.kind !== "footnote" && story.kind !== "endnote")) return undefined;
+  return leafSpans(paragraph.content).find(
+    ({ node, before, after }) =>
+      node.type === "noteMarker" &&
+      node.kind === story.kind &&
+      compareGaps(from, before) <= 0 &&
+      compareGaps(after, to) <= 0,
+  );
+};
+
 const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
   const join = op.join ?? 0;
   if (!isCount(join)) {
@@ -824,13 +844,13 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
     return Result.err(located.error);
   }
   const { story, location, from, to, empty } = located.value;
+  const { paragraph } = location;
   const { expected } = op;
   if (empty) {
     return expected === undefined || expected.content.length === 0
       ? unchanged(document)
       : refuse(op, DOCUMENT_OP_REFUSAL_REASONS.STALE, "The range to delete is empty.");
   }
-  const { paragraph } = location;
   const { content: remaining, removed } = deleteBetween(paragraph.content, from, to);
   if (expected !== undefined && !equalForStaleness(expected, removed)) {
     return refuse(
@@ -841,6 +861,27 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
   }
   if (removed.content.length === 0) {
     return unchanged(document);
+  }
+  const protectedMark = automaticNoteMarkBetween(story, paragraph, from, to);
+  let content = remaining;
+  if (protectedMark !== undefined) {
+    // A leaf counts when the range covers any part of it, including part of a text leaf.
+    const hasOtherSurvivingContent = leafSpans(paragraph.content).some(
+      ({ node, ancestors, before, after }) =>
+        compareGaps(before, to) < 0 &&
+        compareGaps(from, after) < 0 &&
+        node.type !== "noteMarker" &&
+        !ancestors.some(isRemovedRevisionNode),
+    );
+    if (!hasOtherSurvivingContent) {
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+        "The range contains only the note story's automatic marker.",
+      );
+    }
+    const afterRemoved = deleteBetween(paragraph.content, protectedMark.after, to).content;
+    content = deleteBetween(afterRemoved, from, protectedMark.before).content;
   }
   if (op.revision !== undefined) {
     const wrapped = wrappedContent(op, {
@@ -869,10 +910,9 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
       (result) => Result.ok([contentRestoring(story, result, paragraph)]),
     );
   }
-  let content = remaining;
   let retired: NewIds = {};
   if (join > 0) {
-    const joined = joinedContent(op, joinAt(remaining, from, join), `at ${from.offset}`);
+    const joined = joinedContent(op, joinAt(content, from, join), `at ${from.offset}`);
     if (joined.isErr()) {
       return Result.err(joined.error);
     }
@@ -888,7 +928,10 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
       newIds: undefined,
     },
     (result) => {
-      if (cutHasResolutionProvenance({ content: paragraph.content, gaps: [from, to] }))
+      if (
+        protectedMark !== undefined ||
+        cutHasResolutionProvenance({ content: paragraph.content, gaps: [from, to] })
+      )
         return Result.ok([contentRestoring(story, result, paragraph)]);
       const insertion: InsertContentOp = {
         type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
@@ -1233,10 +1276,11 @@ const withParagraphFormatting = (
   formatting: ParagraphFormatting | undefined,
 ): Paragraph => {
   const next: Paragraph = { ...paragraph };
-  if (formatting === undefined) {
+  const finalized = finalizeParagraphFormatting(formatting);
+  if (finalized === undefined) {
     delete next.formatting;
   } else {
-    next.formatting = formatting;
+    next.formatting = finalized;
   }
   return next;
 };
@@ -1262,8 +1306,11 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
       "A paragraph property change does not record the paragraph mark's run properties.",
     );
   }
-  const formatting = patchedSet(paragraph.formatting, op.patch, op.whenEmpty);
-  if (structurallyEqual(formatting, paragraph.formatting)) {
+  const formatting = finalizeParagraphFormatting(
+    patchedSet(paragraph.formatting, op.patch, op.whenEmpty),
+  );
+  const currentFormatting = finalizeParagraphFormatting(paragraph.formatting);
+  if (structurallyEqual(formatting, currentFormatting)) {
     return unchanged(document);
   }
   const next = withParagraphFormatting(paragraph, formatting);
@@ -2060,7 +2107,22 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
       `${op.blockId} holds other content than expected.`,
     );
   }
-  const content = cloneModel(op.content);
+  let content = cloneModel(op.content);
+  const noteKind =
+    op.story !== "main" && (op.story.kind === "footnote" || op.story.kind === "endnote")
+      ? op.story.kind
+      : undefined;
+  if (
+    noteKind !== undefined &&
+    !leafSpans(content).some(({ node }) => node.type === "noteMarker" && node.kind === noteKind)
+  ) {
+    const carrier = paragraph.content.find((node) =>
+      leafSpans([node]).some(
+        ({ node: leaf }) => leaf.type === "noteMarker" && leaf.kind === noteKind,
+      ),
+    );
+    if (carrier !== undefined) content = [carrier, ...content];
+  }
   if (holdsEmptyRecord(content)) {
     return refuse(
       op,

@@ -28,7 +28,7 @@ jobs:
   changeset:
     name: Changeset present for published package src changes
     if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -99,7 +99,7 @@ jobs:
   # Drafts plan nothing until marked ready for review.
   ci-plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -119,7 +119,6 @@ jobs:
       docx_kernel_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).docx_kernel) }}
       interactions_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).interactions) }}
       differential_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).differential) }}
-      consumer_scenarios_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).consumer_scenarios) }}
       packaged_consumer_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.packaged_consumer_required == 'true' || fromJSON(steps.plan.outputs.areas).packaged_consumer) }}
     steps:
       - name: Find successful merge-group coverage
@@ -210,13 +209,13 @@ jobs:
     name: Warm main dependency caches
     needs: ci-plan
     if: github.event_name == 'push' && needs.ci-plan.outputs.reused_run != '' && needs.ci-plan.outputs.warm_caches == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
@@ -237,7 +236,7 @@ jobs:
     name: Browser test discovery
     needs: ci-plan
     if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.ci-plan.outputs.browser_discovery_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -257,7 +256,7 @@ jobs:
     name: Format check (documentation only)
     needs: ci-plan
     if: needs.ci-plan.outputs.reused_run == '' && needs.ci-plan.outputs.code_required == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -278,7 +277,7 @@ jobs:
     name: Lint and source guards
     needs: ci-plan
     if: needs.ci-plan.outputs.reused_run == ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -286,7 +285,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -471,7 +470,7 @@ jobs:
     name: Typecheck
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -479,27 +478,30 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
       - run: bun install --frozen-lockfile
 
       - name: Typecheck
-        run: bun run typecheck
+        run: bun scripts/ci-plan.ts --base "$TYPECHECK_BASE" --head "$GITHUB_SHA"
+        env:
+          TYPECHECK_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          TYPECHECK_PUSH: ${{ github.event_name == 'push' }}
 
   build-api:
     name: Build reproducibility and API reports
     needs: ci-plan
     if: needs.ci-plan.outputs.api_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -535,7 +537,7 @@ jobs:
     name: Focused and full tests (1/4)
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -543,7 +545,7 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -563,6 +565,15 @@ jobs:
           mkdir -p test-results
           bun scripts/ci-test-shards.ts --shard 1 --depth full 2>&1 | tee test-results/full-test-suite.log
 
+      - name: Upload per-file test timings
+        if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-timings-${{ github.run_id }}-1
+          path: test-results/test-timings-1.json
+          retention-days: 14
+          if-no-files-found: error
+
       # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
       - name: Keep the test log of a failed merge group
         if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
@@ -577,7 +588,7 @@ jobs:
     name: Focused and full tests (2/4)
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -585,7 +596,7 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -605,6 +616,15 @@ jobs:
           mkdir -p test-results
           bun scripts/ci-test-shards.ts --shard 2 --depth full 2>&1 | tee test-results/full-test-suite.log
 
+      - name: Upload per-file test timings
+        if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-timings-${{ github.run_id }}-2
+          path: test-results/test-timings-2.json
+          retention-days: 14
+          if-no-files-found: error
+
       # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
       - name: Keep the test log of a failed merge group
         if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
@@ -619,7 +639,7 @@ jobs:
     name: Focused and full tests (3/4)
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -627,7 +647,7 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -647,6 +667,15 @@ jobs:
           mkdir -p test-results
           bun scripts/ci-test-shards.ts --shard 3 --depth full 2>&1 | tee test-results/full-test-suite.log
 
+      - name: Upload per-file test timings
+        if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-timings-${{ github.run_id }}-3
+          path: test-results/test-timings-3.json
+          retention-days: 14
+          if-no-files-found: error
+
       # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
       - name: Keep the test log of a failed merge group
         if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
@@ -661,7 +690,7 @@ jobs:
     name: Focused and full tests (4/4)
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -669,7 +698,7 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -689,6 +718,15 @@ jobs:
           mkdir -p test-results
           bun scripts/ci-test-shards.ts --shard 4 --depth full 2>&1 | tee test-results/full-test-suite.log
 
+      - name: Upload per-file test timings
+        if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-timings-${{ github.run_id }}-4
+          path: test-results/test-timings-4.json
+          retention-days: 14
+          if-no-files-found: error
+
       # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
       - name: Keep the test log of a failed merge group
         if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
@@ -703,14 +741,14 @@ jobs:
     name: Container contract and survival census
     needs: ci-plan
     if: needs.ci-plan.outputs.container_contract_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -736,7 +774,7 @@ jobs:
     name: DOCX kernel (Rust and WebAssembly)
     needs: ci-plan
     if: needs.ci-plan.outputs.docx_kernel_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       CARGO_NET_RETRY: "5"
       CARGO_HTTP_TIMEOUT: "120"
@@ -745,7 +783,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -830,14 +868,14 @@ jobs:
     name: Pinned browser input replays
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -867,14 +905,14 @@ jobs:
     name: Canonical evaluation transport regressions
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
       - run: bun install --frozen-lockfile
@@ -898,13 +936,13 @@ jobs:
     name: Interaction e2e (playground)
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -961,13 +999,13 @@ jobs:
     name: Generated compare fixture schema checks
     needs: ci-plan
     if: needs.ci-plan.outputs.differential_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -991,14 +1029,14 @@ jobs:
   consumer-scenarios:
     name: Consumer scenarios (tarballs)
     needs: ci-plan
-    if: needs.ci-plan.outputs.consumer_scenarios_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
+    if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -1063,14 +1101,14 @@ jobs:
   consumer-scenarios-minimum:
     name: Consumer scenarios (minimum supported Node)
     needs: [ci-plan, consumer-scenarios]
-    if: needs.ci-plan.outputs.consumer_scenarios_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
+    if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -1108,13 +1146,13 @@ jobs:
     name: Packaged-consumer build (tarballs)
     needs: ci-plan
     if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -1196,7 +1234,7 @@ jobs:
       - consumer-scenarios
       - consumer-scenarios-minimum
       - packaged-consumer
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       pull-requests: read
@@ -1228,8 +1266,8 @@ jobs:
             "canonical-evaluation-regressions":{"area":"interactions_required"},
             "interactions":{"area":"interactions_required","depth":"full"},
             "differential":{"area":"differential_required","depth":"full"},
-            "consumer-scenarios":{"area":"consumer_scenarios_required","depth":"full"},
-            "consumer-scenarios-minimum":{"area":"consumer_scenarios_required","depth":"full"},
+            "consumer-scenarios":{"area":"packaged_consumer_required"},
+            "consumer-scenarios-minimum":{"area":"packaged_consumer_required"},
             "packaged-consumer":{"area":"packaged_consumer_required"}}
         run: |
           if [[ "$PLAN_RESULT" == "skipped" ]]; then

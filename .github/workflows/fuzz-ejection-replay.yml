@@ -19,7 +19,7 @@ jobs:
     if: >-
       github.event.workflow_run.event == 'merge_group'
       && github.event.workflow_run.conclusion == 'failure'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       actions: read
@@ -119,7 +119,7 @@ jobs:
     name: Judge and file
     needs: replay
     if: needs.replay.outputs.replayed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
       group: fuzz-failure-issues

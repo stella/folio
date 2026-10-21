@@ -174,7 +174,7 @@ describe("a note goes with its reference", () => {
     model.package.document.comments = [
       { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z", content: [] },
     ];
-    expect(withoutUnreferencedNotes(model).package.document.comments).toEqual([]);
+    expect(withoutUnreferencedNotes(model).package.document.comments).toBeUndefined();
   });
 
   test("the markup views show the notes as they resolve the body", async () => {

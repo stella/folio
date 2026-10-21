@@ -74,20 +74,6 @@
         "!**/*.md"
       ]
     },
-    "consumer_scenarios": {
-      "paths": [
-        "packages/utf8-boundaries/**",
-        "packages/{docx-core,core,agents,cli}/**",
-        "!packages/{docx-core,core,cli}/**/*.md",
-        "!packages/*/src/**/*.test.{ts,tsx}",
-        "!packages/*/src/**/__tests__/**",
-        "test/consumer-scenarios/**",
-        "test/property-testing.ts",
-        "scripts/consumer-scenarios.ts",
-        "scripts/packaged-consumer-lib.ts",
-        "scripts/prepare-publish.ts"
-      ]
-    },
     "packaged_consumer": {
       "paths": [
         "test/packaged-consumer/**",

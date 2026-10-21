@@ -11,7 +11,13 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
 
 export { withBodyContent } from "./blocks";
 export { captureDocumentOp } from "./wire";
-export { compareGaps, defaultInsertionGap, inlineLeafSpans, zeroWidthLeavesAt } from "./leaves";
+export {
+  compareGaps,
+  defaultInsertionGap,
+  inlineLeafSpans,
+  isCommentAnchorCarrierType,
+  zeroWidthLeavesAt,
+} from "./leaves";
 export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
@@ -53,6 +59,13 @@ export {
 export { transformBatch } from "./sequencing/transform";
 export { createSequencer } from "./sequencing/sequencer";
 export { createClient } from "./sequencing/client";
+export {
+  compareBatchOrder,
+  contentRank,
+  groupInsertionRuns,
+  orderBatchOperations,
+  type BatchOrderAddress,
+} from "./batchOrder";
 export {
   allocateCommentAnchorIds,
   planTrackedDeletion,
@@ -160,4 +173,10 @@ export {
 
 export { idKey, packageParagraphIds } from "./ids";
 
-export { commentDocumentIssue, freshCommentId } from "./comments";
+export {
+  commentDocumentIssue,
+  freshCommentId,
+  isCommentExhausted,
+  survivingComments,
+  type CommentExhaustionInput,
+} from "./comments";

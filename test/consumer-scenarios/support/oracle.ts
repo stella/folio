@@ -23,6 +23,8 @@ import type { FolioContentStatedNumbering } from "@stll/folio-core/compare/conte
 
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
+  getFolioDocumentOperationRemovedBlockIds,
+  getTrackedFolioDocumentOperationRemovedBlockIds,
   type FolioDocumentOperationType,
   type FolioDocumentStoryHandle,
   inspectDocumentStylesFromDocx,
@@ -514,7 +516,11 @@ export type Model = {
   /** Paragraph style ids the saved package must define. */
   styles: Set<string>;
   /** Comments that must exist, with their anchored text when it is known. */
-  comments: { text: string; anchor?: () => string | undefined }[];
+  comments: {
+    text: string;
+    anchor?: () => string | undefined;
+    removed?: () => boolean;
+  }[];
   /** Operations the oracle has no expectation for; the check notes them. */
   unmodelled: string[];
   /** Blocks that are paragraphs of a text box drawn in the block before them. */
@@ -641,6 +647,28 @@ const target = (model: Model, blockId: unknown, { adjacent = false } = {}): Mode
     );
   }
   return row;
+};
+
+const sameParagraphContainer = (left: Row, right: Row): boolean => {
+  if (left.table === undefined || right.table === undefined) {
+    return left.table === undefined && right.table === undefined;
+  }
+  return (
+    left.table.tableIndex === right.table.tableIndex &&
+    left.table.rowIndex === right.table.rowIndex &&
+    left.table.cellIndex === right.table.cellIndex
+  );
+};
+
+const isContainerCarrier = (model: Model, row: ModelRow): boolean => {
+  const pre = row.pre;
+  if (pre === undefined) return false;
+  const index = model.rows.indexOf(row);
+  return model.rows
+    .slice(index + 1)
+    .every(
+      (candidate) => candidate.pre === undefined || !sameParagraphContainer(pre, candidate.pre),
+    );
 };
 
 const tableOf = (row: ModelRow): TableLocation => {
@@ -1006,12 +1034,26 @@ const addComment = (
   model: Model,
   operation: Operation,
   anchor?: () => string | undefined,
+  removed?: () => boolean,
 ): void => {
   const comment = operation["comment"] as { text?: string } | undefined;
   if (typeof comment?.text === "string") {
-    model.comments.push({ text: comment.text, ...(anchor === undefined ? {} : { anchor }) });
+    model.comments.push({
+      text: comment.text,
+      ...(anchor === undefined ? {} : { anchor }),
+      ...(removed === undefined ? {} : { removed }),
+    });
   }
 };
+
+const coveredRangeWasRemoved = (row: ModelRow, start: number, end: number): boolean =>
+  start < end &&
+  Array.from({ length: end - start }, (_, index) => start + index).every((offset) =>
+    row.edits.some(
+      ({ start: cutStart, end: cutEnd, replace }) =>
+        replace === "" && cutStart <= offset && offset < cutEnd,
+    ),
+  );
 
 /** Whether the row's text is still the pre-state's, so offsets into it hold. */
 const untouchedText = (row: ModelRow): boolean =>
@@ -1147,16 +1189,24 @@ export const EXPECTATIONS = {
   commentOnRange: (model, operation) => {
     const { blockId, start, end } = rangeOf(operation);
     const row = target(model, blockId);
-    addComment(model, operation, () =>
-      untouchedText(row) && !row.removed ? row.text.slice(start, end) : undefined,
+    addComment(
+      model,
+      operation,
+      () => (untouchedText(row) && !row.removed ? row.text.slice(start, end) : undefined),
+      () => coveredRangeWasRemoved(row, start, end),
     );
   },
   commentOnBlock: (model, operation) => {
     const row = target(model, operation["blockId"]);
     const quote = operation["quote"];
     const anchored = typeof quote === "string" ? quote : undefined;
-    addComment(model, operation, () =>
-      untouchedText(row) && !row.removed ? (anchored ?? row.text) : undefined,
+    const start = anchored === undefined ? 0 : row.text.indexOf(anchored);
+    const end = start + (anchored?.length ?? row.text.length);
+    addComment(
+      model,
+      operation,
+      () => (untouchedText(row) && !row.removed ? (anchored ?? row.text) : undefined),
+      () => start >= 0 && coveredRangeWasRemoved(row, start, end),
     );
   },
   insertAfterBlock: insertBlock("after"),
@@ -1204,6 +1254,10 @@ export const EXPECTATIONS = {
     if (row.pendingDeletion || next?.pendingDeletion) {
       // Whether the join keeps that paragraph's pending deletion is not modelled yet.
       throw new Unmodelled("a join with a paragraph pending deletion");
+    }
+    if (model.mode !== "direct" && next?.removed && isContainerCarrier(model, next)) {
+      next.removed = false;
+      next.edits.push({ start: 0, end: next.text.length, replace: "" });
     }
     row.mergeSeparator = typeof operation["separator"] === "string" ? operation["separator"] : "";
     const merged = operation["mergedParagraphProperties"] as ParagraphRequest | undefined;
@@ -1632,20 +1686,21 @@ export const compareComments = (
   model: Model,
   before: readonly Comment[],
   after: readonly Comment[],
+  afterRows: readonly Row[],
   liveBefore: readonly Comment[] = before,
   mode: Mode = "direct",
 ): string[] => {
   const problems: string[] = [];
   const remaining = [...after];
   const kept: Comment[] = [];
-  const gone: Comment[] = [];
+  const gone: { entry: Comment; located: Comment }[] = [];
   for (const entry of before) {
     const live = liveBefore.find(({ id }) => id === entry.id);
     // The accepted quote belongs to the accepted model. Use a live quote
     // only when a pending paragraph join moved its anchor to another block.
     const located = live && live.blockId !== entry.blockId ? live : entry;
     const disposition = mode === "suggested" ? "kept" : anchorDisposition(model, located);
-    if (disposition === "removed") gone.push(entry);
+    if (disposition === "removed") gone.push({ entry, located });
     else if (disposition === "kept") kept.push(entry);
   }
   for (const comment of kept) {
@@ -1667,6 +1722,7 @@ export const compareComments = (
   }
   const beforeIds = new Set(before.map(({ id }) => id));
   for (const comment of model.comments) {
+    if (comment.removed?.()) continue;
     const anchor = comment.anchor?.();
     const index = remaining.findIndex(
       (candidate) =>
@@ -1682,9 +1738,39 @@ export const compareComments = (
       remaining.splice(index, 1);
     }
   }
+  // A new comment the model removed must not survive among the unclaimed ones.
+  for (const comment of model.comments) {
+    if (!comment.removed?.()) continue;
+    const anchor = comment.anchor?.();
+    const stale = remaining.find(
+      (candidate) =>
+        !beforeIds.has(candidate.id) &&
+        candidate.text === comment.text &&
+        (anchor === undefined || candidate.anchor === anchor),
+    );
+    if (stale !== undefined) {
+      problems.push(
+        `removed comment ${JSON.stringify({ text: comment.text, anchor })} remains among ${JSON.stringify(after)}`,
+      );
+    }
+  }
   // Only what no expectation claimed can be the removed comment itself.
-  for (const entry of gone) {
-    if (remaining.some(({ id }) => id === entry.id)) {
+  const survivingBlockIds = new Set(afterRows.map(({ id }) => id));
+  for (const { entry, located } of gone) {
+    const survivor = remaining.find(({ id }) => id === entry.id);
+    // A block id locates the first paragraph containing an anchor; it does not
+    // own the whole range. Splits and joins can move the surviving part of a
+    // range to another paragraph before this batch deletes the old locator.
+    // In that case the comment is still anchored and must survive. A thread
+    // left on the deleted locator, moved to another block the batch also
+    // deleted, or left in no block at all, is the orphan this check is meant
+    // to catch.
+    if (
+      survivor &&
+      (survivor.blockId === located.blockId ||
+        survivor.blockId === null ||
+        !survivingBlockIds.has(survivor.blockId))
+    ) {
       problems.push(`comment ${JSON.stringify(entry)} outlived the block it anchored`);
     }
   }
@@ -1967,7 +2053,85 @@ export const assertRequestedOutcome = async (
   model.inTextBox = pre.targets.inTextBox;
   model.mode = pre.mode;
   model.story = pre.resolvedStory;
-  for (const operation of outcome.applied) expectOperation(model, operation);
+  const removedBlocksBy = new Map<string, { id: string; type: string }>();
+  for (const [index, operation] of outcome.applied.entries()) {
+    const range = operation["range"];
+    const targetBlockId =
+      typeof range === "object" && range !== null && "blockId" in range
+        ? range.blockId
+        : operation["blockId"];
+    const targetsBlockIdentity = ![
+      "insertAfterBlock",
+      "insertBeforeBlock",
+      "insertSignatureTable",
+      "insertTable",
+      "deleteTable",
+      "insertTableRow",
+      "deleteTableRow",
+      "insertTableColumn",
+      "deleteTableColumn",
+      "mergeTableCells",
+      "splitTableCell",
+    ].includes(operation.type);
+    const removedBy =
+      targetsBlockIdentity && typeof targetBlockId === "string"
+        ? removedBlocksBy.get(targetBlockId)
+        : undefined;
+    const continuesMergeChain =
+      operation.type === "mergeBlockWithNext" && removedBy?.type === "mergeBlockWithNext";
+    if (removedBy !== undefined && !continuesMergeChain) {
+      throw new Error(
+        `applied an operation on block ${targetBlockId}, which an earlier one of the batch removed`,
+      );
+    }
+    expectOperation(model, operation);
+
+    if (pre.mode !== "direct" && operation.type === "mergeBlockWithNext") {
+      const anchorIndex = pre.rows.findIndex(({ id }) => id === operation["blockId"]);
+      const carrier = anchorIndex < 0 ? undefined : pre.rows[anchorIndex + 1];
+      const carrierRow = model.rows.find((row) => row.pre?.id === carrier?.id);
+      if (carrierRow !== undefined && isContainerCarrier(model, carrierRow)) {
+        removedBlocksBy.delete(carrier?.id ?? "");
+      }
+    }
+
+    const blockId = operation["blockId"];
+    if (typeof blockId !== "string") continue;
+    const removal = (() => {
+      switch (operation.type) {
+        case "deleteBlock":
+        case "mergeBlockWithNext":
+        case "deleteTable":
+        case "deleteTableRow":
+        case "deleteTableColumn":
+          const getRemovedBlockIds =
+            pre.mode === "direct"
+              ? getFolioDocumentOperationRemovedBlockIds
+              : getTrackedFolioDocumentOperationRemovedBlockIds;
+          return getRemovedBlockIds(
+            pre.rows.map(({ id, table }) => ({
+              id,
+              ...(table !== undefined && { table: { ...table, paragraphIndex: 0 } }),
+            })),
+            {
+              id: `oracle-${String(index)}`,
+              type: operation.type,
+              blockId,
+            },
+          );
+        default:
+          return [];
+      }
+    })();
+    for (const removedBlockId of removal) {
+      if (!removedBlocksBy.has(removedBlockId)) {
+        removedBlocksBy.set(removedBlockId, {
+          id: String(operation["id"] ?? index),
+          type: operation.type,
+        });
+      }
+    }
+  }
   // An operation the oracle cannot model changes the document in a way it
   // cannot predict; the rest of the batch is not compared either.
   const predictable = model.unmodelled.length === 0;
@@ -1996,7 +2160,7 @@ export const assertRequestedOutcome = async (
     ...(predictable ? compareWithModel(model, rows) : []),
     ...(model.tableGaps.length === 0 ? compareTableGeometry(model.tables, rows) : []),
     ...comparePreservedLinks({ before: pre.links, after: links, afterRows: rows }).problems,
-    ...compareComments(model, pre.comments, comments, pre.liveComments, pre.mode),
+    ...compareComments(model, pre.comments, comments, rows, pre.liveComments, pre.mode),
     ...(bytes ? await compareStyles(model, bytes) : []),
   ];
   if (process.env["FOLIO_ORACLE_GAPS"] && (!predictable || model.tableGaps.length > 0)) {

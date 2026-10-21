@@ -24,6 +24,7 @@ import { createBookmarkIdAllocator } from "../bookmarkIds";
 import { createNumberingIdAllocator } from "../numberingIds";
 
 import { panic, TaggedError } from "better-result";
+import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 
 import {
   mergeParagraphNumbering,
@@ -316,7 +317,10 @@ export function createBilingualDocument(
     ...source,
     package: {
       ...source.package,
-      document: { ...source.package.document, content },
+      document: {
+        ...source.package.document,
+        content: content.map(canonicalizeBlockParagraphFormatting),
+      },
       ...(cloner.hasClones() && { numbering: cloner.toDefinitions() }),
       ...(styleCloner.hasClones() && styles && { styles: styleCloner.toDefinitions(styles) }),
     },
@@ -330,6 +334,33 @@ export function createBilingualDocument(
 // ----------------------------------------------------------------------------
 
 type BodyBlock = Exclude<BlockContent, { type: "blockSdt" | "blockCustomXml" }>;
+
+const canonicalizeBlockParagraphFormatting = (block: BlockContent): BlockContent => {
+  if (block.type === "paragraph") {
+    const formatting = finalizeParagraphFormatting(block.formatting);
+    const paragraph = cloneParagraphWithoutPropertySource(block, {
+      ...(formatting !== undefined && { formatting }),
+    });
+    if (formatting === undefined) delete paragraph.formatting;
+    return paragraph;
+  }
+  if (block.type === "table") {
+    return {
+      ...block,
+      rows: block.rows.map((row) => ({
+        ...row,
+        cells: row.cells.map((cell) => ({
+          ...cell,
+          content: cell.content.map(canonicalizeBlockParagraphFormatting),
+        })),
+      })),
+    };
+  }
+  if (block.type === "blockSdt" || block.type === "blockCustomXml") {
+    return { ...block, content: block.content.map(canonicalizeBlockParagraphFormatting) };
+  }
+  return block;
+};
 
 /** Handle for a table row whose paragraphs carry no `paraId`: its position in
  *  the manifest, which creation and reading derive identically. */
@@ -675,21 +706,23 @@ const cloneParagraphForTarget = (
   bookmarkIds: BookmarkIdMinter,
 ): Paragraph => {
   const formatting = paragraph.formatting;
-  const nextFormatting: ParagraphFormatting | undefined = formatting && {
-    ...formatting,
-    ...(formatting.styleId !== undefined && {
-      styleId: styleCloner.styleIdFor(formatting.styleId),
-    }),
-    ...(formatting.numPr?.kind === "reference" && {
-      numPr: { ...formatting.numPr, numId: cloner.cloneNumId(formatting.numPr.numId) },
-    }),
-    ...(formatting.numPrFromStyle?.kind === "reference" && {
-      numPrFromStyle: {
-        ...formatting.numPrFromStyle,
-        numId: cloner.cloneNumId(formatting.numPrFromStyle.numId),
-      },
-    }),
-  };
+  const nextFormatting = finalizeParagraphFormatting(
+    formatting && {
+      ...formatting,
+      ...(formatting.styleId !== undefined && {
+        styleId: styleCloner.styleIdFor(formatting.styleId),
+      }),
+      ...(formatting.numPr?.kind === "reference" && {
+        numPr: { ...formatting.numPr, numId: cloner.cloneNumId(formatting.numPr.numId) },
+      }),
+      ...(formatting.numPrFromStyle?.kind === "reference" && {
+        numPrFromStyle: {
+          ...formatting.numPrFromStyle,
+          numId: cloner.cloneNumId(formatting.numPrFromStyle.numId),
+        },
+      }),
+    },
+  );
   const cloned = cloneParagraphWithoutPropertySource(paragraph, {
     // Own content nodes: repacking assigns rIds to images and hyperlinks in
     // place, which must not hit one shared node graph twice.
@@ -700,6 +733,7 @@ const cloneParagraphForTarget = (
       listRendering: remapListRendering(paragraph.listRendering, cloner),
     }),
   });
+  if (nextFormatting === undefined) delete cloned.formatting;
   Reflect.deleteProperty(cloned, "textId");
   Reflect.deleteProperty(cloned, "sectionProperties");
   return cloned;
@@ -947,7 +981,7 @@ const projectParagraphIntoColumn = (
     indentRight = maxSideIndent - indentLeft;
   }
 
-  const formatting: ParagraphFormatting = {
+  const formatting = finalizeParagraphFormatting({
     ...paragraph.formatting,
     ...((geometry.indentLeft !== undefined || minimumLeftIndent > 0) && { indentLeft }),
     ...(geometry.indentRight !== undefined && { indentRight }),
@@ -962,9 +996,13 @@ const projectParagraphIntoColumn = (
         ),
       })),
     }),
-  };
+  });
 
-  return cloneParagraphWithoutPropertySource(paragraph, { formatting });
+  const projected = cloneParagraphWithoutPropertySource(paragraph, {
+    ...(formatting && { formatting }),
+  });
+  if (formatting === undefined) delete projected.formatting;
+  return projected;
 };
 
 const projectSideIndent = (value: number | undefined, scale: number, maximum: number): number =>

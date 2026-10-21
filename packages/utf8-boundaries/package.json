@@ -43,7 +43,7 @@
   "devDependencies": {
     "@oxlint/plugins": "1.87.0",
     "bun-types": "1.4.3",
-    "tsdown": "0.22.9"
+    "tsdown": "0.23.1"
   },
   "peerDependencies": {
     "fast-check": "^4.9.0",

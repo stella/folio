@@ -1,5 +1,5 @@
 /**
- * Pinned regression flows from scenario-seeds.json run before the generated
+ * Pinned regression flows from the seeds directory run before the generated
  * random and collision runs. The generated seed and run counts are controlled
  * by FOLIO_SCENARIO_SEED, FOLIO_SCENARIO_FUZZ_RUNS,
  * FOLIO_SCENARIO_COLLISION_RUNS and FOLIO_SCENARIO_FUZZ_STEPS.
@@ -12,12 +12,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 
-import { consumerScenarioReplay, consumerScenarioReplayFlags } from "../support/replay-inputs.ts";
+import { consumerScenarioReplay, consumerScenarioReplayInputs } from "../support/replay-inputs.ts";
 import {
   failureMarker,
   logFailureMarker,
   reportScenarioFailure,
-  shellQuote,
 } from "../support/failure-fingerprints.ts";
 import { describeFlow, type FlowKind, runFlow } from "../support/fuzz.ts";
 import { ENABLED_RELATIONS, relationSummary } from "../support/metamorphic.ts";
@@ -52,7 +51,7 @@ const saveSample = async (
   await writeFile(path.join(SAMPLE_DIR, `${fingerprint}-${seed}.docx`), bytes);
 };
 
-const replayEnvironment = consumerScenarioReplayFlags(process.env, shellQuote);
+const replayInputs = consumerScenarioReplayInputs(process.env);
 
 const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
   const { fixture, mode } = describeFlow(seed, kind);
@@ -64,17 +63,16 @@ const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
       (flow.generation ?? "targeted") === "targeted" &&
       (flow.relation === undefined || ENABLED_RELATIONS.has(flow.relation)),
   );
-  const runs =
-    kind === "random"
-      ? `--runs ${run + 1} --collision-runs 0`
-      : `--runs 0 --collision-runs ${run + 1}`;
   const label = kind === "random" ? "fuzz" : "collision";
   const repro = consumerScenarioReplay({
-    flags: [
-      replayEnvironment,
-      `--seed ${SEED} --steps ${STEPS} ${runs}`,
-      `--only '^${label} run ${run} \\('`,
-    ],
+    inputs: {
+      ...replayInputs,
+      seed: String(SEED),
+      steps: String(STEPS),
+      runs: kind === "random" ? String(run + 1) : "0",
+      collisionRuns: kind === "random" ? "0" : String(run + 1),
+    },
+    flags: [`--only '^${label} run ${run} \\('`],
   });
   test(
     `${label} run ${run} (seed ${seed}): ${fixture} / ${mode}, ${STEPS} steps`,
@@ -127,11 +125,13 @@ for (const flow of PINNED_SCENARIO_FLOWS) {
       } catch (error) {
         const { fixture, mode } = describeFlow(flow.seed, flow.kind);
         const repro = consumerScenarioReplay({
-          flags: [
-            replayEnvironment,
-            `--seed ${flow.seed} --runs 0 --collision-runs 0`,
-            `--only '^${flow.kind} flow with seed ${flow.seed} \\('`,
-          ],
+          inputs: {
+            ...replayInputs,
+            seed: String(flow.seed),
+            runs: "0",
+            collisionRuns: "0",
+          },
+          flags: [`--only '^${flow.kind} flow with seed ${flow.seed} \\('`],
         });
         reportScenarioFailure({
           test: `consumer flow ${fixture} / ${mode}`,

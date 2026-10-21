@@ -1,5 +1,8 @@
 #!/usr/bin/env bun
 import { affectedPackagePlan, changedWorkingTreePaths, publishedPackagePaths } from "./ci-api-plan";
+import { runTypecheckPlan, typecheckPlanForPaths } from "./ci-plan";
+
+export const affectedTypecheckPlanForPaths = typecheckPlanForPaths;
 
 const usage = "Usage: bun run check:affected-packages --base <rev>";
 
@@ -39,6 +42,14 @@ const main = () => {
   process.stdout.write(
     `Affected-package plan from ${base}: ${changedPaths.length} changed file(s).\n`,
   );
+
+  const typecheckExitCode = runTypecheckPlan(
+    affectedTypecheckPlanForPaths(changedPaths, repoRoot),
+    {
+      run,
+    },
+  );
+  if (typecheckExitCode !== 0) return typecheckExitCode;
 
   if (plan.apiRequired) {
     for (const command of [

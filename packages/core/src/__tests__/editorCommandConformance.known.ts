@@ -11,7 +11,6 @@
 import { panic } from "better-result";
 
 import type { ViolationKind } from "./editorCommandConformance";
-import { LIST_PASTE_RESOLUTION_KEYS } from "./editorCommandConformance.listPaste";
 import type { EditorMode, SelectionPlacement } from "./editorHarness";
 
 export type ConformanceCaseKey = {
@@ -165,7 +164,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "command:applyStyle(Heading1)",
       "command:applyStyle(Heading2)",
       "command:clearStyle",
-      "host:clearFormatting",
     ],
     excludedCases: [
       {
@@ -181,28 +179,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     ],
     modes: ["suggesting"],
     kinds: ["reject-mismatch"],
-  },
-  {
-    reason:
-      "Suggesting mode does not record the paragraph marks a multi-paragraph paste, Enter over a selection, a cross-paragraph delete or an inserted table of contents create or remove, so rejecting or accepting every change leaves the paragraphs split or unjoined",
-    operations: [
-      "paste:paragraphs",
-      "paste:copied-blocks",
-      "key:Enter",
-      "key:Delete",
-      "command:generateTOC",
-    ],
-    excludedCases: [
-      ...LIST_PASTE_RESOLUTION_KEYS.map(({ shape, operation }) => ({
-        scope: "shapeOperation" as const,
-        shape,
-        operation,
-      })),
-      { scope: "shapeOperation", shape: "tracked-changes", operation: "paste:copied-blocks" },
-      { scope: "shapeOperation", shape: "tables", operation: "paste:copied-blocks" },
-    ],
-    modes: ["suggesting"],
-    kinds: ["reject-mismatch", "accept-mismatch"],
   },
   {
     reason:

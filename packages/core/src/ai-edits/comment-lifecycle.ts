@@ -19,6 +19,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+import { isCommentAnchorCarrierType } from "@stll/docx-core/ops";
 
 import { visitCommentMarkers } from "../docx/commentAnchorIndex";
 import { readCommentReferenceAttrs } from "../prosemirror/commentReferenceAttrs";
@@ -26,6 +27,14 @@ import { COMMENT_REFERENCE_NODE_NAME } from "../prosemirror/extensions/nodes/Com
 import { RANGE_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/RangeAnchorExtension";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import type { BlockContent, Comment } from "../types/document";
+
+/** Whether an inline node only locates a comment rather than being covered content. */
+export const isCommentAnchorCarrier = (node: PMNode): boolean => {
+  let type = node.type.name;
+  if (type === RANGE_ANCHOR_NODE_NAME) type = "commentRangeStart";
+  if (type === COMMENT_REFERENCE_NODE_NAME) type = "commentReference";
+  return isCommentAnchorCarrierType(type);
+};
 
 /** Ids of the comments an editor document anchors: by mark, reference or point anchor. */
 export const anchoredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {
@@ -47,6 +56,20 @@ export const anchoredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {
       if (mark.type.name === "comment" && typeof commentId === "number") {
         ids.add(commentId);
       }
+    }
+    return true;
+  });
+  return ids;
+};
+
+/** Ids whose mark covers content rather than a zero-width anchor carrier. */
+export const coveredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {
+  const ids = new Set<number>();
+  doc.descendants((node) => {
+    if (!node.isInline || isCommentAnchorCarrier(node)) return true;
+    for (const mark of node.marks) {
+      const commentId = mark.attrs["commentId"];
+      if (mark.type.name === "comment" && typeof commentId === "number") ids.add(commentId);
     }
     return true;
   });

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../test/property-testing";
 
-import { normalizeLineText } from "../textNorm";
+import { normalizeLineText, textSimilarity } from "../textNorm";
 
 describe("normalizeLineText", () => {
   test("collapses long dot leaders for stable TOC matching", () => {
@@ -70,4 +72,127 @@ describe("normalizeLineText", () => {
   test("folds CJK radical aliases emitted by PDF font maps", () => {
     expect(normalizeLineText("⺟甲⼄丙丁")).toBe("母甲乙丙丁");
   });
+});
+
+const referenceDistance = (a: readonly string[], b: readonly string[]): number => {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      current[j] = Math.min(
+        (previous[j] ?? 0) + 1,
+        (current[j - 1] ?? 0) + 1,
+        (previous[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length] ?? 0;
+};
+
+describe("textSimilarity", () => {
+  test("preserves normalized Levenshtein scores across ASCII and BMP inputs", () => {
+    const fragments = [
+      "",
+      "a",
+      "b",
+      "ab",
+      "ba",
+      "Novák",
+      "Nováka",
+      "Novak",
+      "novák",
+      ".+[]",
+      "é",
+      "e\u0301",
+    ];
+    for (const a of fragments) {
+      for (const b of fragments) {
+        for (const left of [a, a + a]) {
+          const maxLength = Math.max(left.length, b.length);
+          expect(textSimilarity(left, b)).toBe(
+            maxLength === 0 ? 1 : 1 - referenceDistance(left.split(""), b.split("")) / maxLength,
+          );
+        }
+      }
+    }
+  });
+
+  test("uses a scalar distance and denominator across generated astral pairs", () => {
+    const fragments = [
+      "",
+      "a",
+      "😀",
+      "😃",
+      "a😀",
+      "😀a",
+      "𞤀",
+      "e\u0301",
+      "é",
+      "\ud800",
+      "\udc00",
+      "\ufffd",
+    ];
+    for (const a of fragments) {
+      for (const b of fragments) {
+        const left = Array.from((a + b).toWellFormed());
+        const right = Array.from((b + a).toWellFormed());
+        const maxLength = Math.max(left.length, right.length);
+        expect(textSimilarity(a + b, b + a)).toBe(
+          maxLength === 0 ? 1 : 1 - referenceDistance(left, right) / maxLength,
+        );
+      }
+    }
+  });
+
+  test("pins astral edit and denominator units", () => {
+    expect(textSimilarity("😀", "😃")).toBe(0);
+    expect(textSimilarity("a😀", "a😃")).toBe(0.5);
+    expect(textSimilarity("😀", "")).toBe(0);
+    expect(textSimilarity("😀", "ab")).toBe(0);
+    expect(textSimilarity("😀a", "a")).toBe(0.5);
+    expect(textSimilarity("\ud800", "\udc00")).toBe(1);
+    expect(textSimilarity("\ud800a", "\ufffdb")).toBe(0.5);
+  });
+
+  test(
+    "matches an independent scalar Levenshtein oracle for generated strings",
+    () => {
+      const scalar = fc.constantFrom("a", "b", "é", "e\u0301", "😀", "😃", "𞤀");
+      const text = fc.array(scalar, { maxLength: 24 }).map((parts) => parts.join(""));
+      assertProperty(
+        fc.property(text, text, (a, b) => {
+          const left = Array.from(a.toWellFormed());
+          const right = Array.from(b.toWellFormed());
+          const maxLength = Math.max(left.length, right.length);
+          const expected = maxLength === 0 ? 1 : 1 - referenceDistance(left, right) / maxLength;
+          expect(textSimilarity(a, b)).toBe(expected);
+        }),
+        { id: "fuzzy similarity matches independent scalar edit-distance oracle", numRuns: 100 },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
+  test(
+    "matches the scalar oracle after malformed UTF-16 normalization",
+    () => {
+      const unit = fc.constantFrom("a", "😀", "😃", "\ud800", "\udc00", "\ufffd");
+      const text = fc.array(unit, { maxLength: 20 }).map((parts) => parts.join(""));
+      assertProperty(
+        fc.property(text, text, (a, b) => {
+          const left = Array.from(a.toWellFormed());
+          const right = Array.from(b.toWellFormed());
+          const maxLength = Math.max(left.length, right.length);
+          const expected = maxLength === 0 ? 1 : 1 - referenceDistance(left, right) / maxLength;
+          expect(textSimilarity(a, b)).toBe(expected);
+        }),
+        {
+          id: "fuzzy similarity normalizes malformed UTF-16 before scalar distance",
+          numRuns: 100,
+        },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
 });

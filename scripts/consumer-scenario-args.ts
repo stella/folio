@@ -6,7 +6,7 @@ import { CONSUMER_SCENARIO_REPLAY_INPUTS } from "../test/consumer-scenarios/supp
 export {
   CONSUMER_SCENARIO_REPLAY_INPUTS,
   consumerScenarioReplay,
-  consumerScenarioReplayFlags,
+  consumerScenarioReplayInputs,
 } from "../test/consumer-scenarios/support/replay-inputs";
 
 const optionForFlag = (flag: `--${string}`): string =>
@@ -68,6 +68,7 @@ export const parseConsumerArgs = (argv: readonly string[], repoRoot: string): Co
     publicCorpusOutput: null,
     publicCorpusFixture: null,
   };
+  const seenReplayFlags = new Set<string>();
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const value = (): string => argv[++index] ?? panic(`consumer-scenarios: ${arg} needs a value`);
@@ -79,9 +80,15 @@ export const parseConsumerArgs = (argv: readonly string[], repoRoot: string): Co
     else if (arg === "--coverage-out") args.coverageOut = path.resolve(value());
     else if (arg === "--feature-coverage-out") args.featureCoverageOut = path.resolve(value());
     else if (arg !== undefined) {
-      const input = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ flag }) => flag === arg);
+      const input = CONSUMER_SCENARIO_REPLAY_INPUTS.find(
+        ({ flag }) => flag === arg || arg.startsWith(`${flag}=`),
+      );
       if (input !== undefined) {
-        const inputValue = value();
+        if (seenReplayFlags.has(input.flag)) {
+          panic(`consumer-scenarios: repeated replay flag ${input.flag}`);
+        }
+        seenReplayFlags.add(input.flag);
+        const inputValue = arg === input.flag ? value() : arg.slice(input.flag.length + 1);
         Object.assign(args, {
           [optionForFlag(input.flag)]:
             input.kind === "path" ? path.resolve(inputValue) : inputValue,
