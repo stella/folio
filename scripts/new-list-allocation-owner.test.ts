@@ -31,23 +31,34 @@ test("AI new-list allocation has one resolver and one batch owner", async () => 
   expect(negativePlaceholderFiles).toEqual([]);
 });
 
+/** The text from `start` up to `end`; a missing marker fails instead of widening the slice. */
+const between = (text: string, start: string, end: string): string => {
+  const from = text.indexOf(start);
+  if (from < 0) throw new Error(`Missing start marker: ${start}`);
+  const to = text.indexOf(end, from);
+  if (to < 0) throw new Error(`Missing end marker: ${end}`);
+  return text.slice(from, to);
+};
+
 test("deferred new lists are allocated only at will-apply boundaries", async () => {
   const source = await Bun.file(path.join(root, "ai-edits/apply.ts")).text();
-  const loop = source.slice(
-    source.indexOf("for (const insertionRun of executionGroups)"),
-    source.indexOf("const resolvedFinalParagraphDeletions"),
+  const loop = between(
+    source,
+    "for (const insertionRun of executionGroups)",
+    "removeRowsWithoutCellsAfterBatch(tr, emptiedRows)",
   );
-  const beforeSingletonSwitch = loop.slice(0, loop.indexOf("switch (item.operation.type)"));
+  const beforeSingletonSwitch = between(
+    loop,
+    "for (const insertionRun of executionGroups)",
+    "switch (item.operation.type)",
+  );
   expect(beforeSingletonSwitch.indexOf('reason: "pendingParagraphPropertyChange"')).toBeLessThan(
     beforeSingletonSwitch.indexOf('status: "willApply"'),
   );
   expect(beforeSingletonSwitch).toContain('reason: "unsupportedMode"');
 
   const allocationAfter = (caseName: string, refusal: string, nextCase: string): void => {
-    const branch = loop.slice(
-      loop.indexOf(`case "${caseName}"`),
-      loop.indexOf(`case "${nextCase}"`),
-    );
+    const branch = between(loop, `case "${caseName}"`, `case "${nextCase}"`);
     expect(branch).toContain(refusal);
     expect(branch.indexOf(refusal)).toBeLessThan(branch.indexOf('status: "willApply"'));
   };
