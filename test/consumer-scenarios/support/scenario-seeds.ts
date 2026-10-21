@@ -1,4 +1,6 @@
-import registry from "../scenario-seeds.json" with { type: "json" };
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { FlowKind, Generation } from "./fuzz.ts";
 
@@ -48,18 +50,37 @@ const parseFlow = (value: unknown): PinnedScenarioFlow => {
   };
 };
 
-export const parseScenarioSeedRegistry = (value: unknown): PinnedScenarioFlow[] => {
-  if (!isRecord(value) || !Array.isArray(value["flows"])) {
-    throw new TypeError("Invalid pinned consumer scenario registry: expected a flows array");
-  }
-  const flows = value["flows"].map(parseFlow);
-  const keys = flows.map(({ seed, steps, kind, generation }) =>
-    [seed, steps, kind, generation].join(":"),
-  );
+const titleSlug = (title: string): string =>
+  title
+    .toLowerCase()
+    .replaceAll("'", "")
+    .replaceAll(/[^a-z0-9]+/gu, "-")
+    .replaceAll(/^-|-$/gu, "");
+
+export const scenarioSeedFileName = ({ seed, kind, title }: PinnedScenarioFlow): string =>
+  `${String(seed)}-${kind}-${titleSlug(title)}.json`;
+
+export const loadScenarioSeedRegistry = (directory: string): PinnedScenarioFlow[] => {
+  const fileNames = readdirSync(directory)
+    .filter((fileName) => fileName.endsWith(".json"))
+    .sort();
+  const flows = fileNames.map((fileName) => {
+    const flow = parseFlow(JSON.parse(readFileSync(path.join(directory, fileName), "utf8")));
+    const expectedFileName = scenarioSeedFileName(flow);
+    if (fileName !== expectedFileName) {
+      throw new TypeError(
+        `Invalid pinned consumer scenario file name: expected ${expectedFileName}, received ${fileName}`,
+      );
+    }
+    return flow;
+  });
+  const keys = flows.map(({ seed, kind }) => `${String(seed)}:${kind}`);
   if (new Set(keys).size !== keys.length) {
-    throw new TypeError("Invalid pinned consumer scenario registry: duplicate flow");
+    throw new TypeError("Invalid pinned consumer scenario registry: duplicate seed and kind");
   }
   return flows;
 };
 
-export const PINNED_SCENARIO_FLOWS = parseScenarioSeedRegistry(registry);
+export const PINNED_SCENARIO_FLOWS = loadScenarioSeedRegistry(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "../seeds"),
+);

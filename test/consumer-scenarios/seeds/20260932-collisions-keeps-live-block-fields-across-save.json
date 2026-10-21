@@ -1,0 +1,7 @@
+{
+  "seed": 20260932,
+  "steps": 10,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "keeps live block fields across save"
+}

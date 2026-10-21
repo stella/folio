@@ -1,0 +1,7 @@
+{
+  "seed": 1016403979,
+  "steps": 10,
+  "kind": "random",
+  "generation": "targeted",
+  "title": "row insertion beside a pending deleted row uses live coordinates"
+}

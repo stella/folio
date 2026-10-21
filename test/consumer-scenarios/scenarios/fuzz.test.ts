@@ -1,5 +1,5 @@
 /**
- * Pinned regression flows from scenario-seeds.json run before the generated
+ * Pinned regression flows from the seeds directory run before the generated
  * random and collision runs. The generated seed and run counts are controlled
  * by FOLIO_SCENARIO_SEED, FOLIO_SCENARIO_FUZZ_RUNS,
  * FOLIO_SCENARIO_COLLISION_RUNS and FOLIO_SCENARIO_FUZZ_STEPS.

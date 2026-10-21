@@ -1,0 +1,8 @@
+{
+  "seed": 20260937,
+  "steps": 10,
+  "kind": "random",
+  "generation": "targeted",
+  "skipKnownIssue": true,
+  "title": "keeps surviving comments"
+}
