@@ -360,6 +360,45 @@ test("a class filed before signatures were tracked closes only on clean runs of 
   expect(issue.state).toBe("closed");
 });
 
+test("reproducing one fingerprint of a legacy class keeps its other fingerprints open", async () => {
+  const issues: Issue[] = [];
+  const store = {
+    list: async () => issues,
+    create: async (title: string, body: string) => {
+      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      issues.push(issue);
+      return issue;
+    },
+    edit: async (number: number, body: string) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.body = body;
+    },
+    reopen: async () => {},
+    close: async (number: number) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.state = "closed";
+    },
+  } satisfies IssueStore;
+  const reproduced = flowFinding(1, "deleteBlock");
+  const historical = flowFinding(2, "insertAfterBlock");
+  await fileClasses({ findings: [reproduced, historical], context, store, known: new Map() });
+  expect(issues).toHaveLength(1);
+  const issue = issues.at(0);
+  if (issue === undefined || issue.body === null) throw new Error("missing issue body");
+  issue.body = issue.body.replace(/<!-- fuzz-class-state (\{[^\n]*\}) -->/u, (_, json: string) => {
+    const { signatures: _signatures, ...legacy } = JSON.parse(json) as Record<string, unknown>;
+    return `<!-- fuzz-class-state ${JSON.stringify(legacy)} -->`;
+  });
+
+  await fileClasses({ findings: [reproduced], context: runContext(400), store, known: new Map() });
+  for (let run = 401; run < 401 + AUTO_CLOSE_CLEAN_RUNS * 2; run += 1) {
+    await fileClasses({ findings: [], context: runContext(run), store, known: new Map() });
+  }
+  expect(issue.state).toBe("open");
+});
+
 const fixtureLog = readFileSync(new URL("./fixtures/fuzz-failures.log", import.meta.url), "utf8");
 const fixtureMarkers = extractFailureMarkers(fixtureLog);
 const fixtureFindings = collectFindings([], fixtureMarkers);

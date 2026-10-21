@@ -127,11 +127,22 @@ const readClassState = (body: string | null, key: string): ClassState | null => 
         )))
   )
     return null;
+  const seeds: SeedRow[] = value["seeds"];
+  const tracked = value["signatures"] as SignatureState[] | undefined;
   return {
     key,
     runs: [...new Set(value["runs"])],
-    seeds: value["seeds"],
-    signatures: (value["signatures"] as SignatureState[] | undefined) ?? [],
+    seeds,
+    // A class filed before signatures were tracked has only its seed rows.
+    // Every one of their fingerprints becomes a signature without lanes, so
+    // the class closes only once each has a lane that reproduced it.
+    signatures:
+      tracked === undefined || tracked.length === 0
+        ? [...new Set(seeds.map(({ fingerprint }) => fingerprint))].map((fingerprint) => ({
+            fingerprint,
+            lanes: [],
+          }))
+        : tracked,
   };
 };
 
@@ -557,14 +568,7 @@ export const fileClasses = async ({
       if (key === undefined || activeKeys.has(key)) continue;
       const state = readClassState(issue.body, key);
       if (state === null) continue;
-      // A class filed before signatures were tracked has only its seed rows.
-      // Their fingerprints become its signatures without lanes: only a lane
-      // that reproduces a signature can later count its clean runs.
-      if (state.signatures.length === 0) {
-        state.signatures = [...new Set(state.seeds.map(({ fingerprint }) => fingerprint))].map(
-          (fingerprint) => ({ fingerprint, lanes: [] }),
-        );
-      }
+      // Only a lane that reproduced a signature counts its clean runs.
       let changed = false;
       for (const signature of state.signatures) {
         const lane = signature.lanes.find((item) => item.lane === context.lane);
