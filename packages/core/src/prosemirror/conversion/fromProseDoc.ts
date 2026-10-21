@@ -218,8 +218,13 @@ import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStac
 import { enclosingRevisionIds } from "../contentControlRevisions";
 import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 import { enclosingInsertionAncestors, inlineWrapperStackOf } from "../trackedRevisionPath";
+import { trackedCommentBoundaryOwner } from "../commentBoundaryOwnership";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
-import type { InlineWrapperLayer, TrackedRevisionAncestor } from "../schema/marks";
+import type {
+  InlineWrapperLayer,
+  TrackedChangeMarkAttrs,
+  TrackedRevisionAncestor,
+} from "../schema/marks";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
   AlternateContentAttrs,
@@ -3047,10 +3052,12 @@ function extractParagraphContent(
     readonly TrackedRevisionAncestor[]
   >();
   const openedComments = new Set<number>();
-  // A closing marker has no ProseMirror node of its own. Keep the source
-  // revision's recorded endings until the following node gives us the
-  // position at which to emit them.
-  let precedingTrackedCommentRangeEnds: readonly number[] | null | undefined;
+  // A boundary has no ProseMirror node of its own. Keep the source revision's
+  // ownership record until the following node gives us its save position.
+  let precedingTrackedCommentRangeBoundaries:
+    | NonNullable<TrackedChangeMarkAttrs["_docxCommentRangeBoundaries"]>
+    | null
+    | undefined;
   const createIndexedHyperlink = (mark: Mark): Hyperlink => {
     const hyperlink = createHyperlink(mark);
     const index = expectHyperlinkMarkAttrs(mark)._docxHyperlinkIndex;
@@ -3198,8 +3205,9 @@ function extractParagraphContent(
   const syncCommentRanges = (node: PMNode, offset: number) => {
     const nodeCommentIds = getCommentMarkIds(node.marks);
     const nodeTrackedBoundary = trackedBoundary(node);
-    const sourceCommentRangeEnds = precedingTrackedCommentRangeEnds;
-    precedingTrackedCommentRangeEnds = nodeTrackedBoundary?.changeAttrs._docxCommentRangeEnds;
+    const sourceCommentRangeBoundaries = precedingTrackedCommentRangeBoundaries;
+    const nodeCommentRangeBoundaries = nodeTrackedBoundary?.changeAttrs._docxCommentRangeBoundaries;
+    precedingTrackedCommentRangeBoundaries = nodeCommentRangeBoundaries;
 
     // Close an open range only once this node is past the comment's last
     // occurrence; a comment that reappears later stays open so the range spans
@@ -3225,14 +3233,21 @@ function extractParagraphContent(
 
     flushCurrentInline();
     for (const commentId of byCommentId(toClose)) {
-      const sourceOwnsBoundary = sourceCommentRangeEnds?.includes(commentId);
-      const followingOwnsBoundary =
-        sourceCommentRangeEnds == null &&
+      const fallbackOwner =
         nodeTrackedBoundary &&
         currentTrackedChange?.type === "direct" &&
-        currentTrackedChange.key === nodeTrackedBoundary.key;
+        currentTrackedChange.key === nodeTrackedBoundary.key
+          ? "revision"
+          : "parent";
+      const sourceOwnsBoundary =
+        trackedCommentBoundaryOwner({
+          boundaries: sourceCommentRangeBoundaries,
+          type: "end",
+          commentId,
+          fallback: fallbackOwner,
+        }) === "revision";
       const closingBoundaryOwner =
-        currentTrackedChange?.type === "direct" && (sourceOwnsBoundary || followingOwnsBoundary)
+        currentTrackedChange?.type === "direct" && sourceOwnsBoundary
           ? currentTrackedChange.wrapper.content
           : content;
       closingBoundaryOwner.push({ type: "commentRangeEnd", id: commentId });
@@ -3244,13 +3259,27 @@ function extractParagraphContent(
     if (currentTrackedChange?.type === "hyperlink") {
       currentTrackedChange = undefined;
     }
-    if (toOpen.length > 0) establishTrackedBoundaryOwner(node);
-    const openingBoundaryOwner =
-      node.marks.some((mark) => mark.type.name === "insertion" || mark.type.name === "deletion") &&
-      currentTrackedChange
-        ? currentTrackedChange.wrapper.content
-        : content;
     for (const commentId of byCommentId(toOpen)) {
+      if (!node.isText) {
+        establishTrackedBoundaryOwner(node);
+        const openingBoundaryOwner = currentTrackedChange
+          ? currentTrackedChange.wrapper.content
+          : content;
+        openingBoundaryOwner.push({ type: "commentRangeStart", id: commentId });
+        openedComments.add(commentId);
+        continue;
+      }
+      const owner = trackedCommentBoundaryOwner({
+        boundaries: nodeCommentRangeBoundaries,
+        type: "start",
+        commentId,
+        fallback: nodeTrackedBoundary ? "revision" : "parent",
+      });
+      if (owner === "revision") establishTrackedBoundaryOwner(node);
+      const openingBoundaryOwner =
+        owner === "revision" && currentTrackedChange
+          ? currentTrackedChange.wrapper.content
+          : content;
       openingBoundaryOwner.push({ type: "commentRangeStart", id: commentId });
       openedComments.add(commentId);
     }
@@ -3743,7 +3772,12 @@ function extractParagraphContent(
   for (const commentId of byCommentId(openedComments)) {
     const closingBoundaryOwner =
       currentTrackedChange?.type === "direct" &&
-      precedingTrackedCommentRangeEnds?.includes(commentId)
+      trackedCommentBoundaryOwner({
+        boundaries: precedingTrackedCommentRangeBoundaries,
+        type: "end",
+        commentId,
+        fallback: "parent",
+      }) === "revision"
         ? currentTrackedChange.wrapper.content
         : content;
     closingBoundaryOwner.push({ type: "commentRangeEnd", id: commentId });

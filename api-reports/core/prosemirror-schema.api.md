@@ -772,7 +772,7 @@ export type TrackedChangeMarkAttrs = {
     moveKind?: "moveTo" | "moveFrom";
     _docxOuterWrapperCount?: number;
     _docxResolutionJoins?: import__stll_docx_core_model.Insertion["resolutionJoins"];
-    _docxCommentRangeEnds?: readonly number[] | null;
+    _docxCommentRangeBoundaries?: readonly TrackedCommentBoundary[] | null;
     _docxRevisionAncestors?: readonly TrackedRevisionAncestor[];
     provenance: TrackedChangeProvenance;
     suggestionId?: string;

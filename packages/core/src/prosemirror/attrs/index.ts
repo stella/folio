@@ -1733,16 +1733,25 @@ export const readTrackedChangeMarkAttrs = (
   }
   const ancestors = attrs["_docxRevisionAncestors"];
   const resolutionJoins = attrs["_docxResolutionJoins"];
-  const commentRangeEnds = attrs["_docxCommentRangeEnds"];
+  const commentRangeBoundaries = attrs["_docxCommentRangeBoundaries"];
   if (
-    commentRangeEnds !== undefined &&
-    commentRangeEnds !== null &&
-    (!Array.isArray(commentRangeEnds) ||
-      commentRangeEnds.some((id) => typeof id !== "number" || !Number.isSafeInteger(id) || id < 0))
+    commentRangeBoundaries !== undefined &&
+    commentRangeBoundaries !== null &&
+    (!Array.isArray(commentRangeBoundaries) ||
+      commentRangeBoundaries.some(
+        (boundary) =>
+          typeof boundary !== "object" ||
+          boundary === null ||
+          (boundary["type"] !== "start" && boundary["type"] !== "end") ||
+          (boundary["owner"] !== "revision" && boundary["owner"] !== "parent") ||
+          typeof boundary["commentId"] !== "number" ||
+          !Number.isSafeInteger(boundary["commentId"]) ||
+          boundary["commentId"] < 0,
+      ))
   ) {
     issues.push({
-      path: `${mark.type.name}.attrs._docxCommentRangeEnds`,
-      message: "Expected an array of non-negative safe integers.",
+      path: `${mark.type.name}.attrs._docxCommentRangeBoundaries`,
+      message: "Expected valid tracked comment boundary ownership.",
     });
   }
   if (

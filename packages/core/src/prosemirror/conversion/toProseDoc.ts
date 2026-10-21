@@ -166,6 +166,10 @@ import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtensi
 import { withEnclosingRevision } from "../contentControlRevisions";
 import { canCarryTrackedRunMark, trackedRunInlineAtomDisposition } from "../trackedRunInlineAtoms";
 import {
+  trackedCommentBoundaryOwner,
+  type TrackedCommentBoundary,
+} from "../commentBoundaryOwnership";
+import {
   resolveEffectiveTableCellFormatting,
   type TableCellMarginsAttrs,
   type TableCellPosition,
@@ -1279,9 +1283,27 @@ function convertTrackedChange(
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined,
   wrappedBy: readonly InlineWrapperLayer[],
   openCommentIds: Set<number>,
+  preserveParentBoundaryOwnership = true,
 ): PMNode[] {
   const nodes: PMNode[] = [];
-  const commentRangeEnds: number[] = [];
+  const commentRangeBoundaries: TrackedCommentBoundary[] = [];
+  const commentsOpenBeforeRevision = new Set(openCommentIds);
+  const recordCommentBoundary = (
+    type: TrackedCommentBoundary["type"],
+    commentId: number,
+    owner: TrackedCommentBoundary["owner"],
+  ): void => {
+    commentRangeBoundaries.push({
+      type,
+      commentId,
+      owner: trackedCommentBoundaryOwner({
+        boundaries: commentRangeBoundaries,
+        type,
+        commentId,
+        fallback: owner,
+      }),
+    });
+  };
   const getTrackedRunFormatting =
     markType === "deletion" ? runFormattingResolvers.historical : runFormattingResolvers.current;
   // A wrapper or move-range boundary the revision holds stays inside it:
@@ -1306,9 +1328,10 @@ function convertTrackedChange(
       continue;
     } else if (item.type === "commentRangeStart") {
       openCommentIds.add(item.id);
+      recordCommentBoundary("start", item.id, "revision");
     } else if (item.type === "commentRangeEnd") {
       openCommentIds.delete(item.id);
-      commentRangeEnds.push(item.id);
+      recordCommentBoundary("end", item.id, "revision");
     } else if (item.type === "commentReference") {
       itemNodes.push(schema.node("commentReference", { commentId: item.id }));
     } else if (item.type === "run") {
@@ -1370,6 +1393,7 @@ function convertTrackedChange(
           textBoxAnchors,
           [...wrappedBy, ...stack],
           openCommentIds,
+          preserveParentBoundaryOwnership,
         ),
       );
       // The nested conversion applies comment ranges at each marker position.
@@ -1432,6 +1456,22 @@ function convertTrackedChange(
     );
   }
 
+  // Structural inline nodes reconstruct their own child sequence on save and
+  // cannot place an adjacent positional marker in their parent. Preserve the
+  // established projection for those nodes; plain tracked runs can record the
+  // authored outer ownership exactly.
+  if (preserveParentBoundaryOwnership) {
+    for (const commentId of commentsOpenBeforeRevision) {
+      recordCommentBoundary("start", commentId, "parent");
+    }
+  }
+  const boundaryCommentIds = new Set(commentRangeBoundaries.map(({ commentId }) => commentId));
+  for (const commentId of boundaryCommentIds) {
+    if (openCommentIds.has(commentId)) {
+      recordCommentBoundary("end", commentId, "parent");
+    }
+  }
+
   // SAFETY: markType is "insertion" | "deletion", both registered in schema
   const mark = schema.marks[markType]!.create({
     revisionId: change.info.id,
@@ -1442,7 +1482,7 @@ function convertTrackedChange(
     moveKind,
     _docxOuterWrapperCount: wrappedBy.length,
     _docxResolutionJoins: change.resolutionJoins ?? null,
-    _docxCommentRangeEnds: commentRangeEnds.length > 0 ? commentRangeEnds : null,
+    _docxCommentRangeBoundaries: commentRangeBoundaries.length > 0 ? commentRangeBoundaries : null,
     ...(markType === "deletion" ? { _historicalFormatting: true } : {}),
   });
 
@@ -2763,6 +2803,7 @@ function convertField(
               textBoxAnchors,
               [],
               openCommentIds,
+              false,
             ),
           );
           break;
@@ -3076,6 +3117,7 @@ function convertInlineSdt(
             textBoxAnchors,
             stack,
             openCommentIds,
+            false,
           ),
         );
         commentsAlreadyApplied = true;

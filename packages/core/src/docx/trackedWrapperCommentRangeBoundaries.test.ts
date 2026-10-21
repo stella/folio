@@ -469,6 +469,48 @@ describe("comment-range boundaries inside tracked changes", () => {
     expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
   });
 
+  test.each([
+    {
+      name: "range starts outside and ends inside",
+      xml:
+        `<w:commentRangeStart w:id="5"/><w:ins ${REVISION_ATTRIBUTES}>` +
+        '<w:r><w:t>A</w:t></w:r><w:commentRangeEnd w:id="5"/>' +
+        `${COMMENT_REFERENCE}</w:ins>`,
+    },
+    {
+      name: "range starts inside and ends outside",
+      xml:
+        `<w:ins ${REVISION_ATTRIBUTES}><w:commentRangeStart w:id="5"/>` +
+        '<w:r><w:t>A</w:t></w:r></w:ins><w:commentRangeEnd w:id="5"/>' +
+        COMMENT_REFERENCE,
+    },
+    {
+      name: "both boundaries inside",
+      xml:
+        `<w:ins ${REVISION_ATTRIBUTES}><w:commentRangeStart w:id="5"/>` +
+        '<w:r><w:t>A</w:t></w:r><w:commentRangeEnd w:id="5"/></w:ins>' +
+        COMMENT_REFERENCE,
+    },
+    {
+      name: "both boundaries outside",
+      xml:
+        `<w:commentRangeStart w:id="5"/><w:ins ${REVISION_ATTRIBUTES}>` +
+        '<w:r><w:t>A</w:t></w:r></w:ins><w:commentRangeEnd w:id="5"/>' +
+        COMMENT_REFERENCE,
+    },
+  ])("tracked insertion keeps $name at its authored wrapper level", ({ xml }) => {
+    const input = wrapParagraph(
+      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
+    );
+
+    const loaded = toProseDoc(input);
+    const saved = fromProseDoc(loaded, input, { stylesheetSource: { type: "package" } });
+    const paragraph = saved.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+
+    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
+  });
+
   const runXml = (text: string, deleted = false) =>
     `<w:r><w:${deleted ? "delText" : "t"}>${text}</w:${deleted ? "delText" : "t"}></w:r>`;
   const insertionXml = (content: string) => `<w:ins ${REVISION_ATTRIBUTES}>${content}</w:ins>`;
