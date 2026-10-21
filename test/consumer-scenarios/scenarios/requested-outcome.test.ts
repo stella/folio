@@ -342,6 +342,24 @@ describe("the requested-outcome oracle", () => {
     assert.deepEqual(compareComments(model, [comment], [], []), []);
   });
 
+  test("a suggested removal of a note reference keeps the note's comment pending", () => {
+    const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
+    const model = modelOf([row("body", "Reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
+    assert.deepEqual(compareComments(model, [comment], [comment], [], [comment], "suggested"), []);
+    assert.match(
+      compareComments(model, [comment], [], [], [comment], "suggested").join("\n"),
+      /no comment/u,
+    );
+    const removedStory = modelOf([row("note", "Note text")]);
+    removedStory.story = "removed";
+    assert.deepEqual(
+      compareComments(removedStory, [comment], [comment], [], [comment], "suggested"),
+      [],
+    );
+  });
+
   test("removing one of two footnote references retires only that note's comment", () => {
     const first = { id: 1, text: "first review", anchor: "First note", blockId: "note-1" };
     const second = { id: 2, text: "second review", anchor: "Second note", blockId: "note-2" };

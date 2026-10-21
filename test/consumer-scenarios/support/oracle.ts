@@ -1711,12 +1711,14 @@ export const compareComments = (
     // only when a pending paragraph join moved its anchor to another block.
     const located = live && live.blockId !== entry.blockId ? live : entry;
     let disposition = mode === "suggested" ? "kept" : anchorDisposition(model, located);
+    // A suggested removal stays pending and rejectable, so its comments stay.
     if (
-      (model.story === "removed" &&
+      mode !== "suggested" &&
+      ((model.story === "removed" &&
         located.blockId !== null &&
         storyBlockIds.has(located.blockId)) ||
-      (located.blockId !== null &&
-        model.removedNoteStories.has(model.noteStoryByBlockId.get(located.blockId) ?? ""))
+        (located.blockId !== null &&
+          model.removedNoteStories.has(model.noteStoryByBlockId.get(located.blockId) ?? "")))
     )
       disposition = "removed";
     if (disposition === "removed") gone.push({ entry, located });
