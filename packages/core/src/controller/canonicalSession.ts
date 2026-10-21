@@ -1171,7 +1171,10 @@ class CanonicalSession {
       intent,
       mode: this.intentMode(this.currentDocument, intent),
     });
-    if (compiled.isErr()) return refuse(compiled.error.message);
+    if (compiled.isErr())
+      return compiled.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE
+        ? noChange(compiled.error.message)
+        : refuse(compiled.error.message);
     const { ops, selection: caret } = compiled.value;
     const postSelection = {
       type: "text",
@@ -1294,6 +1297,8 @@ class CanonicalSession {
         firstBlockId: this.nextBlockId,
       });
       if (compiled.isErr()) {
+        if (compiled.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE)
+          return noChange(compiled.error.message);
         if (
           compiled.error.reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE &&
           (intent.type === "setHyperlink" ||
@@ -1310,7 +1315,10 @@ class CanonicalSession {
         return refuse(compiled.error.message);
       }
       const applied = applyDocumentOps(document, compiled.value.ops);
-      if (applied.isErr()) return refuse(applied.error.message);
+      if (applied.isErr())
+        return applied.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE
+          ? noChange(applied.error.message)
+          : refuse(applied.error.message);
       document = applied.value.document;
       edits.push(applied.value);
       ops.push(...compiled.value.ops);

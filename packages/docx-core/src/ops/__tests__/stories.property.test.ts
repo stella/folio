@@ -392,6 +392,49 @@ describe("all-story operation laws", () => {
     }
   });
 
+  test("direct and tracked deletions of only an automatic note mark refuse as no change", () => {
+    for (const kind of ["footnote", "endnote"] as const) {
+      const document = normalizeForOps(seedDocument("body"));
+      const story = { kind, id: 1 } as const;
+      const from = { story, blockId: kind === "footnote" ? "00000004" : "00000005", offset: 0 };
+      for (const revision of [undefined, { id: 40, author: "Reviewer" }]) {
+        const result = applyDocumentOp(document, {
+          type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+          from: { ...from, zeroWidthBefore: 0 },
+          to: { ...from, zeroWidthBefore: 1 },
+          ...(revision === undefined ? {} : { revision }),
+        });
+        expect(result.isErr()).toBe(true);
+        if (result.isErr()) expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE);
+        expect(findStoryBody(document, story)?.content.at(0)).toEqual(
+          findStoryBody(normalizeForOps(seedDocument("body")), story)?.content.at(0),
+        );
+      }
+    }
+  });
+
+  test("a deletion from an automatic note mark into its text removes the text and keeps the mark", () => {
+    for (const kind of ["footnote", "endnote"] as const) {
+      const document = normalizeForOps(seedDocument("body"));
+      const story = { kind, id: 1 } as const;
+      const blockId = kind === "footnote" ? "00000004" : "00000005";
+      const before = JSON.stringify(findStoryBody(document, story)?.content.at(0));
+      for (const revision of [undefined, { id: 40, author: "Reviewer" }]) {
+        const result = applyDocumentOp(document, {
+          type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+          from: { story, blockId, offset: 0, zeroWidthBefore: 0 },
+          to: { story, blockId, offset: 1 },
+          ...(revision === undefined ? {} : { revision }),
+        });
+        expect(result.isOk()).toBe(true);
+        if (result.isErr()) continue;
+        const after = JSON.stringify(findStoryBody(result.value.document, story)?.content.at(0));
+        expect(after).not.toBe(before);
+        expect(after).toContain('"noteMarker"');
+      }
+    }
+  });
+
   test("normalization derives automatic note marks and preserves custom reference marks and separators", () => {
     for (const kind of ["footnote", "endnote"] as const) {
       const referenceType = kind === "footnote" ? "footnoteRef" : "endnoteRef";
