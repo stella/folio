@@ -133,7 +133,7 @@ test("rejecting an empty inserted final paragraph after a table keeps it as the 
   expect(result.resolved.lastChild?.type.name).toBe("paragraph");
 });
 
-test("rejecting an empty inserted final paragraph in a cell keeps the cell terminator", () => {
+test("rejecting an empty inserted final paragraph in a cell leaves the paragraph before it last", () => {
   const terminator = schema.node("paragraph", { pPrMark: insertedParagraphMark });
   const doc = schema.node("doc", null, [
     table([row([schema.node("tableCell", null, [paragraph("text"), terminator])])]),
@@ -144,6 +144,21 @@ test("rejecting an empty inserted final paragraph in a cell keeps the cell termi
 
   expect(result.failed).toBe(false);
   const resolvedCell = result.resolved.firstChild?.firstChild?.firstChild;
-  expect(resolvedCell?.childCount).toBe(2);
-  expect(resolvedCell?.lastChild?.type.name).toBe("paragraph");
+  expect(resolvedCell?.childCount).toBe(1);
+  expect(resolvedCell?.lastChild?.textContent).toBe("text");
+});
+
+test("rejecting the only paragraph of a cell keeps it as the cell terminator", () => {
+  const terminator = schema.node("paragraph", { pPrMark: insertedParagraphMark });
+  const doc = schema.node("doc", null, [
+    table([row([schema.node("tableCell", null, [terminator])])]),
+    paragraph("after"),
+  ]);
+
+  const result = resolveWholeStory({ doc, mode: "reject", styleResolver: null, numbering: null });
+
+  expect(result.failed).toBe(false);
+  const resolvedCell = result.resolved.firstChild?.firstChild?.firstChild;
+  expect(resolvedCell?.childCount).toBe(1);
+  expect(resolvedCell?.firstChild?.type.name).toBe("paragraph");
 });

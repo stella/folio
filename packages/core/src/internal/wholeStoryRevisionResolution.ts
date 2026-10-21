@@ -490,17 +490,14 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     let follows: "paragraph" | "table" | "nothing" = "nothing";
     if (chain) follows = "paragraph";
     else if (followingContainerChild) follows = "table";
-    // The same rule as the docx-core resolver: with a table after it, the
-    // container must still end with a paragraph; as the container's final
-    // paragraph, the block before it becomes last, and a cell's final mark is
-    // its terminator, never a paragraph to retire.
-    const isCell = node.type.name === "tableCell" || node.type.name === "tableHeader";
+    // With a table after it, the container must still end with a paragraph;
+    // as the container's final paragraph, the block before it becomes last,
+    // so it must be a paragraph (a cell or body never ends with a table).
     let containerStillEndsWithParagraph = true;
     if (follows === "table") {
       containerStillEndsWithParagraph = node.lastChild?.type.name === "paragraph";
     } else if (follows === "nothing") {
-      containerStillEndsWithParagraph =
-        !isCell && entries[index - 1]?.original.type.name === "paragraph";
+      containerStillEndsWithParagraph = entries[index - 1]?.original.type.name === "paragraph";
     }
     const outcome = paragraphMarkOutcome({
       follows,
