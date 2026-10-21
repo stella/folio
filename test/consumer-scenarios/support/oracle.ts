@@ -350,6 +350,33 @@ const MAIN: Story = { type: "main" };
 type NoteStory = Extract<Story, { type: "footnote" | "endnote" }>;
 const noteStoryKey = ({ type, noteId }: NoteStory): string => `${type}:${String(noteId)}`;
 
+/**
+ * Update `references` (the note references each live block holds) for one
+ * operation that removed `removal`, and return the note stories whose last
+ * reference it removed. A merge moves the next block's content, and the note
+ * references in it, into the surviving block, so those notes stay.
+ */
+export const retireNoteReferences = (
+  references: Map<string, readonly Story[]>,
+  operationType: string,
+  blockId: string,
+  removal: readonly string[],
+): string[] => {
+  const retired: string[] = [];
+  for (const removedBlockId of removal) {
+    const held = references.get(removedBlockId) ?? [];
+    references.delete(removedBlockId);
+    if (operationType === "mergeBlockWithNext" && removedBlockId !== blockId) {
+      references.set(blockId, [...(references.get(blockId) ?? []), ...held]);
+      continue;
+    }
+    for (const story of held) {
+      if (story.type === "footnote" || story.type === "endnote") retired.push(noteStoryKey(story));
+    }
+  }
+  return retired;
+};
+
 /** The blocks of `story` (the body by default) a reader lists. */
 export const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] => {
   const rows: Row[] = [];
@@ -2082,6 +2109,10 @@ export const assertRequestedOutcome = async (
   model.mode = pre.mode;
   model.story = pre.resolvedStory;
   const removedBlocksBy = new Map<string, { id: string; type: string }>();
+  // The note references each live block holds, followed through merges.
+  const noteReferences = new Map<string, readonly FolioDocumentStoryHandle[]>(
+    pre.targets.noteReferences,
+  );
   for (const [index, operation] of outcome.applied.entries()) {
     const range = operation["range"];
     const targetBlockId =
@@ -2151,12 +2182,10 @@ export const assertRequestedOutcome = async (
           return [];
       }
     })();
+    for (const story of retireNoteReferences(noteReferences, operation.type, blockId, removal)) {
+      model.removedNoteStories.add(story);
+    }
     for (const removedBlockId of removal) {
-      for (const story of pre.targets.noteReferences.get(removedBlockId) ?? []) {
-        if (story.type === "footnote" || story.type === "endnote") {
-          model.removedNoteStories.add(noteStoryKey(story));
-        }
-      }
       if (!removedBlocksBy.has(removedBlockId)) {
         removedBlocksBy.set(removedBlockId, {
           id: String(operation["id"] ?? index),

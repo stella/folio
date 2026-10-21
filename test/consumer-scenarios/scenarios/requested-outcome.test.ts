@@ -37,6 +37,7 @@ import {
   expectOperation,
   modelOf,
   OPERATION_TYPES,
+  retireNoteReferences,
   type Row,
 } from "../support/oracle.ts";
 import { captureLinks, comparePreservedLinks } from "../support/link-oracle.ts";
@@ -358,6 +359,26 @@ describe("the requested-outcome oracle", () => {
       compareComments(removedStory, [comment], [comment], [], [comment], "suggested"),
       [],
     );
+  });
+
+  test("a merge keeps the note whose reference it moves, and a later deletion retires it", () => {
+    const footnote = { type: "footnote", noteId: 1 } as const;
+    const endnote = { type: "endnote", noteId: 2 } as const;
+    const references: Parameters<typeof retireNoteReferences>[0] = new Map([
+      ["first", [endnote]],
+      ["second", [footnote]],
+    ]);
+    assert.deepEqual(
+      retireNoteReferences(references, "mergeBlockWithNext", "first", ["second"]),
+      [],
+    );
+    assert.deepEqual(references.get("first"), [endnote, footnote]);
+    assert.equal(references.has("second"), false);
+    assert.deepEqual(retireNoteReferences(references, "deleteBlock", "first", ["first"]), [
+      "endnote:2",
+      "footnote:1",
+    ]);
+    assert.equal(references.size, 0);
   });
 
   test("removing one of two footnote references retires only that note's comment", () => {
