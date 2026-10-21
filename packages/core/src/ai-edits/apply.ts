@@ -4295,14 +4295,24 @@ const applyFolioAIEditOperationsInternal = ({
     };
   };
   const executionOrder = orderBatchOperations(executableResolved, batchAddress);
-  const stagedInExecutionOrder = executionOrder.map(({ operation }) => operation);
-  const allocated = resolveNewListOperations(stagedInExecutionOrder, numbering);
-  numbering = allocated.numbering;
-  for (const [index, item] of executionOrder.entries()) {
-    item.operation =
-      allocated.operations[index] ??
-      panic("A planned operation lost its new-list allocation", { id: item.operation.id });
-  }
+  type WillApplyNewListOperations = {
+    status: "willApply";
+    items: ResolvedOperation[];
+  };
+  const allocateNewLists = ({ items }: WillApplyNewListOperations): void => {
+    const allocated = resolveNewListOperations(
+      items.map(({ operation }) => operation),
+      numbering,
+    );
+    numbering = allocated.numbering;
+    for (const [index, candidate] of items.entries()) {
+      candidate.operation =
+        allocated.operations[index] ??
+        panic("A will-apply operation lost its new-list allocation", {
+          id: candidate.operation.id,
+        });
+    }
+  };
   const executionGroups = groupInsertionRuns(executionOrder, (candidate) =>
     isBatchableParagraphInsertion(candidate, mode) ? candidate.from : null,
   );
@@ -4311,7 +4321,6 @@ const applyFolioAIEditOperationsInternal = ({
     if (!item) {
       panic("The operation execution group was empty");
     }
-    assertNewListsAllocated(item.operation);
     continueSharedRevisionIds();
     if (mode === "tracked-changes" && writesParagraphPropertyChange(item)) {
       const appliedIds = new Set(applied.map(({ id }) => id));
@@ -4343,6 +4352,10 @@ const applyFolioAIEditOperationsInternal = ({
       }
     }
     if (insertionRun.length > 1) {
+      // A batchable insertion run has no operation-local refusal after this
+      // point. Mint all of its lists together so their execution order stays
+      // the allocation order.
+      allocateNewLists({ status: "willApply", items: insertionRun });
       const nodeGroups: PMNode[][] = [];
       const runApplied: FolioAIEditAppliedOperation[] = [];
       for (const insertion of insertionRun) {
@@ -4819,6 +4832,8 @@ const applyFolioAIEditOperationsInternal = ({
           skipped.push({ id: item.operation.id, reason: "pendingDeletion" });
           continue;
         }
+        allocateNewLists({ status: "willApply", items: [item] });
+        assertNewListsAllocated(item.operation);
         const built = buildInsertedParagraphs({
           item,
           schema: view.state.schema,
@@ -5541,6 +5556,10 @@ const applyFolioAIEditOperationsInternal = ({
           skipped.push({ id: item.operation.id, ...pendingParagraphMarkPropertyRefusal });
           continue;
         }
+        // A deferred new list necessarily changes the paragraph, so the
+        // ordinary no-op branch below cannot refuse it after allocation.
+        allocateNewLists({ status: "willApply", items: [item] });
+        assertNewListsAllocated(item.operation);
         const appliedProperties = applyBlockParagraphProperties({
           tr,
           position: blockPosition,
@@ -5577,6 +5596,12 @@ const applyFolioAIEditOperationsInternal = ({
         const splitsFromItsTextBoxes =
           textBoxAnchorIdsBetween(tr.doc, item.blockFrom, item.from).size > 0 &&
           endOfParagraphWithItsTextBoxes(tr.doc, item.blockFrom) > item.blockTo;
+        if (mode !== "direct" && splitsFromItsTextBoxes) {
+          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          continue;
+        }
+        allocateNewLists({ status: "willApply", items: [item] });
+        assertNewListsAllocated(item.operation);
         if (mode === "direct") {
           if (item.to > item.from) {
             tr = tr.delete(item.from, item.to);
@@ -5585,9 +5610,6 @@ const applyFolioAIEditOperationsInternal = ({
           if (splitsFromItsTextBoxes) {
             gatherTextBoxesAfterParagraph(tr, item.blockFrom);
           }
-        } else if (splitsFromItsTextBoxes) {
-          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
-          continue;
         } else {
           const revisionIdMark = operationRevisionSeed++;
           const info = { id: revisionIdMark, author, date, ...trackedRevisionExtras };
@@ -5683,6 +5705,8 @@ const applyFolioAIEditOperationsInternal = ({
           skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
           continue;
         }
+        allocateNewLists({ status: "willApply", items: [item] });
+        assertNewListsAllocated(item.operation);
         const separator = followedOnlyByDeletedParagraphs(tr.doc, blockTo)
           ? ""
           : (item.operation.separator ?? "");
@@ -6888,7 +6912,7 @@ const directReplacementMarks = ({
   return allocated;
 };
 
-const replacementText = (operation: FolioAIEditOperation): string | null => {
+const replacementText = (operation: StagedOperation): string | null => {
   switch (operation.type) {
     case "replaceBlock":
       return operation.text;

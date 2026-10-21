@@ -207,6 +207,66 @@ describe("an operation that starts a new list", () => {
     expect(labels).toEqual(["1. One", "Prose.", "1. Two"]);
   });
 
+  test("does not allocate for paragraph properties refused by a pending mark deletion", async () => {
+    const prepared = await reviewerOf("Left.\n\nRefused.\n\nTail.");
+    const leftBlockId = blockId(prepared, "Left.");
+    const refusedBlockId = blockId(prepared, "Refused.");
+    const deletion = prepared.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "delete-refused-mark",
+            type: "deleteBlock",
+            blockId: refusedBlockId,
+          },
+        ],
+      },
+      {},
+    );
+    expect(deletion.status).toBe("committed");
+
+    const source = await prepared.toBuffer();
+    const batch = await FolioDocxReviewer.fromBuffer(source, { author: "Agent" });
+    const sequential = await FolioDocxReviewer.fromBuffer(source, { author: "Agent" });
+    const operations: FolioDocumentOperation[] = [
+      {
+        id: "refused-list",
+        type: "setBlockParagraphProperties",
+        blockId: refusedBlockId,
+        properties: { numbering: { kind: "newList", format: "numbered" } },
+      },
+      {
+        id: "persisted-list",
+        type: "insertAfterBlock",
+        blockId: leftBlockId,
+        text: "Persisted list",
+        numbering: { kind: "newList", format: "numbered" },
+      },
+    ];
+
+    const batchResult = batch.applyDocumentOperations(
+      { version: 1, mode: "tracked-changes", operations },
+      {},
+    );
+    const refusedResult = sequential.applyDocumentOperations(
+      { version: 1, mode: "tracked-changes", operations: [operations[0]!] },
+      {},
+    );
+    sequential.applyDocumentOperations(
+      { version: 1, mode: "tracked-changes", operations: [operations[1]!] },
+      {},
+    );
+
+    expect(batchResult.skipped).toEqual([
+      expect.objectContaining({ id: "refused-list", reason: "pendingParagraphMarkDeletion" }),
+    ]);
+    expect(refusedResult.skipped).toEqual(batchResult.skipped);
+    expect((await listInstancesByText(batch))["Refused."]).toBeUndefined();
+    expect(await listInstancesByText(batch)).toEqual(await listInstancesByText(sequential));
+  });
+
   test.each([
     [{ kind: "newList", format: "roman" }, "$.operations[0].properties.numbering.format"],
     [
