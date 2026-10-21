@@ -284,6 +284,23 @@ test("consolidation keeps the oldest issue per signature and closes the rest as 
   expect(rerun.closes).toEqual([]);
 });
 
+test("an issue with a legacy summary and a fresh failure consolidate into one invariant class", async () => {
+  const issues = [
+    open(1838, `Fuzz failure [0bdfe57beea291ae]: ${TEST}: listLevel mismatch`, ""),
+    open(
+      1990,
+      `Fuzz failure [4626ec0e549c5464]: ${TEST}`,
+      fingerprintBody([740097500], 30, "listLevel is 2, expected 1"),
+    ),
+  ];
+  const fake = fakeStore(issues);
+  const plan = await planConsolidation(fake.store);
+  expect(plan.unparsed).toEqual([]);
+  expect(plan.groups).toHaveLength(1);
+  expect(plan.groups[0]?.keep.number).toBe(1838);
+  expect(plan.groups[0]?.duplicates.map(({ number }) => number)).toEqual([1990]);
+});
+
 test("lanes come from the reporter jobs and inline filer runs of a workflow", () => {
   const workflows = path.resolve(import.meta.dir, "../.github/workflows");
   const read = (file: string) => readFileSync(path.join(workflows, file), "utf8");

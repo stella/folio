@@ -2,6 +2,7 @@ import { stripVTControlCharacters } from "node:util";
 
 import {
   FAILURE_INVARIANTS,
+  type FailureInvariant,
   invariantOfFailure,
 } from "../test/consumer-scenarios/support/failure-invariants";
 
@@ -107,17 +108,36 @@ type Semantic = { area: string; message: string };
 const semanticOf = (assertion: string): Semantic | undefined =>
   semanticClasses.find(({ pattern }) => pattern.test(assertion));
 
+/** Legacy consumer-flow messages the invariant classifier now owns. */
+export const LEGACY_MESSAGE_INVARIANTS = {
+  "listLevel mismatch": "numberingLevel",
+  "Missing numbering format for displayed label": "numberingLabel",
+  "accepted tracked batches differ from direct batches": "directTracked",
+  "rejected tracked batches differ from fixture": "rejectAll",
+  "saving reopened package changes XML": "saveIdempotent",
+  "batch differs from sequential operations": "batchSequential",
+  "content reads differ after save": "readerStability",
+} as const satisfies Record<string, FailureInvariant>;
+const legacyMessageInvariants = new Map<string, FailureInvariant>(
+  Object.entries(LEGACY_MESSAGE_INVARIANTS),
+);
+
+const invariantKey = (invariant: FailureInvariant) =>
+  JSON.stringify(["consumer-invariant", invariant]);
+
 const consumerClass = (
   semantic: Semantic | undefined,
   assertion: string,
   fixture: string,
   mode: string,
 ) => {
-  const invariant = invariantOfFailure(assertion);
+  const message = semantic?.message ?? normalizeFailureMessage(assertion);
+  // A legacy message and the assertion it summarized are one class.
+  const invariant = invariantOfFailure(assertion) ?? legacyMessageInvariants.get(message) ?? null;
   if (invariant !== null) {
     const title = FAILURE_INVARIANTS[invariant].title;
     return {
-      key: JSON.stringify(["consumer-invariant", invariant]),
+      key: invariantKey(invariant),
       area: "Consumer invariant",
       message: title,
       flow: "",
@@ -126,7 +146,6 @@ const consumerClass = (
       title: `Consumer invariant: ${title}`,
     };
   }
-  const message = semantic?.message ?? normalizeFailureMessage(assertion);
   const area = semantic?.area ?? "Consumer flow";
   // One failure is one class wherever it shows: the fixture and the mode are
   // rows of the report, not part of its identity.
@@ -135,23 +154,6 @@ const consumerClass = (
 };
 
 export type FailureClass = ReturnType<typeof consumerClass>;
-
-/** Class-key renames made by the invariant classifier. */
-export const LEGACY_CLASS_KEY_RENAMES = {
-  '["consumer-flow","listLevel mismatch"]': '["consumer-invariant","numberingLevel"]',
-  '["consumer-flow","Missing numbering format for displayed label"]':
-    '["consumer-invariant","numberingLabel"]',
-  '["consumer-flow","accepted tracked batches differ from direct batches"]':
-    '["consumer-invariant","directTracked"]',
-  '["consumer-flow","rejected tracked batches differ from fixture"]':
-    '["consumer-invariant","rejectAll"]',
-  '["consumer-flow","saving reopened package changes XML"]':
-    '["consumer-invariant","saveIdempotent"]',
-  '["consumer-flow","batch differs from sequential operations"]':
-    '["consumer-invariant","batchSequential"]',
-  '["consumer-flow","content reads differ after save"]': '["consumer-invariant","readerStability"]',
-} as const satisfies Record<string, string>;
-const legacyClassKeyRenames = new Map(Object.entries(LEGACY_CLASS_KEY_RENAMES));
 
 export const failureClass = (test: string, assertion: string): FailureClass => {
   const consumer = /^consumer flow (.+) \/ (.+)$/u.exec(test);
@@ -173,14 +175,15 @@ export const failureClass = (test: string, assertion: string): FailureClass => {
  * were part of the key carried four parts: kind, fixture or test, mode, message.
  */
 export const upgradeClassKey = (parts: readonly string[]): string => {
-  let compact = JSON.stringify(parts);
-  if (parts.length === 4) {
-    compact =
-      parts[0] === "consumer-flow"
-        ? JSON.stringify(["consumer-flow", parts[3]])
-        : JSON.stringify(["fuzz-check", parts[1], parts[3]]);
+  if (parts[0] === "consumer-flow") {
+    const message = parts.at(-1) ?? "";
+    // The classifier owns consumer keys, so a marker and a fresh failure agree.
+    const semantic = semanticOf(message) ?? { area: "Consumer flow", message };
+    return consumerClass(semantic, message, "", "all").key;
   }
-  return legacyClassKeyRenames.get(compact) ?? compact;
+  return parts.length === 4
+    ? JSON.stringify(["fuzz-check", parts[1], parts[3]])
+    : JSON.stringify(parts);
 };
 
 /** Legacy automated and human titles remain discoverable until they close. */
