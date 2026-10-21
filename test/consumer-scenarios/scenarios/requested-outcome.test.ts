@@ -381,6 +381,16 @@ describe("the requested-outcome oracle", () => {
     assert.equal(references.size, 0);
   });
 
+  test("a note whose reference an edit may have moved is not predicted either way", () => {
+    const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
+    const model = modelOf([row("body", "Reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.uncertainNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
+    assert.deepEqual(compareComments(model, [comment], [comment], []), []);
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+  });
+
   test("a note referenced from two blocks retires only with its last reference", () => {
     const footnote = { type: "footnote", noteId: 1 } as const;
     const references: Parameters<typeof retireNoteReferences>[0] = new Map([

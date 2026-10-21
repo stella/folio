@@ -553,6 +553,11 @@ export type Model = {
   deletedBlockIds: Set<string>;
   /** Note stories whose references were removed by applied structural operations. */
   removedNoteStories: Set<string>;
+  /**
+   * Note stories whose references an operation other than a removal may have
+   * moved or deleted; their comments are not predicted either way.
+   */
+  uncertainNoteStories: Set<string>;
   /** Note story containing each comment-addressable block in the pre-state. */
   noteStoryByBlockId: ReadonlyMap<string, string>;
   /** Paragraph style ids the saved package must define. */
@@ -616,6 +621,7 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
     liveTextById: new Map(live.map(({ id, text }) => [id, text])),
     deletedBlockIds: new Set(),
     removedNoteStories: new Set(),
+    uncertainNoteStories: new Set(),
     noteStoryByBlockId: new Map(),
     styles: new Set(),
     comments: [],
@@ -1757,6 +1763,12 @@ export const compareComments = (
           model.removedNoteStories.has(model.noteStoryByBlockId.get(located.blockId) ?? "")))
     )
       disposition = "removed";
+    if (
+      mode !== "suggested" &&
+      located.blockId !== null &&
+      model.uncertainNoteStories.has(model.noteStoryByBlockId.get(located.blockId) ?? "")
+    )
+      disposition = "ambiguous";
     if (disposition === "removed") gone.push({ entry, located });
     else if (disposition === "kept") kept.push(entry);
   }
@@ -2193,6 +2205,15 @@ export const assertRequestedOutcome = async (
     })();
     for (const story of retireNoteReferences(noteReferences, operation.type, blockId, removal)) {
       model.removedNoteStories.add(story);
+    }
+    if (removal.length === 0) {
+      // A split, replacement or other edit of a block may move or delete the
+      // note references it holds; the oracle does not follow them.
+      for (const story of noteReferences.get(blockId) ?? []) {
+        if (story.type === "footnote" || story.type === "endnote") {
+          model.uncertainNoteStories.add(noteStoryKey(story));
+        }
+      }
     }
     for (const removedBlockId of removal) {
       if (!removedBlocksBy.has(removedBlockId)) {
