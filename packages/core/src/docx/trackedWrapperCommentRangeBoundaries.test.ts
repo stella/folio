@@ -11,6 +11,7 @@ import { describe, expect, test } from "bun:test";
 import { applyDocumentOps, OP_STORIES, REVISION_DECISIONS } from "@stll/docx-core/ops";
 import fc from "fast-check";
 import JSZip from "jszip";
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import {
@@ -505,6 +506,66 @@ describe("comment-range boundaries inside tracked changes", () => {
     const loaded = toProseDoc(input);
     expect(() => loaded.check()).not.toThrow();
     const saved = fromProseDoc(loaded, input, { stylesheetSource: { type: "package" } });
+    const paragraph = saved.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+
+    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
+  });
+
+  test.each([
+    {
+      name: "a simple field",
+      container: (content: string) =>
+        `<w:fldSimple w:instr=" REF target "><w:ins ${REVISION_ATTRIBUTES}>${content}</w:ins></w:fldSimple>`,
+    },
+    {
+      name: "an inline content control",
+      container: (content: string) =>
+        `<w:sdt><w:sdtPr><w:id w:val="42"/><w:richText/></w:sdtPr><w:sdtContent>` +
+        `<w:ins ${REVISION_ATTRIBUTES}>${content}</w:ins></w:sdtContent></w:sdt>`,
+    },
+  ])("$name keeps a range start after its uncovered tracked content", ({ container }) => {
+    const xml =
+      container(
+        '<w:r><w:t>before</w:t></w:r><w:commentRangeStart w:id="5"/>' +
+          "<w:r><w:t>covered</w:t></w:r>",
+      ) + `<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}`;
+    const input = wrapParagraph(
+      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
+    );
+
+    const loaded = toProseDoc(input);
+    const structuredContainers: PMNode[] = [];
+    loaded.descendants((node) => {
+      if (node.type.name === "structuredField" || node.type.name === "sdt") {
+        structuredContainers.push(node);
+      }
+    });
+    expect(structuredContainers).toHaveLength(1);
+    expect(structuredContainers[0]?.marks.some((mark) => mark.type.name === "comment")).toBe(false);
+
+    const saved = fromProseDoc(loaded, input, {
+      stylesheetSource: { type: "package" },
+    });
+    const paragraph = saved.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+
+    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
+  });
+
+  test("a field wholly inside a comment keeps the range outside the field", () => {
+    const xml =
+      '<w:commentRangeStart w:id="5"/>' +
+      `<w:fldSimple w:instr=" REF target "><w:ins ${REVISION_ATTRIBUTES}>` +
+      "<w:r><w:t>covered</w:t></w:r></w:ins></w:fldSimple>" +
+      `<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}`;
+    const input = wrapParagraph(
+      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
+    );
+
+    const saved = fromProseDoc(toProseDoc(input), input, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = saved.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
 

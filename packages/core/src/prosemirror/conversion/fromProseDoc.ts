@@ -970,7 +970,14 @@ export function fromProseDoc(
         ...(numbering ? { numbering } : {}),
       },
     };
-    const comments = survivingComments(updatedDocument);
+    const projectedCommentIds = new Set<number>();
+    pmDoc.descendants((node) => {
+      for (const commentId of getCommentMarkIds(node.marks)) projectedCommentIds.add(commentId);
+    });
+    const survivingCommentIds = new Set(survivingComments(updatedDocument).map(({ id }) => id));
+    const comments = (updatedDocument.package.document.comments ?? []).filter(
+      ({ id }) => survivingCommentIds.has(id) || projectedCommentIds.has(id),
+    );
     const keptIds = new Set(comments.map(({ id }) => id));
     const retiredIds = new Set(
       (updatedDocument.package.document.comments ?? [])
@@ -3209,7 +3216,11 @@ function extractParagraphContent(
   };
 
   const syncCommentRanges = (node: PMNode, offset: number) => {
-    const nodeCommentIds = getCommentMarkIds(node.marks);
+    const ownsStructuredCommentCoverage =
+      (node.type.name === "structuredField" || node.type.name === "sdt") && node.childCount > 0;
+    const nodeCommentIds = ownsStructuredCommentCoverage
+      ? getCommentMarkIds(node.child(0).marks)
+      : getCommentMarkIds(node.marks);
     const nodeTrackedBoundary = trackedBoundary(node);
     const sourceCommentRangeBoundaries = precedingTrackedCommentRangeBoundaries;
     const nodeCommentRangeBoundaries = nodeTrackedBoundary?.changeAttrs._docxCommentRangeBoundaries;
@@ -3294,6 +3305,18 @@ function extractParagraphContent(
       openedComments.add(commentId);
       if (openingBoundaryOwner === content) currentTrackedChange = undefined;
     }
+  };
+
+  const syncStructuredCommentExit = (node: PMNode): void => {
+    if (
+      (node.type.name !== "structuredField" && node.type.name !== "sdt") ||
+      node.childCount === 0
+    ) {
+      return;
+    }
+    const finalCommentIds = getCommentMarkIds(node.child(node.childCount - 1).marks);
+    openedComments.clear();
+    for (const commentId of finalCommentIds) openedComments.add(commentId);
   };
 
   const flushEmptyHyperlinksThroughOffset = (offset: number): void => {
@@ -3731,10 +3754,12 @@ function extractParagraphContent(
           textBoxAnchorMarkers,
         }),
       );
+      syncStructuredCommentExit(node);
     } else if (node.type.name === "sdt") {
       // SDT ends current run and emits an InlineSdt content item
       flushCurrentInline();
       content.push(createInlineSdtFromNode(node, textBoxAnchorMarkers, formattingContext));
+      syncStructuredCommentExit(node);
     } else if (node.type.name === "math") {
       // Math ends current run and emits a MathEquation content item
       flushCurrentInline();

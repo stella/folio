@@ -1075,30 +1075,36 @@ function convertParagraph(
       }
       case "simpleField":
       case "complexField":
-        emitInlineNode(
-          convertField(content, {
-            getInheritedRunFormatting,
-            styleResolver,
-            nextHyperlinkInstanceIndex,
-            runScope,
-            textBoxAnchors,
-            openCommentIds,
-          }),
+        emitInlineNodes(
+          [
+            convertField(content, {
+              getInheritedRunFormatting,
+              styleResolver,
+              nextHyperlinkInstanceIndex,
+              runScope,
+              textBoxAnchors,
+              openCommentIds,
+            }),
+          ].filter((node): node is PMNode => node !== null),
+          true,
         );
         break;
       case "inlineSdt":
-        emitInlineNode(
-          convertInlineSdt(
-            content,
-            nextHyperlinkInstanceIndex,
-            runScope,
-            getInheritedRunFormatting,
-            trackedRunFormattingResolvers,
-            styleResolver,
-            textBoxAnchors,
-            stack,
-            openCommentIds,
-          ),
+        emitInlineNodes(
+          [
+            convertInlineSdt(
+              content,
+              nextHyperlinkInstanceIndex,
+              runScope,
+              getInheritedRunFormatting,
+              trackedRunFormattingResolvers,
+              styleResolver,
+              textBoxAnchors,
+              stack,
+              openCommentIds,
+            ),
+          ].filter((node): node is PMNode => node !== null),
+          true,
         );
         break;
       case "insertion":
@@ -1367,6 +1373,7 @@ function convertTrackedChange(
       if (fieldNode) {
         itemNodes.push(fieldNode);
       }
+      commentsAlreadyApplied = true;
     } else if (item.type === "mathEquation") {
       const mathNode = convertMathEquation(item);
       if (mathNode) {
@@ -1418,6 +1425,7 @@ function convertTrackedChange(
       if (sdtNode) {
         itemNodes.push(sdtNode);
       }
+      commentsAlreadyApplied = true;
     } else if (item.type === "bookmarkStart") {
       itemNodes.push(
         schema.node("bookmarkBoundary", {
@@ -2694,6 +2702,7 @@ function convertField(
   let fieldFormatting: TextFormatting | undefined;
   let fieldPropertyChanges: readonly RunPropertyChange[] | undefined;
   const inlineNodes: PMNode[] = [];
+  const commentsOpenBeforeField = new Set(openCommentIds);
   const hasPageBreakContent = fieldResultHasPageBreakContent(field);
   const resultRuns =
     field.type === "complexField"
@@ -2762,6 +2771,7 @@ function convertField(
     // it held, the same carrier the paragraph and the link use.
     for (const { content, stack } of withInlineWrapperStacks(field.content)) {
       const itemNodes: PMNode[] = [];
+      let commentsAlreadyApplied = false;
       switch (content.type) {
         case "run":
           appendRun(content, itemNodes);
@@ -2807,19 +2817,33 @@ function convertField(
               false,
             ),
           );
+          commentsAlreadyApplied = true;
           break;
         }
+        case "commentRangeStart":
+          openCommentIds.add(content.id);
+          break;
+        case "commentRangeEnd":
+          openCommentIds.delete(content.id);
+          break;
         // `SimpleField["content"]` holds the three above and the wrapper the
         // lift has already taken off, and a wrapper inside the field holds
         // what the field holds, because both read the field's handler map.
         default:
           break;
       }
-      inlineNodes.push(...withInlineWrapperMark(itemNodes, stack));
+      const wrappedNodes = withInlineWrapperMark(itemNodes, stack);
+      inlineNodes.push(
+        ...(commentsAlreadyApplied
+          ? wrappedNodes
+          : applyCommentMarks(wrappedNodes, openCommentIds)),
+      );
     }
   } else {
     for (const run of field.fieldResult) {
-      appendRun(run, inlineNodes);
+      const runNodes: PMNode[] = [];
+      appendRun(run, runNodes);
+      inlineNodes.push(...applyCommentMarks(runNodes, openCommentIds));
     }
   }
 
@@ -2863,7 +2887,7 @@ function convertField(
   if (!createStructuredField && resultPropertyChanges && resultPropertyChanges.length > 0) {
     marks.push(schema.mark("runPropertyChange", { changes: [...resultPropertyChanges] }));
   }
-  return schema.node(
+  const fieldNode = schema.node(
     createStructuredField ? "structuredField" : "field",
     {
       fieldType: field.fieldType,
@@ -2884,6 +2908,9 @@ function convertField(
     createStructuredField ? inlineNodes : undefined,
     marks,
   );
+  return createStructuredField
+    ? fieldNode
+    : (applyCommentMarks([fieldNode], commentsOpenBeforeField).at(0) ?? fieldNode);
 }
 
 /** An inline item the wrappers have been lifted off, and which ones they were. */
@@ -3024,6 +3051,7 @@ function convertInlineSdt(
 ): PMNode | null {
   const props = sdt.properties;
   const inlineNodes: PMNode[] = [];
+  const commentsOpenBeforeSdt = new Set(openCommentIds);
 
   // A wrapper inside the control is lifted here rather than out of it: a
   // wrapper lifted out of the control takes the control's content with it.
@@ -3083,6 +3111,7 @@ function convertInlineSdt(
         if (fieldNode) {
           itemNodes.push(fieldNode);
         }
+        commentsAlreadyApplied = true;
         break;
       }
       case "inlineSdt": {
@@ -3100,6 +3129,7 @@ function convertInlineSdt(
         if (nestedSdt) {
           itemNodes.push(nestedSdt);
         }
+        commentsAlreadyApplied = true;
         break;
       }
       case "insertion":
@@ -3177,11 +3207,14 @@ function convertInlineSdt(
     );
   }
 
-  return schema.node(
+  const sdtNode = schema.node(
     "sdt",
     sdtAttrsFromProperties(props),
     inlineNodes.length > 0 ? inlineNodes : undefined,
   );
+  return sdtNode.childCount > 0
+    ? sdtNode
+    : (applyCommentMarks([sdtNode], commentsOpenBeforeSdt).at(0) ?? sdtNode);
 }
 
 /**
