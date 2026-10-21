@@ -645,8 +645,9 @@ function resolveChange(
           follows,
           holdsContent: !holdsNoContent(paragraph),
           markWasAdded: op.markWasAdded,
+          // Removing this final paragraph leaves the block before it last.
           containerStillEndsWithParagraph:
-            resolved.parent.childCount > 1 && resolved.parent.lastChild?.type.name === "paragraph",
+            resolved.parent.maybeChild(resolved.index() - 1)?.type.name === "paragraph",
           followingTableCanReceiveRunIn:
             follows === "table" &&
             boundaries.length === 0 &&

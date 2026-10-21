@@ -40,6 +40,11 @@ export const paragraphMarkOutcome = ({
   follows: "paragraph" | "table" | "nothing";
   holdsContent: boolean;
   markWasAdded: boolean;
+  /**
+   * Read only when nothing follows: whether the block BEFORE this paragraph,
+   * which becomes the container's last block once this one is removed, is a
+   * paragraph. Never the container's current last child, which is this one.
+   */
   containerStillEndsWithParagraph: boolean;
   followingTableCanReceiveRunIn: boolean;
   tableRemovalIsTrackable?: boolean;
