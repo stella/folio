@@ -603,6 +603,26 @@ describe("comment-range boundaries inside tracked changes", () => {
     expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
   });
 
+  test.each([
+    { name: "a hard break", atom: "<w:r><w:br/></w:r>" },
+    { name: "a tab", atom: "<w:r><w:tab/></w:r>" },
+  ])("a range start before an insertion that begins with $name stays outside it", ({ atom }) => {
+    const xml =
+      `<w:commentRangeStart w:id="5"/><w:ins ${REVISION_ATTRIBUTES}>${atom}` +
+      '<w:r><w:t>A</w:t></w:r><w:commentRangeEnd w:id="5"/></w:ins>' +
+      COMMENT_REFERENCE;
+    const input = wrapParagraph(
+      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
+    );
+
+    const loaded = toProseDoc(input);
+    const saved = fromProseDoc(loaded, input, { stylesheetSource: { type: "package" } });
+    const paragraph = saved.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+
+    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
+  });
+
   test("a range end before an untracked comment reference stays inside its insertion", () => {
     const xml =
       `<w:ins ${REVISION_ATTRIBUTES}><w:commentRangeStart w:id="5"/>` +

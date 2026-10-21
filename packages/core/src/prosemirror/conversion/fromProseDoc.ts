@@ -3281,15 +3281,7 @@ function extractParagraphContent(
       currentTrackedChange = undefined;
     }
     for (const commentId of byCommentId(toOpen)) {
-      if (!node.isText) {
-        establishTrackedBoundaryOwner(node);
-        const openingBoundaryOwner = currentTrackedChange
-          ? currentTrackedChange.wrapper.content
-          : content;
-        openingBoundaryOwner.push({ type: "commentRangeStart", id: commentId });
-        openedComments.add(commentId);
-        continue;
-      }
+      // Text and inline atoms (images, breaks) read the same recorded owner.
       const owner = trackedCommentBoundaryOwner({
         boundaries: nodeCommentRangeBoundaries,
         type: "start",
