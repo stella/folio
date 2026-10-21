@@ -2203,10 +2203,11 @@ export const assertRequestedOutcome = async (
           return [];
       }
     })();
-    for (const story of retireNoteReferences(noteReferences, operation.type, blockId, removal)) {
+    const removedIds = [...removal];
+    for (const story of retireNoteReferences(noteReferences, operation.type, blockId, removedIds)) {
       model.removedNoteStories.add(story);
     }
-    if (removal.length === 0) {
+    if (removedIds.length === 0) {
       // A split, replacement or other edit of a block may move or delete the
       // note references it holds; the oracle does not follow them.
       for (const story of noteReferences.get(blockId) ?? []) {
