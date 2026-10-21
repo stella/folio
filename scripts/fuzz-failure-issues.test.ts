@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { extractFailureMarkers } from "./failure-fingerprints";
 import type { Issue } from "./fuzz-issue-classes";
+import { fileClasses, type IssueStore } from "./fuzz-issue-classes";
 
 import {
   failureMarker,
@@ -204,6 +205,198 @@ test("failure records retain the deepest comparison diff without terminal stylin
   expect(record.error).toContain("- Expected field: before");
   expect(record.error).toContain("+ Received field: after");
   expect(record.error).not.toContain("\u001b");
+});
+
+test("a second signature in one invariant edits the open class issue", async () => {
+  const issues: Issue[] = [];
+  const created: number[] = [];
+  const edited: number[] = [];
+  const store = {
+    list: async () => issues,
+    create: async (title: string, body: string) => {
+      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      issues.push(issue);
+      created.push(issue.number);
+      return issue;
+    },
+    edit: async (number: number, body: string) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.body = body;
+      edited.push(number);
+    },
+    reopen: async () => {},
+  } satisfies IssueStore;
+  const make = (seed: number, testName: string): Finding => {
+    const error = new Error(
+      `step ${seed}: comment ${JSON.stringify(testName)} outlived the block it anchored`,
+    );
+    const record = failureRecord(
+      failureMarker({ test: testName, seed, repro: `bun replay.ts ${seed}`, failure: error }),
+      error,
+    );
+    return { record, records: [record], seeds: [seed] };
+  };
+  const classContext = runContext(800);
+  await fileClasses({
+    findings: [make(1, "consumer flow comments / direct")],
+    context: classContext,
+    store,
+    known: new Map(),
+  });
+  await fileClasses({
+    findings: [make(2, "consumer flow tables / tracked-changes")],
+    context: classContext,
+    store,
+    known: new Map(),
+  });
+  expect(created).toEqual([1]);
+  expect(edited).toEqual([1]);
+  expect(issues.at(0)?.body).toContain("| comments |");
+  expect(issues.at(0)?.body).toContain("| tables |");
+});
+
+test("an absent class keeps its regression note and legacy report", async () => {
+  const issues: Issue[] = [];
+  const store = {
+    list: async () => issues,
+    create: async (title: string, body: string) => {
+      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      issues.push(issue);
+      return issue;
+    },
+    edit: async (number: number, body: string) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.body = body;
+    },
+    reopen: async () => {},
+  } satisfies IssueStore;
+  const finding = flowFinding(1, "deleteBlock");
+  await fileClasses({ findings: [finding], context, store, known: new Map() });
+  const issue = issues.at(0);
+  if (issue === undefined || issue.body === null) throw new Error("missing issue body");
+  issue.body = `${issue.body.replace(
+    "\n\n| Fingerprint",
+    "\nRegressed: preserved regression evidence.\n\n| Fingerprint",
+  )}\n\n<details><summary>Legacy report</summary>\n\nPreserved reproduction evidence.\n\n<details><summary>Nested evidence</summary>\n\nNested reproduction.\n\n</details>\n\n</details>`;
+  const failure = /^Failure: .*$/mu.exec(issue.body)?.at(0);
+
+  await fileClasses({ findings: [], context: runContext(124), store, known: new Map() });
+
+  expect(issue.body).toContain("Regressed: preserved regression evidence.");
+  expect(issue.body).toContain("Preserved reproduction evidence.");
+  expect(issue.body).toContain("Nested reproduction.");
+  expect(/^Failure: .*$/mu.exec(issue.body ?? "")?.at(0)).toBe(failure);
+});
+
+test("a class filed before signatures were tracked closes only on clean runs of a lane that reproduced it", async () => {
+  const issues: Issue[] = [];
+  const store = {
+    list: async () => issues,
+    create: async (title: string, body: string) => {
+      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      issues.push(issue);
+      return issue;
+    },
+    edit: async (number: number, body: string) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.body = body;
+    },
+    reopen: async () => {},
+    close: async (number: number) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.state = "closed";
+    },
+  } satisfies IssueStore;
+  await fileClasses({
+    findings: [flowFinding(1, "deleteBlock")],
+    context,
+    store,
+    known: new Map(),
+  });
+  const issue = issues.at(0);
+  if (issue === undefined || issue.body === null) throw new Error("missing issue body");
+  issue.body = issue.body.replace(/<!-- fuzz-class-state (\{[^\n]*\}) -->/u, (_, json: string) => {
+    const { signatures: _signatures, ...legacy } = JSON.parse(json) as Record<string, unknown>;
+    return `<!-- fuzz-class-state ${JSON.stringify(legacy)} -->`;
+  });
+
+  // Its originating lane is unknown, so clean runs of another lane prove nothing.
+  const unrelated = { lane: "continuous-fuzz" };
+  for (let run = 200; run < 214; run += 1) {
+    await fileClasses({
+      findings: [],
+      context: runContext(run, unrelated),
+      store,
+      known: new Map(),
+    });
+  }
+  expect(issue.state).toBe("open");
+
+  await fileClasses({
+    findings: [flowFinding(1, "deleteBlock")],
+    context: runContext(300, unrelated),
+    store,
+    known: new Map(),
+  });
+  for (let run = 301; run < 307; run += 1) {
+    await fileClasses({
+      findings: [],
+      context: runContext(run, unrelated),
+      store,
+      known: new Map(),
+    });
+  }
+  expect(issue.state).toBe("open");
+  await fileClasses({
+    findings: [],
+    context: runContext(307, unrelated),
+    store,
+    known: new Map(),
+  });
+  expect(issue.state).toBe("closed");
+});
+
+test("reproducing one fingerprint of a legacy class keeps its other fingerprints open", async () => {
+  const issues: Issue[] = [];
+  const store = {
+    list: async () => issues,
+    create: async (title: string, body: string) => {
+      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      issues.push(issue);
+      return issue;
+    },
+    edit: async (number: number, body: string) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.body = body;
+    },
+    reopen: async () => {},
+    close: async (number: number) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.state = "closed";
+    },
+  } satisfies IssueStore;
+  const reproduced = flowFinding(1, "deleteBlock");
+  const historical = flowFinding(2, "insertAfterBlock");
+  await fileClasses({ findings: [reproduced, historical], context, store, known: new Map() });
+  expect(issues).toHaveLength(1);
+  const issue = issues.at(0);
+  if (issue === undefined || issue.body === null) throw new Error("missing issue body");
+  issue.body = issue.body.replace(/<!-- fuzz-class-state (\{[^\n]*\}) -->/u, (_, json: string) => {
+    const { signatures: _signatures, ...legacy } = JSON.parse(json) as Record<string, unknown>;
+    return `<!-- fuzz-class-state ${JSON.stringify(legacy)} -->`;
+  });
+
+  await fileClasses({ findings: [reproduced], context: runContext(400), store, known: new Map() });
+  for (let run = 401; run < 401 + AUTO_CLOSE_CLEAN_RUNS * 2; run += 1) {
+    await fileClasses({ findings: [], context: runContext(run), store, known: new Map() });
+  }
+  expect(issue.state).toBe("open");
 });
 
 const fixtureLog = readFileSync(new URL("./fixtures/fuzz-failures.log", import.meta.url), "utf8");
