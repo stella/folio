@@ -290,7 +290,7 @@ test("an absent class keeps its regression note and legacy report", async () => 
   expect(/^Failure: .*$/mu.exec(issue.body ?? "")?.at(0)).toBe(failure);
 });
 
-test("a class filed before signatures were tracked closes after 7 clean scheduled runs", async () => {
+test("a class filed before signatures were tracked closes only on clean runs of a lane that reproduced it", async () => {
   const issues: Issue[] = [];
   const store = {
     list: async () => issues,
@@ -324,11 +324,39 @@ test("a class filed before signatures were tracked closes after 7 clean schedule
     return `<!-- fuzz-class-state ${JSON.stringify(legacy)} -->`;
   });
 
-  for (let run = 200; run < 206; run += 1) {
-    await fileClasses({ findings: [], context: runContext(run), store, known: new Map() });
+  // Its originating lane is unknown, so clean runs of another lane prove nothing.
+  const unrelated = { lane: "continuous-fuzz" };
+  for (let run = 200; run < 214; run += 1) {
+    await fileClasses({
+      findings: [],
+      context: runContext(run, unrelated),
+      store,
+      known: new Map(),
+    });
   }
   expect(issue.state).toBe("open");
-  await fileClasses({ findings: [], context: runContext(206), store, known: new Map() });
+
+  await fileClasses({
+    findings: [flowFinding(1, "deleteBlock")],
+    context: runContext(300, unrelated),
+    store,
+    known: new Map(),
+  });
+  for (let run = 301; run < 307; run += 1) {
+    await fileClasses({
+      findings: [],
+      context: runContext(run, unrelated),
+      store,
+      known: new Map(),
+    });
+  }
+  expect(issue.state).toBe("open");
+  await fileClasses({
+    findings: [],
+    context: runContext(307, unrelated),
+    store,
+    known: new Map(),
+  });
   expect(issue.state).toBe("closed");
 });
 

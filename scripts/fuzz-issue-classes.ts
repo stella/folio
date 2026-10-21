@@ -558,8 +558,8 @@ export const fileClasses = async ({
       const state = readClassState(issue.body, key);
       if (state === null) continue;
       // A class filed before signatures were tracked has only its seed rows.
-      // Their fingerprints become its signatures, and the first lane that runs
-      // clean registers itself, so the class can close like any other.
+      // Their fingerprints become its signatures without lanes: only a lane
+      // that reproduces a signature can later count its clean runs.
       if (state.signatures.length === 0) {
         state.signatures = [...new Set(state.seeds.map(({ fingerprint }) => fingerprint))].map(
           (fingerprint) => ({ fingerprint, lanes: [] }),
@@ -567,9 +567,6 @@ export const fileClasses = async ({
       }
       let changed = false;
       for (const signature of state.signatures) {
-        if (signature.lanes.length === 0) {
-          signature.lanes.push({ lane: context.lane, lastRun: "", cleanRuns: 0 });
-        }
         const lane = signature.lanes.find((item) => item.lane === context.lane);
         if (lane === undefined || lane.lastRun === run) continue;
         lane.lastRun = run;
