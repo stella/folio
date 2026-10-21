@@ -112,3 +112,38 @@ test("accepting a non-empty paragraph-mark deletion runs its content into the ta
   expect(survivor?.attrs["paraId"]).toBe(cellParagraph.attrs["paraId"]);
   expect(survivor?.attrs["pPrMark"]).toBeNull();
 });
+
+const insertedParagraphMark = {
+  kind: "ins",
+  info: { id: 8, author: "Reviewer", date: "2026-10-21" },
+} as const;
+
+test("rejecting an empty inserted final paragraph after a table keeps it as the terminator", () => {
+  const terminator = schema.node("paragraph", { pPrMark: insertedParagraphMark });
+  const doc = schema.node("doc", null, [
+    paragraph("before"),
+    table([row([cell("cell")])]),
+    terminator,
+  ]);
+
+  const result = resolveWholeStory({ doc, mode: "reject", styleResolver: null, numbering: null });
+
+  expect(result.failed).toBe(false);
+  expect(result.resolved.childCount).toBe(3);
+  expect(result.resolved.lastChild?.type.name).toBe("paragraph");
+});
+
+test("rejecting an empty inserted final paragraph in a cell keeps the cell terminator", () => {
+  const terminator = schema.node("paragraph", { pPrMark: insertedParagraphMark });
+  const doc = schema.node("doc", null, [
+    table([row([schema.node("tableCell", null, [paragraph("text"), terminator])])]),
+    paragraph("after"),
+  ]);
+
+  const result = resolveWholeStory({ doc, mode: "reject", styleResolver: null, numbering: null });
+
+  expect(result.failed).toBe(false);
+  const resolvedCell = result.resolved.firstChild?.firstChild?.firstChild;
+  expect(resolvedCell?.childCount).toBe(2);
+  expect(resolvedCell?.lastChild?.type.name).toBe("paragraph");
+});
