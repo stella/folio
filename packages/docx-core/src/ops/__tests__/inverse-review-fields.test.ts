@@ -110,6 +110,21 @@ const appliedSequence = () => {
 };
 
 describe("inverse paragraph review fields", () => {
+  test("an absent and an empty paragraph property set are the same review state", () => {
+    const document = originalDocument();
+    const result = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      expected: { formatting: {} },
+      review: { formatting: {} },
+    }).unwrap();
+
+    expect(result.document).toBe(document);
+    expect(result.inverse).toEqual([]);
+    expect(result.document.package.document.content[0]).not.toHaveProperty("formatting");
+  });
+
   test("a paragraph property inverse preserves an explicit empty property set", () => {
     let document = originalDocument();
     for (const op of operations.slice(0, 3))

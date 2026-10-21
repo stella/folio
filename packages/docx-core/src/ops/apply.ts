@@ -1275,14 +1275,13 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
 const withParagraphFormatting = (
   paragraph: Paragraph,
   formatting: ParagraphFormatting | undefined,
-  preserveEmpty = false,
 ): Paragraph => {
   const next: Paragraph = { ...paragraph };
   const finalized = finalizeParagraphFormatting(formatting);
-  if (finalized === undefined && !(preserveEmpty && formatting !== undefined)) {
+  if (finalized === undefined) {
     delete next.formatting;
   } else {
-    next.formatting = finalized ?? {};
+    next.formatting = finalized;
   }
   return next;
 };
@@ -1308,20 +1307,14 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
       "A paragraph property change does not record the paragraph mark's run properties.",
     );
   }
-  const patchedFormatting = patchedSet(paragraph.formatting, op.patch, op.whenEmpty);
-  const formatting =
-    finalizeParagraphFormatting(patchedFormatting) ??
-    (patchedFormatting !== undefined && Object.keys(patchedFormatting).length === 0
-      ? {}
-      : undefined);
-  const preserveEmpty = op.whenEmpty === EMPTY_PROPERTY_SETS.KEEP;
-  const currentFormatting = preserveEmpty
-    ? paragraph.formatting
-    : finalizeParagraphFormatting(paragraph.formatting);
+  const formatting = finalizeParagraphFormatting(
+    patchedSet(paragraph.formatting, op.patch, op.whenEmpty),
+  );
+  const currentFormatting = finalizeParagraphFormatting(paragraph.formatting);
   if (structurallyEqual(formatting, currentFormatting)) {
     return unchanged(document);
   }
-  const next = withParagraphFormatting(paragraph, formatting, preserveEmpty);
+  const next = withParagraphFormatting(paragraph, formatting);
   registerParagraphPropertySnapshot({
     paragraph: next,
     snapshot: patchedSet(getParagraphPropertySnapshot(paragraph), op.patch, op.whenEmpty),
@@ -1358,7 +1351,10 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
           story: op.story,
           blockId: result.paraId ?? op.blockId,
           patch: priorValues(paragraph.formatting, op.patch),
-          whenEmpty: emptySetSpelling(paragraph.formatting),
+          whenEmpty:
+            finalizeParagraphFormatting(paragraph.formatting) === undefined
+              ? EMPTY_PROPERTY_SETS.KEEP
+              : emptySetSpelling(getParagraphPropertySnapshot(paragraph)),
           expected: op.patch,
         },
       ]),
@@ -1741,7 +1737,7 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   }
   if (
     op.expectedSurvivor !== undefined &&
-    !equalForStaleness(reviewFieldsOf(survivor), op.expectedSurvivor)
+    !equalForStaleness(reviewFieldsOf(survivor), reviewFieldsOf(op.expectedSurvivor))
   ) {
     return refuse(
       op,
@@ -2049,7 +2045,7 @@ const setParagraphReview = (document: Document, op: SetParagraphReviewOp): Appli
     return Result.err(located.error);
   }
   const { paragraph } = located.value;
-  if (!equalForStaleness(reviewFieldsOf(paragraph), op.expected)) {
+  if (!equalForStaleness(reviewFieldsOf(paragraph), reviewFieldsOf(op.expected))) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
