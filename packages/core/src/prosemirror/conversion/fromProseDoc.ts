@@ -2287,7 +2287,13 @@ function assignParagraphIndentation(
   // `hangingIndent` reads as the sign of `indentFirstLine` and means nothing
   // without it.
   const hanging = result.indentFirstLine !== undefined && attrs.hangingIndent === true;
-  if (!changed && hanging === (orig.hangingIndent === true)) {
+  // A false hanging flag is redundant beside a first-line value, and parsing
+  // the resulting w:firstLine does not recreate it.
+  if (
+    !changed &&
+    hanging === (orig.hangingIndent === true) &&
+    !(result.indentFirstLine !== undefined && orig.hangingIndent === false)
+  ) {
     return;
   }
   if (hanging) {
