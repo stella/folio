@@ -291,6 +291,7 @@ export type SignatureIssueStore = Pick<IssueStore, "list" | "create"> & {
   edit: (number: number, content: IssueContent) => Promise<void>;
   reopen: (number: number) => Promise<void>;
   close: (number: number, reason: CloseReason) => Promise<void>;
+  closingCommit?: (number: number) => Promise<string | null>;
 };
 
 const PAGE_SIZE = 100;
@@ -305,6 +306,23 @@ const ghPages = async (endpoint: string): Promise<unknown[]> => {
     pages.push(response);
     if (!Array.isArray(response) || response.length < PAGE_SIZE) return pages;
   }
+};
+
+/** The commit attached to the latest close event, or null for a manual close. */
+export const parseClosingCommitPages = (pages: unknown): string | null => {
+  if (!Array.isArray(pages) || !pages.every(Array.isArray)) {
+    throw new IssueResponseError({ message: "Invalid GitHub issue event pages" });
+  }
+  const closing = pages
+    .flat()
+    .findLast((event: unknown) => isRecord(event) && event["event"] === "closed");
+  if (!isRecord(closing)) return null;
+  const commit = closing["commit_id"];
+  if (commit === null || commit === undefined) return null;
+  if (typeof commit !== "string" || !/^[0-9a-f]{40}$/iu.test(commit)) {
+    throw new IssueResponseError({ message: "Invalid GitHub closing commit" });
+  }
+  return commit;
 };
 
 export const githubIssueStore = () =>
@@ -331,6 +349,8 @@ export const githubIssueStore = () =>
     close: async (number, reason) => {
       await $`gh api -X PATCH ${`repos/{owner}/{repo}/issues/${number}`} -f state=closed -f ${`state_reason=${reason}`}`.quiet();
     },
+    closingCommit: async (number) =>
+      parseClosingCommitPages(await ghPages(`repos/{owner}/{repo}/issues/${number}/events`)),
     comments: async (number: number) =>
       parseCommentPages(await ghPages(`repos/{owner}/{repo}/issues/${number}/comments`)),
   }) satisfies SignatureIssueStore & { comments: (number: number) => Promise<string[]> };
@@ -835,12 +855,25 @@ type FileFindingsOptions = {
   findings: readonly Finding[];
   context: Context;
   store?: SignatureIssueStore;
+  isAncestor?: (ancestor: string, descendant: string) => boolean | Promise<boolean>;
 };
 type FileFindingsResult = { filed: Filed[]; closed: number[] };
+
+export const gitIsAncestor = (ancestor: string, descendant: string): boolean => {
+  const result = Bun.spawnSync(["git", "merge-base", "--is-ancestor", ancestor, descendant], {
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  if (result.exitCode === 0) return true;
+  if (result.exitCode === 1) return false;
+  throw new Error(result.stderr.toString().trim() || "git merge-base --is-ancestor failed");
+};
+
 export const fileFindings = async ({
   findings,
   context,
   store = githubIssueStore(),
+  isAncestor = gitIsAncestor,
 }: FileFindingsOptions): Promise<FileFindingsResult> => {
   const tracked = (await store.list()).flatMap((issue) => {
     const state = parseSignatureState(issue);
@@ -856,6 +889,19 @@ export const fileFindings = async ({
   for (const finding of groupBySignature(unique)) {
     seen.add(finding.signature.id);
     const existing = trackedIssue(tracked, finding.signature.id);
+    if (existing?.issue.state === "closed" && existing.issue.disposition.type === "fixed") {
+      const closingCommit = await store.closingCommit?.(existing.issue.number);
+      // A manual close has no commit to compare, so preserve the established reopen behavior.
+      if (
+        closingCommit !== null &&
+        closingCommit !== undefined &&
+        context.sha !== null &&
+        !(await isAncestor(closingCommit, context.sha))
+      ) {
+        for (const fingerprint of finding.fingerprints) filed.push({ fingerprint, issue: null });
+        continue;
+      }
+    }
     const state = recordReproduction({ state: existing?.state ?? null, finding, context });
     let number: number;
     if (existing === undefined) {
