@@ -3258,6 +3258,10 @@ function extractParagraphContent(
           : content;
       closingBoundaryOwner.push({ type: "commentRangeEnd", id: commentId });
       openedComments.delete(commentId);
+      // A boundary written beside the active wrapper ends it: following
+      // content, even of the same revision, starts a new wrapper after the
+      // boundary instead of being appended ahead of it.
+      if (closingBoundaryOwner === content) currentTrackedChange = undefined;
     }
     // A hyperlink is a child of the tracked wrapper. Once a positional
     // boundary has been written beside that child, following linked content
@@ -3288,6 +3292,7 @@ function extractParagraphContent(
           : content;
       openingBoundaryOwner.push({ type: "commentRangeStart", id: commentId });
       openedComments.add(commentId);
+      if (openingBoundaryOwner === content) currentTrackedChange = undefined;
     }
   };
 
