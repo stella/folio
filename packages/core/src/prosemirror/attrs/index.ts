@@ -1733,6 +1733,27 @@ export const readTrackedChangeMarkAttrs = (
   }
   const ancestors = attrs["_docxRevisionAncestors"];
   const resolutionJoins = attrs["_docxResolutionJoins"];
+  const commentRangeBoundaries = attrs["_docxCommentRangeBoundaries"];
+  if (
+    commentRangeBoundaries !== undefined &&
+    commentRangeBoundaries !== null &&
+    (!Array.isArray(commentRangeBoundaries) ||
+      commentRangeBoundaries.some(
+        (boundary) =>
+          typeof boundary !== "object" ||
+          boundary === null ||
+          (boundary["type"] !== "start" && boundary["type"] !== "end") ||
+          (boundary["owner"] !== "revision" && boundary["owner"] !== "parent") ||
+          typeof boundary["commentId"] !== "number" ||
+          !Number.isSafeInteger(boundary["commentId"]) ||
+          boundary["commentId"] < 0,
+      ))
+  ) {
+    issues.push({
+      path: `${mark.type.name}.attrs._docxCommentRangeBoundaries`,
+      message: "Expected valid tracked comment boundary ownership.",
+    });
+  }
   if (
     resolutionJoins !== undefined &&
     resolutionJoins !== null &&

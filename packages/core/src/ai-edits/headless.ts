@@ -164,6 +164,7 @@ import {
   coveredCommentIdsInProseDoc,
   withoutLostCommentThreads,
 } from "./comment-lifecycle";
+import { removeCommentMarkers } from "../docx/commentAnchorIndex";
 import {
   FolioPendingSuggestionRegistry,
   createPendingSuggestionSourceSnapshot,
@@ -2946,6 +2947,62 @@ export class FolioDocxReviewer {
       snapshot.mainState,
       snapshot.secondaryStoryStates,
     );
+    const keptIds = new Set(kept.map(({ id }) => id));
+    const retiredCommentIds = new Set(
+      [...(this.baseDocument.package.document.comments ?? []), ...snapshot.createdComments]
+        .filter(({ id }) => !keptIds.has(id))
+        .map(({ id }) => id),
+    );
+    const modelStories = [
+      document.package.document,
+      ...(document.package.headers?.values() ?? []),
+      ...(document.package.footers?.values() ?? []),
+      ...(document.package.footnotes ?? []),
+      ...(document.package.endnotes ?? []),
+    ];
+    for (const story of modelStories) {
+      for (const id of anchoredCommentIdsInBlocks(story.content)) {
+        if (!keptIds.has(id)) retiredCommentIds.add(id);
+      }
+    }
+    if (retiredCommentIds.size > 0) {
+      document.package.document = {
+        ...document.package.document,
+        content: removeCommentMarkers(document.package.document.content, retiredCommentIds),
+      };
+      if (document.package.headers) {
+        const headers = new Map(document.package.headers);
+        for (const [id, header] of headers) {
+          headers.set(id, {
+            ...header,
+            content: removeCommentMarkers(header.content, retiredCommentIds),
+          });
+        }
+        document.package.headers = headers;
+      }
+      if (document.package.footers) {
+        const footers = new Map(document.package.footers);
+        for (const [id, footer] of footers) {
+          footers.set(id, {
+            ...footer,
+            content: removeCommentMarkers(footer.content, retiredCommentIds),
+          });
+        }
+        document.package.footers = footers;
+      }
+      if (document.package.footnotes) {
+        document.package.footnotes = document.package.footnotes.map((footnote) => ({
+          ...footnote,
+          content: removeCommentMarkers(footnote.content, retiredCommentIds),
+        }));
+      }
+      if (document.package.endnotes) {
+        document.package.endnotes = document.package.endnotes.map((endnote) => ({
+          ...endnote,
+          content: removeCommentMarkers(endnote.content, retiredCommentIds),
+        }));
+      }
+    }
     if (
       kept.length !== definitions.length ||
       snapshot.createdComments.length > 0 ||
