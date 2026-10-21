@@ -171,7 +171,6 @@ import {
 } from "./review";
 import {
   DOCUMENT_OP_TYPES,
-  EMPTY_PROPERTY_SETS,
   PROPERTY_REVIEW_POLICIES,
   DOCUMENT_OP_SCHEMA_VERSION,
   SECTION_BOUNDARY_POLICIES,
@@ -1351,10 +1350,7 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
           story: op.story,
           blockId: result.paraId ?? op.blockId,
           patch: priorValues(paragraph.formatting, op.patch),
-          whenEmpty:
-            finalizeParagraphFormatting(paragraph.formatting) === undefined
-              ? EMPTY_PROPERTY_SETS.KEEP
-              : emptySetSpelling(getParagraphPropertySnapshot(paragraph)),
+          whenEmpty: emptySetSpelling(paragraph.formatting),
           expected: op.patch,
         },
       ]),

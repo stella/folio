@@ -2,13 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Document } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { normalizeForOps } from "../contract";
-import {
-  DOCUMENT_OP_TYPES,
-  EMPTY_PROPERTY_SETS,
-  OP_STORIES,
-  SPLIT_HALVES,
-  type DocumentOp,
-} from "../types";
+import { DOCUMENT_OP_TYPES, OP_STORIES, SPLIT_HALVES, type DocumentOp } from "../types";
 
 const originalDocument = (): Document =>
   normalizeForOps({
@@ -123,21 +117,6 @@ describe("inverse paragraph review fields", () => {
     expect(result.document).toBe(document);
     expect(result.inverse).toEqual([]);
     expect(result.document.package.document.content[0]).not.toHaveProperty("formatting");
-  });
-
-  test("a paragraph property inverse preserves an explicit empty property set", () => {
-    let document = originalDocument();
-    for (const op of operations.slice(0, 3))
-      document = applyDocumentOp(document, op).unwrap().document;
-    const beforePatch = document;
-    const patched = applyDocumentOp(document, operations[3]).unwrap();
-    const inverse = patched.inverse.at(0);
-    expect(inverse).toMatchObject({
-      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
-      whenEmpty: EMPTY_PROPERTY_SETS.KEEP,
-    });
-    if (inverse === undefined) throw new Error("A paragraph property edit must have an inverse.");
-    expect(applyDocumentOp(patched.document, inverse).unwrap().document).toStrictEqual(beforePatch);
   });
 
   test("split, join, paragraph patch, and content inverses restore review fields in reverse", () => {
