@@ -85,14 +85,10 @@ export const isRangeBoundary = (item: ParagraphContent): boolean =>
  * or a range marker or comment reference, which have no width.
  */
 export const paragraphHoldsContent = (paragraph: Paragraph): boolean => {
-  const holds = (items: readonly ParagraphContent[]): boolean =>
-    items.some(
-      (item) =>
-        isRangeBoundary(item) ||
-        item.type === "commentReference" ||
-        (isInlineContainer(item) && holds(childrenOf(item))),
-    );
-  return paragraphLength(paragraph) > 0 || holds(paragraph.content);
+  return (
+    paragraphLength(paragraph) > 0 ||
+    paragraph.content.some((item) => isRangeBoundary(item) || item.type === "commentReference")
+  );
 };
 
 /** Tracked content that direct text must not join: it is on its way out. */

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { paragraphMarkOutcome } from "../blockDeletion";
+import { paragraphHoldsContent } from "../offsets";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
 const resolveAccepted = (document: Document, revisionIds = [7]): Document => {
@@ -168,6 +169,95 @@ test("accepting a non-empty paragraph-mark deletion runs it into the first cell 
     },
     finalParagraph,
   ]);
+});
+
+test("rejecting a marker-only inline content control does not touch the following table", () => {
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    content: [
+      {
+        type: "inlineSdt",
+        properties: { sdtType: "richText", id: 1, tag: "clause" },
+        content: [
+          {
+            type: "hyperlink",
+            rId: "rId9",
+            href: "https://example.org",
+            children: [{ type: "bookmarkStart", id: 1, name: "_Link" }],
+          },
+        ],
+      },
+    ],
+    propertyChanges: [
+      {
+        type: "paragraphPropertyChange",
+        info: { id: 1, author: "A" },
+        previousFormatting: { alignment: "end" },
+      },
+    ],
+    pPrMark: { kind: "ins", info: { id: 2, author: "A" } },
+  };
+  const followingTable = {
+    ...table,
+    columnWidths: [2400, 2400],
+    rows: [
+      {
+        ...table.rows[0],
+        preservedAttributes: [{ name: "rsidTr", value: "00ABCDEF" }],
+      },
+    ],
+  } as const;
+  const document: Document = {
+    package: { document: { content: [paragraph, followingTable, finalParagraph] } },
+  };
+
+  const result = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [2],
+    decision: REVISION_DECISIONS.REJECT,
+  });
+  if (result.isErr()) throw result.error;
+
+  expect(result.value.document.package.document.content).toEqual([followingTable, finalParagraph]);
+  expect(result.value.touched.modified).not.toContain("00000002");
+});
+
+test("only atomic fields make marker-only inline containers paragraph content", () => {
+  const marker = { type: "bookmarkStart", id: 1, name: "_Link" } as const;
+  const hyperlink = {
+    type: "hyperlink",
+    rId: "rId9",
+    children: [marker],
+  } as const;
+
+  expect(paragraphHoldsContent({ type: "paragraph", content: [hyperlink] })).toBe(false);
+  expect(
+    paragraphHoldsContent({
+      type: "paragraph",
+      content: [
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "richText" },
+          content: [hyperlink],
+        },
+      ],
+    }),
+  ).toBe(false);
+  expect(
+    paragraphHoldsContent({
+      type: "paragraph",
+      content: [
+        {
+          type: "simpleField",
+          instruction: "PAGE",
+          fieldType: "PAGE",
+          content: [hyperlink],
+        },
+      ],
+    }),
+  ).toBe(true);
 });
 
 test("refuses one owned reason when an empty mark precedes a section-ending table cell", () => {
