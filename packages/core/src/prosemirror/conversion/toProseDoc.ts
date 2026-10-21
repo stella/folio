@@ -1281,6 +1281,7 @@ function convertTrackedChange(
   openCommentIds: Set<number>,
 ): PMNode[] {
   const nodes: PMNode[] = [];
+  const commentRangeEnds: number[] = [];
   const getTrackedRunFormatting =
     markType === "deletion" ? runFormattingResolvers.historical : runFormattingResolvers.current;
   // A wrapper or move-range boundary the revision holds stays inside it:
@@ -1307,6 +1308,7 @@ function convertTrackedChange(
       openCommentIds.add(item.id);
     } else if (item.type === "commentRangeEnd") {
       openCommentIds.delete(item.id);
+      commentRangeEnds.push(item.id);
     } else if (item.type === "commentReference") {
       itemNodes.push(schema.node("commentReference", { commentId: item.id }));
     } else if (item.type === "run") {
@@ -1440,6 +1442,7 @@ function convertTrackedChange(
     moveKind,
     _docxOuterWrapperCount: wrappedBy.length,
     _docxResolutionJoins: change.resolutionJoins ?? null,
+    _docxCommentRangeEnds: commentRangeEnds.length > 0 ? commentRangeEnds : null,
     ...(markType === "deletion" ? { _historicalFormatting: true } : {}),
   });
 

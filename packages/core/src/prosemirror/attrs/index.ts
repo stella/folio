@@ -1733,6 +1733,18 @@ export const readTrackedChangeMarkAttrs = (
   }
   const ancestors = attrs["_docxRevisionAncestors"];
   const resolutionJoins = attrs["_docxResolutionJoins"];
+  const commentRangeEnds = attrs["_docxCommentRangeEnds"];
+  if (
+    commentRangeEnds !== undefined &&
+    commentRangeEnds !== null &&
+    (!Array.isArray(commentRangeEnds) ||
+      commentRangeEnds.some((id) => typeof id !== "number" || !Number.isSafeInteger(id) || id < 0))
+  ) {
+    issues.push({
+      path: `${mark.type.name}.attrs._docxCommentRangeEnds`,
+      message: "Expected an array of non-negative safe integers.",
+    });
+  }
   if (
     resolutionJoins !== undefined &&
     resolutionJoins !== null &&

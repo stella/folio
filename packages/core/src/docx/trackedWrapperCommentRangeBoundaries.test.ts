@@ -431,6 +431,44 @@ describe("comment-range boundaries inside tracked changes", () => {
     ]);
   });
 
+  test("a simple field keeps an empty comment range inside its insertion", () => {
+    const xml =
+      `<w:fldSimple w:instr=" REF target "><w:ins ${REVISION_ATTRIBUTES}>` +
+      '<w:commentRangeStart w:id="5"/><w:commentRangeEnd w:id="5"/>' +
+      `${COMMENT_REFERENCE}</w:ins></w:fldSimple>`;
+    const input = wrapParagraph(
+      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
+    );
+    input.package.document.comments = [
+      { id: 5, anchorKind: "point", author: "Reviewer", content: [] },
+    ];
+
+    const loaded = toProseDoc(input);
+    expect(() => loaded.check()).not.toThrow();
+    const saved = fromProseDoc(loaded, input, { stylesheetSource: { type: "package" } });
+    const paragraph = saved.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+
+    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
+  });
+
+  test("a range end before an untracked comment reference stays inside its insertion", () => {
+    const xml =
+      `<w:ins ${REVISION_ATTRIBUTES}><w:commentRangeStart w:id="5"/>` +
+      '<w:r><w:t>anchor</w:t></w:r><w:commentRangeEnd w:id="5"/></w:ins>' +
+      COMMENT_REFERENCE;
+    const input = wrapParagraph(
+      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
+    );
+
+    const loaded = toProseDoc(input);
+    const saved = fromProseDoc(loaded, input, { stylesheetSource: { type: "package" } });
+    const paragraph = saved.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+
+    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
+  });
+
   const runXml = (text: string, deleted = false) =>
     `<w:r><w:${deleted ? "delText" : "t"}>${text}</w:${deleted ? "delText" : "t"}></w:r>`;
   const insertionXml = (content: string) => `<w:ins ${REVISION_ATTRIBUTES}>${content}</w:ins>`;

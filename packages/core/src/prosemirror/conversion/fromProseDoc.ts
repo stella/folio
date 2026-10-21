@@ -3047,6 +3047,10 @@ function extractParagraphContent(
     readonly TrackedRevisionAncestor[]
   >();
   const openedComments = new Set<number>();
+  // A closing marker has no ProseMirror node of its own. Keep the source
+  // revision's recorded endings until the following node gives us the
+  // position at which to emit them.
+  let precedingTrackedCommentRangeEnds: readonly number[] | null | undefined;
   const createIndexedHyperlink = (mark: Mark): Hyperlink => {
     const hyperlink = createHyperlink(mark);
     const index = expectHyperlinkMarkAttrs(mark)._docxHyperlinkIndex;
@@ -3193,6 +3197,9 @@ function extractParagraphContent(
 
   const syncCommentRanges = (node: PMNode, offset: number) => {
     const nodeCommentIds = getCommentMarkIds(node.marks);
+    const nodeTrackedBoundary = trackedBoundary(node);
+    const sourceCommentRangeEnds = precedingTrackedCommentRangeEnds;
+    precedingTrackedCommentRangeEnds = nodeTrackedBoundary?.changeAttrs._docxCommentRangeEnds;
 
     // Close an open range only once this node is past the comment's last
     // occurrence; a comment that reappears later stays open so the range spans
@@ -3217,15 +3224,17 @@ function extractParagraphContent(
     }
 
     flushCurrentInline();
-    const nodeTrackedBoundary = trackedBoundary(node);
-    const closingBoundaryOwner =
-      nodeTrackedBoundary &&
-      currentTrackedChange?.type === "direct" &&
-      currentTrackedChange.key === nodeTrackedBoundary.key
-        ? currentTrackedChange.wrapper.content
-        : content;
-
     for (const commentId of byCommentId(toClose)) {
+      const sourceOwnsBoundary = sourceCommentRangeEnds?.includes(commentId);
+      const followingOwnsBoundary =
+        sourceCommentRangeEnds == null &&
+        nodeTrackedBoundary &&
+        currentTrackedChange?.type === "direct" &&
+        currentTrackedChange.key === nodeTrackedBoundary.key;
+      const closingBoundaryOwner =
+        currentTrackedChange?.type === "direct" && (sourceOwnsBoundary || followingOwnsBoundary)
+          ? currentTrackedChange.wrapper.content
+          : content;
       closingBoundaryOwner.push({ type: "commentRangeEnd", id: commentId });
       openedComments.delete(commentId);
     }
@@ -3732,7 +3741,12 @@ function extractParagraphContent(
   // Don't forget the last run/hyperlink
   flushCurrentInline();
   for (const commentId of byCommentId(openedComments)) {
-    content.push({ type: "commentRangeEnd", id: commentId });
+    const closingBoundaryOwner =
+      currentTrackedChange?.type === "direct" &&
+      precedingTrackedCommentRangeEnds?.includes(commentId)
+        ? currentTrackedChange.wrapper.content
+        : content;
+    closingBoundaryOwner.push({ type: "commentRangeEnd", id: commentId });
   }
 
   return nestInlineWrapperGroups(
