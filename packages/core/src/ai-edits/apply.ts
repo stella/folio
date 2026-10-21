@@ -3219,20 +3219,27 @@ const withRotatedAddedFinalBreaks = ({
     inserted: number;
     deletedMark: unknown;
     precedingMark: unknown;
+    precedingFormatting: NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]>;
   }[] = [];
   const collectSupersededDeletedBreaks = (parent: PMNode, contentStart: number): void => {
     let previous: { node: PMNode; position: number } | null = null;
+    let carriedDeletedMark: unknown = null;
+    let carriedDeletedFormatting: NonNullable<
+      ParagraphPropertyChangeAttrs["previousFormatting"]
+    > | null = null;
     parent.forEach((node, offset) => {
       const position = contentStart + offset;
       if (node.type.name !== "paragraph") {
         previous = null;
+        carriedDeletedMark = null;
+        carriedDeletedFormatting = null;
         if (!node.isTextblock && node.childCount > 0) {
           collectSupersededDeletedBreaks(node, position + 1);
         }
         return;
       }
       if (previous) {
-        const deletedMark: unknown = previous.node.attrs["pPrMark"];
+        const deletedMark: unknown = carriedDeletedMark ?? previous.node.attrs["pPrMark"];
         const insertedMark: unknown = node.attrs["pPrMark"];
         const insertedRevisionId = addedBreakRevisionId(insertedMark);
         const trackedInsertion =
@@ -3252,35 +3259,45 @@ const withRotatedAddedFinalBreaks = ({
             inserted: position,
             deletedMark,
             precedingMark: trackedInsertion ? insertedMark : null,
+            precedingFormatting:
+              carriedDeletedFormatting ?? paragraphPropertiesOnReject(previous.node),
           });
+          carriedDeletedMark = deletedMark;
+          carriedDeletedFormatting ??= paragraphPropertiesOnReject(previous.node);
+        } else {
+          carriedDeletedMark = null;
+          carriedDeletedFormatting = null;
         }
       }
       previous = { node, position };
     });
   };
   collectSupersededDeletedBreaks(tr.doc, 0);
-  for (const { preceding, inserted, deletedMark, precedingMark } of supersededDeletedBreaks) {
+  for (const {
+    preceding,
+    inserted,
+    deletedMark,
+    precedingMark,
+    precedingFormatting,
+  } of supersededDeletedBreaks) {
     const insertionRevisionId = addedBreakRevisionId(precedingMark);
     if (insertionRevisionId !== null) {
       const previous = tr.doc.nodeAt(preceding);
       const current = tr.doc.nodeAt(inserted);
       if (!previous || !current) panic("A shifted paragraph break lost its carrier");
-      const previousFormatting = paragraphPropertiesOnReject(previous);
       const existing = expectParagraphAttrs(current)._propertyChanges;
       // Rejecting the shifted insertion joins the preceding words into this
       // paragraph, so its surviving mark must restore the preceding pPr too.
       if (
-        !hasSerializableParagraphPropertyChange(existing) &&
-        JSON.stringify(previousFormatting) !== JSON.stringify(paragraphPropertiesSnapshot(current))
+        hasSerializableParagraphPropertyChange(existing) ||
+        JSON.stringify(precedingFormatting) !== JSON.stringify(paragraphPropertiesSnapshot(current))
       ) {
-        tr.setNodeAttribute(inserted, "_propertyChanges", [
-          ...(Array.isArray(existing) ? existing : []),
-          {
-            type: "paragraphPropertyChange",
-            info: { id: insertionRevisionId, author, date, ...(initials ? { initials } : {}) },
-            previousFormatting,
-          } satisfies ParagraphPropertyChangeAttrs,
-        ]);
+        const inverse = {
+          type: "paragraphPropertyChange",
+          info: { id: insertionRevisionId, author, date, ...(initials ? { initials } : {}) },
+          previousFormatting: precedingFormatting,
+        } satisfies ParagraphPropertyChangeAttrs;
+        tr.setNodeAttribute(inserted, "_propertyChanges", [inverse]);
       }
     }
     tr.setNodeAttribute(preceding, "pPrMark", precedingMark);

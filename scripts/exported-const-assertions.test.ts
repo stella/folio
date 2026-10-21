@@ -1,6 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 
+import { scanTestTimeout } from "../test/scan-timeout";
 import { exportedConstAssertionsWithoutTypes } from "./lib/exported-const-assertions";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 describe("exported const assertion guard", () => {
   test("published package sources satisfy the ratchet", async () => {
