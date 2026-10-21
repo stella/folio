@@ -92,6 +92,56 @@ const resolved = async (reviewer: FolioDocxReviewer, resolution: "accept" | "rej
 
 const MODES = ["direct", "tracked-changes", "suggested"] as const;
 
+describe("suggested insertion admission uses the live anchor for every gap run", () => {
+  for (const deletion of ["deleteBlock", "deleteTableRow"] as const) {
+    for (const count of [1, 2, 3]) {
+      for (const timing of ["same batch", "earlier batch", "saved"] as const) {
+        for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
+          // After-insertions execute before deletions in the right-to-left sweep.
+          if (timing === "same batch" && type === "insertAfterBlock") continue;
+          test(`${deletion}, ${count} ${type}, deletion in ${timing}`, async () => {
+            let reviewer = await open(
+              await (deletion === "deleteBlock" ? plainDocument() : tableDocument()),
+            );
+            const target = blockId(reviewer, deletion === "deleteBlock" ? SUPPLIER : "Goods");
+            const remove = { id: "delete", type: deletion, blockId: target };
+            if (timing !== "same batch") {
+              expect(apply(reviewer, "tracked-changes", [remove]).applied).toHaveLength(1);
+              if (timing === "saved") reviewer = await reopen(reviewer);
+            }
+            const insertions = Array.from({ length: count }, (_, index) => ({
+              id: `insert-${index}`,
+              type,
+              blockId: target,
+              text: `Added clause ${index}.`,
+            }));
+            const result = apply(reviewer, "suggested", [
+              ...(timing === "same batch" ? [remove] : []),
+              ...insertions,
+            ]);
+            expect(result.applied.map(({ id }) => id)).toEqual(
+              timing === "same batch" ? ["delete"] : [],
+            );
+            expect(result.skipped).toEqual(
+              expect.arrayContaining(
+                insertions.map(({ id }) => ({ id, reason: "pendingDeletion" })),
+              ),
+            );
+            expect(result.skipped).toHaveLength(count);
+            for (const resolution of ["accept", "reject"] as const) {
+              expect(
+                (await resolved(reviewer, resolution)).some((text) =>
+                  text.startsWith("Added clause"),
+                ),
+              ).toBe(false);
+            }
+          });
+        }
+      }
+    }
+  }
+});
+
 describe("replaceBlock on a paragraph pending deletion", () => {
   for (const saved of [true, false]) {
     for (const mode of MODES) {

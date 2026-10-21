@@ -573,6 +573,35 @@ export const mergedFindCollision: Collision = (blocks) => {
  * that fits, or returns null.
  */
 export const COLLISIONS: Record<string, Collision> = {
+  deleteThenInsertBeforeSameBlock: (blocks) => {
+    const block = prose(blocks).at(0);
+    return block
+      ? [
+          { type: "deleteBlock", blockId: block.id },
+          { type: "insertBeforeBlock", blockId: block.id, text: "An added clause." },
+        ]
+      : null;
+  },
+  deleteThenGroupedInsertsBeforeSameBlock: (blocks) => {
+    const block = prose(blocks).at(0);
+    return block
+      ? [
+          { type: "deleteBlock", blockId: block.id },
+          { type: "insertBeforeBlock", blockId: block.id, text: "First added clause." },
+          { type: "insertBeforeBlock", blockId: block.id, text: "Second added clause." },
+        ]
+      : null;
+  },
+  deleteRowThenGroupedInsertsBeforeCell: (blocks) => {
+    const block = blocks.find((candidate) => candidate.table !== undefined);
+    return block
+      ? [
+          { type: "deleteTableRow", blockId: block.id },
+          { type: "insertBeforeBlock", blockId: block.id, text: "First added clause." },
+          { type: "insertBeforeBlock", blockId: block.id, text: "Second added clause." },
+        ]
+      : null;
+  },
   replaceThenDeleteSameBlock: (blocks) => {
     const block = prose(blocks)[0];
     return block ? [replaceWord(block), { type: "deleteBlock", blockId: block.id }] : null;

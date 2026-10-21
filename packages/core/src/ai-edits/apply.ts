@@ -4283,7 +4283,40 @@ const applyFolioAIEditOperationsInternal = ({
   const executionGroups = groupInsertionRuns(executionOrder, (candidate) =>
     isBatchableParagraphInsertion(candidate, mode) ? candidate.from : null,
   );
-  for (const insertionRun of executionGroups) {
+  for (const executionGroup of executionGroups) {
+    // Recheck every insertion against the live anchor, including insertions
+    // sharing a gap. Earlier edits can delete its text or its containing row.
+    const insertionState = tr;
+    const insertionRun = executionGroup.filter((candidate) => {
+      if (
+        !isSuggested ||
+        (candidate.operation.type !== "insertAfterBlock" &&
+          candidate.operation.type !== "insertBeforeBlock")
+      ) {
+        return true;
+      }
+      const blockFrom = insertionState.mapping.map(candidate.blockFrom);
+      const block = insertionState.doc.nodeAt(blockFrom);
+      if (!block?.isTextblock) {
+        panic("A suggested paragraph insertion lost its anchor");
+      }
+      if (
+        !isPendingDeletion(
+          insertionState.doc,
+          blockFrom,
+          block,
+          buildCleanBlockText(block, blockFrom, {
+            fieldResults: "text",
+            noteReferences,
+          }).text,
+        )
+      ) {
+        return true;
+      }
+      skipped.push({ id: candidate.operation.id, reason: "pendingDeletion" });
+      return false;
+    });
+    if (insertionRun.length === 0) continue;
     const item = insertionRun.at(0);
     if (!item) {
       panic("The operation execution group was empty");
@@ -4780,21 +4813,6 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "insertAfterBlock":
       case "insertBeforeBlock": {
-        if (
-          isSuggested &&
-          isPendingDeletion(
-            tr.doc,
-            item.blockFrom,
-            item.blockNode,
-            buildCleanBlockText(item.blockNode, item.blockFrom, {
-              fieldResults: "text",
-              noteReferences,
-            }).text,
-          )
-        ) {
-          skipped.push({ id: item.operation.id, reason: "pendingDeletion" });
-          continue;
-        }
         const built = buildInsertedParagraphs({
           item,
           schema: view.state.schema,
