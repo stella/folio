@@ -67,7 +67,15 @@ export const KNOWN_FAILING_FLOWS: readonly {
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 type FailureSymptom = RegExp | ((failure: unknown) => boolean);
 
-export const matchesFailureSymptom = (symptom: FailureSymptom, failure: unknown): boolean => {
+export const matchesFailureSymptom = (
+  finding: string,
+  symptom: FailureSymptom | undefined,
+  failure: unknown,
+): boolean => {
+  assert.ok(
+    Object.hasOwn(FINDINGS, finding) && symptom !== undefined,
+    `Unknown expected-failure finding: ${String(finding)}`,
+  );
   if (typeof symptom === "function") return symptom(failure);
   return symptom.test(failure instanceof Error ? failure.message : String(failure));
 };
@@ -163,7 +171,7 @@ export const settleExpectedFailure = async (
         "Make it a plain scenario and drop the entry from support/known-issues.ts.",
     );
   }
-  if (!matchesFailureSymptom(symptom, failure)) {
+  if (!matchesFailureSymptom(issue, symptom, failure)) {
     // It fails, but not the way the issue does: a real regression.
     release();
     throw failure;
