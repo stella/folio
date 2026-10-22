@@ -25,6 +25,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { panic } from "better-result";
 import { scanTestTimeout } from "../test/scan-timeout";
+import timings from "./ci-test-timings.json";
 import path from "node:path";
 import ts from "typescript";
 
@@ -35,6 +36,7 @@ const RUN_COUNT_HELPER = "propertyConfig";
 const ASSERT_HELPERS = new Set(["assertProperty", "assertPinnedProperty"]);
 const FAST_CHECK_DRIVERS = new Set(["assert", "sample", "check"]);
 const TEST_CALLEES = new Set(["test", "it"]);
+const REQUIRED_TIMEOUT_HEADROOM = 0.25;
 
 setDefaultTimeout(scanTestTimeout(120_000));
 
@@ -277,7 +279,65 @@ const scanRepository = (): BudgetRequiringSite[] =>
     return sourceText.includes("fc.") ? budgetRequiringSites(file, sourceText) : [];
   });
 
+type TimingEntry = { file: string; durationMs: number };
+
+/**
+ * A one-test file gives the timing baseline an unambiguous test budget. Keep a
+ * quarter of that budget free for runner variance instead of letting a known
+ * duration approach Bun's hard timeout.
+ */
+const insufficientHeadroom = (
+  entries: readonly TimingEntry[],
+  readSource: (file: string) => string | undefined,
+): string[] =>
+  entries.flatMap(({ file, durationMs }) => {
+    const sourceText = readSource(file);
+    if (sourceText === undefined) return [];
+    const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
+    const topLevelTests = sourceFile.statements.filter(
+      (statement) =>
+        ts.isExpressionStatement(statement) &&
+        ts.isCallExpression(statement.expression) &&
+        isTestCall(statement.expression),
+    );
+    let testCalls = 0;
+    const countTests = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) && isTestCall(node)) testCalls += 1;
+      ts.forEachChild(node, countTests);
+    };
+    countTests(sourceFile);
+    if (topLevelTests.length !== 1 || testCalls !== 1) return [];
+
+    const budgetMatch = /setDefaultTimeout\(propertyTestTimeout\(([\d_]+)\)\)/.exec(sourceText);
+    if (budgetMatch === null) return [];
+    const budgetMs = Number((budgetMatch[1] as string).replaceAll("_", ""));
+    const maximumDurationMs = budgetMs * (1 - REQUIRED_TIMEOUT_HEADROOM);
+    return durationMs > maximumDurationMs
+      ? [
+          `${file} takes ${String(durationMs)}ms, exceeding ${String(maximumDurationMs)}ms ` +
+            `of its ${String(budgetMs)}ms property budget`,
+        ]
+      : [];
+  });
+
 describe("property test budgets", () => {
+  test("flags a measured single-property file without timeout headroom", () => {
+    const file = "probe.property.test.ts";
+    const source = 'setDefaultTimeout(propertyTestTimeout(120_000));\ntest("property", () => {});';
+    const readSource = (candidate: string) => (candidate === file ? source : undefined);
+    expect(
+      insufficientHeadroom(
+        [
+          { file, durationMs: 90_000 },
+          { file, durationMs: 90_001 },
+        ],
+        readSource,
+      ),
+    ).toEqual([
+      "probe.property.test.ts takes 90001ms, exceeding 90000ms of its 120000ms property budget",
+    ]);
+  });
+
   test("invalid fixture budgets cannot acquire a declared allowance", () => {
     const fixture = "test/__fixtures__/property-test-budgets.invalid.ts";
     const source = ts.sys.readFile(path.join(REPO_ROOT, fixture));
@@ -488,5 +548,13 @@ ${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
       .filter(({ declaresBudget }) => !declaresBudget)
       .map(({ site }) => `${site} needs a stated budget with no ${BUDGET_HELPER}`);
     expect(undeclared).toEqual([]);
+  });
+
+  test("measured single-property files retain 25% timeout headroom", () => {
+    const entries = Object.entries(timings).map(([file, durationMs]) => ({ file, durationMs }));
+    const violations = insufficientHeadroom(entries, (file) =>
+      ts.sys.readFile(path.join(REPO_ROOT, file)),
+    );
+    expect(violations).toEqual([]);
   });
 });
