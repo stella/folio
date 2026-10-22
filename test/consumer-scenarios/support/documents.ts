@@ -438,6 +438,52 @@ export const EMOJI_TEXTS = [
 export const emojiDocument = (): Promise<Uint8Array> =>
   packFixture(fromMarkdown(["# Emoji", ...EMOJI_TEXTS].join("\n\n")));
 
+/** A deterministic generated document whose paragraph marks end several distinct sections. */
+export const randomMultiSectionDocument = (
+  seed: number,
+  sectionCount: number,
+): Promise<Uint8Array> => {
+  const document = fromMarkdown(
+    Array.from({ length: sectionCount * 2 }, (_, index) => `Section ${index + 1}.`).join("\n\n"),
+  );
+  const paragraphs = document.package.document.content.filter(isParagraph);
+  for (let section = 0; section < sectionCount - 1; section += 1) {
+    const adjacent = seed % 2 === 1;
+    const carrier = paragraphs.at(adjacent ? section : section * 2 + 1);
+    if (carrier === undefined) {
+      throw new TypeError("A generated section needs its boundary paragraph.");
+    }
+    carrier.sectionProperties = {
+      pageWidth: 10_000 + ((seed + section * 977) % 2_000),
+      sectionStart: section % 2 === 0 ? "nextPage" : "continuous",
+    };
+  }
+  document.package.document.finalSectionProperties = {
+    pageWidth: 12_000 + (seed % 2_000),
+  };
+  return packFixture(document);
+};
+
+/** An added empty paragraph whose section immediately follows another boundary. */
+export const adjacentSectionRevisionDocument = (): Promise<Uint8Array> => {
+  const document = fromMarkdown("First section.\n\nFollowing section.");
+  document.package.document.content.splice(1, 0, paragraph([]));
+  const paragraphs = document.package.document.content.filter(isParagraph);
+  const preceding = paragraphs.at(0);
+  const added = paragraphs.at(1);
+  if (preceding === undefined || added === undefined) {
+    throw new TypeError("The adjacent-section fixture needs two boundary paragraphs.");
+  }
+  preceding.sectionProperties = { pageWidth: 10_000 };
+  added.sectionProperties = { pageWidth: 12_000 };
+  added.pPrMark = {
+    kind: "ins",
+    info: { id: 1, author: AUTHOR, date: "2026-10-18T00:00:00Z" },
+  };
+  document.package.document.finalSectionProperties = { pageWidth: 14_000 };
+  return packFixture(document);
+};
+
 /** A table whose first column merges vertically through its last two rows. */
 export const mergedTableDocument = (): Promise<Uint8Array> => {
   const document = fromMarkdown("# Merged cells\n\nThe table below merges a column.");
