@@ -77,7 +77,10 @@ type CargoMetadata = {
       readonly id: string;
       readonly deps: readonly {
         readonly pkg: string;
-        readonly dep_kinds: readonly { readonly kind: "dev" | "build" | null }[];
+        readonly dep_kinds: readonly {
+          readonly kind: "dev" | "build" | null;
+          readonly target?: string | null;
+        }[];
       }[];
     }[];
   } | null;
@@ -208,17 +211,10 @@ const generationInputDigest = async (artifact: RustWasmArtifact): Promise<string
     ),
   );
   digest.update("\0");
+  // Unfiltered by platform: build scripts and procedural macros run on the
+  // build host, so a host-only dependency of theirs is a build input too.
   const metadata = JSON.parse(
-    await capture("cargo", [
-      "metadata",
-      "--locked",
-      "--format-version",
-      "1",
-      "--features",
-      "wasm",
-      "--filter-platform",
-      "wasm32-unknown-unknown",
-    ]),
+    await capture("cargo", ["metadata", "--locked", "--format-version", "1", "--features", "wasm"]),
   ) as CargoMetadata;
   digest.update("resolved-cargo-build-graph");
   digest.update("\0");

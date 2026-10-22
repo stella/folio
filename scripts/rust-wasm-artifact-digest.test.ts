@@ -90,6 +90,24 @@ describe("resolvedWasmBuildGraphDescription", () => {
     expect(describeFixture(fixture({ buildVersion: "2.0.0" }))).not.toBe(describeFixture());
   });
 
+  test("changes for a host-only dependency of a build dependency", () => {
+    const withHostDependency = (version: string) => {
+      const metadata = fixture();
+      metadata.packages.push(packageOf("host-only", version));
+      const buildHelper = metadata.resolve.nodes.find(({ id }) => id === "build-helper 1.0.0");
+      buildHelper?.deps.push({
+        pkg: `host-only ${version}`,
+        dep_kinds: [{ kind: null, target: "cfg(unix)" }],
+      });
+      metadata.resolve.nodes.push({ id: `host-only ${version}`, deps: [] });
+      return metadata;
+    };
+
+    expect(describeFixture(withHostDependency("2.0.0"))).not.toBe(
+      describeFixture(withHostDependency("1.0.0")),
+    );
+  });
+
   test("ignores dependencies owned by another workspace member", () => {
     expect(describeFixture(fixture({ otherVersion: "2.0.0" }))).toBe(describeFixture());
   });
