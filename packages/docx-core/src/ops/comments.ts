@@ -410,11 +410,14 @@ const edited = (
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   if (op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
     after = reconcilePartRelationships(after, "comments");
+  const restoresExhaustedState =
+    op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE &&
+    [...ids].every((id) => isCommentExhausted({ type: "document", document: after, id }));
   const invalid = contractViolation(after);
-  if (invalid) return fail(op, invalid.message, invalid.reason);
+  if (invalid && !restoresExhaustedState) return fail(op, invalid.message, invalid.reason);
   // An edit may keep a loaded orphan, never strand another comment.
   const issue = commentDocumentIssue(after, orphanRootCommentIds(before));
-  if (issue) return fail(op, issue);
+  if (issue && !restoresExhaustedState) return fail(op, issue);
   const anchors = changedAnchors(before, after);
   const prior = capture(before, ids, anchors);
   const next = capture(after, ids, anchors);
@@ -880,7 +883,14 @@ export const applyCommentOp = (
     return restore(document, op);
   }
   const issue = commentDocumentIssue(document, "all");
-  if (issue) return fail(op, issue);
+  if (
+    issue &&
+    !(
+      op.type === DOCUMENT_OP_TYPES.DELETE_COMMENT &&
+      isCommentExhausted({ type: "document", document, id: op.id })
+    )
+  )
+    return fail(op, issue);
   const orphans = orphanRootCommentIds(document);
   if (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) {
     if (op.anchor?.kind === "reply" && orphans.has(op.anchor.parentId))

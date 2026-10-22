@@ -166,6 +166,7 @@ export const deleteBlocks = ({
   if (direct.isErr()) return refuse(direct.error.reason, direct.error.message);
   if (op.revision === undefined) {
     let edit = direct.value;
+    let retiredTouched: readonly string[] = [];
     const exhaustedCommentIds = (document.package.document.comments ?? []).flatMap(
       ({ id, parentId }) =>
         parentId === undefined &&
@@ -184,17 +185,20 @@ export const deleteBlocks = ({
         })),
       );
       if (retired.isErr()) return refuse(retired.error.reason, retired.error.message);
+      retiredTouched = retired.value.touched.modified;
       edit = {
         document: retired.value.document,
-        inverse: [...direct.value.inverse, ...retired.value.inverse],
-        touched: direct.value.touched,
+        inverse: [...retired.value.inverse, ...direct.value.inverse],
+        touched: retired.value.touched,
       };
     }
     // Anchoring the inverse must not report an unchanged boundary as modified.
     return Result.ok({
       ...edit,
       touched: {
-        modified: terminal ? [last.paragraph.paraId ?? ""] : [],
+        modified: [
+          ...new Set([...retiredTouched, ...(terminal ? [last.paragraph.paraId ?? ""] : [])]),
+        ],
         inserted: [],
         removed: affected
           .filter((paragraph) => !terminal || paragraph !== last.paragraph)

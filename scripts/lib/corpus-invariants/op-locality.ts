@@ -300,7 +300,10 @@ const withoutOwnedRecords = ({
   counterpart,
   op,
 }: WithoutOwnedRecordsOptions): Document => {
-  if (isCommentOp(op) || op.type === DOCUMENT_OP_TYPES.DELETE_BLOCKS) {
+  if (
+    isCommentOp(op) ||
+    (op.type === DOCUMENT_OP_TYPES.DELETE_BLOCKS && op.revision === undefined)
+  ) {
     const out = structuredClone(document);
     const ids = isCommentOp(op)
       ? ownedCommentIds(op, original)

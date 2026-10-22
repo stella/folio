@@ -111,17 +111,8 @@ test("deleting a whole comment range retires its definition before composing the
     blockIds: ["00000001"],
     newIds: { revision: [], control: [] },
   }).unwrap();
-  const edits = [deletion];
-  if (deletion.document.package.document.comments?.some(({ id }) => id === 7)) {
-    edits.push(
-      applyDocumentOp(deletion.document, {
-        type: "deleteComment",
-        id: 7,
-        scope: "thread",
-      }).unwrap(),
-    );
-  }
-  const composed = combineEdits(document, edits);
+  expect(deletion.document.package.document.comments?.find(({ id }) => id === 7)).toBeUndefined();
+  const composed = combineEdits(document, [deletion]);
 
   expect(composed.document.package.document.comments).toBeUndefined();
   const restored = applyDocumentOps(composed.document, composed.inverse).unwrap().document;
