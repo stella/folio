@@ -244,6 +244,13 @@ describe("paragraph list reader agreement", () => {
       kind: "listItem",
       displayLabel: "1.",
     });
+    expect(
+      toMarkdown(reviewer.toDocument(), {
+        annotations: "strip",
+        trackedChanges: "clean",
+        comments: "strip",
+      }),
+    ).toContain("1. Tracked level");
   });
 
   test("full level overrides use startOverride in definitions and rendered labels", async () => {

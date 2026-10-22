@@ -13,7 +13,7 @@
  */
 
 import { isQuoteStyle, resolveHeadingLevel } from "../docx/builtInStyles";
-import { getCachedNumberingMap } from "../docx/numberingParser";
+import { computeListRendering, getCachedNumberingMap } from "../docx/numberingParser";
 import { listLabelAttrsFromRendering } from "../prosemirror/listLabels";
 import { resolveParagraphList } from "../prosemirror/paragraphList";
 import {
@@ -163,8 +163,17 @@ export function renderParagraphBlock(
     };
   }
 
+  // The counter may count a marker through a reference this paragraph's own
+  // attrs do not name (a level-only override resolved against its tracked
+  // predecessor); render that same reference.
+  const countedRendering =
+    countedList.kind === "marker" && countedList.numbering !== undefined && numbering !== null
+      ? (computeListRendering(countedList.numbering, numbering) ?? undefined)
+      : undefined;
   const visibleList =
-    resolvedRendering ?? (sources.numPr?.kind === "levelOnly" ? undefined : originalList);
+    resolvedRendering ??
+    countedRendering ??
+    (sources.numPr?.kind === "levelOnly" ? undefined : originalList);
   if (visibleList && label !== undefined) {
     return renderListItem(ctx, visibleList, label, inline);
   }
