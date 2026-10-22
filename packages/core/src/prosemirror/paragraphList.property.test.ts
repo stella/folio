@@ -184,6 +184,48 @@ describe("paragraph list reader agreement", () => {
     ).toBe("marker");
   });
 
+  test("a tracked level-only override uses its inherited reference for classification and counting", async () => {
+    const document = fromMarkdown("seed");
+    document.package.numbering = {
+      abstractNums: [
+        {
+          abstractNumId: 1,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
+      ],
+      nums: [{ numId: 1, abstractNumId: 1 }],
+    };
+    document.package.document.content = [
+      {
+        type: "paragraph",
+        formatting: {
+          numPr: { kind: "levelOnly", ilvl: 0 },
+        },
+        propertyChanges: [
+          {
+            type: "paragraphPropertyChange",
+            info: { id: 1, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+            previousFormatting: {
+              numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
+            },
+          },
+        ],
+        content: [{ type: "run", content: [{ type: "text", text: "Tracked level" }] }],
+      },
+    ];
+
+    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document), {
+      author: "Reviewer",
+    });
+
+    assertReaders(reviewer, [{ text: "Tracked level", kind: "listItem", marker: true }]);
+    expect(reviewer.getContent().at(0)?.displayLabel).toBe("1.");
+    expect(reviewer.snapshot().blocks.at(0)).toMatchObject({
+      kind: "listItem",
+      displayLabel: "1.",
+    });
+  });
+
   test("full level overrides use startOverride in definitions and rendered labels", async () => {
     const document = fromMarkdown("seed");
     document.package.numbering = {

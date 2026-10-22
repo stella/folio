@@ -2,11 +2,19 @@
 
 import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, type EditorState } from "prosemirror-state";
+import { Plugin, type EditorState, type Transaction } from "prosemirror-state";
+import {
+  AddMarkStep,
+  DocAttrStep,
+  RemoveMarkStep,
+  ReplaceAroundStep,
+  ReplaceStep,
+  type Step,
+} from "prosemirror-transform";
 
 import { getCachedNumberingMap, type NumberingMap } from "../../docx/numberingParser";
 import type { NumberingDefinitions } from "../../types/document";
-import { completeNumberingForDoc } from "../listInstanceReferences";
+import { completeNumberingForDoc, paragraphListReferences } from "../listInstanceReferences";
 
 /**
  * The package's own definitions (`null` when it has no numbering part) and
@@ -29,6 +37,62 @@ const completedState = (
   return { definitions, map: completed ? getCachedNumberingMap(completed) : null };
 };
 
+const isReplace = (step: Step): step is ReplaceStep | ReplaceAroundStep =>
+  step instanceof ReplaceStep || step instanceof ReplaceAroundStep;
+
+const leavesNumberingUnchanged = (step: Step): boolean =>
+  step instanceof AddMarkStep || step instanceof RemoveMarkStep || step instanceof DocAttrStep;
+
+const containsNumberedParagraph = (node: PMNode, from: number, to: number): boolean => {
+  let found = false;
+  node.nodesBetween(from, to, (child, pos) => {
+    if (
+      child.type.name !== "paragraph" ||
+      pos < from ||
+      pos + child.nodeSize > to ||
+      paragraphListReferences(child).length === 0
+    ) {
+      return !found;
+    }
+    found = true;
+    return false;
+  });
+  return found;
+};
+
+/**
+ * Whether a transaction can change a paragraph-level numbering source. Text
+ * and mark edits do not; paragraph attrs and structural replacements do. The
+ * latter are inspected in the step-local document rather than by walking the
+ * completed document.
+ */
+const changesNumberingInputs = (tr: Transaction): boolean =>
+  tr.steps.some((step, index) => {
+    if (leavesNumberingUnchanged(step)) return false;
+    if (!isReplace(step)) return true;
+
+    let insertsNumberedParagraph = false;
+    step.slice.content.descendants((node) => {
+      if (paragraphListReferences(node).length === 0) return !insertsNumberedParagraph;
+      insertsNumberedParagraph = true;
+      return false;
+    });
+    if (insertsNumberedParagraph) return true;
+
+    const before = tr.docs[index];
+    if (before === undefined) return true;
+    const fromParent = before.resolve(step.from).parent;
+    const toParent = before.resolve(step.to).parent;
+    if (
+      fromParent !== toParent &&
+      (paragraphListReferences(fromParent).length > 0 ||
+        paragraphListReferences(toParent).length > 0)
+    ) {
+      return true;
+    }
+    return containsNumberedParagraph(before, step.from, step.to);
+  });
+
 export const createDocumentNumberingPlugin = (
   definitions: NumberingDefinitions | null | undefined,
 ): Plugin =>
@@ -37,7 +101,9 @@ export const createDocumentNumberingPlugin = (
     state: {
       init: (_config, state) => completedState(definitions ?? null, state.doc),
       apply: (tr, current, _oldState, state) =>
-        tr.docChanged ? completedState(current.definitions, state.doc) : current,
+        tr.docChanged && changesNumberingInputs(tr)
+          ? completedState(current.definitions, state.doc)
+          : current,
     },
   });
 

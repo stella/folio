@@ -193,8 +193,16 @@ export const createListLabelCounter = (
     };
     if (list.kind === "marker") {
       Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
+      // The list owner resolved a level-only override against its tracked
+      // predecessor. Give that same owned reference to the counter: leaving
+      // the unresolved authored override here would classify a marker that
+      // the counter cannot advance.
+      counterInput.numPr = paragraphNumberingAttr(list.reference);
+      delete counterInput.numPrFromStyle;
     } else if (list.kind === "markerless" && list.rendering !== undefined) {
       Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
+      counterInput.numPr = paragraphNumberingAttr(list.reference);
+      delete counterInput.numPrFromStyle;
     } else if (list.kind === "markerless" && projectedRendering?.markerHidden === true) {
       Object.assign(counterInput, listRenderingAttrPatch(projectedRendering));
     }
