@@ -784,18 +784,21 @@ export const paragraphMarkOutcome: (input: {
     containerStillEndsWithParagraph: boolean;
     followingTableCanReceiveRunIn: boolean;
     tableRemovalIsTrackable?: boolean;
-}) => {
+    removedSectionProperties?: boolean;
+    precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
+    followingHasSectionProperties?: boolean;
+}) => ({
     kind: "join";
-} | {
+} & SectionTransfer) | ({
     kind: "remove";
-} | {
+} & SectionTransfer) | ({
     kind: "run-in";
-} | {
+} & SectionTransfer) | ({
     kind: "keep";
-} | {
+} & SectionTransfer) | ({
     kind: "refuse";
     reason: "untrackable";
-};
+} & SectionTransfer);
 
 // @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;

@@ -52,6 +52,8 @@ const resolveProperties = ({
     retiresStructure: () => mode === "accept",
   });
   let structural = false;
+  let removedEndpointCount = 0;
+  const removedReferences: RemovedSectionReference[] = [];
   // Noted on this walk so a story without one needs no separate scan.
   let runsIntoTable = false;
   const walk = ({
@@ -87,8 +89,21 @@ const resolveProperties = ({
           })
         : null;
     let resolved = node;
-    if (nextAttrs) resolved = rebuild(node, { attrs: nextAttrs });
-    else if (node.type.name !== "paragraph")
+    if (nextAttrs) {
+      if (
+        node.type.name === "paragraph" &&
+        ownsSection(node) &&
+        nextAttrs["_sectionProperties"] == null
+      ) {
+        const properties = expectParagraphAttrs(node)._sectionProperties;
+        removedEndpointCount++;
+        for (const { type, rId } of properties?.headerReferences ?? [])
+          removedReferences.push({ part: "header", type, relationshipId: rId });
+        for (const { type, rId } of properties?.footerReferences ?? [])
+          removedReferences.push({ part: "footer", type, relationshipId: rId });
+      }
+      resolved = rebuild(node, { attrs: nextAttrs });
+    } else if (node.type.name !== "paragraph")
       resolved = resolveAllNodePropertyChangeAttrs(node, mode);
     if (resolved !== node) {
       if (node.type.name === "paragraph")
@@ -162,6 +177,8 @@ const resolveProperties = ({
     resolved,
     structural,
     runsIntoTable,
+    removedEndpointCount,
+    removedReferences,
     pointComments: mode === "accept" ? new Set(collector.finish().keys()) : new Set<number>(),
   };
 };
@@ -313,6 +330,20 @@ const removedEndpoint = (node: PMNode, context: StructuralContext): void => {
     context.removedReferences.push({ part: "footer", type, relationshipId: rId });
 };
 
+/** A cleared record (null) and an absent one (undefined) both end no section. */
+const ownsSection = (paragraph: PMNode): boolean =>
+  expectParagraphAttrs(paragraph)._sectionProperties != null;
+
+const precedingSectionOwner = (
+  preceding: PMNode | null | undefined,
+  properties: ReturnType<typeof expectParagraphAttrs>["_sectionProperties"],
+): "unavailable" | "available" | "same" | "occupied" => {
+  if (preceding?.type.name !== "paragraph") return "unavailable";
+  if (!ownsSection(preceding)) return "available";
+  const precedingProperties = expectParagraphAttrs(preceding)._sectionProperties;
+  return JSON.stringify(precedingProperties) === JSON.stringify(properties) ? "same" : "occupied";
+};
+
 type ParagraphChain = {
   node: PMNode;
   /** The surviving paragraph: the chain's last, whose mark stays. */
@@ -453,6 +484,27 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     const markWasAdded = marker?.kind === "ins" || marker?.kind === "moveTo";
     const joins = marker && markWasAdded !== (context.mode === "accept");
     if (joins && chain) {
+      const properties = expectParagraphAttrs(paragraph)._sectionProperties;
+      const preceding = entries[index - 1]?.node;
+      const outcome = paragraphMarkOutcome({
+        follows: "paragraph",
+        holdsContent: !holdsNoContent(paragraph),
+        markWasAdded,
+        containerStillEndsWithParagraph: true,
+        followingTableCanReceiveRunIn: false,
+        removedSectionProperties: markWasAdded && properties !== undefined,
+        precedingSectionOwner: precedingSectionOwner(preceding, properties),
+        followingHasSectionProperties: ownsSection(chain.node),
+      });
+      if (outcome.sectionDestination === "preceding" && preceding?.type.name === "paragraph") {
+        entries[index - 1]!.node = rebuild(preceding, {
+          attrs: { ...preceding.attrs, _sectionProperties: properties },
+        });
+      } else if (outcome.sectionDestination === "following") {
+        chain.node = rebuild(chain.node, {
+          attrs: { ...chain.node.attrs, _sectionProperties: properties },
+        });
+      }
       const boundaries = pendingBookmarks.toReversed();
       let bookmarks = Fragment.empty;
       if (boundaries.length > 0) {
@@ -504,6 +556,12 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       markWasAdded,
       containerStillEndsWithParagraph,
       followingTableCanReceiveRunIn: false,
+      removedSectionProperties: markWasAdded && ownsSection(paragraph),
+      precedingSectionOwner: precedingSectionOwner(
+        entries[index - 1]?.node,
+        expectParagraphAttrs(paragraph)._sectionProperties,
+      ),
+      followingHasSectionProperties: chain !== null && ownsSection(chain.node),
     });
     if (
       marker &&
@@ -512,6 +570,17 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       joins &&
       index + reversed.length + 1 > 1
     ) {
+      const properties = expectParagraphAttrs(paragraph)._sectionProperties;
+      const preceding = entries[index - 1]?.node;
+      if (outcome.sectionDestination === "preceding" && preceding?.type.name === "paragraph") {
+        entries[index - 1]!.node = rebuild(preceding, {
+          attrs: { ...preceding.attrs, _sectionProperties: properties },
+        });
+      } else if (outcome.sectionDestination === "following" && chain) {
+        chain.node = rebuild(chain.node, {
+          attrs: { ...chain.node.attrs, _sectionProperties: properties },
+        });
+      }
       context.deleted.push({ from: entry.position, to: entry.position + paragraph.nodeSize });
       removedEndpoint(paragraph, context);
       continue;
@@ -714,8 +783,8 @@ const resolveStoryRevisions = ({
     bookmarkJoins: [],
     structural: propertyResult.structural,
     failed: false,
-    removedEndpointCount: 0,
-    removedReferences: [],
+    removedEndpointCount: propertyResult.removedEndpointCount,
+    removedReferences: [...propertyResult.removedReferences],
     droppedTextBoxAnchors: inline
       ? droppedTextBoxAnchorIds(properties, inline.resolved)
       : new Set<string>(),

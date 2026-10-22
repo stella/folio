@@ -9,7 +9,7 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const EXPECTED_CALLS = new Map([
   ["packages/docx-core/src/ops/resolve.ts", 2],
   ["packages/docx-core/src/ops/blockDeletion.ts", 1],
-  ["packages/core/src/internal/wholeStoryRevisionResolution.ts", 1],
+  ["packages/core/src/internal/wholeStoryRevisionResolution.ts", 2],
   ["packages/core/src/prosemirror/tableRunIn.ts", 1],
   ["packages/core/src/prosemirror/commands/comments.ts", 1],
 ]);

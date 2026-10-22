@@ -13,6 +13,7 @@ import type {
   Document,
   Paragraph,
   ParagraphContent,
+  Table,
   TextFormatting,
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
@@ -46,6 +47,16 @@ const paragraph = (
 
 const documentOf = (...content: BlockContent[]): Document => ({
   package: { document: { content } },
+});
+
+const table = (text: string): Table => ({
+  type: "table",
+  rows: [
+    {
+      type: "tableRow",
+      cells: [{ type: "tableCell", content: [paragraph("10000001", [run(text)])] }],
+    },
+  ],
 });
 
 const commentedDocument = (content: ParagraphContent[]): Document => ({
@@ -1305,6 +1316,64 @@ describe("an empty content control is content: resolution never merges it away",
 });
 
 describe("section-aware tracked editor joins", () => {
+  test("rejecting an added boundary after a table keeps its section on the joined paragraph", () => {
+    const properties = { pageWidth: 10_000 };
+    const document = documentOf(
+      table("cell"),
+      paragraph("00000001", [run("before")], {
+        sectionProperties: properties,
+        pPrMark: { kind: "ins", info: stamp(1) },
+      }),
+      paragraph("00000002", [run("after")]),
+    );
+
+    expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
+      documentOf(
+        table("cell"),
+        paragraph("00000002", [run("beforeafter")], { sectionProperties: properties }),
+      ),
+    );
+  });
+
+  test("rejecting an empty added boundary moves its section to the preceding paragraph", () => {
+    const properties = { pageWidth: 10_000 };
+    const document = documentOf(
+      paragraph("00000001", [run("before")]),
+      paragraph("00000002", [], {
+        sectionProperties: properties,
+        pPrMark: { kind: "ins", info: stamp(1) },
+      }),
+      paragraph("00000003", [run("after")]),
+    );
+
+    expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
+      documentOf(
+        paragraph("00000001", [run("before")], { sectionProperties: properties }),
+        paragraph("00000003", [run("after")]),
+      ),
+    );
+  });
+
+  test("rejecting an adjacent added boundary moves its section to the following paragraph", () => {
+    const first = { pageWidth: 10_000 };
+    const second = { pageWidth: 12_000 };
+    const document = documentOf(
+      paragraph("00000001", [run("before")], { sectionProperties: first }),
+      paragraph("00000002", [], {
+        sectionProperties: second,
+        pPrMark: { kind: "ins", info: stamp(1) },
+      }),
+      paragraph("00000003", [run("after")]),
+    );
+
+    expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
+      documentOf(
+        paragraph("00000001", [run("before")], { sectionProperties: first }),
+        paragraph("00000003", [run("after")], { sectionProperties: second }),
+      ),
+    );
+  });
+
   test("explicit section removal is tracked until resolution and every inverse preserves both sections", () => {
     const document = documentOf(
       paragraph("00000001", [run("a")], { sectionProperties: { pageWidth: 10000 } }),
@@ -1472,7 +1541,7 @@ describe("whole-document revision rejection", () => {
       pPrMark: { kind: "ins", info: { id: 3, author: "A" } },
     });
     const follower = paragraph("00000003", [], { sectionProperties });
-    const table = {
+    const cellTable = {
       type: "table",
       columnWidths: [2400, 2400],
       rows: [
@@ -1487,10 +1556,10 @@ describe("whole-document revision rejection", () => {
     const document: Document = {
       package: {
         document: {
-          content: [first, table],
+          content: [first, cellTable],
           sections: [
             { properties: sectionProperties, content: [first] },
-            { properties: finalSectionProperties, content: [table] },
+            { properties: finalSectionProperties, content: [cellTable] },
           ],
           finalSectionProperties,
           comments: [{ id: 7, author: "A", content: [paragraph("7FFFFFF0", [])] }],
