@@ -92,7 +92,7 @@ const resolveProperties = ({
     if (nextAttrs) {
       if (
         node.type.name === "paragraph" &&
-        expectParagraphAttrs(node)._sectionProperties !== undefined &&
+        ownsSection(node) &&
         nextAttrs["_sectionProperties"] == null
       ) {
         const properties = expectParagraphAttrs(node)._sectionProperties;
@@ -336,13 +336,17 @@ const removedEndpoint = (node: PMNode, context: StructuralContext): void => {
     context.removedReferences.push({ part: "footer", type, relationshipId: rId });
 };
 
+/** A cleared record (null) and an absent one (undefined) both end no section. */
+const ownsSection = (paragraph: PMNode): boolean =>
+  expectParagraphAttrs(paragraph)._sectionProperties != null;
+
 const precedingSectionOwner = (
   preceding: PMNode | null | undefined,
   properties: ReturnType<typeof expectParagraphAttrs>["_sectionProperties"],
 ): "unavailable" | "available" | "same" | "occupied" => {
   if (preceding?.type.name !== "paragraph") return "unavailable";
+  if (!ownsSection(preceding)) return "available";
   const precedingProperties = expectParagraphAttrs(preceding)._sectionProperties;
-  if (precedingProperties === undefined) return "available";
   return JSON.stringify(precedingProperties) === JSON.stringify(properties) ? "same" : "occupied";
 };
 
@@ -496,8 +500,7 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
         followingTableCanReceiveRunIn: false,
         removedSectionProperties: markWasAdded && properties !== undefined,
         precedingSectionOwner: precedingSectionOwner(preceding, properties),
-        followingHasSectionProperties:
-          expectParagraphAttrs(chain.node)._sectionProperties !== undefined,
+        followingHasSectionProperties: ownsSection(chain.node),
       });
       if (outcome.sectionDestination === "preceding" && preceding?.type.name === "paragraph") {
         entries[index - 1]!.node = rebuild(preceding, {
@@ -559,14 +562,12 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       markWasAdded,
       containerStillEndsWithParagraph,
       followingTableCanReceiveRunIn: false,
-      removedSectionProperties:
-        markWasAdded && expectParagraphAttrs(paragraph)._sectionProperties !== undefined,
+      removedSectionProperties: markWasAdded && ownsSection(paragraph),
       precedingSectionOwner: precedingSectionOwner(
         entries[index - 1]?.node,
         expectParagraphAttrs(paragraph)._sectionProperties,
       ),
-      followingHasSectionProperties:
-        chain !== null && expectParagraphAttrs(chain.node)._sectionProperties !== undefined,
+      followingHasSectionProperties: chain !== null && ownsSection(chain.node),
     });
     if (
       marker &&
