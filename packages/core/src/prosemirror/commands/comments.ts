@@ -18,6 +18,7 @@ import { requestDeterministicParaIds } from "../extensions/features/ParaIdAlloca
 import { trackedRevisionPathOf, retainedTrackedRevisionMark } from "../trackedRevisionPath";
 import { Mapping } from "prosemirror-transform";
 import { panic } from "better-result";
+import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
 import { resolveParagraphChangeAttrs } from "./resolveParagraphProperties";
 import { resolveNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
@@ -41,11 +42,7 @@ import {
 } from "../attrs";
 import { resolveEmptyFieldResultRuns } from "../emptyFieldResultRuns";
 import type { TrackedRevisionAncestor } from "../schema/marks";
-import {
-  addedBreakCarrierBefore,
-  finalParagraphsOf,
-  paragraphEndsItsContainer,
-} from "../containerFinalParagraph";
+import { addedBreakCarrierBefore, finalParagraphsOf } from "../containerFinalParagraph";
 import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
 import {
   markChangedParagraphRanges,
@@ -629,10 +626,25 @@ function resolveChange(
         }
         const nextNode = nextPos < tr.doc.content.size ? tr.doc.nodeAt(nextPos) : null;
         const joinable = nextNode?.type.name === paragraph.type.name;
+        let follows: "paragraph" | "table" | "nothing" = "nothing";
+        if (joinable) follows = "paragraph";
+        else if (nextNode?.type.spec["tableRole"] === "table") follows = "table";
+        const resolved = tr.doc.resolve(mappedPos);
+        const outcome = paragraphMarkOutcome({
+          follows,
+          holdsContent: !holdsNoContent(paragraph),
+          markWasAdded: op.markWasAdded,
+          // Removing this final paragraph leaves the block before it last.
+          containerStillEndsWithParagraph:
+            resolved.parent.maybeChild(resolved.index() - 1)?.type.name === "paragraph",
+          followingTableCanReceiveRunIn:
+            follows === "table" &&
+            boundaries.length === 0 &&
+            !pendingTables.some((position) => tr.mapping.map(position) === nextPos) &&
+            !ownsSectionEndpoint(paragraph),
+        });
         const ranIn =
-          nextNode?.type.spec["tableRole"] === "table" &&
-          boundaries.length === 0 &&
-          !pendingTables.some((position) => tr.mapping.map(position) === nextPos)
+          outcome.kind === "run-in"
             ? runParagraphIntoTable({ tr, paragraphPos: mappedPos, styleResolver })
             : null;
         if (ranIn) {
@@ -666,10 +678,7 @@ function resolveChange(
           // Section properties belong to the paragraph mark being resolved.
           // Removing that mark removes its section endpoint; transferring the
           // properties backward would retain the section the revision deleted.
-          const resolved = tr.doc.resolve(mappedPos);
-          const endsItsContainer = paragraphEndsItsContainer(resolved, paragraph.type.name);
-          const canGo = op.markWasAdded || !endsItsContainer;
-          if (holdsNoContent(paragraph) && canGo && resolved.parent.childCount > 1) {
+          if (outcome.kind === "remove") {
             if (ownsSectionEndpoint(paragraph)) {
               removedSectionEndpointCount++;
               removedSectionReferences.push(...sectionReferencesOf(paragraph));

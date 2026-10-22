@@ -6,7 +6,7 @@ import { blockListAt, sameBlockList, storyBody, storyParagraphs } from "./blocks
 import type { DocumentEdit } from "./edits";
 import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
-import { paragraphLength } from "./offsets";
+import { paragraphHoldsContent, paragraphLength } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
@@ -26,6 +26,47 @@ type BlockDeletionOptions = {
   document: Document;
   op: DeleteBlocksOp;
   applyOps: ApplyOps;
+};
+
+/** The single structural outcome of resolving a paragraph mark. */
+export const paragraphMarkOutcome = ({
+  follows,
+  holdsContent,
+  markWasAdded,
+  containerStillEndsWithParagraph,
+  followingTableCanReceiveRunIn,
+  tableRemovalIsTrackable = true,
+}: {
+  follows: "paragraph" | "table" | "nothing";
+  holdsContent: boolean;
+  markWasAdded: boolean;
+  /**
+   * Read only when nothing follows: whether the block BEFORE this paragraph,
+   * which becomes the container's last block once this one is removed, is a
+   * paragraph. Never the container's current last child, which is this one.
+   */
+  containerStillEndsWithParagraph: boolean;
+  followingTableCanReceiveRunIn: boolean;
+  tableRemovalIsTrackable?: boolean;
+}):
+  | { kind: "join" }
+  | { kind: "remove" }
+  | { kind: "run-in" }
+  | { kind: "keep" }
+  | { kind: "refuse"; reason: "untrackable" } => {
+  switch (follows) {
+    case "paragraph":
+      return { kind: "join" };
+    case "table":
+      if (!tableRemovalIsTrackable)
+        return { kind: "refuse", reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE };
+      if (!holdsContent) return { kind: "remove" };
+      return followingTableCanReceiveRunIn ? { kind: "run-in" } : { kind: "keep" };
+    case "nothing":
+      return !holdsContent && markWasAdded && containerStillEndsWithParagraph
+        ? { kind: "remove" }
+        : { kind: "keep" };
+  }
 };
 
 export const deleteBlocks = ({
@@ -107,7 +148,19 @@ export const deleteBlocks = ({
     { ...last.paragraph, content: previous?.content ?? [] },
     finalReview,
   );
-  const directBlocks = following?.type === "paragraph" ? [following] : [survivor];
+  let follows: "paragraph" | "table" | "nothing" = "nothing";
+  if (following?.type === "paragraph") follows = "paragraph";
+  if (following?.type === "table") follows = "table";
+  const outcome = paragraphMarkOutcome({
+    follows,
+    holdsContent: paragraphHoldsContent(survivor),
+    markWasAdded: false,
+    containerStillEndsWithParagraph: previous !== undefined,
+    followingTableCanReceiveRunIn: false,
+  });
+  let directBlocks: Paragraph[] = [];
+  if (outcome.kind === "join" && following?.type === "paragraph") directBlocks = [following];
+  if (outcome.kind === "keep") directBlocks = [survivor];
   const direct = applyOps(document, [replacement(directBlocks)]);
   if (direct.isErr()) return refuse(direct.error.reason, direct.error.message);
   if (op.revision === undefined) {

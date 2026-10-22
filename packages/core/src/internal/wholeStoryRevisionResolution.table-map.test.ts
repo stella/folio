@@ -10,6 +10,10 @@ const cell = (text: string, attrs?: Record<string, unknown>) =>
 const row = (cells: PMNode[], attrs?: Record<string, unknown>) =>
   schema.node("tableRow", attrs, cells);
 const table = (rows: PMNode[]) => schema.node("table", null, rows);
+const deletedParagraphMark = {
+  kind: "del",
+  info: { id: 7, author: "Reviewer", date: "2026-10-19" },
+} as const;
 
 const paragraphPosition = (doc: PMNode, text: string): number => {
   let found: number | null = null;
@@ -76,4 +80,85 @@ test("nested table resolution preserves a following paragraph position", () => {
 
   expect(result.mapping.map(source, 1)).toBe(final);
   expect(final).toBeLessThan(source);
+});
+
+test("accepting an empty paragraph-mark deletion removes the paragraph before a table", () => {
+  const following = table([row([cell("cell")])]);
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", { pPrMark: deletedParagraphMark }),
+    following,
+  ]);
+
+  const result = resolveWholeStory({ doc, mode: "accept", styleResolver: null, numbering: null });
+
+  expect(result.failed).toBe(false);
+  expect(result.resolved.content.content).toEqual([following]);
+});
+
+test("accepting a non-empty paragraph-mark deletion runs its content into the table", () => {
+  const cellParagraph = paragraph("cell");
+  const following = table([row([schema.node("tableCell", null, [cellParagraph])])]);
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", { pPrMark: deletedParagraphMark }, [schema.text("kept")]),
+    following,
+  ]);
+
+  const result = resolveWholeStory({ doc, mode: "accept", styleResolver: null, numbering: null });
+
+  expect(result.failed).toBe(false);
+  expect(result.resolved.childCount).toBe(1);
+  const survivor = result.resolved.firstChild?.firstChild?.firstChild?.firstChild;
+  expect(survivor?.textContent).toBe("keptcell");
+  expect(survivor?.attrs["paraId"]).toBe(cellParagraph.attrs["paraId"]);
+  expect(survivor?.attrs["pPrMark"]).toBeNull();
+});
+
+const insertedParagraphMark = {
+  kind: "ins",
+  info: { id: 8, author: "Reviewer", date: "2026-10-21" },
+} as const;
+
+test("rejecting an empty inserted final paragraph after a table keeps it as the terminator", () => {
+  const terminator = schema.node("paragraph", { pPrMark: insertedParagraphMark });
+  const doc = schema.node("doc", null, [
+    paragraph("before"),
+    table([row([cell("cell")])]),
+    terminator,
+  ]);
+
+  const result = resolveWholeStory({ doc, mode: "reject", styleResolver: null, numbering: null });
+
+  expect(result.failed).toBe(false);
+  expect(result.resolved.childCount).toBe(3);
+  expect(result.resolved.lastChild?.type.name).toBe("paragraph");
+});
+
+test("rejecting an empty inserted final paragraph in a cell leaves the paragraph before it last", () => {
+  const terminator = schema.node("paragraph", { pPrMark: insertedParagraphMark });
+  const doc = schema.node("doc", null, [
+    table([row([schema.node("tableCell", null, [paragraph("text"), terminator])])]),
+    paragraph("after"),
+  ]);
+
+  const result = resolveWholeStory({ doc, mode: "reject", styleResolver: null, numbering: null });
+
+  expect(result.failed).toBe(false);
+  const resolvedCell = result.resolved.firstChild?.firstChild?.firstChild;
+  expect(resolvedCell?.childCount).toBe(1);
+  expect(resolvedCell?.lastChild?.textContent).toBe("text");
+});
+
+test("rejecting the only paragraph of a cell keeps it as the cell terminator", () => {
+  const terminator = schema.node("paragraph", { pPrMark: insertedParagraphMark });
+  const doc = schema.node("doc", null, [
+    table([row([schema.node("tableCell", null, [terminator])])]),
+    paragraph("after"),
+  ]);
+
+  const result = resolveWholeStory({ doc, mode: "reject", styleResolver: null, numbering: null });
+
+  expect(result.failed).toBe(false);
+  const resolvedCell = result.resolved.firstChild?.firstChild?.firstChild;
+  expect(resolvedCell?.childCount).toBe(1);
+  expect(resolvedCell?.firstChild?.type.name).toBe("paragraph");
 });

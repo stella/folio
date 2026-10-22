@@ -23,6 +23,7 @@ import {
   relationshipIdOf,
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
+import { survivingComments } from "@stll/docx-core/ops";
 import {
   assertNoteReferenceOccurrences,
   coalesceNoteReferenceOccurrences,
@@ -30,6 +31,7 @@ import {
 
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
+import { removeCommentMarkers } from "../../docx/commentAnchorIndex";
 import {
   marksToTextFormatting,
   sameFormattingValue,
@@ -216,8 +218,13 @@ import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStac
 import { enclosingRevisionIds } from "../contentControlRevisions";
 import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 import { enclosingInsertionAncestors, inlineWrapperStackOf } from "../trackedRevisionPath";
+import { trackedCommentBoundaryOwner } from "../commentBoundaryOwnership";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
-import type { InlineWrapperLayer, TrackedRevisionAncestor } from "../schema/marks";
+import type {
+  InlineWrapperLayer,
+  TrackedChangeMarkAttrs,
+  TrackedRevisionAncestor,
+} from "../schema/marks";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
   AlternateContentAttrs,
@@ -963,6 +970,27 @@ export function fromProseDoc(
         ...(numbering ? { numbering } : {}),
       },
     };
+    const projectedCommentIds = new Set<number>();
+    pmDoc.descendants((node) => {
+      for (const commentId of getCommentMarkIds(node.marks)) projectedCommentIds.add(commentId);
+    });
+    const survivingCommentIds = new Set(survivingComments(updatedDocument).map(({ id }) => id));
+    const comments = (updatedDocument.package.document.comments ?? []).filter(
+      ({ id }) => survivingCommentIds.has(id) || projectedCommentIds.has(id),
+    );
+    const keptIds = new Set(comments.map(({ id }) => id));
+    const retiredIds = new Set(
+      (updatedDocument.package.document.comments ?? [])
+        .filter(({ id }) => !keptIds.has(id))
+        .map(({ id }) => id),
+    );
+    if (retiredIds.size > 0) {
+      updatedDocument.package.document.content = removeCommentMarkers(
+        updatedDocument.package.document.content,
+        retiredIds,
+      );
+      setDocumentBodyComments(updatedDocument.package.document, comments);
+    }
     copyDocumentParagraphPropertySourceContract(updatedDocument, baseDocument);
     return updatedDocument;
   }
@@ -3037,6 +3065,12 @@ function extractParagraphContent(
     readonly TrackedRevisionAncestor[]
   >();
   const openedComments = new Set<number>();
+  // A boundary has no ProseMirror node of its own. Keep the source revision's
+  // ownership record until the following node gives us its save position.
+  let precedingTrackedCommentRangeBoundaries:
+    | NonNullable<TrackedChangeMarkAttrs["_docxCommentRangeBoundaries"]>
+    | null
+    | undefined;
   const createIndexedHyperlink = (mark: Mark): Hyperlink => {
     const hyperlink = createHyperlink(mark);
     const index = expectHyperlinkMarkAttrs(mark)._docxHyperlinkIndex;
@@ -3129,8 +3163,68 @@ function extractParagraphContent(
     rememberSourceRunOwner(run, node, sourceRunOwners);
   };
 
+  const trackedBoundary = (node: PMNode) => {
+    const boundaryInsertionMark = node.marks.find((mark) => mark.type.name === "insertion");
+    const boundaryDeletionMark = node.marks.find((mark) => mark.type.name === "deletion");
+    const boundaryChangeMark = boundaryDeletionMark ?? boundaryInsertionMark;
+    if (!boundaryChangeMark) return undefined;
+
+    const changeAttrs = expectTrackedChangeMarkAttrs(boundaryChangeMark);
+    const info: TrackedChangeInfo = {
+      id: changeAttrs.revisionId,
+      author: changeAttrs.author || "Unknown",
+      ...(changeAttrs.date ? { date: changeAttrs.date } : {}),
+      ...(changeAttrs.utcDate
+        ? { utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: changeAttrs.utcDate } }
+        : {}),
+      ...(changeAttrs.initials ? { initials: changeAttrs.initials } : {}),
+    };
+    let type: TrackedRunWrapper["type"];
+    if (boundaryDeletionMark) {
+      type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
+    } else {
+      type = changeAttrs.moveKind === "moveTo" ? "moveTo" : "insertion";
+    }
+    const revisionAncestors = enclosingInsertionAncestors({
+      insertionMark: boundaryDeletionMark ? boundaryInsertionMark : undefined,
+      ancestors: changeAttrs._docxRevisionAncestors ?? [],
+      node,
+    });
+    const outerWrapperCount =
+      changeAttrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length;
+    const trackedChangeKey = `${type}:${JSON.stringify(info)}:${outerWrapperCount}:${JSON.stringify(revisionAncestors)}:${JSON.stringify(changeAttrs._docxResolutionJoins ?? undefined)}`;
+    return { changeAttrs, info, key: trackedChangeKey, outerWrapperCount, revisionAncestors, type };
+  };
+
+  const establishTrackedBoundaryOwner = (node: PMNode): void => {
+    const boundary = trackedBoundary(node);
+    if (!boundary) return;
+    flushCurrentInline();
+    const { changeAttrs, info, key, outerWrapperCount, revisionAncestors, type } = boundary;
+    if (currentTrackedChange?.type === "direct" && currentTrackedChange.key === key) {
+      return;
+    }
+    const wrapper = createTrackedRunWrapper({
+      type,
+      info,
+      resolutionJoins: changeAttrs._docxResolutionJoins ?? undefined,
+    });
+    revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
+    revisionAncestorsByWrapper.set(wrapper, revisionAncestors);
+    content.push(wrapper);
+    currentTrackedChange = { type: "direct", key, wrapper };
+  };
+
   const syncCommentRanges = (node: PMNode, offset: number) => {
-    const nodeCommentIds = getCommentMarkIds(node.marks);
+    const ownsStructuredCommentCoverage =
+      (node.type.name === "structuredField" || node.type.name === "sdt") && node.childCount > 0;
+    const nodeCommentIds = ownsStructuredCommentCoverage
+      ? getCommentMarkIds(node.child(0).marks)
+      : getCommentMarkIds(node.marks);
+    const nodeTrackedBoundary = trackedBoundary(node);
+    const sourceCommentRangeBoundaries = precedingTrackedCommentRangeBoundaries;
+    const nodeCommentRangeBoundaries = nodeTrackedBoundary?.changeAttrs._docxCommentRangeBoundaries;
+    precedingTrackedCommentRangeBoundaries = nodeCommentRangeBoundaries;
 
     // Close an open range only once this node is past the comment's last
     // occurrence; a comment that reappears later stays open so the range spans
@@ -3155,16 +3249,66 @@ function extractParagraphContent(
     }
 
     flushCurrentInline();
-    currentTrackedChange = undefined;
-
     for (const commentId of byCommentId(toClose)) {
-      content.push({ type: "commentRangeEnd", id: commentId });
+      const fallbackOwner =
+        nodeTrackedBoundary &&
+        currentTrackedChange?.type === "direct" &&
+        currentTrackedChange.key === nodeTrackedBoundary.key
+          ? "revision"
+          : "parent";
+      const sourceOwnsBoundary =
+        trackedCommentBoundaryOwner({
+          boundaries: sourceCommentRangeBoundaries,
+          type: "end",
+          commentId,
+          fallback: fallbackOwner,
+        }) === "revision";
+      const closingBoundaryOwner =
+        currentTrackedChange?.type === "direct" && sourceOwnsBoundary
+          ? currentTrackedChange.wrapper.content
+          : content;
+      closingBoundaryOwner.push({ type: "commentRangeEnd", id: commentId });
       openedComments.delete(commentId);
+      // A boundary written beside the active wrapper ends it: following
+      // content, even of the same revision, starts a new wrapper after the
+      // boundary instead of being appended ahead of it.
+      if (closingBoundaryOwner === content) currentTrackedChange = undefined;
+    }
+    // A hyperlink is a child of the tracked wrapper. Once a positional
+    // boundary has been written beside that child, following linked content
+    // must start a new owner rather than being appended ahead of the marker.
+    if (currentTrackedChange?.type === "hyperlink") {
+      currentTrackedChange = undefined;
     }
     for (const commentId of byCommentId(toOpen)) {
-      content.push({ type: "commentRangeStart", id: commentId });
+      // Text and inline atoms (images, breaks) read the same recorded owner.
+      const owner = trackedCommentBoundaryOwner({
+        boundaries: nodeCommentRangeBoundaries,
+        type: "start",
+        commentId,
+        fallback: nodeTrackedBoundary ? "revision" : "parent",
+      });
+      if (owner === "revision") establishTrackedBoundaryOwner(node);
+      const openingBoundaryOwner =
+        owner === "revision" && currentTrackedChange
+          ? currentTrackedChange.wrapper.content
+          : content;
+      openingBoundaryOwner.push({ type: "commentRangeStart", id: commentId });
       openedComments.add(commentId);
+      if (openingBoundaryOwner === content) currentTrackedChange = undefined;
     }
+  };
+
+  const syncStructuredCommentExit = (node: PMNode): void => {
+    if (
+      (node.type.name !== "structuredField" && node.type.name !== "sdt") ||
+      node.childCount === 0
+    ) {
+      return;
+    }
+    const finalCommentIds = getCommentMarkIds(node.child(node.childCount - 1).marks);
+    openedComments.clear();
+    for (const commentId of finalCommentIds) openedComments.add(commentId);
   };
 
   const flushEmptyHyperlinksThroughOffset = (offset: number): void => {
@@ -3214,15 +3358,28 @@ function extractParagraphContent(
     }
     leadingRenderedPageBreakPending = false;
     enterWrapperGroup(node);
+
     syncCommentRanges(node, offset);
 
     // A comment reference is paragraph content in the model, so it never joins
     // a run, a hyperlink or a tracked wrapper: it is emitted where the editor
     // holds it, right after the range ends `syncCommentRanges` just wrote.
     if (node.type.name === "commentReference") {
+      establishTrackedBoundaryOwner(node);
       flushCurrentInline();
-      currentTrackedChange = undefined;
-      content.push({ type: "commentReference", id: expectCommentReferenceAttrs(node).commentId });
+      const reference = {
+        type: "commentReference" as const,
+        id: expectCommentReferenceAttrs(node).commentId,
+      };
+      if (
+        currentTrackedChange &&
+        node.marks.some((mark) => mark.type.name === "insertion" || mark.type.name === "deletion")
+      ) {
+        currentTrackedChange.wrapper.content.push(reference);
+      } else {
+        currentTrackedChange = undefined;
+        content.push(reference);
+      }
       return;
     }
 
@@ -3231,10 +3388,18 @@ function extractParagraphContent(
     // long as the editor state does, and the rebuilt document must not share a
     // record with it.
     if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+      establishTrackedBoundaryOwner(node);
       flushCurrentInline();
-      currentTrackedChange = undefined;
       const { start, end } = expectRangeAnchorAttrs(node);
-      content.push({ ...start }, { ...end });
+      if (
+        currentTrackedChange &&
+        node.marks.some((mark) => mark.type.name === "insertion" || mark.type.name === "deletion")
+      ) {
+        currentTrackedChange.wrapper.content.push({ ...start }, { ...end });
+      } else {
+        currentTrackedChange = undefined;
+        content.push({ ...start }, { ...end });
+      }
       return;
     }
 
@@ -3581,10 +3746,12 @@ function extractParagraphContent(
           textBoxAnchorMarkers,
         }),
       );
+      syncStructuredCommentExit(node);
     } else if (node.type.name === "sdt") {
       // SDT ends current run and emits an InlineSdt content item
       flushCurrentInline();
       content.push(createInlineSdtFromNode(node, textBoxAnchorMarkers, formattingContext));
+      syncStructuredCommentExit(node);
     } else if (node.type.name === "math") {
       // Math ends current run and emits a MathEquation content item
       flushCurrentInline();
@@ -3631,7 +3798,17 @@ function extractParagraphContent(
   // Don't forget the last run/hyperlink
   flushCurrentInline();
   for (const commentId of byCommentId(openedComments)) {
-    content.push({ type: "commentRangeEnd", id: commentId });
+    const closingBoundaryOwner =
+      currentTrackedChange?.type === "direct" &&
+      trackedCommentBoundaryOwner({
+        boundaries: precedingTrackedCommentRangeBoundaries,
+        type: "end",
+        commentId,
+        fallback: "parent",
+      }) === "revision"
+        ? currentTrackedChange.wrapper.content
+        : content;
+    closingBoundaryOwner.push({ type: "commentRangeEnd", id: commentId });
   }
 
   return nestInlineWrapperGroups(
