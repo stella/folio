@@ -165,10 +165,11 @@ describe("paragraph list reader agreement", () => {
     expect(
       resolveParagraphList({ ...unnumbered, inheritedReference: null }, numbering, projection).kind,
     ).toBe("none");
-    // Without a package, the projection is the list, whatever the style said.
+    // Without a package, the projection is the list, whatever the style said,
+    // but it names no authored numbering instance.
     expect(
-      resolveParagraphList({ ...unnumbered, inheritedReference: null }, null, projection).kind,
-    ).toBe("marker");
+      resolveParagraphList({ ...unnumbered, inheritedReference: null }, null, projection),
+    ).toMatchObject({ kind: "marker", source: "projection" });
   });
 
   test("an inherited style reference resolves through the numbering owner", () => {
@@ -318,6 +319,7 @@ describe("paragraph list reader agreement", () => {
       kind: "markerless",
       reason: "levelNotDefined",
       reference: paragraphNumberingReference({ numId: 5, ilvl: 8 }),
+      source: "authored",
     });
   });
 

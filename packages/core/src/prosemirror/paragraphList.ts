@@ -14,21 +14,31 @@ type ParagraphListReference = Extract<ResolvedParagraphNumbering, { kind: "refer
 const standaloneList = (
   reference: ParagraphListReference,
   rendering: ListRendering,
+  source: ListReferenceSource,
 ): ParagraphList =>
   rendering.markerHidden === true || rendering.marker.trim().length === 0
     ? {
         kind: "markerless",
         reference,
+        source,
         rendering,
         reason: "markerHiddenOrBlank",
       }
-    : { kind: "marker", reference, rendering };
+    : { kind: "marker", reference, source, rendering };
+
+/**
+ * `projection`: only the paragraph's cached list projection made it a list
+ * (a package-free model), so its reference names no authored numbering
+ * instance and readers must not report one.
+ */
+type ListReferenceSource = "authored" | "projection";
 
 export type ParagraphList =
   | { kind: "none" }
   | {
       kind: "markerless";
       reference: ParagraphListReference;
+      source: ListReferenceSource;
       rendering?: ListRendering;
       reason:
         | "noNumbering"
@@ -39,7 +49,12 @@ export type ParagraphList =
         | "levelNotDefined"
         | "markerHiddenOrBlank";
     }
-  | { kind: "marker"; reference: ParagraphListReference; rendering: ListRendering };
+  | {
+      kind: "marker";
+      reference: ParagraphListReference;
+      source: ListReferenceSource;
+      rendering: ListRendering;
+    };
 
 /**
  * Resolves paragraph list membership, level, and marker visibility once for
@@ -73,7 +88,7 @@ export const resolveParagraphList = (
           numId: standaloneRendering.numId,
           ilvl: standaloneRendering.level,
         });
-        return standaloneList(reference, standaloneRendering);
+        return standaloneList(reference, standaloneRendering, "projection");
       }
       return { kind: "none" };
     }
@@ -81,8 +96,8 @@ export const resolveParagraphList = (
       const reference = resolved;
       if (numbering === null) {
         return standaloneRendering === undefined
-          ? { kind: "markerless", reference, reason: "noNumbering" }
-          : standaloneList(reference, standaloneRendering);
+          ? { kind: "markerless", reference, source: "authored", reason: "noNumbering" }
+          : standaloneList(reference, standaloneRendering, "authored");
       }
       const resolution = resolveNumberingLevel(
         numbering.definitions,
@@ -90,21 +105,22 @@ export const resolveParagraphList = (
         reference.ilvl,
       );
       if (resolution.kind === "undefined") {
-        return { kind: "markerless", reference, reason: resolution.reason };
+        return { kind: "markerless", reference, source: "authored", reason: resolution.reason };
       }
       if (!levelShowsMarker(numbering.definitions, reference.numId, reference.ilvl)) {
         const rendering = computeListRendering(reference, numbering);
         return {
           kind: "markerless",
           reference,
+          source: "authored",
           reason: "markerHiddenOrBlank",
           ...(rendering === null ? {} : { rendering }),
         };
       }
       const rendering = computeListRendering(reference, numbering);
       return rendering === null
-        ? { kind: "markerless", reference, reason: "markerHiddenOrBlank" }
-        : { kind: "marker", reference, rendering };
+        ? { kind: "markerless", reference, source: "authored", reason: "markerHiddenOrBlank" }
+        : { kind: "marker", reference, source: "authored", rendering };
     }
     default: {
       const unhandled: never = resolved;

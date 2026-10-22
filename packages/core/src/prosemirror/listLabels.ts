@@ -284,13 +284,13 @@ export const createListLabelCounter = (
         return {
           kind: "markerless",
           label: undefined,
-          numbering: countedList.reference,
+          numbering: countedList.source === "authored" ? countedList.reference : undefined,
         };
       case "marker":
         return {
           kind: "marker",
           label: projectedLabel,
-          numbering: countedList.reference,
+          numbering: countedList.source === "authored" ? countedList.reference : undefined,
         };
       default: {
         const unhandled: never = countedList;

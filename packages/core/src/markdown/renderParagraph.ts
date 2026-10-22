@@ -166,8 +166,15 @@ export function renderParagraphBlock(
   // The counter may count a marker through a reference this paragraph's own
   // attrs do not name (a level-only override resolved against its tracked
   // predecessor); render that same reference.
+  const resolvedThroughPredecessor =
+    sources.numPr?.kind === "levelOnly" &&
+    para.propertyChanges?.some(({ previousFormatting }) => previousFormatting !== undefined) ===
+      true;
   const countedRendering =
-    countedList.kind === "marker" && countedList.numbering !== undefined && numbering !== null
+    resolvedThroughPredecessor &&
+    countedList.kind === "marker" &&
+    countedList.numbering !== undefined &&
+    numbering !== null
       ? (computeListRendering(countedList.numbering, numbering) ?? undefined)
       : undefined;
   const visibleList =
