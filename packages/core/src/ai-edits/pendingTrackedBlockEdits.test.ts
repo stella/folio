@@ -13,6 +13,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
@@ -93,6 +94,67 @@ const resolved = async (reviewer: FolioDocxReviewer, resolution: "accept" | "rej
 const MODES = ["direct", "tracked-changes", "suggested"] as const;
 
 describe("suggested insertion admission uses the live anchor for every gap run", () => {
+  test("refuses an insertion after its inserted anchor is retracted before a table", async () => {
+    const reviewer = await open(await tableDocument());
+    expect(
+      apply(reviewer, "suggested", [
+        {
+          id: "create-anchor",
+          type: "insertAfterBlock",
+          blockId: blockId(reviewer, "Prices"),
+          text: "Temporary anchor.",
+        },
+      ]).applied,
+    ).toHaveLength(1);
+    const anchor = blockId(reviewer, "Temporary anchor.");
+
+    const result = apply(reviewer, "suggested", [
+      { id: "retract-anchor", type: "deleteBlock", blockId: anchor },
+      { id: "insert", type: "insertBeforeBlock", blockId: anchor, text: "Must not appear." },
+    ]);
+
+    expect(result.applied.map(({ id }) => id)).toEqual(["retract-anchor"]);
+    expect(result.skipped).toContainEqual({ id: "insert", reason: "pendingDeletion" });
+    expect(textsOf(reviewer)).not.toContain("Must not appear.");
+  });
+
+  test("degrades a move deletion when its refused insertion loses the anchor", async () => {
+    const reviewer = await open(await tableDocument());
+    expect(
+      apply(reviewer, "suggested", [
+        {
+          id: "create-anchor",
+          type: "insertAfterBlock",
+          blockId: blockId(reviewer, "Prices"),
+          text: "Temporary anchor.",
+        },
+      ]).applied,
+    ).toHaveLength(1);
+    const anchor = blockId(reviewer, "Temporary anchor.");
+
+    const result = apply(reviewer, "suggested", [
+      { id: "move-from", type: "deleteBlock", blockId: anchor, moveId: "move" },
+      {
+        id: "move-to",
+        type: "insertBeforeBlock",
+        blockId: anchor,
+        text: "Moved text.",
+        moveId: "move",
+      },
+    ]);
+
+    expect(result.applied.map(({ id }) => id)).toEqual(["move-from"]);
+    expect(result.skipped).toContainEqual({ id: "move-to", reason: "pendingDeletion" });
+    expect(result.normalizations).toEqual([
+      { id: "move-from", code: "unpairedMove", moveId: "move" },
+      { id: "move-to", code: "unpairedMove", moveId: "move" },
+    ]);
+    const zip = await JSZip.loadAsync(await reviewer.toBuffer());
+    const xml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+    expect(xml).not.toContain("<w:moveFrom ");
+    expect(xml).not.toContain("<w:moveTo ");
+  });
+
   for (const deletion of ["deleteBlock", "deleteTableRow"] as const) {
     for (const count of [1, 2, 3]) {
       for (const timing of ["same batch", "earlier batch", "saved"] as const) {

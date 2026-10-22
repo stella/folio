@@ -4189,8 +4189,29 @@ const applyFolioAIEditOperationsInternal = ({
     }
     moveSideCounts.set(moveId, counts);
   }
+  const refusedMoveIds = new Set<string>();
+  if (isSuggested) {
+    for (const candidate of executableResolved) {
+      if (
+        candidate.operation.type !== "insertBeforeBlock" ||
+        candidate.operation.moveId === undefined
+      ) {
+        continue;
+      }
+      const moveId = candidate.operation.moveId;
+      const sourceRunsBeforeDestination = executableResolved.some(
+        ({ operation, blockFrom }) =>
+          operation.type === "deleteBlock" &&
+          operation.moveId === moveId &&
+          blockFrom === candidate.blockFrom,
+      );
+      if (sourceRunsBeforeDestination) {
+        refusedMoveIds.add(moveId);
+      }
+    }
+  }
   const isPairedMove = (moveId: string | undefined): moveId is string => {
-    if (moveId === undefined) {
+    if (moveId === undefined || refusedMoveIds.has(moveId)) {
       return false;
     }
     const counts = moveSideCounts.get(moveId);
@@ -4345,11 +4366,21 @@ const applyFolioAIEditOperationsInternal = ({
       ) {
         return true;
       }
-      const blockFrom = insertionState.mapping.map(candidate.blockFrom);
-      const block = insertionState.doc.nodeAt(blockFrom);
-      if (!block?.isTextblock) {
-        panic("A suggested paragraph insertion lost its anchor");
+      const mapped = insertionState.mapping.mapResult(candidate.blockFrom);
+      const block = mapped.deletedAcross ? null : insertionState.doc.nodeAt(mapped.pos);
+      const paraId: unknown = candidate.blockNode.attrs["paraId"];
+      if (
+        !block?.isTextblock ||
+        block.type !== candidate.blockNode.type ||
+        (typeof paraId === "string" && block.attrs["paraId"] !== paraId)
+      ) {
+        if (candidate.operation.moveId !== undefined) {
+          refusedMoveIds.add(candidate.operation.moveId);
+        }
+        skipped.push({ id: candidate.operation.id, reason: "pendingDeletion" });
+        return false;
       }
+      const blockFrom = mapped.pos;
       if (
         !isPendingDeletion(
           insertionState.doc,
