@@ -132,6 +132,52 @@ export const resolvedWasmBuildGraphDescription = (
   return `${JSON.stringify(resolved)}\n`;
 };
 
+const canonicalJson = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  if (typeof value === "object" && value !== null) {
+    const entries = Object.entries(value).toSorted(([left], [right]) =>
+      left < right ? -1 : Number(left > right),
+    );
+    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+};
+
+/**
+ * Returns a crate manifest as the WebAssembly build reads it: dev-dependencies,
+ * including target-specific ones, never reach the build.
+ */
+export const manifestBuildDescription = (manifest: string): string => {
+  const parsed: unknown = Bun.TOML.parse(manifest);
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    panic("Cargo manifest must be a table");
+  }
+  const {
+    "dev-dependencies": _devDependencies,
+    target,
+    ...build
+  } = parsed as Record<string, unknown>;
+  if (typeof target === "object" && target !== null && !Array.isArray(target)) {
+    build["target"] = Object.fromEntries(
+      Object.entries(target).map(([platform, table]) => {
+        if (typeof table !== "object" || table === null || Array.isArray(table)) {
+          return [platform, table];
+        }
+        const { "dev-dependencies": _platformDevDependencies, ...platformBuild } = table as Record<
+          string,
+          unknown
+        >;
+        return [platform, platformBuild];
+      }),
+    );
+  } else if (target !== undefined) {
+    build["target"] = target;
+  }
+  return `${canonicalJson(build)}\n`;
+};
+
 const generationInputsOf = (artifact: RustWasmArtifact): string[] => {
   const sourceDirectory = path.join(repoRoot, artifact.crateDirectory, "src");
   const sourceFiles = readdirSync(sourceDirectory, { recursive: true })
@@ -140,7 +186,6 @@ const generationInputsOf = (artifact: RustWasmArtifact): string[] => {
   return [
     path.join(repoRoot, "Cargo.toml"),
     path.join(repoRoot, "rust-toolchain.toml"),
-    path.join(repoRoot, artifact.crateDirectory, "Cargo.toml"),
     path.join(repoRoot, "scripts", "lib", "rust-wasm-artifact.ts"),
     path.join(repoRoot, artifact.buildScript),
     ...sourceFiles,
@@ -155,6 +200,14 @@ const generationInputDigest = async (artifact: RustWasmArtifact): Promise<string
     digest.update(readFileSync(file));
     digest.update("\0");
   }
+  digest.update(path.join(artifact.crateDirectory, "Cargo.toml"));
+  digest.update("\0");
+  digest.update(
+    manifestBuildDescription(
+      readFileSync(path.join(repoRoot, artifact.crateDirectory, "Cargo.toml"), "utf8"),
+    ),
+  );
+  digest.update("\0");
   const metadata = JSON.parse(
     await capture("cargo", [
       "metadata",

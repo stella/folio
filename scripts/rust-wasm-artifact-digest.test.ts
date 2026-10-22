@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { resolvedWasmBuildGraphDescription } from "./lib/rust-wasm-artifact.ts";
+import {
+  manifestBuildDescription,
+  resolvedWasmBuildGraphDescription,
+} from "./lib/rust-wasm-artifact.ts";
 
 type DependencyKind = "dev" | "build" | null;
 
@@ -100,5 +103,69 @@ describe("resolvedWasmBuildGraphDescription", () => {
     }
 
     expect(describeFixture(reordered)).toBe(describeFixture());
+  });
+});
+
+const manifest = ({
+  dependency = '"1"',
+  devDependency = '"8"',
+  feature = '["dep:js-sys"]',
+  targetDevDependency = '"1"',
+} = {}) => `[package]
+name = "app"
+
+[features]
+wasm = ${feature}
+
+[dependencies]
+serde = ${dependency}
+
+[dev-dependencies]
+zip = ${devDependency}
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(unix)'.dev-dependencies]
+tempfile = ${targetDevDependency}
+`;
+
+describe("manifestBuildDescription", () => {
+  test("ignores dev-dependency edits, including target-specific ones", () => {
+    const baseline = manifestBuildDescription(manifest());
+
+    expect(manifestBuildDescription(manifest({ devDependency: '{ version = "9.0.1" }' }))).toBe(
+      baseline,
+    );
+    expect(manifestBuildDescription(manifest({ targetDevDependency: '"3"' }))).toBe(baseline);
+  });
+
+  test("changes for dependency and feature edits", () => {
+    const baseline = manifestBuildDescription(manifest());
+
+    expect(manifestBuildDescription(manifest({ dependency: '"2"' }))).not.toBe(baseline);
+    expect(
+      manifestBuildDescription(manifest({ feature: '["dep:js-sys", "dep:web-sys"]' })),
+    ).not.toBe(baseline);
+  });
+
+  test("is independent of table and key order", () => {
+    const reordered = `[dependencies]
+serde = "1"
+
+[target.'cfg(unix)'.dev-dependencies]
+tempfile = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[features]
+wasm = ["dep:js-sys"]
+
+[package]
+name = "app"
+`;
+
+    expect(manifestBuildDescription(reordered)).toBe(manifestBuildDescription(manifest()));
   });
 });
