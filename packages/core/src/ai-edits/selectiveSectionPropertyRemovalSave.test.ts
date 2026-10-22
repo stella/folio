@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 import { createDocx, repackDocx } from "../docx/rezip";
 import { parseDocx } from "../docx/parser";
-import type { Document, Paragraph } from "../types/document";
+import type { Document, Paragraph, Table } from "../types/document";
 import { EditorState, type Transaction } from "prosemirror-state";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -118,32 +118,77 @@ test("selective rejection can repack after clearing a referenced section endpoin
   expect((reopened.package.document.content.at(0) as Paragraph).sectionProperties).toBeUndefined();
 });
 
-test("rejecting an empty inserted final paragraph moves its section to the preceding paragraph", async () => {
-  const base = sourceDocument();
+/** An empty paragraph whose inserted mark carries the referenced section. */
+const insertedSectionParagraph = (): Paragraph => {
   const { propertyChanges: _propertyChanges, ...sectionProperties } =
     sectionParagraph(undefined).sectionProperties ?? {};
-  const document: Document = {
-    package: {
-      ...base.package,
-      document: {
-        content: [
-          {
-            type: "paragraph",
-            paraId: "70000003",
-            content: [{ type: "run", content: [{ type: "text", text: "Before" }] }],
-          },
-          {
-            type: "paragraph",
-            paraId: "70000004",
-            content: [],
-            pPrMark: { kind: "ins", info: REVISION },
-            sectionProperties,
-          },
-        ],
-        finalSectionProperties: { pageWidth: 12_240 },
-      },
-    },
+  return {
+    type: "paragraph",
+    paraId: "70000004",
+    content: [],
+    pPrMark: { kind: "ins", info: REVISION },
+    sectionProperties,
   };
+};
+
+const documentOf = (content: Document["package"]["document"]["content"]): Document => ({
+  package: {
+    ...sourceDocument().package,
+    document: { content, finalSectionProperties: { pageWidth: 12_240 } },
+  },
+});
+
+const tableOf = (text: string): Table => ({
+  type: "table",
+  rows: [
+    {
+      type: "tableRow",
+      cells: [
+        {
+          type: "tableCell",
+          content: [
+            { type: "paragraph", content: [{ type: "run", content: [{ type: "text", text }] }] },
+          ],
+        },
+      ],
+    },
+  ],
+});
+
+test("rejecting an empty inserted paragraph between tables keeps its section", async () => {
+  const reopened = await rejectAndReopen(
+    documentOf([
+      tableOf("first"),
+      insertedSectionParagraph(),
+      tableOf("second"),
+      {
+        type: "paragraph",
+        paraId: "70000005",
+        content: [{ type: "run", content: [{ type: "text", text: "After" }] }],
+      },
+    ]),
+  );
+
+  expect(reopened.package.document.content.map(({ type }) => type)).toEqual([
+    "table",
+    "paragraph",
+    "table",
+    "paragraph",
+  ]);
+  const kept = reopened.package.document.content.at(1) as Paragraph;
+  expect(kept.pPrMark).toBeUndefined();
+  expect(kept.sectionProperties?.headerReferences).toEqual([{ type: "default", rId: headerId }]);
+});
+
+test("rejecting an empty inserted final paragraph moves its section to the preceding paragraph", async () => {
+  const document = documentOf([
+    {
+      type: "paragraph",
+      paraId: "70000003",
+      content: [{ type: "run", content: [{ type: "text", text: "Before" }] }],
+    },
+    insertedSectionParagraph(),
+  ]);
 
   const reopened = await rejectAndReopen(document);
 

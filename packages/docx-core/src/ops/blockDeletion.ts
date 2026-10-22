@@ -71,6 +71,9 @@ export const paragraphMarkOutcome = ({
   ) {
     sectionDestination = "following";
   }
+  // Only a join has a following paragraph mark. A removal whose section could
+  // only move forward keeps the paragraph instead, so its section survives.
+  const removalWouldDropSection = sectionDestination === "following";
   switch (follows) {
     case "paragraph":
       return { kind: "join", sectionDestination };
@@ -81,11 +84,16 @@ export const paragraphMarkOutcome = ({
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
           sectionDestination,
         };
-      if (!holdsContent) return { kind: "remove", sectionDestination };
+      if (!holdsContent) {
+        return removalWouldDropSection
+          ? { kind: "keep", sectionDestination: "none" }
+          : { kind: "remove", sectionDestination };
+      }
       return followingTableCanReceiveRunIn
         ? { kind: "run-in", sectionDestination }
         : { kind: "keep", sectionDestination };
     case "nothing":
+      if (removalWouldDropSection) return { kind: "keep", sectionDestination: "none" };
       return !holdsContent && markWasAdded && containerStillEndsWithParagraph
         ? { kind: "remove", sectionDestination }
         : { kind: "keep", sectionDestination };
