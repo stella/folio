@@ -17,7 +17,6 @@
     "packages/*"
   ],
   "type": "module",
-  "trustedDependencies": [],
   "scripts": {
     "clean": "git clean -xdf packages/*/dist .cache .turbo node_modules",
     "hooks:install": "lefthook install",
@@ -213,5 +212,6 @@
     "undici": "8.12.2",
     "valibot": "1.5.0"
   },
-  "packageManager": "bun@1.4.4"
+  "packageManager": "bun@1.4.4",
+  "trustedDependencies": []
 }

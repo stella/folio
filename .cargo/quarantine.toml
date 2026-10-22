@@ -1,3 +1,2 @@
 # Crate versions admitted before the five-day quarantine.
-excludes = [
-]
+excludes = []
