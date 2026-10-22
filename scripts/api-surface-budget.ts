@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { Result, TaggedError, panic } from "better-result";
 
@@ -38,6 +46,12 @@ const METRICS = {
   declarationBytes: BYTE_FLOOR,
   declarationLines: LINE_FLOOR,
 } as const satisfies Record<keyof SurfaceSize, number>;
+const EMPTY_SURFACE = {
+  reportBytes: 0,
+  reportLines: 0,
+  declarationBytes: 0,
+  declarationLines: 0,
+} as const satisfies SurfaceSize;
 
 const isSize = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
@@ -185,8 +199,12 @@ export const evaluateBudget = (
   const failures: string[] = [];
   const warnings: string[] = [];
   for (const [name, size] of measured) {
-    const baseSize = base.get(name) ?? panic("Missing base API surface", { name });
-    const maximumSize = budget.get(name) ?? panic("Missing API surface budget", { name });
+    const baseSize = base.get(name) ?? EMPTY_SURFACE;
+    const maximumSize = budget.get(name);
+    if (maximumSize === undefined) {
+      failures.push(`Missing ${name} API surface budget`);
+      continue;
+    }
     for (const metric of METRIC_NAMES) {
       const current = size[metric];
       const previous = baseSize[metric];
@@ -262,6 +280,11 @@ const measureBase = (revision: string): Baseline => {
     if (build.exitCode !== 0) throw new Error("Cannot build the base API declaration surface.");
     const sizes = new Map<PackageName, SurfaceSize>();
     for (const name of PACKAGES) {
+      const packageDirectory = path.join(worktree, "packages", name);
+      if (!existsSync(packageDirectory)) {
+        sizes.set(name, EMPTY_SURFACE);
+        continue;
+      }
       const reportDirectory = path.join(worktree, "api-reports", name);
       const reports = measureFiles(
         reportDirectory,
@@ -269,7 +292,7 @@ const measureBase = (revision: string): Baseline => {
           .filter((file) => file.endsWith(".api.md"))
           .toSorted(),
       );
-      const distDirectory = path.join(worktree, "packages", name, "dist");
+      const distDirectory = path.join(packageDirectory, "dist");
       const declarations = measureFiles(
         distDirectory,
         readdirSync(distDirectory, { recursive: true })

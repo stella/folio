@@ -12,6 +12,20 @@ const size = (reportLines: number): SurfaceSize => ({
 const surfaces = (reportLines: number) => new Map([["docx-core", size(reportLines)]]);
 
 describe("API surface budget comparison", () => {
+  test("a new package with a committed budget passes", () => {
+    expect(evaluateBudget(new Map(), surfaces(4_223), surfaces(4_223))).toEqual({
+      failures: [],
+      warnings: [],
+    });
+  });
+
+  test("a new package without a committed budget fails and names the package", () => {
+    expect(evaluateBudget(new Map(), surfaces(4_223), new Map())).toEqual({
+      failures: ["Missing docx-core API surface budget"],
+      warnings: [],
+    });
+  });
+
   test("growth without a budget bump fails and identifies the required bump", () => {
     const result = evaluateBudget(surfaces(4_222), surfaces(4_223), surfaces(4_023));
 
