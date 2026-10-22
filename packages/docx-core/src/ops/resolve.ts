@@ -25,8 +25,10 @@ import type {
   ParagraphPropertyChange,
   Run,
   RunPropertyChange,
+  Table,
 } from "../model/document";
 import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
+import { paragraphMarkOutcome } from "./blockDeletion";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { isCommentExhausted } from "./comments";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
@@ -40,7 +42,7 @@ import {
   rebuildNode,
   sameOwnFields,
 } from "./leaves";
-import { paragraphLength } from "./offsets";
+import { paragraphHoldsContent, paragraphLength } from "./offsets";
 import { identitySlots, withInlineIdentity } from "./slots";
 import { canonicalDeferredGroups } from "./identity";
 import { joinParagraphSeam } from "./inline";
@@ -66,6 +68,64 @@ export type ApplyOps = (
 
 const refusal = (op: ResolveRevisionOp, reason: DocumentOpRefusal["reason"], message: string) =>
   new DocumentOpRefusal({ message, reason, opType: op.type });
+
+/** Prepends a retired paragraph's content to the paragraph in a table's first cell. */
+const runParagraphIntoTable = (paragraph: Paragraph, table: Table): Table | undefined => {
+  const row = table.rows.at(0);
+  const cell = row?.cells.at(0);
+  const target = cell?.content.at(0);
+  if (!row || !cell || !target) return undefined;
+  if (target.type === "table") {
+    const nested = runParagraphIntoTable(paragraph, target);
+    if (!nested) return undefined;
+    return {
+      ...table,
+      rows: [
+        {
+          ...row,
+          cells: [{ ...cell, content: [nested, ...cell.content.slice(1)] }, ...row.cells.slice(1)],
+        },
+        ...table.rows.slice(1),
+      ],
+    };
+  }
+  if (target.type !== "paragraph") return undefined;
+  const survivor = {
+    ...target,
+    content: joinParagraphSeam(paragraph.content, target.content),
+  };
+  return {
+    ...table,
+    rows: [
+      {
+        ...row,
+        cells: [{ ...cell, content: [survivor, ...cell.content.slice(1)] }, ...row.cells.slice(1)],
+      },
+      ...table.rows.slice(1),
+    ],
+  };
+};
+
+const tableCanReceiveParagraphRunIn = (paragraph: Paragraph, table: Table): boolean => {
+  if (paragraph.sectionProperties !== undefined) return false;
+  let current = table;
+  for (;;) {
+    const row = current.rows.at(0);
+    const cell = row?.cells.at(0);
+    if (!row || !cell) return false;
+    if (
+      row.structuralChange?.type === "tableRowInsertion" ||
+      row.structuralChange?.type === "tableRowDeletion" ||
+      cell.structuralChange !== undefined
+    ) {
+      return false;
+    }
+    const target = cell.content.at(0);
+    if (target?.type === "paragraph") return target.sectionProperties === undefined;
+    if (target?.type !== "table") return false;
+    current = target;
+  }
+};
 
 /** Whether a decision removes the content of a tracked change of this kind. */
 const removesContent = (node: InlineNode, decision: RevisionDecision): boolean =>
@@ -1144,19 +1204,15 @@ const joinOps = (
   const blocks = blockListAt(body.content, location.list);
   const next = blocks[location.index + 1];
   const empty = paragraphLength(paragraph) === 0;
-  if (
-    next?.type === "table" &&
-    next.rows.some((row) => row.structuralChange?.type === "tableRowInsertion")
-  ) {
-    return Result.err(
-      refusal(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        "Resolve the inserted table before removing its preceding paragraph break.",
-      ),
-    );
-  }
   if (next?.type === "paragraph") {
+    const outcome = paragraphMarkOutcome({
+      follows: "paragraph",
+      holdsContent: !empty,
+      markWasAdded: added,
+      containerStillEndsWithParagraph: true,
+      followingTableCanReceiveRunIn: false,
+    });
+    if (outcome.kind !== "join") return panic("A following paragraph always receives a join.");
     // The mark that goes takes the paragraph's properties with it: the next
     // paragraph is left, whole, with the first's content before its own.
     const firstEnds = ends.get(idKey(paraId)) ?? NO_EMPTIED_ENDS;
@@ -1220,18 +1276,88 @@ const joinOps = (
     );
   }
   // No paragraph to join: a table follows, or the paragraph ends its container.
+  const containerFinal = endsItsContainer(body, location);
   // A cell-ending mark describes the terminator, not a paragraph to retire.
-  const cellFinal =
-    endsItsContainer(body, location) && location.list.some((step) => step.kind === "tableCell");
-  const canGo = !cellFinal && (added || !endsItsContainer(body, location));
-  if (empty && canGo && blocks.length > 1) {
+  const cellFinal = containerFinal && location.list.some((step) => step.kind === "tableCell");
+  const outcome = paragraphMarkOutcome({
+    follows: next?.type === "table" ? "table" : "nothing",
+    holdsContent: paragraphHoldsContent(paragraph),
+    markWasAdded: added,
+    containerStillEndsWithParagraph:
+      next?.type === "table"
+        ? blocks.at(-1)?.type === "paragraph"
+        : // Removing the final paragraph leaves the block before it last.
+          containerFinal && !cellFinal && blocks.at(location.index - 1)?.type === "paragraph",
+    followingTableCanReceiveRunIn:
+      next?.type === "table" && tableCanReceiveParagraphRunIn(paragraph, next),
+    tableRemovalIsTrackable:
+      next?.type !== "table" ||
+      (blocks.at(-1)?.type === "paragraph" && tableCanReceiveParagraphRunIn(paragraph, next)),
+  });
+  if (outcome.kind === "refuse") {
     return Result.err(
       refusal(
         op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `Resolving the mark of ${paraId} removes the paragraph, which is a block operation.`,
+        outcome.reason,
+        `Resolving the mark of ${paraId} would leave its container without a final paragraph.`,
       ),
     );
+  }
+  if (
+    (outcome.kind === "remove" || outcome.kind === "run-in") &&
+    blocks.length > 1 &&
+    next?.type === "table"
+  ) {
+    const anchor = blocks.find(
+      (block, index): block is Paragraph => index !== location.index && block.type === "paragraph",
+    );
+    if (anchor === undefined) {
+      return Result.err(
+        refusal(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          `Resolving the mark of ${paraId} leaves no structural inverse anchor.`,
+        ),
+      );
+    }
+    const replacement = outcome.kind === "remove" ? next : runParagraphIntoTable(paragraph, next);
+    if (replacement === undefined) {
+      return Result.err(
+        refusal(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          `Resolving the mark of ${paraId} cannot run into the table's first cell paragraph.`,
+        ),
+      );
+    }
+    return Result.ok([
+      {
+        type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+        story,
+        blockId: anchor.paraId ?? "",
+        expected: blocks,
+        blocks: blocks.flatMap((block, index) => {
+          if (index === location.index) return [];
+          return index === location.index + 1 ? [replacement] : [block];
+        }),
+      },
+    ]);
+  }
+  if (outcome.kind === "remove" && blocks.length > 1) {
+    const anchor = blocks.find(
+      (block, index): block is Paragraph => index !== location.index && block.type === "paragraph",
+    );
+    if (anchor !== undefined) {
+      return Result.ok([
+        {
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+          story,
+          blockId: anchor.paraId ?? "",
+          expected: blocks,
+          blocks: blocks.filter((_, index) => index !== location.index),
+        },
+      ]);
+    }
   }
   const review = reviewFieldsOf(paragraph);
   delete review.pPrMark;
