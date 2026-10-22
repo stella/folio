@@ -417,7 +417,7 @@ verify_shell_environment() {
 
 [[ -f 'rust-toolchain.toml' && ! -L 'rust-toolchain.toml' ]] && [[ "$(sha256sum -- 'rust-toolchain.toml' | cut -d ' ' -f1)" == '607c9c0fcd9502cf74cb6b8c38cdf6381bec749e7560e82062c6f64a9f556659' ]] || fail 'rust-toolchain.toml changed; regenerate cloud-setup.sh'
 [[ ! -e 'rust-toolchain' && ! -L 'rust-toolchain' ]] || fail 'rust-toolchain appeared; regenerate cloud-setup.sh'
-[[ -f 'Cargo.lock' && ! -L 'Cargo.lock' ]] && [[ "$(sha256sum -- 'Cargo.lock' | cut -d ' ' -f1)" == '597b778597a244a86d89011cbd30f7e74f027652557b48a898be61cd394bba93' ]] || fail 'Cargo.lock changed; regenerate cloud-setup.sh'
+[[ -f 'Cargo.lock' && ! -L 'Cargo.lock' ]] && [[ "$(sha256sum -- 'Cargo.lock' | cut -d ' ' -f1)" == '2b6eea2221f43074cfedc7e760f6f87ad6c5ed33b0dc3c0efb76c237d9d8e685' ]] || fail 'Cargo.lock changed; regenerate cloud-setup.sh'
 
 
 
