@@ -1005,14 +1005,18 @@ const paragraphRequest = (
       fields.listLevel = ANY;
     } else if (numbering["kind"] === "inherit") {
       const effective = styleNumbering;
-      fields.listLevel = effective?.kind === "reference" ? (effective.ilvl ?? 0) : undefined;
+      const reference =
+        effective?.kind === "reference" && numberingKind(model, effective) === "listItem"
+          ? { numId: effective.numId, level: effective.ilvl ?? 0 }
+          : undefined;
+      fields.listLevel = reference?.level;
       if ((pre ?? inherited) && preKind !== "heading")
         fields.kind = numberingKind(model, effective);
       checks.push((row) => {
-        if (effective?.kind === "reference") {
-          return row.listReference?.numId === effective.numId
+        if (reference) {
+          return row.listReference?.numId === reference.numId
             ? null
-            : `style numbering ${effective.numId} was lost or changed`;
+            : `style numbering ${reference.numId} was lost or changed`;
         }
         return row.listReference === undefined
           ? null

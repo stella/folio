@@ -130,6 +130,27 @@ const assertReaders = (reviewer: FolioDocxReviewer, expected: Expected[]): void 
 };
 
 describe("paragraph list reader agreement", () => {
+  test("without a numbering part, a paragraph's own cancellation wins over its list projection", () => {
+    const projection = { marker: "1.", level: 0, numId: 1, isBullet: false };
+    expect(
+      resolveParagraphList({ numPr: { kind: "none" }, numPrFromStyle: undefined }, null, projection)
+        .kind,
+    ).toBe("none");
+    expect(
+      resolveParagraphList(
+        {
+          numPr: { kind: "none" },
+          numPrFromStyle: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
+        },
+        null,
+        projection,
+      ).kind,
+    ).toBe("none");
+    expect(
+      resolveParagraphList({ numPr: undefined, numPrFromStyle: undefined }, null, projection).kind,
+    ).toBe("marker");
+  });
+
   test("an inherited style reference resolves through the numbering owner", () => {
     const definitions: NumberingDefinitions = {
       abstractNums: [
@@ -161,6 +182,32 @@ describe("paragraph list reader agreement", () => {
         createNumberingMap(definitions),
       ).kind,
     ).toBe("marker");
+  });
+
+  test("a reference to an undefined level retains provenance without becoming a list", () => {
+    const numbering = createNumberingMap({
+      abstractNums: [
+        {
+          abstractNumId: 1,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
+      ],
+      nums: [{ numId: 5, abstractNumId: 1 }],
+    });
+
+    expect(
+      resolveParagraphList(
+        {
+          numPr: paragraphNumberingReference({ numId: 5, ilvl: 8 }),
+          numPrFromStyle: undefined,
+        },
+        numbering,
+      ),
+    ).toEqual({
+      kind: "markerless",
+      reason: "levelNotDefined",
+      reference: paragraphNumberingReference({ numId: 5, ilvl: 8 }),
+    });
   });
 
   test("all readers and save/reopen follow the numbering-level owner", async () => {

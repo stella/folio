@@ -18,7 +18,12 @@ import {
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { createListLabelCounter } from "../prosemirror/listLabels";
 import type { NumberingMap } from "../docx/numberingParser";
-import { paragraphNumberingAttr, readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
+import {
+  effectiveParagraphNumberingReference,
+  paragraphNumberingAttr,
+  paragraphNumberingSourcesFromBoundary,
+  readParagraphNumberingAttr,
+} from "../prosemirror/numberingAttr";
 import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphIndentation } from "../prosemirror/paragraphIndentation";
@@ -863,10 +868,11 @@ const createFolioAIEditSnapshotInternal = (
     }
     usedBlockIds.add(id);
     const headingLevel = getHeadingLevel(node, builtInStyles);
-    const visibleList =
+    const listAttrs =
       node.type.name === "paragraph"
-        ? nextListLabel(snapshotListAttrs(expectParagraphAttrs(node), styleResolver))
+        ? snapshotListAttrs(expectParagraphAttrs(node), styleResolver)
         : undefined;
+    const visibleList = listAttrs === undefined ? undefined : nextListLabel(listAttrs);
     const listLabel = visibleList?.label;
     const kind = getBlockKind(headingLevel, visibleList?.kind === "marker");
     const displayLabel = getDisplayLabel(node, listLabel, kind === "heading");
@@ -875,12 +881,21 @@ const createFolioAIEditSnapshotInternal = (
       node.type.name === "paragraph"
         ? expectParagraphAttrs(node)._originalFormatting?.outlineLevel
         : undefined;
+    const numberedListReference =
+      listAttrs === undefined
+        ? undefined
+        : effectiveParagraphNumberingReference(
+            paragraphNumberingSourcesFromBoundary({
+              numPr: listAttrs.numPr,
+              numPrFromStyle: listAttrs.numPrFromStyle,
+            }),
+          );
     const listReference =
-      displayLabel === undefined || visibleList?.numbering === undefined
+      visibleList?.kind !== "marker" || numberedListReference === undefined
         ? undefined
         : {
-            numId: visibleList.numbering.numId,
-            level: visibleList.numbering.ilvl,
+            numId: numberedListReference.numId,
+            level: numberedListReference.ilvl,
           };
     const numberingReferenceKey = listReference
       ? `${String(listReference.numId)}:${String(listReference.level)}`
@@ -1009,6 +1024,19 @@ const snapshotListAttrs = (
   styleResolver: RunStyleResolver | null,
 ) => {
   if (styleResolver === null) return attrs;
+  const needsStyleNumbering =
+    typeof attrs.styleId === "string" ||
+    (attrs.numPrFromStyle !== null && attrs.numPrFromStyle !== undefined) ||
+    attrs.numPr?.kind === "levelOnly" ||
+    attrs._propertyChanges?.some(
+      ({ previousFormatting }) =>
+        previousFormatting !== undefined &&
+        (typeof previousFormatting.styleId === "string" ||
+          (previousFormatting.numPrFromStyle !== null &&
+            previousFormatting.numPrFromStyle !== undefined) ||
+          previousFormatting.numPr?.kind === "levelOnly"),
+    ) === true;
+  if (!needsStyleNumbering) return attrs;
   const styleNumbering = (styleId: unknown) =>
     styleResolver.resolveParagraphStyle(typeof styleId === "string" ? styleId : null)
       .paragraphFormatting?.numPr;

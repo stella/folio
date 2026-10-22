@@ -37,7 +37,10 @@ import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { repackWithEditorSectionRemovals } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
-import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
+import {
+  createDocumentNumberingPlugin,
+  getDocumentNumbering,
+} from "../prosemirror/plugins/documentNumbering";
 import {
   createDocumentStylesPlugin,
   getDocumentStyleResolver,
@@ -445,9 +448,11 @@ export const placeSelection = (
 export type ContentSummary = readonly Record<string, unknown>[];
 
 export const summarizeState = (state: EditorState): ContentSummary =>
-  createFolioAIEditSnapshotWithStyleResolver(state.doc, getDocumentStyleResolver(state)).blocks.map(
-    stripBlockIdentity,
-  );
+  createFolioAIEditSnapshotWithStyleResolver(
+    state.doc,
+    getDocumentStyleResolver(state),
+    getDocumentNumbering(state),
+  ).blocks.map(stripBlockIdentity);
 
 export const summarizeReviewer = (reviewer: FolioDocxReviewer): ContentSummary =>
   reviewer.getContent().map(stripBlockIdentity);

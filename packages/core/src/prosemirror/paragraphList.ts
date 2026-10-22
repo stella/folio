@@ -73,8 +73,13 @@ export const resolveParagraphList = (
       : resolved;
   switch (effective.kind) {
     case "none": {
-      // A package-free canonical model can carry its list projection directly.
-      if (numbering === null && standaloneRendering !== undefined) {
+      // A package-free canonical model can carry its list projection directly,
+      // unless the paragraph's own numbering cancels the list.
+      if (
+        numbering === null &&
+        standaloneRendering !== undefined &&
+        sources.numPr?.kind !== "none"
+      ) {
         const reference = paragraphNumberingReference({
           numId: standaloneRendering.numId,
           ilvl: standaloneRendering.level,
