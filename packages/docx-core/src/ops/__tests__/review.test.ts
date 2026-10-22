@@ -1506,3 +1506,83 @@ test("a new first split half records its own review without moving the surviving
   ]);
   expect(second?.type === "paragraph" && second.propertyChanges).toEqual([pending]);
 });
+
+describe("whole-document revision rejection", () => {
+  test("preserves an unchanged section-ending follower after removing a nested note reference", () => {
+    const sectionProperties = { pageWidth: 11906 };
+    const first = paragraph(
+      "00000001",
+      [
+        {
+          type: "insertion",
+          info: { id: 1, author: "A" },
+          content: [
+            {
+              type: "hyperlink",
+              rId: "rId9",
+              href: "https://example.org",
+              children: [{ type: "run", content: [{ type: "footnoteRef", id: 2 }] }],
+            },
+          ],
+        },
+      ],
+      {
+        propertyChanges: [
+          {
+            type: "paragraphPropertyChange",
+            info: { id: 2, author: "A" },
+            previousFormatting: { alignment: "end" },
+          },
+        ],
+        sectionProperties,
+      },
+    );
+    const inserted = paragraph("00000002", [], {
+      pPrMark: { kind: "ins", info: { id: 3, author: "A" } },
+    });
+    const follower = paragraph("00000003", [], { sectionProperties });
+    const cellTable = {
+      type: "table",
+      columnWidths: [2400, 2400],
+      rows: [
+        {
+          type: "tableRow",
+          cells: [{ type: "tableCell", content: [inserted, follower] }],
+          preservedAttributes: [{ name: "rsidTr", value: "00ABCDEF" }],
+        },
+      ],
+    } as const;
+    const finalSectionProperties = { pageWidth: 12240, pageHeight: 15840 };
+    const document: Document = {
+      package: {
+        document: {
+          content: [first, cellTable],
+          sections: [
+            { properties: sectionProperties, content: [first] },
+            { properties: finalSectionProperties, content: [cellTable] },
+          ],
+          finalSectionProperties,
+          comments: [{ id: 7, author: "A", content: [paragraph("7FFFFFF0", [])] }],
+        },
+        footnotes: [{ type: "footnote", id: 2, content: [paragraph("7FFFFFF1", [])] }],
+        settings: { defaultTabStop: 720 },
+        properties: { title: "synthetic" },
+      },
+      warnings: ["kept"],
+    };
+
+    const result = applied(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [1, 2, 3],
+      decision: REVISION_DECISIONS.REJECT,
+    });
+    const remaining = result.document.package.document.content[1];
+    expect(remaining?.type).toBe("table");
+    if (remaining?.type !== "table") throw new Error("The table must remain.");
+
+    expect(remaining.rows[0]?.cells[0]?.content[0]).toBe(follower);
+    expect(result.touched.modified).not.toContain("00000003");
+    expect(result.document.package.footnotes).toBeUndefined();
+  });
+});
