@@ -33,6 +33,23 @@ describe("resolveNumberingLevel", () => {
     ).toEqual({ kind: "undefined", reason: "noAbstract" });
   });
 
+  test("a full override resolves although its instance's abstract definition is missing", () => {
+    const override = level(0, { numFmt: "upperRoman" });
+    expect(
+      resolveNumberingLevel(
+        definitions({
+          nums: [{ numId: 1, abstractNumId: 9, levelOverrides: [{ ilvl: 0, lvl: override }] }],
+        }),
+        1,
+        0,
+      ),
+    ).toEqual({ kind: "level", level: override, source: "override" });
+    // Without an override, the same dangling instance still has no level.
+    expect(
+      resolveNumberingLevel(definitions({ nums: [{ numId: 1, abstractNumId: 9 }] }), 1, 0),
+    ).toEqual({ kind: "undefined", reason: "noAbstract" });
+  });
+
   test("full overrides define an otherwise absent level", () => {
     const override = level(2, { numFmt: "lowerLetter" });
     expect(

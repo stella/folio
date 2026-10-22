@@ -47,13 +47,8 @@ export const resolveNumberingLevel = (
   const instance = firstById(definitions.nums, (candidate) => candidate.numId, numId);
   if (!instance) return { kind: "undefined", reason: "noInstance" };
 
-  const abstract = firstById(
-    definitions.abstractNums,
-    (candidate) => candidate.abstractNumId,
-    instance.abstractNumId,
-  );
-  if (!abstract) return { kind: "undefined", reason: "noAbstract" };
-
+  // A full level override is a complete level definition of its own, so it
+  // resolves even when the instance's abstract definition is missing.
   const override = instance.levelOverrides?.find((candidate) => candidate.ilvl === ilvl);
   if (override?.lvl) {
     return {
@@ -65,6 +60,13 @@ export const resolveNumberingLevel = (
       source: "override",
     };
   }
+
+  const abstract = firstById(
+    definitions.abstractNums,
+    (candidate) => candidate.abstractNumId,
+    instance.abstractNumId,
+  );
+  if (!abstract) return { kind: "undefined", reason: "noAbstract" };
 
   let levelOwner = abstract;
   let source: "abstract" | "styleLink" = "abstract";
