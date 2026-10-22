@@ -108,35 +108,19 @@ test.each(["key:Enter", "host:cut"])(
   },
 );
 
-test.each(EDITOR_MODES)(
-  "table activation contracts match the declared fixture features in %s",
-  (mode) => {
-    const cases = DOCUMENT_SHAPES.map(({ id }) => ({ ...CASE, shape: id, mode }));
-    const rows = declareCanonicalRefusalCases(cases);
-    const activationShapes = cases
-      .filter((key) =>
-        rows
-          .get(canonicalRefusalCaseId(key))
-          ?.some(({ gap }) => gap === CANONICAL_GAP.tableActivation),
-      )
-      .map(({ shape }) => shape);
-    const tableShapes = DOCUMENT_SHAPES.filter(
-      ({ features }) =>
-        features.includes("table") ||
-        features.includes("nested-table") ||
-        features.includes("merged-cells"),
-    ).map(({ id }) => id);
-    expect(activationShapes.toSorted()).toEqual(tableShapes.toSorted());
-    expect(rows.get(canonicalRefusalCaseId({ ...CASE, shape: "tables", mode }))).toEqual([
-      {
-        id: "table-session-activation",
-        gap: CANONICAL_GAP.tableActivation,
-        message: "Canonical sessions cannot activate documents containing tables.",
-      },
-    ]);
-    expect(rows.get(canonicalRefusalCaseId({ ...CASE, mode }))).toEqual([]);
-  },
-);
+test.each(EDITOR_MODES)("table fixtures have no activation refusal in %s", (mode) => {
+  const cases = DOCUMENT_SHAPES.map(({ id }) => ({ ...CASE, shape: id, mode }));
+  const rows = declareCanonicalRefusalCases(cases);
+  const tableShapes = DOCUMENT_SHAPES.filter(
+    ({ features }) =>
+      features.includes("table") ||
+      features.includes("nested-table") ||
+      features.includes("merged-cells"),
+  ).map(({ id }) => id);
+  for (const shape of tableShapes)
+    expect(rows.get(canonicalRefusalCaseId({ ...CASE, shape, mode }))).toEqual([]);
+  expect(rows.get(canonicalRefusalCaseId({ ...CASE, mode }))).toEqual([]);
+});
 
 // Inject the same ledger ids the old planner preview automatically allowed.
 // The control proves bold is supported; the ablation must fail the conformance oracle.
@@ -222,35 +206,6 @@ test("a supported command losing its descriptor fails standing conformance in bo
     "unexpected",
     "unexpected",
   ]);
-});
-
-test("unsupported note insertion has an explicit ledger-keyed conformance contract", async () => {
-  const key = { ...CASE, operation: "command:insertFootnote", placement: "caret-middle" } as const;
-  const operation = CONFORMANCE_OPERATIONS.find(({ id }) => id === key.operation);
-  if (!operation) throw new TypeError("Explicit descriptor-gap case is absent");
-  const refusalCases = declareCanonicalRefusalCases(EDITOR_MODES.map((mode) => ({ ...key, mode })));
-  const row = {
-    id: CANONICAL_GAP.commands,
-    gap: CANONICAL_GAP.dispatch,
-    message: "Unclassified native text is unavailable in this session.",
-  };
-  expect([...refusalCases.values()]).toEqual([[row], [row]]);
-  const result = await runConformanceCase({
-    shape: documentShape(key.shape),
-    operation,
-    placement: key.placement,
-    refusalCases,
-  });
-  expect(result?.runs).toEqual({ editing: "refused", suggesting: "refused" });
-  expect(result?.violations).toEqual([]);
-  expect(result?.refusals).toEqual(
-    EDITOR_MODES.map(() => ({
-      gap: row.gap,
-      message: row.message,
-      row: row.id,
-      expectation: "declared",
-    })),
-  );
 });
 
 test("TOC refusal applicability matches every fixture's source headings", async () => {

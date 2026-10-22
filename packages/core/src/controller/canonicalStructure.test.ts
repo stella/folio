@@ -3,7 +3,8 @@ import fc from "fast-check";
 import JSZip from "jszip";
 import { panic } from "better-result";
 import { EditorState, TextSelection } from "prosemirror-state";
-import { paragraphLogicalText, type TextPosition } from "@stll/docx-core/ops";
+import { paragraphIdsIn, paragraphLogicalText, type TextPosition } from "@stll/docx-core/ops";
+import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Document } from "../types/document";
 import { schema, singletonManager } from "../prosemirror/schema";
@@ -13,6 +14,7 @@ import { directionToAuthoredBidi } from "../prosemirror/paragraphDirection";
 import { TAB_STOP_ALIGNMENT_VALUES, TAB_LEADER_VALUES } from "../types/documentEnumValues";
 import { createDocx } from "../docx/rezip";
 import { parseDocx } from "../docx/parser";
+import { fromMarkdown } from "../markdown/fromMarkdown";
 import {
   assignDocumentParagraphPropertySourceContract,
   cloneDocumentWithParagraphPropertySources,
@@ -27,6 +29,8 @@ import {
   type CanonicalSession,
 } from "./canonicalSession";
 import { prepareCanonicalAutoformat, prepareCanonicalCommands } from "./canonicalStructure";
+import { projectCanonicalInline } from "./canonicalInlineProjection";
+import { collectPairedBookmarkIds } from "../prosemirror/conversion/toProseDoc";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
@@ -66,17 +70,94 @@ const accept = (session: CanonicalSession, state: EditorState, commit: Canonical
     return token === undefined ? [] : [token];
   });
   expect(new Set(sourceTokens).size).toBe(sourceTokens.length);
+  const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs(session));
   for (const paragraph of paragraphs(session)) {
     const address =
       session.projection.paragraph(paragraph.paraId ?? "") ?? panic("Projection lost a paragraph.");
-    expect(address.node.textBetween(0, address.node.content.size, "", "\uFFFC")).toBe(
-      paragraphLogicalText(paragraph),
-    );
+    const projected = projectCanonicalInline({
+      source: paragraph,
+      paragraph: address.node,
+      pairedBookmarkIds,
+    }).unwrap();
+    expect(projected.text).toBe(paragraphLogicalText(paragraph));
   }
   return applied.state;
 };
 const select = (state: EditorState, from: number, to = from) =>
   state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)));
+
+test.each([
+  ["toggle bullet", { type: "toggleList", kind: "bullet" } as const],
+  ["toggle numbered", { type: "toggleList", kind: "decimal" } as const],
+  ["restart numbering", { type: "restartNumbering", start: 4 } as const],
+  ["continue numbering", { type: "continueNumbering" } as const],
+])("%s stays inside a table-cell block container with exact undo", (_name, command) => {
+  const document = fromMarkdown("1. Before\n\n| Head |\n|---|\n| Target |\n\n1. After");
+  const table = document.package.document.content.at(1);
+  if (table?.type !== "table") return panic("Expected the table fixture.");
+  const cell = table.rows.at(1)?.cells.at(0);
+  const target = cell?.content.at(0);
+  if (cell === undefined || target?.type !== "paragraph")
+    return panic("Expected the target cell paragraph.");
+  const preceding = structuredClone(target);
+  preceding.content = [{ type: "run", content: [{ type: "text", text: "Cell list" }] }];
+  preceding.formatting = {
+    numPr: { kind: "reference", numId: command.type === "toggleList" ? 2 : 1, ilvl: 0 },
+  };
+  // The canonical model has no empty formatting: an unformatted paragraph omits it.
+  if (command.type === "toggleList") Reflect.deleteProperty(target, "formatting");
+  else target.formatting = { numPr: { kind: "reference", numId: 2, ilvl: 0 } };
+  cell.content = [preceding, target];
+  let paragraphId = 1;
+  for (const block of document.package.document.content) {
+    if (block.type === "paragraph") block.paraId = (paragraphId++).toString(16).padStart(8, "0");
+    if (block.type !== "table") continue;
+    for (const row of block.rows)
+      for (const tableCell of row.cells)
+        for (const paragraph of tableCell.content)
+          if (paragraph.type === "paragraph")
+            paragraph.paraId = (paragraphId++).toString(16).padStart(8, "0");
+  }
+
+  const session = createCanonicalSession(document).unwrap();
+  let state = EditorState.create({ schema, doc: session.projection.doc });
+  let targetPosition: number | undefined;
+  state.doc.descendants((node, position) => {
+    if (node.type.name === "paragraph" && node.textContent === "Target") targetPosition = position;
+  });
+  if (targetPosition === undefined) return panic("Projection lost the target cell paragraph.");
+  state = select(state, targetPosition + 1);
+  const before = session.document;
+  const bodyBefore = [before.package.document.content.at(0), before.package.document.content.at(2)];
+  state = publishCanonicalProjection({
+    session,
+    state,
+    commit: prepareCanonicalCommands(session, state, [command]).unwrap(),
+  }).unwrap().state;
+  expect([
+    session.document.package.document.content.at(0),
+    session.document.package.document.content.at(2),
+  ]).toStrictEqual(bodyBefore);
+  const changedTable = session.document.package.document.content.at(1);
+  const changed =
+    changedTable?.type === "table"
+      ? changedTable.rows.at(1)?.cells.at(0)?.content.at(1)
+      : undefined;
+  expect(changed).not.toStrictEqual(target);
+  if (command.type === "toggleList" && command.kind === "decimal")
+    expect(changed?.type === "paragraph" ? changed.formatting?.numPr : undefined).toEqual({
+      kind: "reference",
+      numId: 2,
+      ilvl: 0,
+    });
+  state = publishCanonicalProjection({
+    session,
+    state,
+    commit: session.prepareUndo(state).unwrap(),
+  }).unwrap().state;
+  expect(session.document).toStrictEqual(before);
+  expect(session.canUndo).toBe(false);
+});
 
 const kinds = ["split", "join", "run", "paragraph", "atom", "list", "input"] as const;
 const inputArbitrary = fc.record({
@@ -84,6 +165,171 @@ const inputArbitrary = fc.record({
   offset: fc.nat(1000),
   reverse: fc.boolean(),
   bold: fc.boolean(),
+});
+
+test("section and note command batches have exact canonical inverses", () => {
+  const document = seed();
+  const session = createCanonicalSession(document).unwrap();
+  let state = EditorState.create({ schema, doc: session.projection.doc });
+  state = select(state, 3);
+  const original = session.document;
+
+  const sectionCommand = singletonManager.requireCommand("insertSectionBreak")("continuous");
+  const sectionIntents =
+    getCanonicalCommandIntents(sectionCommand, state) ?? panic("Missing section descriptor.");
+  state = accept(session, state, prepareCanonicalCommands(session, state, sectionIntents).unwrap());
+  expect(paragraphs(session).at(0)?.sectionProperties?.sectionStart).toBe("continuous");
+  state = accept(session, state, session.prepareUndo(state).unwrap());
+  expect(session.document).toStrictEqual(original);
+
+  const content = [
+    {
+      type: "paragraph" as const,
+      content: [{ type: "run" as const, content: [{ type: "text" as const, text: "A note." }] }],
+    },
+  ];
+  const noteCommand = singletonManager.requireCommand("insertFootnote")(1, content);
+  const noteIntents =
+    getCanonicalCommandIntents(noteCommand, state) ?? panic("Missing note descriptor.");
+  state = accept(session, state, prepareCanonicalCommands(session, state, noteIntents).unwrap());
+  expect(session.document.package.footnotes?.at(0)?.content).toHaveLength(1);
+  expect(state.doc.textContent).toContain("1");
+  state = accept(session, state, session.prepareUndo(state).unwrap());
+  expect(session.document).toStrictEqual(original);
+});
+
+test("section break commands apply to every selected paragraph in both editor modes", () => {
+  for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Reviewer" }] as const) {
+    const session = createCanonicalSession(seed()).unwrap();
+    session.setMode(mode);
+    let state = EditorState.create({ schema, doc: session.projection.doc });
+    state = select(state, 2, state.doc.content.size - 2);
+    const original = session.document;
+    const command = singletonManager.requireCommand("insertSectionBreak")("nextPage");
+    const intents =
+      getCanonicalCommandIntents(command, state) ?? panic("Missing section descriptor.");
+    state = accept(session, state, prepareCanonicalCommands(session, state, intents).unwrap());
+    expect(
+      paragraphs(session).map(({ sectionProperties }) => sectionProperties?.sectionStart),
+    ).toEqual(["nextPage", "nextPage"]);
+    state = accept(session, state, session.prepareUndo(state).unwrap());
+    expect(session.document).toStrictEqual(original);
+  }
+});
+
+test("note commands insert after selected text in both editor modes with exact undo", () => {
+  for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Reviewer" }] as const) {
+    for (const commandName of ["insertFootnote", "insertEndnote"] as const) {
+      const session = createCanonicalSession(seed()).unwrap();
+      session.setMode(mode);
+      let state = select(EditorState.create({ schema, doc: session.projection.doc }), 2, 3);
+      const original = session.document;
+      const originalDoc = state.doc;
+      const command = singletonManager.requireCommand(commandName)(1, [
+        {
+          type: "paragraph",
+          content: [{ type: "run", content: [{ type: "text", text: "A note." }] }],
+        },
+      ]);
+      const intents =
+        getCanonicalCommandIntents(command, state) ?? panic("Missing note insertion descriptor.");
+
+      state = accept(session, state, prepareCanonicalCommands(session, state, intents).unwrap());
+
+      expect(state.doc.textContent).toBe("ab1😀cdEF");
+      expect(state.selection.empty).toBe(true);
+      expect(state.selection.from).toBe(4);
+      if (mode.type === "suggesting") {
+        expect(JSON.stringify(session.document.package.document.content)).toContain(
+          '"author":"Reviewer"',
+        );
+      }
+
+      state = accept(session, state, session.prepareUndo(state).unwrap());
+      expect(session.document).toStrictEqual(original);
+      expect(state.doc.eq(originalDoc)).toBe(true);
+      expect(state.selection.toJSON()).toEqual({ type: "text", anchor: 2, head: 3 });
+    }
+  }
+});
+
+test("a note batch across paragraphs leaves the caret after its own paragraph's reference", () => {
+  const session = createCanonicalSession(seed()).unwrap();
+  let state = select(EditorState.create({ schema, doc: session.projection.doc }), 3);
+  const content = [
+    {
+      type: "paragraph" as const,
+      content: [{ type: "run" as const, content: [{ type: "text" as const, text: "A note." }] }],
+    },
+  ];
+  // The caret sits after "ab"; the second note goes after "E" in the next paragraph.
+  const intents = [
+    ...(getCanonicalCommandIntents(
+      singletonManager.requireCommand("insertFootnote")(1, content),
+      state,
+    ) ?? panic("Missing note descriptor.")),
+    ...(getCanonicalCommandIntents(
+      singletonManager.requireCommand("insertEndnote")(1, content),
+      select(state, 10),
+    ) ?? panic("Missing note descriptor.")),
+  ];
+
+  state = accept(session, state, prepareCanonicalCommands(session, state, intents).unwrap());
+  expect(session.document.package.footnotes).toHaveLength(1);
+  expect(session.document.package.endnotes).toHaveLength(1);
+  expect(state.selection.toJSON()).toEqual({ type: "text", anchor: 4, head: 4 });
+
+  state = accept(session, state, session.prepareUndo(state).unwrap());
+  state = accept(session, state, session.prepareRedo(state).unwrap());
+  expect(state.selection.toJSON()).toEqual({ type: "text", anchor: 4, head: 4 });
+});
+
+test("note-reference descriptors delete beside a caret or across a range with exact undo", () => {
+  for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Reviewer" }] as const) {
+    for (const selection of ["before", "after", "range"] as const) {
+      const session = createCanonicalSession(seed()).unwrap();
+      let state = select(EditorState.create({ schema, doc: session.projection.doc }), 3);
+      const insert = singletonManager.requireCommand("insertFootnote")(1, [
+        {
+          type: "paragraph",
+          content: [{ type: "run", content: [{ type: "text", text: "A note." }] }],
+        },
+      ]);
+      const insertIntents =
+        getCanonicalCommandIntents(insert, state) ?? panic("Missing note insertion descriptor.");
+      state = accept(
+        session,
+        state,
+        prepareCanonicalCommands(session, state, insertIntents).unwrap(),
+      );
+      const inserted = session.document;
+      session.setMode(mode);
+      let referenceFrom: number | undefined;
+      state.doc.descendants((node, position) => {
+        if (node.marks.some((mark) => mark.type.name === "footnoteRef")) referenceFrom = position;
+      });
+      if (referenceFrom === undefined) panic("Inserted note has no projected reference.");
+      if (selection === "before") state = select(state, referenceFrom);
+      else if (selection === "after") state = select(state, referenceFrom + 1);
+      else state = select(state, referenceFrom, referenceFrom + 1);
+      const remove = singletonManager.requireCommand("deleteNoteRef")();
+      const removeIntents =
+        getCanonicalCommandIntents(remove, state) ?? panic("Missing note deletion descriptor.");
+      state = accept(
+        session,
+        state,
+        prepareCanonicalCommands(session, state, removeIntents).unwrap(),
+      );
+      if (mode.type === "suggesting") {
+        expect(session.document.package.footnotes).toStrictEqual(inserted.package.footnotes);
+        expect(JSON.stringify(session.document.package.document.content)).toContain(
+          '"author":"Reviewer"',
+        );
+      }
+      state = accept(session, state, session.prepareUndo(state).unwrap());
+      expect(session.document).toStrictEqual(inserted);
+    }
+  }
 });
 
 test("list-level commands preserve plain paragraphs and refuse all-plain selections without history", async () => {
@@ -951,10 +1197,12 @@ test("generated direction and tab command histories preserve authored values and
             return panic("Paragraph command seed has a nonparagraph.");
           const bidi = directions.at(index);
           const tabs = tabSets.at(index);
-          paragraph.formatting = {
+          const formatting = finalizeParagraphFormatting({
             ...(bidi === undefined ? {} : { bidi }),
             ...(tabs === undefined ? {} : { tabs }),
-          };
+          });
+          if (formatting === undefined) delete paragraph.formatting;
+          else paragraph.formatting = formatting;
           if (empty) paragraph.content = [];
         }
         for (const mode of [
@@ -1083,4 +1331,65 @@ test("generated direction and tab command histories preserve authored values and
       id: "generated direction and tab command histories preserve authored values and exact inverse",
     },
   );
+});
+
+test("inserted note paragraphs take fresh identities that undo never hands out again", () => {
+  const session = createCanonicalSession(seed()).unwrap();
+  let state = select(EditorState.create({ schema, doc: session.projection.doc }), 3);
+  const bodyIds = new Set(paragraphs(session).map(({ paraId }) => paraId));
+  const content = [
+    {
+      type: "paragraph" as const,
+      paraId: "12345678",
+      content: [{ type: "run" as const, content: [{ type: "text" as const, text: "First." }] }],
+    },
+    {
+      type: "paragraph" as const,
+      content: [{ type: "run" as const, content: [{ type: "text" as const, text: "Second." }] }],
+    },
+  ];
+  const insert = () => {
+    const command = singletonManager.requireCommand("insertFootnote")(1, content);
+    const intents = getCanonicalCommandIntents(command, state) ?? panic("Missing note descriptor.");
+    state = accept(session, state, prepareCanonicalCommands(session, state, intents).unwrap());
+    return paragraphIdsIn(session.document.package.footnotes ?? []);
+  };
+
+  const first = insert();
+  expect(first).toHaveLength(2);
+  expect(new Set(first).size).toBe(2);
+  expect(first.filter((id) => bodyIds.has(id))).toEqual([]);
+
+  state = accept(session, state, session.prepareUndo(state).unwrap());
+  const second = insert();
+  expect(second).toHaveLength(2);
+  expect(second.filter((id) => first.includes(id))).toEqual([]);
+});
+
+test("notes inserted in one batch take disjoint fresh identities", () => {
+  const session = createCanonicalSession(seed()).unwrap();
+  let state = select(EditorState.create({ schema, doc: session.projection.doc }), 3);
+  const bodyIds = new Set(paragraphs(session).map(({ paraId }) => paraId));
+  const content = (label: string) =>
+    ["First", "Second"].map((text) => ({
+      type: "paragraph" as const,
+      content: [
+        { type: "run" as const, content: [{ type: "text" as const, text: `${label} ${text}.` }] },
+      ],
+    }));
+  const intents = [
+    singletonManager.requireCommand("insertFootnote")(1, content("Footnote")),
+    singletonManager.requireCommand("insertEndnote")(1, content("Endnote")),
+  ].flatMap(
+    (command) => getCanonicalCommandIntents(command, state) ?? panic("Missing note descriptor."),
+  );
+  state = accept(session, state, prepareCanonicalCommands(session, state, intents).unwrap());
+
+  const inserted = [
+    ...paragraphIdsIn(session.document.package.footnotes ?? []),
+    ...paragraphIdsIn(session.document.package.endnotes ?? []),
+  ];
+  expect(inserted).toHaveLength(4);
+  expect(new Set(inserted).size).toBe(4);
+  expect(inserted.filter((id) => bodyIds.has(id))).toEqual([]);
 });

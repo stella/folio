@@ -1,0 +1,7 @@
+{
+  "seed": 1101252706,
+  "steps": 16,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "a merge crosses blocks deleted by its batch"
+}

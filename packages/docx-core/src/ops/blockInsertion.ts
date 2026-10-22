@@ -1,7 +1,7 @@
 /** Paragraph insertion, isolated from the inline and table operation implementations. */
 import { Result } from "better-result";
 
-import type { Document, Paragraph } from "../model/document";
+import { finalizeParagraphFormatting, type Document, type Paragraph } from "../model/document";
 import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
 import type { DocumentEdit } from "./edits";
 import { freshenIdentities } from "./identity";
@@ -67,8 +67,14 @@ export const insertBlocks = ({
     expected: [anchor],
     blocks: before ? [...blocks, anchor] : [anchor, ...blocks],
   });
+  const canonicalBlocks = op.blocks.map((paragraph) => {
+    if (finalizeParagraphFormatting(paragraph.formatting) !== undefined) return paragraph;
+    const canonical = { ...paragraph };
+    delete canonical.formatting;
+    return canonical;
+  });
   // Validate incoming identities and model records before creating any review records.
-  const direct = applyOps(document, [replacement(op.blocks)]);
+  const direct = applyOps(document, [replacement(canonicalBlocks)]);
   if (direct.isErr())
     return Result.err(
       new DocumentOpRefusal({
@@ -77,7 +83,7 @@ export const insertBlocks = ({
         opType: op.type,
       }),
     );
-  const insertedIds = new Set(op.blocks.map(({ paraId }) => idKey(paraId ?? "")));
+  const insertedIds = new Set(canonicalBlocks.map(({ paraId }) => idKey(paraId ?? "")));
   const finalMarks = storyParagraphs(storyBody(direct.value.document, op.story)).some(
     (at) =>
       insertedIds.has(idKey(at.paragraph.paraId ?? "")) &&
@@ -103,7 +109,7 @@ export const insertBlocks = ({
     );
   }
   const blocks: Paragraph[] = [];
-  for (const paragraph of op.blocks) {
+  for (const paragraph of canonicalBlocks) {
     const wrapped = wrapTracked({
       items: paragraph.content,
       from: { offset: 0, zeroWidthBefore: 0 },

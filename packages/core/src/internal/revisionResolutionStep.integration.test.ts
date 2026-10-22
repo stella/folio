@@ -327,7 +327,7 @@ test("comment point resolution has replayable maps and exact inverses", () => {
       transaction.doc.descendants((node) => {
         if (node.type.name === "rangeAnchor") pointIds.push(node.attrs["start"].id);
       });
-      expect(pointIds).toEqual(Array.from({ length: count }, (_, id) => id));
+      expect(pointIds).toEqual([]);
       expect(transaction.mapping.map(first.nodeSize + 1)).toBe(
         transaction.doc.child(0).nodeSize + 1,
       );

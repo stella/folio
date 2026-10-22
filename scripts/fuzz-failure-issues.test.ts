@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { extractFailureMarkers } from "./failure-fingerprints";
 import type { Issue } from "./fuzz-issue-classes";
+import { fileClasses, type IssueStore } from "./fuzz-issue-classes";
 
 import {
   failureMarker,
@@ -26,6 +27,7 @@ import {
   type IssueContent,
   MAX_LISTED_SEEDS,
   parseCommentPages,
+  parseClosingCommitPages,
   parseFailureRecord,
   parseIssuePages,
   parseIssueResponse,
@@ -195,6 +197,26 @@ test("paginated issue responses fail before matching malformed issue data", () =
   expect(parseIssuePages([[issue], [issue]])).toHaveLength(2);
 });
 
+test("the latest close event supplies the commit used for recurrence checks", () => {
+  const first = "1".repeat(40);
+  const latest = "2".repeat(40);
+  expect(
+    parseClosingCommitPages([
+      [
+        { event: "closed", commit_id: first },
+        { event: "reopened", commit_id: null },
+      ],
+      [{ event: "closed", commit_id: latest }],
+    ]),
+  ).toBe(latest);
+  expect(parseClosingCommitPages([[{ event: "closed", commit_id: null }]])).toBeNull();
+  expect(parseClosingCommitPages([[{ event: "commented" }]])).toBeNull();
+  expect(() => parseClosingCommitPages({})).toThrow("Invalid GitHub issue event pages");
+  expect(() => parseClosingCommitPages([[{ event: "closed", commit_id: "short" }]])).toThrow(
+    "Invalid GitHub closing commit",
+  );
+});
+
 test("failure records retain the deepest comparison diff without terminal styling", () => {
   const comparison = new Error(
     "\u001b[31mexpect(received).toEqual(expected)\u001b[0m\n\n- Expected field: before\n+ Received field: after",
@@ -206,16 +228,208 @@ test("failure records retain the deepest comparison diff without terminal stylin
   expect(record.error).not.toContain("\u001b");
 });
 
+test("a second signature in one invariant edits the open class issue", async () => {
+  const issues: Issue[] = [];
+  const created: number[] = [];
+  const edited: number[] = [];
+  const store = {
+    list: async () => issues,
+    create: async (title: string, body: string) => {
+      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      issues.push(issue);
+      created.push(issue.number);
+      return issue;
+    },
+    edit: async (number: number, body: string) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.body = body;
+      edited.push(number);
+    },
+    reopen: async () => {},
+  } satisfies IssueStore;
+  const make = (seed: number, testName: string): Finding => {
+    const error = new Error(
+      `step ${seed}: comment ${JSON.stringify(testName)} outlived the block it anchored`,
+    );
+    const record = failureRecord(
+      failureMarker({ test: testName, seed, repro: `bun replay.ts ${seed}`, failure: error }),
+      error,
+    );
+    return { record, records: [record], seeds: [seed] };
+  };
+  const classContext = runContext(800);
+  await fileClasses({
+    findings: [make(1, "consumer flow comments / direct")],
+    context: classContext,
+    store,
+    known: new Map(),
+  });
+  await fileClasses({
+    findings: [make(2, "consumer flow tables / tracked-changes")],
+    context: classContext,
+    store,
+    known: new Map(),
+  });
+  expect(created).toEqual([1]);
+  expect(edited).toEqual([1]);
+  expect(issues.at(0)?.body).toContain("| comments |");
+  expect(issues.at(0)?.body).toContain("| tables |");
+});
+
+test("an absent class keeps its regression note and legacy report", async () => {
+  const issues: Issue[] = [];
+  const store = {
+    list: async () => issues,
+    create: async (title: string, body: string) => {
+      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      issues.push(issue);
+      return issue;
+    },
+    edit: async (number: number, body: string) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.body = body;
+    },
+    reopen: async () => {},
+  } satisfies IssueStore;
+  const finding = flowFinding(1, "deleteBlock");
+  await fileClasses({ findings: [finding], context, store, known: new Map() });
+  const issue = issues.at(0);
+  if (issue === undefined || issue.body === null) throw new Error("missing issue body");
+  issue.body = `${issue.body.replace(
+    "\n\n| Fingerprint",
+    "\nRegressed: preserved regression evidence.\n\n| Fingerprint",
+  )}\n\n<details><summary>Legacy report</summary>\n\nPreserved reproduction evidence.\n\n<details><summary>Nested evidence</summary>\n\nNested reproduction.\n\n</details>\n\n</details>`;
+  const failure = /^Failure: .*$/mu.exec(issue.body)?.at(0);
+
+  await fileClasses({ findings: [], context: runContext(124), store, known: new Map() });
+
+  expect(issue.body).toContain("Regressed: preserved regression evidence.");
+  expect(issue.body).toContain("Preserved reproduction evidence.");
+  expect(issue.body).toContain("Nested reproduction.");
+  expect(/^Failure: .*$/mu.exec(issue.body ?? "")?.at(0)).toBe(failure);
+});
+
+test("a class filed before signatures were tracked closes only on clean runs of a lane that reproduced it", async () => {
+  const issues: Issue[] = [];
+  const store = {
+    list: async () => issues,
+    create: async (title: string, body: string) => {
+      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      issues.push(issue);
+      return issue;
+    },
+    edit: async (number: number, body: string) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.body = body;
+    },
+    reopen: async () => {},
+    close: async (number: number) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.state = "closed";
+    },
+  } satisfies IssueStore;
+  await fileClasses({
+    findings: [flowFinding(1, "deleteBlock")],
+    context,
+    store,
+    known: new Map(),
+  });
+  const issue = issues.at(0);
+  if (issue === undefined || issue.body === null) throw new Error("missing issue body");
+  issue.body = issue.body.replace(/<!-- fuzz-class-state (\{[^\n]*\}) -->/u, (_, json: string) => {
+    const { signatures: _signatures, ...legacy } = JSON.parse(json) as Record<string, unknown>;
+    return `<!-- fuzz-class-state ${JSON.stringify(legacy)} -->`;
+  });
+
+  // Its originating lane is unknown, so clean runs of another lane prove nothing.
+  const unrelated = { lane: "continuous-fuzz" };
+  for (let run = 200; run < 214; run += 1) {
+    await fileClasses({
+      findings: [],
+      context: runContext(run, unrelated),
+      store,
+      known: new Map(),
+    });
+  }
+  expect(issue.state).toBe("open");
+
+  await fileClasses({
+    findings: [flowFinding(1, "deleteBlock")],
+    context: runContext(300, unrelated),
+    store,
+    known: new Map(),
+  });
+  for (let run = 301; run < 307; run += 1) {
+    await fileClasses({
+      findings: [],
+      context: runContext(run, unrelated),
+      store,
+      known: new Map(),
+    });
+  }
+  expect(issue.state).toBe("open");
+  await fileClasses({
+    findings: [],
+    context: runContext(307, unrelated),
+    store,
+    known: new Map(),
+  });
+  expect(issue.state).toBe("closed");
+});
+
+test("reproducing one fingerprint of a legacy class keeps its other fingerprints open", async () => {
+  const issues: Issue[] = [];
+  const store = {
+    list: async () => issues,
+    create: async (title: string, body: string) => {
+      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      issues.push(issue);
+      return issue;
+    },
+    edit: async (number: number, body: string) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.body = body;
+    },
+    reopen: async () => {},
+    close: async (number: number) => {
+      const issue = issues.find((item) => item.number === number);
+      if (issue === undefined) throw new Error("missing issue");
+      issue.state = "closed";
+    },
+  } satisfies IssueStore;
+  const reproduced = flowFinding(1, "deleteBlock");
+  const historical = flowFinding(2, "insertAfterBlock");
+  await fileClasses({ findings: [reproduced, historical], context, store, known: new Map() });
+  expect(issues).toHaveLength(1);
+  const issue = issues.at(0);
+  if (issue === undefined || issue.body === null) throw new Error("missing issue body");
+  issue.body = issue.body.replace(/<!-- fuzz-class-state (\{[^\n]*\}) -->/u, (_, json: string) => {
+    const { signatures: _signatures, ...legacy } = JSON.parse(json) as Record<string, unknown>;
+    return `<!-- fuzz-class-state ${JSON.stringify(legacy)} -->`;
+  });
+
+  await fileClasses({ findings: [reproduced], context: runContext(400), store, known: new Map() });
+  for (let run = 401; run < 401 + AUTO_CLOSE_CLEAN_RUNS * 2; run += 1) {
+    await fileClasses({ findings: [], context: runContext(run), store, known: new Map() });
+  }
+  expect(issue.state).toBe("open");
+});
+
 const fixtureLog = readFileSync(new URL("./fixtures/fuzz-failures.log", import.meta.url), "utf8");
 const fixtureMarkers = extractFailureMarkers(fixtureLog);
 const fixtureFindings = collectFindings([], fixtureMarkers);
 const RUN = "https://github.com/example/project/actions/runs/";
 const runContext = (
   run: number,
-  overrides: Partial<Pick<Context, "lane" | "trigger">> = {},
+  overrides: Partial<Pick<Context, "lane" | "sha" | "trigger">> = {},
 ): Context => ({
   runUrl: `${RUN}${run}`,
-  sha: null,
+  sha: overrides.sha ?? null,
   source: "test",
   date: "",
   lane: overrides.lane ?? "nightly-swarm-fuzz",
@@ -229,7 +443,10 @@ const CLOSED_AS = {
   duplicate: { type: "duplicate" },
 } as const satisfies Record<CloseReason, { type: string }>;
 
-const fakeClient = (initial: Issue[] = []) => {
+const fakeClient = (
+  initial: Issue[] = [],
+  closingCommits: ReadonlyMap<number, string | null> = new Map(),
+) => {
   const issues = [...initial];
   const creates: IssueContent[] = [];
   const edits: { number: number; content: IssueContent }[] = [];
@@ -283,6 +500,7 @@ const fakeClient = (initial: Issue[] = []) => {
       }));
       return Promise.resolve();
     },
+    closingCommit: (number) => Promise.resolve(closingCommits.get(number) ?? null),
   } satisfies SignatureIssueStore;
   return { store, issues, creates, edits, reopens, closes };
 };
@@ -423,6 +641,83 @@ test("a fixed signature reopens when it recurs; one closed without a fix only re
   }
 });
 
+test("a fixed signature ignores occurrences from commits before its closing commit", async () => {
+  const created = fakeClient();
+  await fileFindings({ findings: [flowFinding(1, "a")], context, store: created.store });
+  const issue = created.issues.at(0);
+  if (issue === undefined) throw new Error("Missing issue");
+  const closingCommit = "2".repeat(40);
+  const runCommit = "1".repeat(40);
+  const fake = fakeClient(
+    [{ ...issue, state: "closed", closedAt: "2026-10-20", disposition: { type: "fixed" } }],
+    new Map([[1, closingCommit]]),
+  );
+  const ancestry: [string, string][] = [];
+
+  const result = await fileFindings({
+    findings: [flowFinding(9, "b")],
+    context: runContext(200, { sha: runCommit }),
+    store: fake.store,
+    isAncestor: (ancestor, descendant) => {
+      ancestry.push([ancestor, descendant]);
+      return Promise.resolve(false);
+    },
+  });
+
+  expect(ancestry).toEqual([[closingCommit, runCommit]]);
+  expect(fake.reopens).toEqual([]);
+  expect(fake.edits).toEqual([]);
+  expect(fake.creates).toEqual([]);
+  expect(stateOf(fake.issues.at(0))).toEqual(stateOf(issue));
+  expect(result.filed).toEqual([
+    { fingerprint: flowFinding(9, "b").record.marker.fingerprint, issue: null },
+  ]);
+});
+
+test("a fixed signature reopens for a run commit containing its closing commit", async () => {
+  const created = fakeClient();
+  await fileFindings({ findings: [flowFinding(1, "a")], context, store: created.store });
+  const issue = created.issues.at(0);
+  if (issue === undefined) throw new Error("Missing issue");
+  const fake = fakeClient(
+    [{ ...issue, state: "closed", closedAt: "2026-10-20", disposition: { type: "fixed" } }],
+    new Map([[1, "2".repeat(40)]]),
+  );
+
+  await fileFindings({
+    findings: [flowFinding(9, "b")],
+    context: runContext(200, { sha: "3".repeat(40) }),
+    store: fake.store,
+    isAncestor: () => Promise.resolve(true),
+  });
+
+  expect(fake.reopens).toEqual([1]);
+  expect(fake.edits).toHaveLength(1);
+  expect(stateOf(fake.issues.at(0)).seeds).toEqual([1, 9]);
+});
+
+test("a fixed signature closed without a closing commit keeps reopening", async () => {
+  const created = fakeClient();
+  await fileFindings({ findings: [flowFinding(1, "a")], context, store: created.store });
+  const issue = created.issues.at(0);
+  if (issue === undefined) throw new Error("Missing issue");
+  const fake = fakeClient([
+    { ...issue, state: "closed", closedAt: "2026-10-20", disposition: { type: "fixed" } },
+  ]);
+
+  await fileFindings({
+    findings: [flowFinding(9, "b")],
+    context: runContext(200, { sha: "3".repeat(40) }),
+    store: fake.store,
+    isAncestor: () => {
+      throw new Error("manual closures must not run the ancestry check");
+    },
+  });
+
+  expect(fake.reopens).toEqual([1]);
+  expect(stateOf(fake.issues.at(0)).seeds).toEqual([1, 9]);
+});
+
 test(`a signature closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean scheduled runs`, async () => {
   const fake = fakeClient();
   await fileFindings({ findings: [flowFinding(1, "a")], context, store: fake.store });
@@ -489,27 +784,25 @@ test("only scheduled runs register a lane; a merge-group repro never blocks clos
   expect(fake.edits).toHaveLength(0);
 });
 
-const word = fc.stringMatching(/^[A-Za-z0-9<>()•.[\]/-]{1,8}$/u);
-const sentence = fc.array(word, { minLength: 1, maxLength: 6 }).map((words) => words.join(" "));
 const lane = fc.stringMatching(/^[a-z0-9][a-z0-9-]{0,12}$/u);
-const run = fc.stringMatching(/^[a-z]{1,5}:[A-Za-z0-9/.-]{1,20}$/u);
+const freeText = fc.string({ maxLength: 120 });
 const signatureState = fc
   .record({
-    test: sentence,
-    failure: sentence,
+    test: freeText,
+    failure: freeText,
     occurrences: fc.nat(),
     seeds: fc.uniqueArray(fc.integer({ min: -(2 ** 31), max: 2 ** 31 }), {
       maxLength: MAX_LISTED_SEEDS,
     }),
-    lastSeen: fc.record({ lane, run }),
-    lanes: fc.uniqueArray(fc.record({ lane, lastRun: run, cleanRuns: fc.nat({ max: 99 }) }), {
+    lastSeen: fc.record({ lane, run: freeText }),
+    lanes: fc.uniqueArray(fc.record({ lane, lastRun: freeText, cleanRuns: fc.nat({ max: 99 }) }), {
       selector: ({ lane: name }) => name,
       maxLength: 4,
     }),
     assertion: fc.oneof(
       fc.string({ maxLength: 120 }),
       fc
-        .tuple(lane, run, fc.nat({ max: 99 }), fc.string({ maxLength: 40 }))
+        .tuple(lane, freeText, fc.nat({ max: 99 }), fc.string({ maxLength: 40 }))
         .map(([name, at, count, tail]) => `| ${name} | ${at} | ${count} |\n${tail}`),
     ),
     seed: fc.integer({ min: -(2 ** 31), max: 2 ** 31 }),
@@ -542,6 +835,116 @@ test(
   },
   propertyTestTimeout(5_000),
 );
+
+test("markdown-significant signature fields round-trip without changing text", () => {
+  const state: SignatureState = {
+    signature: signatureOf({ test: "•", assertion: "- >" }),
+    occurrences: 1,
+    seeds: [1],
+    lastSeen: { lane: "a", run: "a:a" },
+    lanes: [{ lane: "a", lastRun: "| a | a:a | 0 |\n", cleanRuns: 0 }],
+    assertion: "| a | a:a | 0 |\n",
+    repro: { seed: 1, command: " " },
+  };
+  const { body } = renderSignatureIssue(state);
+
+  expect(parseSignatureState({ number: 1, body })).toEqual(state);
+  expect(body).toContain('Test: "•"');
+  expect(body).toContain('"\\u007c a \\u007c a:a \\u007c 0 \\u007c\\n"');
+});
+
+test.each([
+  [
+    "normalized text",
+    "legacy  test\nname",
+    "legacy\tfailure",
+    "https://example.test/runs/1",
+    "legacy failure",
+  ],
+  ["quoted failure", "example", '"failure"', "https://example.test/runs/2", "legacy failure"],
+  [
+    "JSON-looking fields and run URL",
+    '"example"',
+    '"failure"',
+    '"https://example.test/runs/3"',
+    "legacy failure",
+  ],
+  [
+    "the format marker inside its assertion",
+    '"example"',
+    '"failure"',
+    "https://example.test/runs/4",
+    "before\n<!-- fuzz-issue-format: 2 -->\nafter",
+  ],
+])(
+  "a previous-renderer body with %s is read and rewritten canonically",
+  (_, testName, failure, run, assertion) => {
+    const state: SignatureState = {
+      signature: signatureOf({ test: testName, assertion: failure }),
+      occurrences: 2,
+      seeds: [3, 5],
+      lastSeen: { lane: "nightly", run },
+      lanes: [{ lane: "nightly", lastRun: run, cleanRuns: 0 }],
+      assertion,
+      repro: { seed: 5, command: "bun test legacy" },
+    };
+    // This is the exact free-text normalization used by the previous renderer.
+    const previousLine = (value: string): string => value.replaceAll(/\s+/gu, " ").trim();
+    const legacyBody = [
+      `Signature: ${state.signature.id}`,
+      `Test: ${previousLine(state.signature.test)}`,
+      `Failure: ${previousLine(state.signature.failure)}`,
+      `Occurrences: ${state.occurrences}`,
+      `Seeds: ${state.seeds.join(", ")}`,
+      `Last seen: ${state.lastSeen.lane} ${previousLine(state.lastSeen.run)}`,
+      "",
+      "| Lane | Last run | Clean scheduled runs |",
+      "| --- | --- | --- |",
+      ...state.lanes.map(
+        ({ lane: name, lastRun, cleanRuns }) =>
+          `| ${name} | ${previousLine(lastRun)} | ${cleanRuns} |`,
+      ),
+      "",
+      `Closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean scheduled runs in every lane.`,
+      "",
+      `Latest assertion:\n\`\`\`\n${state.assertion}\n\`\`\``,
+      "",
+      `Latest repro (seed ${state.repro.seed}):\n\`\`\`\n${state.repro.command}\n\`\`\``,
+    ].join("\n");
+    const expected = {
+      ...state,
+      signature: {
+        ...state.signature,
+        test: previousLine(state.signature.test),
+        failure: previousLine(state.signature.failure),
+      },
+    };
+
+    expect(parseSignatureState({ number: 1, body: legacyBody })).toEqual(expected);
+    const canonicalBody = renderSignatureIssue(expected).body;
+    expect(canonicalBody).not.toBe(legacyBody);
+    expect(canonicalBody).toContain("<!-- fuzz-issue-format: 2 -->");
+    expect(parseSignatureState({ number: 1, body: canonicalBody })).toEqual(expected);
+  },
+);
+
+test("legacy parser census excludes every body the canonical writer produces", () => {
+  const state: SignatureState = {
+    signature: signatureOf({ test: '"quoted"', assertion: '"failure"' }),
+    occurrences: 1,
+    seeds: [],
+    lastSeen: { lane: "a", run: '"run"' },
+    lanes: [{ lane: "a", lastRun: '"lane run"', cleanRuns: 0 }],
+    assertion: "failure",
+    repro: { seed: 1, command: "replay" },
+  };
+  const { body } = renderSignatureIssue(state);
+
+  expect(parseSignatureState({ number: 1, body })).toEqual(state);
+  expect(() =>
+    parseSignatureState({ number: 1, body: body.replace(/^Failure: .*$/mu, "Failure: legacy") }),
+  ).toThrow("malformed signature");
+});
 
 test("bodies stay bounded for large evidence and seed sets", async () => {
   const original = fixtureMarkers.at(0);

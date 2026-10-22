@@ -1,0 +1,7 @@
+{
+  "seed": 1047663642,
+  "steps": 10,
+  "kind": "random",
+  "generation": "targeted",
+  "title": "keeps revision wrapper groups across save"
+}

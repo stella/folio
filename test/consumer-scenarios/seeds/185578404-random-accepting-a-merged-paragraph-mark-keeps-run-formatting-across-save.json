@@ -1,0 +1,7 @@
+{
+  "seed": 185578404,
+  "steps": 10,
+  "kind": "random",
+  "generation": "targeted",
+  "title": "accepting a merged paragraph mark keeps run formatting across save"
+}

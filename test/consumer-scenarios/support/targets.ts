@@ -78,8 +78,73 @@ type TableLocation = { tableIndex: number; rowIndex: number; cellIndex: number }
 export type FeatureIndex = {
   story: FolioDocumentStoryHandle;
   features: ReadonlyMap<string, ReadonlySet<Feature>>;
+  /** Note stories referenced by each block, from the authored pre-state model. */
+  noteReferences: ReadonlyMap<string, readonly FolioDocumentStoryHandle[]>;
+  /** The note story containing each of its paragraph blocks. */
+  noteStoryByBlockId: ReadonlyMap<string, FolioDocumentStoryHandle>;
   /** Blocks a reader lists with the story that are paragraphs of a text box drawn in it. */
   inTextBox: ReadonlySet<string>;
+};
+
+const collectNoteReferences = (node: unknown, into: FolioDocumentStoryHandle[]): void => {
+  if (Array.isArray(node)) {
+    for (const item of node) collectNoteReferences(item, into);
+    return;
+  }
+  if (!isRecord(node)) return;
+  if (
+    (node["type"] === "footnoteRef" || node["type"] === "endnoteRef") &&
+    typeof node["id"] === "number"
+  ) {
+    into.push({
+      type: node["type"] === "footnoteRef" ? "footnote" : "endnote",
+      noteId: node["id"],
+    });
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "rawXml" || key === "verbatimXml") continue;
+    if (isRecord(value) || Array.isArray(value)) collectNoteReferences(value, into);
+  }
+};
+
+const paragraphNoteReferences = (
+  root: unknown,
+): Map<string, readonly FolioDocumentStoryHandle[]> => {
+  const references = new Map<string, readonly FolioDocumentStoryHandle[]>();
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
+    }
+    if (!isRecord(node)) return;
+    if (node["type"] === "paragraph" && typeof node["paraId"] === "string") {
+      const found: FolioDocumentStoryHandle[] = [];
+      collectNoteReferences(node["content"], found);
+      if (found.length > 0) references.set(node["paraId"].toUpperCase(), found);
+    }
+    for (const value of Object.values(node))
+      if (isRecord(value) || Array.isArray(value)) visit(value);
+  };
+  visit(root);
+  return references;
+};
+
+const paragraphIds = (root: unknown): string[] => {
+  const ids: string[] = [];
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
+    }
+    if (!isRecord(node)) return;
+    if (node["type"] === "paragraph" && typeof node["paraId"] === "string") {
+      ids.push(node["paraId"].toUpperCase());
+    }
+    for (const value of Object.values(node))
+      if (isRecord(value) || Array.isArray(value)) visit(value);
+  };
+  visit(root);
+  return ids;
 };
 
 // ---------------------------------------------------------------------------
@@ -262,7 +327,24 @@ export const featureIndex = (
     features.set(block.id, found);
   });
   const inTextBox = blocks.filter((block) => boxed.has(block.id.toUpperCase()));
-  return { story, features, inTextBox: new Set(inTextBox.map(({ id }) => id)) };
+  const pkg = reviewer.toDocument().package;
+  const noteStoryByBlockId = new Map<string, FolioDocumentStoryHandle>();
+  for (const [type, notes] of [
+    ["footnote", pkg.footnotes],
+    ["endnote", pkg.endnotes],
+  ] as const) {
+    for (const note of notes ?? []) {
+      const handle = { type, noteId: note.id };
+      for (const blockId of paragraphIds(note.content)) noteStoryByBlockId.set(blockId, handle);
+    }
+  }
+  return {
+    story,
+    features,
+    noteReferences: paragraphNoteReferences(storyContent(reviewer, story)),
+    noteStoryByBlockId,
+    inTextBox: new Set(inTextBox.map(({ id }) => id)),
+  };
 };
 
 // ---------------------------------------------------------------------------

@@ -57,6 +57,74 @@ const undone = (document: Document, inverse: readonly DocumentOp[]): Document =>
   return result.value.document;
 };
 
+describe("tracked note lifecycle", () => {
+  const revision = { id: 41, author: "Reviewer", date: "2026-10-15T00:00:00Z" };
+
+  for (const kind of ["footnote", "endnote"] as const) {
+    test(`${kind} insertion and removal resolve to their direct edits`, () => {
+      const original = documentOf({
+        type: "paragraph",
+        paraId: "00000001",
+        content: [run("abcd")],
+      });
+      const note = {
+        type: kind,
+        id: 1,
+        content: [{ type: "paragraph" as const, paraId: "00000002", content: [run("note")] }],
+      };
+      const add = {
+        type: DOCUMENT_OP_TYPES.ADD_NOTE,
+        at: at("00000001", 2),
+        note,
+      } as const;
+      const directAdd = applied(original, add).document;
+      const trackedAdd = applied(original, { ...add, revision });
+      expect(undone(trackedAdd.document, trackedAdd.inverse)).toStrictEqual(original);
+      expect(
+        applied(trackedAdd.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [revision.id],
+          decision: "reject",
+        }).document,
+      ).toStrictEqual(original);
+      expect(
+        applied(trackedAdd.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [revision.id],
+          decision: "accept",
+        }).document,
+      ).toStrictEqual(directAdd);
+
+      const remove = {
+        type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
+        at: at("00000001", 2),
+        story: { kind, id: 1 },
+      } as const;
+      const directRemove = applied(directAdd, remove).document;
+      const trackedRemove = applied(directAdd, { ...remove, revision });
+      expect(undone(trackedRemove.document, trackedRemove.inverse)).toStrictEqual(directAdd);
+      expect(
+        applied(trackedRemove.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [revision.id],
+          decision: "reject",
+        }).document,
+      ).toStrictEqual(directAdd);
+      expect(
+        applied(trackedRemove.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [revision.id],
+          decision: "accept",
+        }).document,
+      ).toStrictEqual(directRemove);
+    });
+  }
+});
+
 describe("insertText", () => {
   test("inherited text joins the run before it and is undone by a deletion", () => {
     const first = run("ab", true);
@@ -213,6 +281,43 @@ describe("setRunProps", () => {
       },
     ]);
     expect(undone(next, inverse)).toStrictEqual(original);
+  });
+});
+
+describe("setParagraphProps", () => {
+  test.each([
+    {
+      name: "an empty property set kept by request",
+      patch: {},
+      whenEmpty: EMPTY_PROPERTY_SETS.KEEP,
+      revision: undefined,
+    },
+    {
+      name: "source replay metadata only",
+      patch: { sourceXml: "<w:pPr/>" },
+      whenEmpty: undefined,
+      revision: undefined,
+    },
+    {
+      name: "a tracked source replay metadata patch",
+      patch: { sourceXml: "<w:pPr/>" },
+      whenEmpty: undefined,
+      revision: { id: 1, author: "Reviewer" },
+    },
+  ])("treats $name as a canonical no-op", ({ patch, whenEmpty, revision }) => {
+    const document = documentOf({ type: "paragraph", paraId: "00000001", content: [] });
+    const result = applied(document, {
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      patch,
+      ...(whenEmpty === undefined ? {} : { whenEmpty }),
+      ...(revision === undefined ? {} : { revision }),
+    });
+
+    expect(result.document).toBe(document);
+    expect(result.inverse).toEqual([]);
+    expect(paragraphs(result.document)[0]?.propertyChanges).toBeUndefined();
   });
 });
 

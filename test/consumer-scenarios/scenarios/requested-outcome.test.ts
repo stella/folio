@@ -35,8 +35,10 @@ import {
   compareWithModel,
   EXPECTATIONS,
   expectOperation,
+  KEEPS_NOTE_REFERENCES,
   modelOf,
   OPERATION_TYPES,
+  retireNoteReferences,
   type Row,
 } from "../support/oracle.ts";
 import { captureLinks, comparePreservedLinks } from "../support/link-oracle.ts";
@@ -321,6 +323,105 @@ describe("the requested-outcome oracle", () => {
       [row("b", "New")],
     );
     assert.match(problems.join("\n"), /no comment/u);
+  });
+
+  test("a comment retires with its removed note story", () => {
+    const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
+    const model = modelOf([row("note", "Note text")]);
+    model.story = "removed";
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+    assert.match(
+      compareComments(model, [comment], [comment], []).join("\n"),
+      /outlived the block it anchored/u,
+    );
+  });
+
+  test("a note comment retires when its body reference is removed", () => {
+    const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
+    const model = modelOf([row("body", "Reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+  });
+
+  test("a suggested removal of a note reference keeps the note's comment pending", () => {
+    const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
+    const model = modelOf([row("body", "Reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
+    assert.deepEqual(compareComments(model, [comment], [comment], [], [comment], "suggested"), []);
+    assert.match(
+      compareComments(model, [comment], [], [], [comment], "suggested").join("\n"),
+      /no comment/u,
+    );
+    const removedStory = modelOf([row("note", "Note text")]);
+    removedStory.story = "removed";
+    assert.deepEqual(
+      compareComments(removedStory, [comment], [comment], [], [comment], "suggested"),
+      [],
+    );
+  });
+
+  test("a merge keeps the note whose reference it moves, and a later deletion retires it", () => {
+    const footnote = { type: "footnote", noteId: 1 } as const;
+    const endnote = { type: "endnote", noteId: 2 } as const;
+    const references: Parameters<typeof retireNoteReferences>[0] = new Map([
+      ["first", [endnote]],
+      ["second", [footnote]],
+    ]);
+    assert.deepEqual(
+      retireNoteReferences(references, "mergeBlockWithNext", "first", ["second"]),
+      [],
+    );
+    assert.deepEqual(references.get("first"), [endnote, footnote]);
+    assert.equal(references.has("second"), false);
+    assert.deepEqual(retireNoteReferences(references, "deleteBlock", "first", ["first"]), [
+      "endnote:2",
+      "footnote:1",
+    ]);
+    assert.equal(references.size, 0);
+  });
+
+  test("a note whose reference an edit may have moved is not predicted either way", () => {
+    const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
+    const model = modelOf([row("body", "Reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.uncertainNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
+    assert.deepEqual(compareComments(model, [comment], [comment], []), []);
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+  });
+
+  test("every operation that keeps note references in place is a real operation type", () => {
+    for (const type of KEEPS_NOTE_REFERENCES) assert.ok(OPERATION_TYPES.includes(type), type);
+    assert.equal(KEEPS_NOTE_REFERENCES.has("splitBlock"), false);
+    assert.equal(KEEPS_NOTE_REFERENCES.has("replaceBlock"), false);
+  });
+
+  test("a note referenced from two blocks retires only with its last reference", () => {
+    const footnote = { type: "footnote", noteId: 1 } as const;
+    const references: Parameters<typeof retireNoteReferences>[0] = new Map([
+      ["first", [footnote]],
+      ["second", [footnote]],
+    ]);
+    assert.deepEqual(retireNoteReferences(references, "deleteBlock", "first", ["first"]), []);
+    assert.deepEqual(retireNoteReferences(references, "deleteBlock", "second", ["second"]), [
+      "footnote:1",
+    ]);
+  });
+
+  test("removing one of two footnote references retires only that note's comment", () => {
+    const first = { id: 1, text: "first review", anchor: "First note", blockId: "note-1" };
+    const second = { id: 2, text: "second review", anchor: "Second note", blockId: "note-2" };
+    const model = modelOf([row("body-1", "First reference"), row("body-2", "Second reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([
+      ["note-1", "footnote:1"],
+      ["note-2", "footnote:2"],
+    ]);
+
+    assert.deepEqual(compareComments(model, [first, second], [second], []), []);
+    assert.match(compareComments(model, [first, second], [], []).join("\n"), /second review/u);
   });
 
   test("a replaced paragraph's comment survives rejecting its tracked deletion", async () => {

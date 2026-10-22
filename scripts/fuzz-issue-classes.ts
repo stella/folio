@@ -38,6 +38,7 @@ export type IssueStore = {
   edit: (number: number, body: string) => Promise<void>;
   /** Reopen with a comment saying why; a reopen is never silent. */
   reopen: (number: number, comment: string) => Promise<void>;
+  close?: (number: number) => Promise<void>;
 };
 
 /** A run found more new classes than the reporter may open issues for. */
@@ -55,7 +56,9 @@ type SeedRow = {
   evidence: string;
   firstSeenRun: string;
 };
-type ClassState = { key: string; runs: string[]; seeds: SeedRow[] };
+type LaneState = { lane: string; lastRun: string; cleanRuns: number };
+type SignatureState = { fingerprint: string; lanes: LaneState[] };
+type ClassState = { key: string; runs: string[]; seeds: SeedRow[]; signatures: SignatureState[] };
 const STATE_MARKER = "fuzz-class-state";
 const REOPEN_WINDOW_MS = 14 * 24 * 60 * 60 * 1_000;
 export const MAX_NEW_ISSUES = 5;
@@ -106,10 +109,41 @@ const readClassState = (body: string | null, key: string): ClassState | null => 
     !Array.isArray(value["runs"]) ||
     !value["runs"].every((run: unknown) => typeof run === "string") ||
     !Array.isArray(value["seeds"]) ||
-    !value["seeds"].every(isSeedRow)
+    !value["seeds"].every(isSeedRow) ||
+    (value["signatures"] !== undefined &&
+      (!Array.isArray(value["signatures"]) ||
+        !value["signatures"].every(
+          (signature: unknown) =>
+            isRecord(signature) &&
+            typeof signature["fingerprint"] === "string" &&
+            Array.isArray(signature["lanes"]) &&
+            signature["lanes"].every(
+              (lane: unknown) =>
+                isRecord(lane) &&
+                typeof lane["lane"] === "string" &&
+                typeof lane["lastRun"] === "string" &&
+                typeof lane["cleanRuns"] === "number",
+            ),
+        )))
   )
     return null;
-  return { key, runs: [...new Set(value["runs"])], seeds: value["seeds"] };
+  const seeds: SeedRow[] = value["seeds"];
+  const tracked = value["signatures"] as SignatureState[] | undefined;
+  return {
+    key,
+    runs: [...new Set(value["runs"])],
+    seeds,
+    // A class filed before signatures were tracked has only its seed rows.
+    // Every one of their fingerprints becomes a signature without lanes, so
+    // the class closes only once each has a lane that reproduced it.
+    signatures:
+      tracked === undefined || tracked.length === 0
+        ? [...new Set(seeds.map(({ fingerprint }) => fingerprint))].map((fingerprint) => ({
+            fingerprint,
+            lanes: [],
+          }))
+        : tracked,
+  };
 };
 
 const markedKey = (issue: Issue): string | undefined => {
@@ -240,6 +274,19 @@ type ClassBodyOptions = {
   note: string | null;
   legacyReport: string | null;
 };
+const preservedBodyFields = (
+  body: string | null,
+): Pick<ClassBodyOptions, "note" | "legacyReport"> => ({
+  note:
+    body
+      ?.split("\n")
+      .find((line) => line.startsWith("Regressed:") || line.startsWith("Previous occurrence:")) ??
+    null,
+  legacyReport:
+    body
+      ?.match(/<details><summary>Legacy report<\/summary>\n\n([\s\S]*)\n\n<\/details>\s*$/u)
+      ?.at(1) ?? null,
+});
 const classBody = ({ signature, state, note, legacyReport }: ClassBodyOptions): string => {
   const rows = state.seeds.map(
     (row) =>
@@ -341,11 +388,7 @@ export const fileClasses = async ({
   const run = context.runUrl ?? `${context.source}:${context.sha ?? context.date}`;
   const filed = new Map<string, Set<string>>();
   const groups = new Map<string, ClassGroup>();
-  const hasUntracked = findings.some(
-    ({ record: { marker } }) =>
-      !known.has(marker.fingerprint) && !known.has(marker.primary ?? marker.fingerprint),
-  );
-  const issues = hasUntracked ? await store.list() : [];
+  const issues = await store.list();
   for (const finding of findings) {
     const fingerprint = finding.record.marker.fingerprint;
     const tracked =
@@ -404,13 +447,9 @@ export const fileClasses = async ({
     let legacyReport: string | null = null;
     if (reused !== null) {
       if (previousState === null) legacyReport = reused.body;
-      else
-        legacyReport =
-          reused.body
-            ?.match(/<details><summary>Legacy report<\/summary>\n\n([\s\S]*?)\n\n<\/details>/u)
-            ?.at(1) ?? null;
+      else legacyReport = preservedBodyFields(reused.body).legacyReport;
     }
-    const state = previousState ?? { key: signature.key, runs: [], seeds: [] };
+    const state = previousState ?? { key: signature.key, runs: [], seeds: [], signatures: [] };
     let changed = false;
     if (!state.runs.includes(run)) {
       state.runs.push(run);
@@ -432,9 +471,24 @@ export const fileClasses = async ({
       state.seeds.push(row);
       changed = true;
     }
-    const oldNote = reused?.body
-      ?.split("\n")
-      .find((line) => line.startsWith("Regressed:") || line.startsWith("Previous occurrence:"));
+    for (const fingerprint of fingerprints) {
+      let tracked = state.signatures.find((item) => item.fingerprint === fingerprint);
+      if (tracked === undefined) {
+        tracked = { fingerprint, lanes: [] };
+        state.signatures.push(tracked);
+        changed = true;
+      }
+      if (context.trigger === "scheduled") {
+        const lane = tracked.lanes.find((item) => item.lane === context.lane);
+        if (lane === undefined)
+          tracked.lanes.push({ lane: context.lane, lastRun: run, cleanRuns: 0 });
+        else if (lane.lastRun !== run || lane.cleanRuns !== 0) {
+          lane.lastRun = run;
+          lane.cleanRuns = 0;
+        }
+      }
+    }
+    const oldNote = preservedBodyFields(reused?.body ?? null).note;
     let note: string | null;
     switch (recurrence.type) {
       case "create":
@@ -444,7 +498,7 @@ export const fileClasses = async ({
             : `Previous occurrence: #${recurrence.previous.number}.`;
         break;
       case "update":
-        note = oldNote ?? null;
+        note = oldNote;
         break;
       case "reopen":
         note = `Regressed: this class recurred in ${run}.`;
@@ -505,6 +559,37 @@ export const fileClasses = async ({
   for (const { title, body, fingerprints } of pending) {
     const issue = await store.create(title, body);
     file(fingerprints, issue.number);
+  }
+  if (context.trigger === "scheduled") {
+    const activeKeys = new Set(groups.keys());
+    for (const issue of issues) {
+      if (issue.state !== "open") continue;
+      const key = markedKey(issue);
+      if (key === undefined || activeKeys.has(key)) continue;
+      const state = readClassState(issue.body, key);
+      if (state === null) continue;
+      // Only a lane that reproduced a signature counts its clean runs.
+      let changed = false;
+      for (const signature of state.signatures) {
+        const lane = signature.lanes.find((item) => item.lane === context.lane);
+        if (lane === undefined || lane.lastRun === run) continue;
+        lane.lastRun = run;
+        lane.cleanRuns += 1;
+        changed = true;
+      }
+      if (!changed) continue;
+      const generated = failureClass("Consumer flow", issue.title.replace(/^.*?: /u, ""));
+      const failure = /^Failure: (.*)$/mu.exec(issue.body ?? "")?.at(1) ?? generated.message;
+      const preserved = preservedBodyFields(issue.body);
+      await store.edit(
+        issue.number,
+        classBody({ signature: { ...generated, key, message: failure }, state, ...preserved }),
+      );
+      const resolved = state.signatures.every(
+        ({ lanes }) => lanes.length > 0 && lanes.every(({ cleanRuns }) => cleanRuns >= 7),
+      );
+      if (resolved) await store.close?.(issue.number);
+    }
   }
   return [...filed].flatMap(([fingerprint, references]) =>
     [...references].map((issue) => ({ fingerprint, issue })),

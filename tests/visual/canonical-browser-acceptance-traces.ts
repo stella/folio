@@ -93,14 +93,16 @@ const unsupportedInlineSource = {
   message: "Canonical sessions currently require plain paragraphs and supported inline atoms.",
 } as const satisfies SourceRefusal;
 
+const unexpectedTableRefusal = {
+  name: "CanonicalSessionError",
+  gap: CANONICAL_GAP.dispatch,
+  reason: "refused",
+  message: "Canonical table acceptance unexpectedly refused.",
+} as const satisfies SourceRefusal;
+
 /** Expected source limits apply only on refusal; newly supported sources run their traces. */
 export const canonicalBrowserSourceRefusals = {
-  tables: {
-    name: "CanonicalSessionError",
-    gap: CANONICAL_GAP.tableActivation,
-    reason: "refused",
-    message: "Canonical sessions cannot activate documents containing tables.",
-  },
+  tables: unexpectedTableRefusal,
   "single-bullet-list": unsupportedInlineSource,
   "header-footer": unsupportedInlineSource,
   "mixed-lists": unsupportedInlineSource,

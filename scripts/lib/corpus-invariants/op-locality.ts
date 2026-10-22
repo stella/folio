@@ -22,14 +22,20 @@ import {
 import { Result } from "better-result";
 import {
   documentStories,
+  isCommentExhausted,
   storyBody,
   type DocumentOp,
   DOCUMENT_OP_TYPES,
   OP_STORIES,
   sameStory,
+  survivingComments,
   type OpStory,
 } from "../../../packages/docx-core/src/ops/documentOps";
-import type { PackageResources, StoryParts } from "../../../packages/docx-core/src/ops/types";
+import type {
+  DeleteBlocksOp,
+  PackageResources,
+  StoryParts,
+} from "../../../packages/docx-core/src/ops/types";
 import { storyParagraphs } from "../../../packages/docx-core/src/ops/blocks";
 import { leafSpans, isCommentAnchor } from "../../../packages/docx-core/src/ops/leaves";
 import type { CommentOp } from "../../../packages/docx-core/src/ops/types";
@@ -229,6 +235,32 @@ const ownedCommentIds = (op: CommentOp, original: Document): Set<number> => {
   }
   return ids;
 };
+
+/** Comment threads owned by a block deletion because their last covered content is selected. */
+const blockDeletionCommentIds = (op: DeleteBlocksOp, original: Document): Set<number> => {
+  const withoutSelectedContent = structuredClone(original);
+  const selected = new Set(op.blockIds.map(idKey));
+  for (const { paragraph } of storyParagraphs(storyBody(withoutSelectedContent, op.story)))
+    if (paragraph.paraId !== undefined && selected.has(idKey(paragraph.paraId)))
+      paragraph.content = [];
+
+  const ids = new Set(
+    (original.package.document.comments ?? []).flatMap(({ id, parentId }) =>
+      parentId === undefined &&
+      !isCommentExhausted({ type: "document", document: original, id }) &&
+      isCommentExhausted({ type: "document", document: withoutSelectedContent, id })
+        ? [id]
+        : [],
+    ),
+  );
+  let previous = 0;
+  while (previous !== ids.size) {
+    previous = ids.size;
+    for (const comment of original.package.document.comments ?? [])
+      if (comment.parentId !== undefined && ids.has(comment.parentId)) ids.add(comment.id);
+  }
+  return ids;
+};
 const commentStories = (op: CommentOp, original: Document): OpStory[] => {
   if (op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
     return [...op.expected.anchors, ...op.state.anchors].map(({ story }) => story);
@@ -268,13 +300,19 @@ const withoutOwnedRecords = ({
   counterpart,
   op,
 }: WithoutOwnedRecordsOptions): Document => {
-  if (isCommentOp(op)) {
+  if (
+    isCommentOp(op) ||
+    (op.type === DOCUMENT_OP_TYPES.DELETE_BLOCKS && op.revision === undefined)
+  ) {
     const out = structuredClone(document);
-    const ids = ownedCommentIds(op, original);
+    const ids = isCommentOp(op)
+      ? ownedCommentIds(op, original)
+      : blockDeletionCommentIds(op, original);
     const comments = out.package.document.comments ?? [];
     if (
-      op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT ||
-      op.type === DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION
+      isCommentOp(op) &&
+      (op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT ||
+        op.type === DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION)
     ) {
       for (const comment of comments) {
         if (!ids.has(comment.id)) continue;
@@ -287,7 +325,10 @@ const withoutOwnedRecords = ({
       out.package.document.comments = comments.filter(({ id }) => !ids.has(id));
       if (out.package.document.comments.length === 0) delete out.package.document.comments;
     }
-    if (out.package.relationships !== undefined) {
+    const ownsCommentPartLifecycle =
+      isCommentOp(op) ||
+      (ids.size > 0 && (original.package.document.comments ?? []).every(({ id }) => ids.has(id)));
+    if (ownsCommentPartLifecycle && out.package.relationships !== undefined) {
       out.package.relationships = new Map(
         [...out.package.relationships].filter(
           ([, relation]) =>
@@ -593,7 +634,14 @@ export const serializedLocalityFailures = ({
   const ownedRelationshipIds = new Set<string>();
   const ownedRelationshipTypes = new Set<string>();
   let lifecycle = false;
-  for (const { op, before } of sequence.steps) {
+  for (const { op, before, edit } of sequence.steps) {
+    if (!sameOpModel(survivingComments(before), survivingComments(edit.document))) {
+      lifecycle = true;
+      ownedPaths.add("word/comments.xml");
+      ownedPaths.add("word/commentsExtended.xml");
+      for (const { type } of Object.values(COMMENT_PART_RELATIONSHIPS))
+        ownedRelationshipTypes.add(type);
+    }
     if (isCommentOp(op)) {
       lifecycle = true;
       ownedPaths.add("word/comments.xml");

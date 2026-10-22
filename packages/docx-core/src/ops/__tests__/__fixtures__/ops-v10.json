@@ -174,7 +174,8 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "anchorKind": "point"
             }
           }
         ],
@@ -385,6 +386,7 @@
                   ]
                 }
               ],
+              "anchorKind": "point",
               "date": "2026-02-03T04:05:06Z"
             }
           }
@@ -427,7 +429,8 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "anchorKind": "point"
             }
           }
         ],
@@ -502,6 +505,7 @@
                   ]
                 }
               ],
+              "anchorKind": "point",
               "date": "2026-02-03T04:05:06Z",
               "done": true
             }
@@ -546,6 +550,7 @@
                   ]
                 }
               ],
+              "anchorKind": "point",
               "date": "2026-02-03T04:05:06Z"
             }
           }
@@ -697,6 +702,7 @@
                   ]
                 }
               ],
+              "anchorKind": "point",
               "date": "2026-02-03T04:05:06Z",
               "done": true
             }

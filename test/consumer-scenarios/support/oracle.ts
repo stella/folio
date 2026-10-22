@@ -23,6 +23,8 @@ import type { FolioContentStatedNumbering } from "@stll/folio-core/compare/conte
 
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
+  getFolioDocumentOperationRemovedBlockIds,
+  getTrackedFolioDocumentOperationRemovedBlockIds,
   type FolioDocumentOperationType,
   type FolioDocumentStoryHandle,
   inspectDocumentStylesFromDocx,
@@ -345,6 +347,58 @@ type Fields = { [Key in (typeof KEPT_FIELDS)[number] | "directAlignment"]?: Row[
 
 type Story = FolioDocumentStoryHandle;
 const MAIN: Story = { type: "main" };
+type NoteStory = Extract<Story, { type: "footnote" | "endnote" }>;
+const noteStoryKey = ({ type, noteId }: NoteStory): string => `${type}:${String(noteId)}`;
+
+/**
+ * Operations that leave every note reference in their target block where it
+ * is: formatting, comments and insertions beside the block. Any other edit of
+ * a block holding a reference leaves that note's comments unpredicted.
+ */
+export const KEEPS_NOTE_REFERENCES: ReadonlySet<string> = new Set([
+  "formatRange",
+  "setBlockParagraphProperties",
+  "commentOnRange",
+  "commentOnBlock",
+  "insertAfterBlock",
+  "insertBeforeBlock",
+]);
+
+/**
+ * Update `references` (the note references each live block holds) for one
+ * operation that removed `removal`, and return the note stories whose last
+ * reference it removed. A merge moves the next block's content, and the note
+ * references in it, into the surviving block, so those notes stay.
+ */
+export const retireNoteReferences = (
+  references: Map<string, readonly Story[]>,
+  operationType: string,
+  blockId: string,
+  removal: readonly string[],
+): string[] => {
+  const candidates = new Set<string>();
+  for (const removedBlockId of removal) {
+    const held = references.get(removedBlockId) ?? [];
+    references.delete(removedBlockId);
+    if (operationType === "mergeBlockWithNext" && removedBlockId !== blockId) {
+      references.set(blockId, [...(references.get(blockId) ?? []), ...held]);
+      continue;
+    }
+    for (const story of held) {
+      if (story.type === "footnote" || story.type === "endnote")
+        candidates.add(noteStoryKey(story));
+    }
+  }
+  // A note stays while any live block still references it.
+  for (const held of references.values()) {
+    for (const story of held) {
+      if (story.type === "footnote" || story.type === "endnote") {
+        candidates.delete(noteStoryKey(story));
+      }
+    }
+  }
+  return [...candidates];
+};
 
 /** The blocks of `story` (the body by default) a reader lists. */
 export const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] => {
@@ -511,10 +565,23 @@ export type Model = {
   liveTextById: ReadonlyMap<string, string>;
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
   deletedBlockIds: Set<string>;
+  /** Note stories whose references were removed by applied structural operations. */
+  removedNoteStories: Set<string>;
+  /**
+   * Note stories whose references an operation other than a removal may have
+   * moved or deleted; their comments are not predicted either way.
+   */
+  uncertainNoteStories: Set<string>;
+  /** Note story containing each comment-addressable block in the pre-state. */
+  noteStoryByBlockId: ReadonlyMap<string, string>;
   /** Paragraph style ids the saved package must define. */
   styles: Set<string>;
   /** Comments that must exist, with their anchored text when it is known. */
-  comments: { text: string; anchor?: () => string | undefined }[];
+  comments: {
+    text: string;
+    anchor?: () => string | undefined;
+    removed?: () => boolean;
+  }[];
   /** Operations the oracle has no expectation for; the check notes them. */
   unmodelled: string[];
   /** Blocks that are paragraphs of a text box drawn in the block before them. */
@@ -567,6 +634,9 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
     ),
     liveTextById: new Map(live.map(({ id, text }) => [id, text])),
     deletedBlockIds: new Set(),
+    removedNoteStories: new Set(),
+    uncertainNoteStories: new Set(),
+    noteStoryByBlockId: new Map(),
     styles: new Set(),
     comments: [],
     unmodelled: [],
@@ -641,6 +711,28 @@ const target = (model: Model, blockId: unknown, { adjacent = false } = {}): Mode
     );
   }
   return row;
+};
+
+const sameParagraphContainer = (left: Row, right: Row): boolean => {
+  if (left.table === undefined || right.table === undefined) {
+    return left.table === undefined && right.table === undefined;
+  }
+  return (
+    left.table.tableIndex === right.table.tableIndex &&
+    left.table.rowIndex === right.table.rowIndex &&
+    left.table.cellIndex === right.table.cellIndex
+  );
+};
+
+const isContainerCarrier = (model: Model, row: ModelRow): boolean => {
+  const pre = row.pre;
+  if (pre === undefined) return false;
+  const index = model.rows.indexOf(row);
+  return model.rows
+    .slice(index + 1)
+    .every(
+      (candidate) => candidate.pre === undefined || !sameParagraphContainer(pre, candidate.pre),
+    );
 };
 
 const tableOf = (row: ModelRow): TableLocation => {
@@ -1009,12 +1101,26 @@ const addComment = (
   model: Model,
   operation: Operation,
   anchor?: () => string | undefined,
+  removed?: () => boolean,
 ): void => {
   const comment = operation["comment"] as { text?: string } | undefined;
   if (typeof comment?.text === "string") {
-    model.comments.push({ text: comment.text, ...(anchor === undefined ? {} : { anchor }) });
+    model.comments.push({
+      text: comment.text,
+      ...(anchor === undefined ? {} : { anchor }),
+      ...(removed === undefined ? {} : { removed }),
+    });
   }
 };
+
+const coveredRangeWasRemoved = (row: ModelRow, start: number, end: number): boolean =>
+  start < end &&
+  Array.from({ length: end - start }, (_, index) => start + index).every((offset) =>
+    row.edits.some(
+      ({ start: cutStart, end: cutEnd, replace }) =>
+        replace === "" && cutStart <= offset && offset < cutEnd,
+    ),
+  );
 
 /** Whether the row's text is still the pre-state's, so offsets into it hold. */
 const untouchedText = (row: ModelRow): boolean =>
@@ -1150,16 +1256,24 @@ export const EXPECTATIONS = {
   commentOnRange: (model, operation) => {
     const { blockId, start, end } = rangeOf(operation);
     const row = target(model, blockId);
-    addComment(model, operation, () =>
-      untouchedText(row) && !row.removed ? row.text.slice(start, end) : undefined,
+    addComment(
+      model,
+      operation,
+      () => (untouchedText(row) && !row.removed ? row.text.slice(start, end) : undefined),
+      () => coveredRangeWasRemoved(row, start, end),
     );
   },
   commentOnBlock: (model, operation) => {
     const row = target(model, operation["blockId"]);
     const quote = operation["quote"];
     const anchored = typeof quote === "string" ? quote : undefined;
-    addComment(model, operation, () =>
-      untouchedText(row) && !row.removed ? (anchored ?? row.text) : undefined,
+    const start = anchored === undefined ? 0 : row.text.indexOf(anchored);
+    const end = start + (anchored?.length ?? row.text.length);
+    addComment(
+      model,
+      operation,
+      () => (untouchedText(row) && !row.removed ? (anchored ?? row.text) : undefined),
+      () => start >= 0 && coveredRangeWasRemoved(row, start, end),
     );
   },
   insertAfterBlock: insertBlock("after"),
@@ -1207,6 +1321,10 @@ export const EXPECTATIONS = {
     if (row.pendingDeletion || next?.pendingDeletion) {
       // Whether the join keeps that paragraph's pending deletion is not modelled yet.
       throw new Unmodelled("a join with a paragraph pending deletion");
+    }
+    if (model.mode !== "direct" && next?.removed && isContainerCarrier(model, next)) {
+      next.removed = false;
+      next.edits.push({ start: 0, end: next.text.length, replace: "" });
     }
     row.mergeSeparator = typeof operation["separator"] === "string" ? operation["separator"] : "";
     const merged = operation["mergedParagraphProperties"] as ParagraphRequest | undefined;
@@ -1643,12 +1761,31 @@ export const compareComments = (
   const remaining = [...after];
   const kept: Comment[] = [];
   const gone: { entry: Comment; located: Comment }[] = [];
+  const storyBlockIds = new Set(
+    model.rows.flatMap((row) => (row.pre === undefined ? [] : [row.pre.id])),
+  );
   for (const entry of before) {
     const live = liveBefore.find(({ id }) => id === entry.id);
     // The accepted quote belongs to the accepted model. Use a live quote
     // only when a pending paragraph join moved its anchor to another block.
     const located = live && live.blockId !== entry.blockId ? live : entry;
-    const disposition = mode === "suggested" ? "kept" : anchorDisposition(model, located);
+    let disposition = mode === "suggested" ? "kept" : anchorDisposition(model, located);
+    // A suggested removal stays pending and rejectable, so its comments stay.
+    if (
+      mode !== "suggested" &&
+      ((model.story === "removed" &&
+        located.blockId !== null &&
+        storyBlockIds.has(located.blockId)) ||
+        (located.blockId !== null &&
+          model.removedNoteStories.has(model.noteStoryByBlockId.get(located.blockId) ?? "")))
+    )
+      disposition = "removed";
+    if (
+      mode !== "suggested" &&
+      located.blockId !== null &&
+      model.uncertainNoteStories.has(model.noteStoryByBlockId.get(located.blockId) ?? "")
+    )
+      disposition = "ambiguous";
     if (disposition === "removed") gone.push({ entry, located });
     else if (disposition === "kept") kept.push(entry);
   }
@@ -1671,6 +1808,7 @@ export const compareComments = (
   }
   const beforeIds = new Set(before.map(({ id }) => id));
   for (const comment of model.comments) {
+    if (comment.removed?.()) continue;
     const anchor = comment.anchor?.();
     const index = remaining.findIndex(
       (candidate) =>
@@ -1684,6 +1822,22 @@ export const compareComments = (
       );
     } else {
       remaining.splice(index, 1);
+    }
+  }
+  // A new comment the model removed must not survive among the unclaimed ones.
+  for (const comment of model.comments) {
+    if (!comment.removed?.()) continue;
+    const anchor = comment.anchor?.();
+    const stale = remaining.find(
+      (candidate) =>
+        !beforeIds.has(candidate.id) &&
+        candidate.text === comment.text &&
+        (anchor === undefined || candidate.anchor === anchor),
+    );
+    if (stale !== undefined) {
+      problems.push(
+        `removed comment ${JSON.stringify({ text: comment.text, anchor })} remains among ${JSON.stringify(after)}`,
+      );
     }
   }
   // Only what no expectation claimed can be the removed comment itself.
@@ -1983,9 +2137,111 @@ export const assertRequestedOutcome = async (
     }
   }
   model.inTextBox = pre.targets.inTextBox;
+  model.noteStoryByBlockId = new Map(
+    [...pre.targets.noteStoryByBlockId].flatMap(([blockId, story]) =>
+      story.type === "footnote" || story.type === "endnote"
+        ? [[blockId, noteStoryKey(story)] as const]
+        : [],
+    ),
+  );
   model.mode = pre.mode;
   model.story = pre.resolvedStory;
-  for (const operation of outcome.applied) expectOperation(model, operation);
+  const removedBlocksBy = new Map<string, { id: string; type: string }>();
+  // The note references each live block holds, followed through merges.
+  const noteReferences = new Map<string, readonly FolioDocumentStoryHandle[]>(
+    pre.targets.noteReferences,
+  );
+  for (const [index, operation] of outcome.applied.entries()) {
+    const range = operation["range"];
+    const targetBlockId =
+      typeof range === "object" && range !== null && "blockId" in range
+        ? range.blockId
+        : operation["blockId"];
+    const targetsBlockIdentity = ![
+      "insertAfterBlock",
+      "insertBeforeBlock",
+      "insertSignatureTable",
+      "insertTable",
+      "deleteTable",
+      "insertTableRow",
+      "deleteTableRow",
+      "insertTableColumn",
+      "deleteTableColumn",
+      "mergeTableCells",
+      "splitTableCell",
+    ].includes(operation.type);
+    const removedBy =
+      targetsBlockIdentity && typeof targetBlockId === "string"
+        ? removedBlocksBy.get(targetBlockId)
+        : undefined;
+    const continuesMergeChain =
+      operation.type === "mergeBlockWithNext" && removedBy?.type === "mergeBlockWithNext";
+    if (removedBy !== undefined && !continuesMergeChain) {
+      throw new Error(
+        `applied an operation on block ${targetBlockId}, which an earlier one of the batch removed`,
+      );
+    }
+    expectOperation(model, operation);
+
+    if (pre.mode !== "direct" && operation.type === "mergeBlockWithNext") {
+      const anchorIndex = pre.rows.findIndex(({ id }) => id === operation["blockId"]);
+      const carrier = anchorIndex < 0 ? undefined : pre.rows[anchorIndex + 1];
+      const carrierRow = model.rows.find((row) => row.pre?.id === carrier?.id);
+      if (carrierRow !== undefined && isContainerCarrier(model, carrierRow)) {
+        removedBlocksBy.delete(carrier?.id ?? "");
+      }
+    }
+
+    const blockId = operation["blockId"];
+    if (typeof blockId !== "string") continue;
+    const removal = (() => {
+      switch (operation.type) {
+        case "deleteBlock":
+        case "mergeBlockWithNext":
+        case "deleteTable":
+        case "deleteTableRow":
+        case "deleteTableColumn":
+          const getRemovedBlockIds =
+            pre.mode === "direct"
+              ? getFolioDocumentOperationRemovedBlockIds
+              : getTrackedFolioDocumentOperationRemovedBlockIds;
+          return getRemovedBlockIds(
+            pre.rows.map(({ id, table }) => ({
+              id,
+              ...(table !== undefined && { table: { ...table, paragraphIndex: 0 } }),
+            })),
+            {
+              id: `oracle-${String(index)}`,
+              type: operation.type,
+              blockId,
+            },
+          );
+        default:
+          return [];
+      }
+    })();
+    const removedIds = [...removal];
+    for (const story of retireNoteReferences(noteReferences, operation.type, blockId, removedIds)) {
+      model.removedNoteStories.add(story);
+    }
+    if (removedIds.length === 0 && !KEEPS_NOTE_REFERENCES.has(operation.type)) {
+      // A split, replacement or other edit of a block may move or delete the
+      // note references it holds; the oracle does not follow them.
+      for (const story of noteReferences.get(blockId) ?? []) {
+        if (story.type === "footnote" || story.type === "endnote") {
+          model.uncertainNoteStories.add(noteStoryKey(story));
+        }
+      }
+    }
+    for (const removedBlockId of removal) {
+      if (!removedBlocksBy.has(removedBlockId)) {
+        removedBlocksBy.set(removedBlockId, {
+          id: String(operation["id"] ?? index),
+          type: operation.type,
+        });
+      }
+    }
+  }
   // An operation the oracle cannot model changes the document in a way it
   // cannot predict; the rest of the batch is not compared either.
   const predictable = model.unmodelled.length === 0;

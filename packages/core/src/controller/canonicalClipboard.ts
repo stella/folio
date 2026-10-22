@@ -15,6 +15,7 @@ import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
 import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
+import { CellSelection } from "prosemirror-tables";
 import type {
   Paragraph,
   Run,
@@ -338,6 +339,8 @@ export const prepareCanonicalPaste = ({
   }
   if (moveTarget === undefined && (plain || sourceDocument === undefined))
     flattenClipboardStyleReferences(paragraphs);
+  if (state.selection instanceof CellSelection)
+    return refuse("Pasting over selected cells requires a per-cell paste operation.");
   const selectionRange = canonicalSelectionRange(state);
   const from = session.projection.addressAt(pasteTarget ?? moveSource?.from ?? selectionRange.from);
   if (from.isErr()) return from;

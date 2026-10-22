@@ -80,6 +80,17 @@ export const isOpeningMarker = (item: ParagraphContent): boolean =>
 export const isRangeBoundary = (item: ParagraphContent): boolean =>
   INLINE_KINDS[item.type] === "openingMarker" || INLINE_KINDS[item.type] === "closingMarker";
 
+/**
+ * Whether a paragraph holds content its mark must not take away: visible text
+ * or a range marker or comment reference, which have no width.
+ */
+export const paragraphHoldsContent = (paragraph: Paragraph): boolean => {
+  return (
+    paragraphLength(paragraph) > 0 ||
+    paragraph.content.some((item) => isRangeBoundary(item) || item.type === "commentReference")
+  );
+};
+
 /** Tracked content that direct text must not join: it is on its way out. */
 export const isRemovedRevision = (item: ParagraphContent): boolean =>
   item.type === "deletion" || item.type === "moveFrom";
@@ -184,6 +195,8 @@ const TRACKED_CHILD_TYPES = {
   hyperlink: true,
   bookmarkStart: true,
   bookmarkEnd: true,
+  commentRangeStart: true,
+  commentRangeEnd: true,
   moveFromRangeStart: true,
   moveFromRangeEnd: true,
   moveToRangeStart: true,
@@ -198,7 +211,7 @@ const TRACKED_CHILD_TYPES = {
   deletion: true,
   moveFrom: true,
   moveTo: true,
-} as const satisfies Record<TrackedRunContent["type"], true>;
+} as const satisfies Record<Exclude<TrackedRunContent["type"], "commentReference">, true>;
 
 const INLINE_SDT_CHILD_TYPES = {
   run: true,
@@ -225,7 +238,9 @@ const isHyperlinkChild = (item: ParagraphContent): item is HyperlinkChild =>
   Object.hasOwn(HYPERLINK_CHILD_TYPES, item.type);
 
 /** Whether a tracked change (`w:ins`, `w:del`, a move) can hold the record. */
-export const isTrackedChild = (item: ParagraphContent): item is TrackedRunContent =>
+export const isTrackedChild = (
+  item: ParagraphContent,
+): item is Exclude<TrackedRunContent, { type: "commentReference" }> =>
   Object.hasOwn(TRACKED_CHILD_TYPES, item.type);
 
 const isInlineSdtChild = (item: ParagraphContent): item is InlineSdtChild =>

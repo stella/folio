@@ -1,5 +1,6 @@
 /** Automatic note marks are owned model records, derived at the operations boundary. */
 import type { BlockContent, Document, Footnote, Endnote, Run } from "../model/document";
+import type { NoteStory } from "./types";
 import { storyParagraphs, updateBlockList } from "./blocks";
 import { leafSpans } from "./leaves";
 import { documentStories, storyBody } from "./stories";
@@ -46,3 +47,43 @@ export const noteUsesCustomMark = (document: Document, note: Footnote | Endnote)
       ),
     ),
   );
+
+const referencedNoteKeys = (document: Document): Set<string> => {
+  const references = new Set<string>();
+  for (const story of documentStories(document)) {
+    for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
+      for (const { node } of leafSpans(paragraph.content)) {
+        if (node.type === "footnoteRef") references.add(`footnote:${String(node.id)}`);
+        if (node.type === "endnoteRef") references.add(`endnote:${String(node.id)}`);
+      }
+    }
+  }
+  return references;
+};
+
+/** Note stories whose final live reference an edit removes. */
+export const removedNoteStories = (before: Document, after: Document): readonly NoteStory[] => {
+  const beforeReferences = referencedNoteKeys(before);
+  const afterReferences = referencedNoteKeys(after);
+  return [...beforeReferences]
+    .filter((key) => !afterReferences.has(key))
+    .map((key) => {
+      const [kind, id] = key.split(":");
+      return { kind: kind === "footnote" ? "footnote" : "endnote", id: Number(id) };
+    });
+};
+
+/** Note stories whose ownership changes because an edit adds its first or removes its last reference. */
+export const noteStoriesTouchedByReferences = (
+  before: Document,
+  after: Document,
+): readonly NoteStory[] => {
+  const beforeReferences = referencedNoteKeys(before);
+  const afterReferences = referencedNoteKeys(after);
+  return [...new Set([...beforeReferences, ...afterReferences])]
+    .filter((key) => beforeReferences.has(key) !== afterReferences.has(key))
+    .map((key) => {
+      const [kind, id] = key.split(":");
+      return { kind: kind === "footnote" ? "footnote" : "endnote", id: Number(id) };
+    });
+};

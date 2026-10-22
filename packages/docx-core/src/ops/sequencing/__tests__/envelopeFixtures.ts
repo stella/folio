@@ -64,6 +64,22 @@ export const envelopeFixtures = [
       },
       { type: "deleteBlocks", story: OP_STORIES.MAIN, blockIds: ["00000003"] },
       { type: "resolveRevision", story: OP_STORIES.MAIN, revisionIds: [42], decision: "accept" },
+      {
+        type: "addNote",
+        at: at(0),
+        note: {
+          type: "footnote",
+          id: 7,
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000007",
+              content: [{ type: "run", content: [{ type: "text", text: "Note" }] }],
+            },
+          ],
+        },
+      },
+      { type: "removeNote", at: at(0), story: { kind: "footnote", id: 7 } },
     ],
   },
   {

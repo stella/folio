@@ -11,6 +11,18 @@
       "path": "3:0:0:1:1:0:0:0:1:3:0:6:4",
       "note": "Nested revisions without hyperlinks retain authored wrapper grouping across save/reopen.",
       "date": "2026-10-08"
+    },
+    {
+      "seed": 1025496079,
+      "path": "6:0:0:0:0:0:0:0:1:2:2:2:4:4:3",
+      "note": "Automatic note markers are surviving covered content and remain owned by their note story across direct and tracked replacements. The replay also fails on the base revision.",
+      "date": "2026-10-19"
+    },
+    {
+      "seed": 866312462,
+      "path": "6:3:4:1:5:4:1:1:1:1:1:6:6:7:6:8:8:8:8:8:8:8:8",
+      "note": "A generated note-story replacement can address only the source-owned automatic marker after earlier edits; direct and tracked sessions must agree that there is no document change.",
+      "date": "2026-10-20"
     }
   ]
 }

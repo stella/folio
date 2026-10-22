@@ -12,6 +12,8 @@ export type AddNoteOp = {
     type: typeof DOCUMENT_OP_TYPES.ADD_NOTE;
     at: TextPosition;
     note: Footnote | Endnote;
+    revision?: RevisionStamp;
+    newIds?: NewIds;
 };
 
 // @public
@@ -121,6 +123,17 @@ export type CommentAnchor = {
 
 // @public
 export const commentDocumentIssue: (document: Document_2, allowedOrphans?: ReadonlySet<number> | "all") => string | undefined;
+
+// @public (undocumented)
+export type CommentExhaustionInput = {
+    type: "document";
+    document: Document_2;
+    id: number;
+} | {
+    type: "coverage";
+    anchorKind: Comment_2["anchorKind"];
+    survivingNonCarrierContent: boolean;
+};
 
 // @public
 export type CommentState = {
@@ -610,6 +623,12 @@ export type InsertTextOp = {
 };
 
 // @public
+export const isCommentAnchorCarrierType: (type: string) => boolean;
+
+// @public
+export const isCommentExhausted: (input: CommentExhaustionInput) => boolean;
+
+// @public
 export function isTextOnlyRun(run: Run): boolean;
 
 // @public
@@ -749,10 +768,34 @@ export const packageResourcesOpOf: (input: PackageResourcesOpOptions) => SetPack
 export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
 
 // @public
+export const paragraphIdsIn: (value: unknown) => string[];
+
+// @public
 export const paragraphLength: (paragraph: Paragraph) => number;
 
 // @public
 export const paragraphLogicalText: (paragraph: Paragraph) => string;
+
+// @public
+export const paragraphMarkOutcome: (input: {
+    follows: "paragraph" | "table" | "nothing";
+    holdsContent: boolean;
+    markWasAdded: boolean;
+    containerStillEndsWithParagraph: boolean;
+    followingTableCanReceiveRunIn: boolean;
+    tableRemovalIsTrackable?: boolean;
+}) => {
+    kind: "join";
+} | {
+    kind: "remove";
+} | {
+    kind: "run-in";
+} | {
+    kind: "keep";
+} | {
+    kind: "refuse";
+    reason: "untrackable";
+};
 
 // @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
@@ -826,6 +869,8 @@ export type RemoveNoteOp = {
     type: typeof DOCUMENT_OP_TYPES.REMOVE_NOTE;
     at: TextPosition;
     story: NoteStory;
+    revision?: RevisionStamp;
+    newIds?: NewIds;
 };
 
 // @public
@@ -1115,6 +1160,9 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 
 // @public (undocumented)
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
+
+// @public
+export const survivingComments: (document: Document_2) => Comment_2[];
 
 // @public (undocumented)
 export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;

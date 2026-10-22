@@ -8,7 +8,7 @@ permissions: {}
 jobs:
   shard:
     name: Corpus invariants (shard ${{ matrix.shard }}/4)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Eight more invariants per file than the gate shipped with, over a corpus
     # that has grown: a shard is now most of an hour rather than minutes.
     timeout-minutes: 90
@@ -81,7 +81,7 @@ jobs:
 
   tier2:
     name: Corpus invariants, tier 2 (shard ${{ matrix.shard }}/4)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Tier 2 more than doubles the corpus, so a shard runs longer than a
     # tier-1 one.
     timeout-minutes: 150
@@ -127,7 +127,7 @@ jobs:
   ratchet:
     name: Corpus baseline ratchet
     needs: shard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read

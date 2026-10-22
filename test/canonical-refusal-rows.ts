@@ -20,20 +20,8 @@ export type HarnessRefusalRow = {
   message: string;
 };
 
-export const canonicalActivationRefusalRow = (source: Document): HarnessRefusalRow | undefined =>
-  [
-    source.package.document,
-    ...(source.package.headers?.values() ?? []),
-    ...(source.package.footers?.values() ?? []),
-    ...(source.package.footnotes ?? []),
-    ...(source.package.endnotes ?? []),
-  ].some(({ content }) => content.some((block) => block.type === "table"))
-    ? {
-        id: "table-session-activation",
-        gap: CANONICAL_GAP.tableActivation,
-        message: "Canonical sessions cannot activate documents containing tables.",
-      }
-    : undefined;
+export const canonicalActivationRefusalRow = (_source: Document): HarnessRefusalRow | undefined =>
+  undefined;
 
 /** Rows are created by the attempted input, rather than mirroring ledger membership. */
 export const validateHarnessRefusalRows = (

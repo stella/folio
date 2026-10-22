@@ -160,20 +160,20 @@ const insertNoteLikeHost = (kind: "footnote" | "endnote"): ConformanceOperation 
   const name = kind === "footnote" ? "insertFootnote" : "insertEndnote";
   return {
     id: `command:${name}`,
-    placements: CARET,
+    placements: ["caret-middle", "word"],
     run: ({ view, base }) => {
       const footnotes = base.package.footnotes ?? [];
       const endnotes = base.package.endnotes ?? [];
       const existing = kind === "footnote" ? footnotes : endnotes;
       const id = Math.max(0, ...existing.map((note) => note.id)) + 1;
-      const applied = view.execute(commandManager(view).requireCommand(name)(id));
-      if (applied) {
-        const content: BlockContent[] = [
-          {
-            type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "A note." }] }],
-          },
-        ];
+      const content: BlockContent[] = [
+        {
+          type: "paragraph",
+          content: [{ type: "run", content: [{ type: "text", text: "A note." }] }],
+        },
+      ];
+      const applied = view.execute(commandManager(view).requireCommand(name)(id, content));
+      if (applied && view.authority !== "canonical") {
         if (kind === "footnote") {
           base.package.footnotes = [...footnotes, createNote("footnote", id, content)];
         } else {
@@ -339,9 +339,6 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
   // Not driven directly
   undo: { excluded: "Exercised by every case's undo check (d)." },
   redo: { excluded: "Exercised by every case's redo check (d)." },
-  extractSelectionContext: {
-    excluded: "Reads the selection for a host callback; it never edits the document.",
-  },
 };
 
 /** Two plain paragraphs, open at both ends, as a clipboard delivers them. */

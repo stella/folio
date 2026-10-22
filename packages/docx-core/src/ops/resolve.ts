@@ -25,24 +25,30 @@ import type {
   ParagraphPropertyChange,
   Run,
   RunPropertyChange,
+  Table,
 } from "../model/document";
 import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
+import { paragraphMarkOutcome } from "./blockDeletion";
 import { combineEdits, type DocumentEdit } from "./edits";
+import { isCommentExhausted } from "./comments";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
 import {
   alikeDepth,
   asParagraphContent,
   childNodes,
   type InlineNode,
+  leafSpans,
   mergeAlike,
   mergeLists,
   rebuildNode,
   sameOwnFields,
 } from "./leaves";
-import { paragraphLength } from "./offsets";
+import { paragraphHoldsContent, paragraphLength } from "./offsets";
 import { identitySlots, withInlineIdentity } from "./slots";
 import { canonicalDeferredGroups } from "./identity";
 import { joinParagraphSeam } from "./inline";
+import { storyLifecycleEdit } from "./storyLifecycle";
+import { documentStories } from "./stories";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import { isAddedRevision, isTrackedWrapper, reviewFieldsOf, withMarkFormatting } from "./review";
@@ -66,9 +72,109 @@ export type ApplyOps = (
 const refusal = (op: ResolveRevisionOp, reason: DocumentOpRefusal["reason"], message: string) =>
   new DocumentOpRefusal({ message, reason, opType: op.type });
 
+/** Prepends a retired paragraph's content to the paragraph in a table's first cell. */
+const runParagraphIntoTable = (paragraph: Paragraph, table: Table): Table | undefined => {
+  const row = table.rows.at(0);
+  const cell = row?.cells.at(0);
+  const target = cell?.content.at(0);
+  if (!row || !cell || !target) return undefined;
+  if (target.type === "table") {
+    const nested = runParagraphIntoTable(paragraph, target);
+    if (!nested) return undefined;
+    return {
+      ...table,
+      rows: [
+        {
+          ...row,
+          cells: [{ ...cell, content: [nested, ...cell.content.slice(1)] }, ...row.cells.slice(1)],
+        },
+        ...table.rows.slice(1),
+      ],
+    };
+  }
+  if (target.type !== "paragraph") return undefined;
+  const survivor = {
+    ...target,
+    content: joinParagraphSeam(paragraph.content, target.content),
+  };
+  return {
+    ...table,
+    rows: [
+      {
+        ...row,
+        cells: [{ ...cell, content: [survivor, ...cell.content.slice(1)] }, ...row.cells.slice(1)],
+      },
+      ...table.rows.slice(1),
+    ],
+  };
+};
+
+const tableCanReceiveParagraphRunIn = (paragraph: Paragraph, table: Table): boolean => {
+  if (paragraph.sectionProperties !== undefined) return false;
+  let current = table;
+  for (;;) {
+    const row = current.rows.at(0);
+    const cell = row?.cells.at(0);
+    if (!row || !cell) return false;
+    if (
+      row.structuralChange?.type === "tableRowInsertion" ||
+      row.structuralChange?.type === "tableRowDeletion" ||
+      cell.structuralChange !== undefined
+    ) {
+      return false;
+    }
+    const target = cell.content.at(0);
+    if (target?.type === "paragraph") return target.sectionProperties === undefined;
+    if (target?.type !== "table") return false;
+    current = target;
+  }
+};
+
 /** Whether a decision removes the content of a tracked change of this kind. */
 const removesContent = (node: InlineNode, decision: RevisionDecision): boolean =>
   decision === REVISION_DECISIONS.ACCEPT ? !isAddedRevision(node) : isAddedRevision(node);
+
+type NoteReference = { kind: "footnote" | "endnote"; id: number; added: boolean };
+
+/** Note bodies whose selected reference revision is removed by this decision. */
+const removedNoteReferences = (
+  document: Document,
+  op: ResolveRevisionOp,
+  ids: ReadonlySet<number>,
+): NoteReference[] => {
+  const references = new Map<string, NoteReference>();
+  for (const { paragraph } of storyParagraphs(storyBody(document, op.story))) {
+    for (const { node, ancestors } of leafSpans(paragraph.content)) {
+      if (node.type !== "footnoteRef" && node.type !== "endnoteRef") continue;
+      const revision = ancestors.find(
+        (ancestor) =>
+          isTrackedWrapper(ancestor) &&
+          ids.has(ancestor.info.id) &&
+          removesContent(ancestor, op.decision),
+      );
+      if (revision === undefined || !isTrackedWrapper(revision)) continue;
+      const reference = {
+        kind: node.type === "footnoteRef" ? "footnote" : "endnote",
+        id: node.id,
+        added: isAddedRevision(revision),
+      } as const;
+      references.set(`${reference.kind}:${reference.id}`, reference);
+    }
+  }
+  return [...references.values()];
+};
+
+const hasNoteReference = (document: Document, reference: NoteReference): boolean =>
+  documentStories(document).some((story) =>
+    storyParagraphs(storyBody(document, story)).some(({ paragraph }) =>
+      leafSpans(paragraph.content).some(
+        ({ node }) =>
+          (node.type === "footnoteRef" || node.type === "endnoteRef") &&
+          node.type === (reference.kind === "footnote" ? "footnoteRef" : "endnoteRef") &&
+          node.id === reference.id,
+      ),
+    ),
+  );
 
 /** Whether a mark of this kind recorded a break being added. */
 const markWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
@@ -159,6 +265,8 @@ type Resolution = {
   acceptedClosed: Record<"first" | "last", WeakSet<InlineNode>>;
   /** Unconsumed source-cut edges on the actual rebuilt container. */
   cutEdges: WeakMap<InlineNode, CutEdges>;
+  /** Comment ranges whose other boundary survives outside a removed wrapper. */
+  commentRangeIds: ReadonlySet<number>;
 };
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
@@ -581,6 +689,88 @@ const prepareDeferredRemovals = (
 type CutEdges = { first?: number; last?: number };
 type ResolvedList = { nodes: InlineNode[]; changed: boolean; edges?: CutEdges };
 
+/** Comment range boundaries are positions, not revision payload, so removing a wrapper retains them. */
+const retainedCommentAnchors = (
+  nodes: readonly InlineNode[],
+  rangeIds: ReadonlySet<number>,
+): InlineNode[] =>
+  nodes.flatMap((node) => {
+    if (
+      (node.type === "commentRangeStart" || node.type === "commentRangeEnd") &&
+      rangeIds.has(node.id)
+    )
+      return [node];
+    const children = childNodes(node);
+    return children === undefined ? [] : retainedCommentAnchors(children, rangeIds);
+  });
+
+const pairedCommentRangeIds = (nodes: readonly InlineNode[]): ReadonlySet<number> => {
+  const starts = new Set<number>();
+  const ends = new Set<number>();
+  const visit = (items: readonly InlineNode[]): void => {
+    for (const node of items) {
+      if (node.type === "commentRangeStart") starts.add(node.id);
+      if (node.type === "commentRangeEnd") ends.add(node.id);
+      visit(childNodes(node) ?? []);
+    }
+  };
+  visit(nodes);
+  return new Set([...starts].filter((id) => ends.has(id)));
+};
+
+/** Comment ids whose complete range belongs to selected content being removed. */
+const removedCommentRangeIds = (
+  nodes: readonly InlineNode[],
+  resolution: Resolution,
+): ReadonlySet<number> => {
+  const ids = new Set<number>();
+  const visit = (items: readonly InlineNode[], removedWithAncestor = false): void => {
+    for (const node of items) {
+      const removedHere =
+        removedWithAncestor ||
+        (isTrackedWrapper(node) &&
+          resolution.ids.has(node.info.id) &&
+          removesContent(node, resolution.decision));
+      if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
+        if (removesContent(node, resolution.decision)) {
+          const starts = new Set<number>();
+          const ends = new Set<number>();
+          const scan = (children: readonly InlineNode[]): void => {
+            for (const child of children) {
+              if (child.type === "commentRangeStart") starts.add(child.id);
+              if (child.type === "commentRangeEnd") ends.add(child.id);
+              scan(childNodes(child) ?? []);
+            }
+          };
+          scan(node.content);
+          for (const id of starts) if (ends.has(id)) ids.add(id);
+        }
+      }
+      visit(childNodes(node) ?? [], removedHere);
+    }
+  };
+  visit(nodes);
+  return ids;
+};
+
+const withoutCommentAnchors = (
+  nodes: readonly InlineNode[],
+  removedIds: ReadonlySet<number>,
+): readonly InlineNode[] => {
+  if (removedIds.size === 0) return nodes;
+  return nodes.flatMap((node) => {
+    if (
+      (node.type === "commentRangeStart" || node.type === "commentRangeEnd") &&
+      removedIds.has(node.id)
+    )
+      return [];
+    const children = childNodes(node);
+    if (children === undefined) return [node];
+    const filtered = withoutCommentAnchors(children, removedIds);
+    return [filtered === children ? node : rebuildNode(node, filtered)];
+  });
+};
+
 /**
  * A list with its tracked changes resolved. Where a change was resolved,
  * the records left meeting are merged as far as they are alike.
@@ -622,6 +812,7 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
           out.splice(0, out.length, ...prepared.slice(0, prefixLength));
           pending.splice(index + 1, pending.length - index - 1, ...prepared.slice(prefixLength));
         }
+        out.push(...retainedCommentAnchors(node.content, resolution.commentRangeIds));
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else recordSourceSeam(out.length, node.resolutionJoins.remove);
         continue;
@@ -1058,19 +1249,15 @@ const joinOps = (
   const blocks = blockListAt(body.content, location.list);
   const next = blocks[location.index + 1];
   const empty = paragraphLength(paragraph) === 0;
-  if (
-    next?.type === "table" &&
-    next.rows.some((row) => row.structuralChange?.type === "tableRowInsertion")
-  ) {
-    return Result.err(
-      refusal(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        "Resolve the inserted table before removing its preceding paragraph break.",
-      ),
-    );
-  }
   if (next?.type === "paragraph") {
+    const outcome = paragraphMarkOutcome({
+      follows: "paragraph",
+      holdsContent: !empty,
+      markWasAdded: added,
+      containerStillEndsWithParagraph: true,
+      followingTableCanReceiveRunIn: false,
+    });
+    if (outcome.kind !== "join") return panic("A following paragraph always receives a join.");
     // The mark that goes takes the paragraph's properties with it: the next
     // paragraph is left, whole, with the first's content before its own.
     const firstEnds = ends.get(idKey(paraId)) ?? NO_EMPTIED_ENDS;
@@ -1134,18 +1321,88 @@ const joinOps = (
     );
   }
   // No paragraph to join: a table follows, or the paragraph ends its container.
+  const containerFinal = endsItsContainer(body, location);
   // A cell-ending mark describes the terminator, not a paragraph to retire.
-  const cellFinal =
-    endsItsContainer(body, location) && location.list.some((step) => step.kind === "tableCell");
-  const canGo = !cellFinal && (added || !endsItsContainer(body, location));
-  if (empty && canGo && blocks.length > 1) {
+  const cellFinal = containerFinal && location.list.some((step) => step.kind === "tableCell");
+  const outcome = paragraphMarkOutcome({
+    follows: next?.type === "table" ? "table" : "nothing",
+    holdsContent: paragraphHoldsContent(paragraph),
+    markWasAdded: added,
+    containerStillEndsWithParagraph:
+      next?.type === "table"
+        ? blocks.at(-1)?.type === "paragraph"
+        : // Removing the final paragraph leaves the block before it last.
+          containerFinal && !cellFinal && blocks.at(location.index - 1)?.type === "paragraph",
+    followingTableCanReceiveRunIn:
+      next?.type === "table" && tableCanReceiveParagraphRunIn(paragraph, next),
+    tableRemovalIsTrackable:
+      next?.type !== "table" ||
+      (blocks.at(-1)?.type === "paragraph" && tableCanReceiveParagraphRunIn(paragraph, next)),
+  });
+  if (outcome.kind === "refuse") {
     return Result.err(
       refusal(
         op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `Resolving the mark of ${paraId} removes the paragraph, which is a block operation.`,
+        outcome.reason,
+        `Resolving the mark of ${paraId} would leave its container without a final paragraph.`,
       ),
     );
+  }
+  if (
+    (outcome.kind === "remove" || outcome.kind === "run-in") &&
+    blocks.length > 1 &&
+    next?.type === "table"
+  ) {
+    const anchor = blocks.find(
+      (block, index): block is Paragraph => index !== location.index && block.type === "paragraph",
+    );
+    if (anchor === undefined) {
+      return Result.err(
+        refusal(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          `Resolving the mark of ${paraId} leaves no structural inverse anchor.`,
+        ),
+      );
+    }
+    const replacement = outcome.kind === "remove" ? next : runParagraphIntoTable(paragraph, next);
+    if (replacement === undefined) {
+      return Result.err(
+        refusal(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          `Resolving the mark of ${paraId} cannot run into the table's first cell paragraph.`,
+        ),
+      );
+    }
+    return Result.ok([
+      {
+        type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+        story,
+        blockId: anchor.paraId ?? "",
+        expected: blocks,
+        blocks: blocks.flatMap((block, index) => {
+          if (index === location.index) return [];
+          return index === location.index + 1 ? [replacement] : [block];
+        }),
+      },
+    ]);
+  }
+  if (outcome.kind === "remove" && blocks.length > 1) {
+    const anchor = blocks.find(
+      (block, index): block is Paragraph => index !== location.index && block.type === "paragraph",
+    );
+    if (anchor !== undefined) {
+      return Result.ok([
+        {
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+          story,
+          blockId: anchor.paraId ?? "",
+          expected: blocks,
+          blocks: blocks.filter((_, index) => index !== location.index),
+        },
+      ]);
+    }
   }
   const review = reviewFieldsOf(paragraph);
   delete review.pPrMark;
@@ -1237,7 +1494,9 @@ export const resolveRevision = (
     emptied: new WeakSet(),
     acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
     cutEdges: new WeakMap(),
+    commentRangeIds: new Set(),
   };
+  const noteReferences = removedNoteReferences(document, op, ids);
   const paragraphs = storyParagraphs(storyBody(document, op.story));
   const reachable = new Set([
     ...paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]),
@@ -1300,20 +1559,31 @@ export const resolveRevision = (
   const emptiedEnds: EmptiedEndsById = new Map();
   const resolvedContents = new Map<string, readonly InlineNode[]>();
   const resolvedCutEdges = new Map<string, CutEdges>();
-  for (const { paragraph } of paragraphs) {
+  const preparedContents = paragraphs.map(({ paragraph }) => ({
+    paragraph,
+    content: prepareDeferredRemovals(paragraph.content, resolution),
+  }));
+  resolution.commentRangeIds = pairedCommentRangeIds(
+    preparedContents.flatMap(({ content }) => content),
+  );
+  const removedCommentIds = removedCommentRangeIds(
+    preparedContents.flatMap(({ content }) => content),
+    resolution,
+  );
+  for (const { paragraph, content: prepared } of preparedContents) {
     const paraId = paragraph.paraId ?? "";
-    const prepared = prepareDeferredRemovals(paragraph.content, resolution);
     const resolved = resolveList(prepared, resolution);
-    resolvedContents.set(idKey(paraId), resolved.nodes);
+    const resolvedNodes = withoutCommentAnchors(resolved.nodes, removedCommentIds);
+    resolvedContents.set(idKey(paraId), resolvedNodes);
     if (resolved.edges !== undefined) resolvedCutEdges.set(idKey(paraId), resolved.edges);
     if (resolved.changed || prepared !== paragraph.content) {
-      emptiedEnds.set(idKey(paraId), emptiedEndsOf(resolved.nodes, resolution.emptied));
+      emptiedEnds.set(idKey(paraId), emptiedEndsOf(resolvedNodes, resolution.emptied));
       inline.push({
         type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
         story: op.story,
         blockId: paraId,
         expected: paragraph.content,
-        content: asParagraphContent(resolved.nodes),
+        content: asParagraphContent(resolvedNodes),
       });
     }
   }
@@ -1438,5 +1708,50 @@ export const resolveRevision = (
     edits.push(joined.value);
     current = joined.value.document;
   }
+  // Notes whose last reference went are removed first: a comment anchored in
+  // one of them is then exhausted too and retires below.
+  let notesRemoved = false;
+  if (noteReferences.length > 0) {
+    const orphaned = noteReferences.filter((reference) => !hasNoteReference(current, reference));
+    if (orphaned.length > 0) {
+      const footnotes = new Set(
+        orphaned.filter(({ kind }) => kind === "footnote").map(({ id }) => id),
+      );
+      const endnotes = new Set(
+        orphaned.filter(({ kind }) => kind === "endnote").map(({ id }) => id),
+      );
+      const packageParts = { ...current.package };
+      const removesAddedFootnote = orphaned.some(({ kind, added }) => kind === "footnote" && added);
+      const removesAddedEndnote = orphaned.some(({ kind, added }) => kind === "endnote" && added);
+      if (footnotes.size > 0 && packageParts.footnotes !== undefined) {
+        packageParts.footnotes = packageParts.footnotes.filter(({ id }) => !footnotes.has(id));
+        if (packageParts.footnotes.length === 0 && removesAddedFootnote)
+          delete packageParts.footnotes;
+      }
+      if (endnotes.size > 0 && packageParts.endnotes !== undefined) {
+        packageParts.endnotes = packageParts.endnotes.filter(({ id }) => !endnotes.has(id));
+        if (packageParts.endnotes.length === 0 && removesAddedEndnote) delete packageParts.endnotes;
+      }
+      current = { ...current, package: packageParts };
+      notesRemoved = true;
+    }
+  }
+  const exhausted = (document.package.document.comments ?? []).filter(
+    ({ id, parentId }) =>
+      parentId === undefined &&
+      !isCommentExhausted({ type: "document", document, id }) &&
+      isCommentExhausted({ type: "document", document: current, id }),
+  );
+  for (const { id } of exhausted) {
+    const retired = applyOps(current, [
+      { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id, scope: "thread" },
+    ]);
+    if (retired.isErr()) return Result.err(retired.error);
+    edits.push(retired.value);
+    current = retired.value.document;
+  }
+  // A removed note changes story parts; one lifecycle edit captures them and
+  // the retired comments together.
+  if (notesRemoved) return storyLifecycleEdit(document, current, op, true);
   return Result.ok(combineEdits(document, edits));
 };

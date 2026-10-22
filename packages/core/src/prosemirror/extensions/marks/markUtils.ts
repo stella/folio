@@ -6,7 +6,7 @@
  */
 
 import { canonicalRunFormatting, withCanonicalCommand } from "../../canonicalCommands";
-import { canonicalSelectionRange } from "../../canonicalSelectionRange";
+import { canonicalSelectionRanges } from "../../canonicalSelectionRange";
 import type { RunPropsPatch } from "@stll/docx-core/ops";
 
 import type { Attrs, MarkType, Mark, Schema } from "prosemirror-model";
@@ -349,7 +349,6 @@ export const canonicalSetMarkFormatting = ({
 }: CanonicalSetMarkFormattingOptions) => {
   const markType = documentMarkType(state, type);
   const { empty } = state.selection;
-  const { from, to } = canonicalSelectionRange(state);
   if (empty) {
     const current = markType.isInSet(state.storedMarks ?? state.selection.$from.marks());
     return canonicalRunFormatting(
@@ -357,15 +356,17 @@ export const canonicalSetMarkFormatting = ({
       marksToTextFormatting([createMarkWithMergedAttrs(markType, current, attrs)]),
     );
   }
-  return selectRunFormattingCarrierRepresentations({ doc: state.doc, from, to }).map(
-    (representation) => ({
-      type: "formatRun" as const,
-      from: representation.from,
-      to: representation.to,
-      patch: marksToTextFormatting([
-        createMarkWithMergedAttrs(markType, markType.isInSet(representation.node.marks), attrs),
-      ]),
-    }),
+  return canonicalSelectionRanges(state).flatMap(({ from, to }) =>
+    selectRunFormattingCarrierRepresentations({ doc: state.doc, from, to }).map(
+      (representation) => ({
+        type: "formatRun" as const,
+        from: representation.from,
+        to: representation.to,
+        patch: marksToTextFormatting([
+          createMarkWithMergedAttrs(markType, markType.isInSet(representation.node.marks), attrs),
+        ]),
+      }),
+    ),
   );
 };
 
@@ -1044,8 +1045,8 @@ export function textFormattingToMarks(
  * not formatting, and removing them deleted the comment's range, unlinked the
  * text, orphaned the note and silently resolved the revision.
  */
-export const clearFormatting: Command = (state, dispatch) => {
-  const { from, to, empty } = state.selection;
+const clearFormattingCommand: Command = (state, dispatch) => {
+  const { empty } = state.selection;
 
   if (empty) {
     if (dispatch) {
@@ -1061,16 +1062,18 @@ export const clearFormatting: Command = (state, dispatch) => {
   if (dispatch) {
     let tr = state.tr;
 
-    state.doc.nodesBetween(from, to, (node, pos) => {
-      if (node.isText && node.marks.length > 0) {
-        const start = Math.max(from, pos);
-        const end = Math.min(to, pos + node.nodeSize);
-        for (const mark of node.marks) {
-          if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name)) {
-            tr = tr.removeMark(start, end, mark.type);
+    canonicalSelectionRanges(state).forEach(({ from, to }) => {
+      state.doc.nodesBetween(from, to, (node, pos) => {
+        if (node.isText && node.marks.length > 0) {
+          const start = Math.max(from, pos);
+          const end = Math.min(to, pos + node.nodeSize);
+          for (const mark of node.marks) {
+            if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name)) {
+              tr = tr.removeMark(start, end, mark.type);
+            }
           }
         }
-      }
+      });
     });
 
     dispatch(tr.scrollIntoView());
@@ -1078,6 +1081,22 @@ export const clearFormatting: Command = (state, dispatch) => {
 
   return true;
 };
+
+/** Clear character formatting from the selection. */
+export const clearFormatting: Command = withCanonicalCommand(clearFormattingCommand, (state) =>
+  canonicalSelectionRanges(state).flatMap(({ from, to }) =>
+    selectRunFormattingCarrierRepresentations({ doc: state.doc, from, to }).map(
+      (representation) => ({
+        type: "formatRun" as const,
+        from: representation.from,
+        to: representation.to,
+        patch: Object.fromEntries(
+          Object.keys(marksToTextFormatting(representation.node.marks)).map((key) => [key, null]),
+        ),
+      }),
+    ),
+  ),
+);
 
 /**
  * Create a command that sets a mark on the selection

@@ -43,7 +43,7 @@ jobs:
   consumer-fuzz:
     if: ${{ !inputs.long_flows && !inputs.public_corpus_flows }}
     name: Consumer-scenario fuzz
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 50
     permissions:
       contents: read
@@ -169,7 +169,7 @@ jobs:
   property-fuzz:
     if: ${{ !inputs.long_flows && !inputs.public_corpus_flows }}
     name: Property fuzz
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -239,7 +239,7 @@ jobs:
     name: File failures by signature
     needs: [consumer-fuzz, property-fuzz]
     if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (failure() || github.event_name == 'schedule') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
       group: fuzz-failure-issues
@@ -251,6 +251,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
