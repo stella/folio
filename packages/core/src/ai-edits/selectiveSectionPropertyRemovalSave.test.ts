@@ -118,6 +118,44 @@ test("selective rejection can repack after clearing a referenced section endpoin
   expect((reopened.package.document.content.at(0) as Paragraph).sectionProperties).toBeUndefined();
 });
 
+test("rejecting an empty inserted final paragraph moves its section to the preceding paragraph", async () => {
+  const base = sourceDocument();
+  const { propertyChanges: _propertyChanges, ...sectionProperties } =
+    sectionParagraph(undefined).sectionProperties ?? {};
+  const document: Document = {
+    package: {
+      ...base.package,
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "70000003",
+            content: [{ type: "run", content: [{ type: "text", text: "Before" }] }],
+          },
+          {
+            type: "paragraph",
+            paraId: "70000004",
+            content: [],
+            pPrMark: { kind: "ins", info: REVISION },
+            sectionProperties,
+          },
+        ],
+        finalSectionProperties: { pageWidth: 12_240 },
+      },
+    },
+  };
+
+  const reopened = await rejectAndReopen(document);
+
+  expect(reopened.package.document.content).toHaveLength(1);
+  const survivor = reopened.package.document.content.at(0) as Paragraph;
+  expect(survivor.paraId).toBe("70000003");
+  expect(survivor.sectionProperties?.headerReferences).toEqual([
+    { type: "default", rId: headerId },
+  ]);
+  expect(survivor.sectionProperties?.footerReferences).toEqual([{ type: "even", rId: footerId }]);
+});
+
 test("clearing properties and removing the same paragraph mark counts one endpoint", async () => {
   const reopened = await rejectAndReopen(sourceDocument({ kind: "ins", info: REVISION }));
 

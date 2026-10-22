@@ -703,10 +703,20 @@ function resolveChange(
           // A container must contain a paragraph either way, so its parent's
           // only child stays blank whatever its mark says.
           //
-          // Section properties belong to the paragraph mark being resolved.
-          // Removing that mark removes its section endpoint; transferring the
-          // properties backward would retain the section the revision deleted.
+          // Section properties live on the removed paragraph mark. The shared
+          // paragraph-mark rule decides whether the preceding mark inherits
+          // them, as it does for a join.
           if (outcome.kind === "remove") {
+            if (
+              outcome.sectionDestination === "preceding" &&
+              preceding?.type.name === "paragraph"
+            ) {
+              tr.setNodeAttribute(
+                mappedPos - preceding.nodeSize,
+                "_sectionProperties",
+                sectionProperties,
+              );
+            }
             countRemovedSectionEndpoint(paragraph);
             tr.delete(mappedPos, mappedPos + paragraph.nodeSize);
             continue;
