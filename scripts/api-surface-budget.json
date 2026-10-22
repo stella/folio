@@ -8,14 +8,14 @@
   "docx-core": {
     "reportBytes": 134402,
     "reportLines": 4258,
-    "declarationBytes": 299079,
-    "declarationLines": 6450
+    "declarationBytes": 311748,
+    "declarationLines": 6746
   },
   "core": {
     "reportBytes": 351935,
     "reportLines": 11057,
-    "declarationBytes": 2584219,
-    "declarationLines": 51392
+    "declarationBytes": 2627580,
+    "declarationLines": 53271
   },
   "react": {
     "reportBytes": 57073,
