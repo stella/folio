@@ -11,7 +11,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import editorWebPlaywright from "../packages/editor-web/playwright.config";
 import runContract from "./ci-run-contract.json";
-import { affectedPackagePlan } from "./ci-api-plan";
+import {
+  affectedPackagePlan,
+  apiRequiredForPaths,
+  publishedPackagePaths as discoverPublishedPackagePaths,
+} from "./ci-api-plan";
 import { affectedTypecheckPlanForPaths } from "./check-affected-packages";
 import { changedTypecheckPaths, typecheckPlanForPaths } from "./ci-plan";
 import {
@@ -1036,6 +1040,15 @@ describe("CI plan", () => {
       throw new TypeError("Missing CI result environment");
     const scopes = JSON.parse(String(evaluation["env"]["JOB_SCOPES"]));
     expect(scopes["build-api"]).toEqual({ area: "api_required" });
+  });
+
+  test("an API report change always selects the published API preflight", () => {
+    expect(
+      apiRequiredForPaths({
+        changedPaths: ["api-reports/docx-core/docx-core.api.md"],
+        publishedPackagePaths: discoverPublishedPackagePaths(),
+      }),
+    ).toBe(true);
   });
 
   test("browser discovery path scopes include future configs and playgrounds but skip docs", () => {

@@ -499,6 +499,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0 # compare generated declarations with the base commit
           persist-credentials: false
 
       - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
@@ -515,6 +516,8 @@ jobs:
 
       - name: API surface report
         id: api-surface-report
+        env:
+          API_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
           bun scripts/api-surface-budget.ts --self-test
           bun run api:check

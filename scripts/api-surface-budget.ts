@@ -1,13 +1,22 @@
 #!/usr/bin/env bun
 
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { Result, TaggedError, panic } from "better-result";
 
 import { keyDifferences, validateExactObjectKeys } from "./lib/exact-object";
 import { PUBLISHED_PACKAGES } from "./lib/published-packages";
+import { installFrozenRepositoryDependencies } from "./clean-room-install";
 
-const REPORT_ROOT = path.resolve(import.meta.dir, "../api-reports");
+const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_PATH = path.join(import.meta.dir, "api-surface-budget.json");
 const PACKAGES = PUBLISHED_PACKAGES.map(({ slug }) => slug);
 const HEADROOM = 1.05;
@@ -16,13 +25,14 @@ const LINE_FLOOR = 50;
 const RATCHET_THRESHOLD = 0.95;
 
 type PackageName = (typeof PACKAGES)[number];
-type SurfaceSize = {
+export type SurfaceSize = {
   reportBytes: number;
   reportLines: number;
   declarationBytes: number;
   declarationLines: number;
 };
 type Baseline = Map<PackageName, SurfaceSize>;
+export type SurfaceBudget = ReadonlyMap<string, SurfaceSize>;
 
 const METRIC_NAMES = [
   "reportBytes",
@@ -36,6 +46,12 @@ const METRICS = {
   declarationBytes: BYTE_FLOOR,
   declarationLines: LINE_FLOOR,
 } as const satisfies Record<keyof SurfaceSize, number>;
+const EMPTY_SURFACE = {
+  reportBytes: 0,
+  reportLines: 0,
+  declarationBytes: 0,
+  declarationLines: 0,
+} as const satisfies SurfaceSize;
 
 const isSize = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
@@ -61,15 +77,15 @@ const measureFiles = (directory: string, files: readonly string[]): FileSize => 
   return { bytes, lines };
 };
 
-const measurePackage = (name: PackageName): SurfaceSize => {
-  const reportDirectory = path.join(REPORT_ROOT, name);
+const measurePackage = (name: PackageName, root: string = REPOSITORY_ROOT): SurfaceSize => {
+  const reportDirectory = path.join(root, "api-reports", name);
   const reportFiles = readdirSync(reportDirectory)
     .filter((file) => file.endsWith(".api.md"))
     .toSorted();
   if (reportFiles.length === 0) {
     throw new Error(`No API reports found for ${name}`);
   }
-  const distDirectory = path.resolve(REPORT_ROOT, "../packages", name, "dist");
+  const distDirectory = path.join(root, "packages", name, "dist");
   const declarationFiles = readdirSync(distDirectory, { recursive: true })
     .filter(
       (file): file is string =>
@@ -91,6 +107,10 @@ const measurePackage = (name: PackageName): SurfaceSize => {
 };
 
 const measureAll = (): Baseline => new Map(PACKAGES.map((name) => [name, measurePackage(name)]));
+
+/** A package without API reports in the base had no published surface there. */
+const measureBasePackage = (name: PackageName, root: string): SurfaceSize =>
+  existsSync(path.join(root, "api-reports", name)) ? measurePackage(name, root) : EMPTY_SURFACE;
 
 const sizeFor = (baseline: Baseline, name: PackageName): SurfaceSize =>
   baseline.get(name) ?? panic("Missing measured API surface", { name });
@@ -173,22 +193,54 @@ const report = (measured: Baseline): void => {
   }
 };
 
-const check = (measured: Baseline): number => {
+type BudgetEvaluation = { failures: string[]; warnings: string[] };
+
+export const evaluateBudget = (
+  base: SurfaceBudget,
+  measured: SurfaceBudget,
+  budget: SurfaceBudget,
+): BudgetEvaluation => {
+  const failures: string[] = [];
+  const warnings: string[] = [];
+  for (const [name, size] of measured) {
+    const baseSize = base.get(name) ?? EMPTY_SURFACE;
+    const maximumSize = budget.get(name);
+    if (maximumSize === undefined) {
+      failures.push(`Missing ${name} API surface budget`);
+      continue;
+    }
+    for (const metric of METRIC_NAMES) {
+      const current = size[metric];
+      const previous = baseSize[metric];
+      const budgetMaximum = maximumSize[metric];
+      if (current <= budgetMaximum) continue;
+      const detail = `${name}.${metric}: base ${previous}, new ${current}, budget ${budgetMaximum}`;
+      if (current > previous) {
+        failures.push(
+          `${detail}; bump scripts/api-surface-budget.json ${name}.${metric} to at least ${current}`,
+        );
+      } else {
+        warnings.push(`${detail}; existing base drift did not grow`);
+      }
+    }
+  }
+  return { failures, warnings };
+};
+
+const check = (base: Baseline, measured: Baseline): number => {
   const baselineResult = readBaseline();
   if (baselineResult.isErr()) {
     console.error(baselineResult.error.message);
     return 1;
   }
   const baseline = baselineResult.value;
-  const failures: string[] = [];
+  const { failures, warnings } = evaluateBudget(base, measured, baseline);
+  for (const warning of warnings) console.warn(`api-surface-budget: warning: ${warning}`);
   for (const name of PACKAGES) {
     for (const metric of METRIC_NAMES) {
-      const floor = METRICS[metric];
       const current = sizeFor(measured, name)[metric];
       const previous = sizeFor(baseline, name)[metric];
-      if (exceedsMaximum(current, previous, floor)) {
-        failures.push(`${name}.${metric}: ${previous} -> ${current}`);
-      } else if (ratchetAvailable(current, previous)) {
+      if (ratchetAvailable(current, previous)) {
         console.log(
           `api-surface-budget: ratchet available for ${name}.${metric}: ` +
             `${previous} -> ${current}; run bun run api:budget:write`,
@@ -205,6 +257,55 @@ const check = (measured: Baseline): number => {
     console.error(`  ${failure}`);
   }
   return 1;
+};
+
+const measureBase = (revision: string): Baseline => {
+  if (!/^[\da-f]{40}$/iu.test(revision)) throw new TypeError("API budget base must be a full SHA.");
+  const root = path.resolve(import.meta.dir, "..");
+  const cacheRoot = path.join(root, ".cache");
+  mkdirSync(cacheRoot, { recursive: true });
+  const worktree = mkdtempSync(path.join(cacheRoot, "api-budget-base-"));
+  const add = Bun.spawnSync(["git", "worktree", "add", "--detach", worktree, revision], {
+    cwd: root,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (add.exitCode !== 0) {
+    rmSync(worktree, { recursive: true, force: true });
+    throw new Error(`Cannot create API budget base worktree: ${add.stderr.toString().trim()}`);
+  }
+  try {
+    installFrozenRepositoryDependencies(worktree);
+    const build = Bun.spawnSync(["bun", "run", "build"], {
+      cwd: worktree,
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    if (build.exitCode !== 0) throw new Error("Cannot build the base API declaration surface.");
+    return new Map(PACKAGES.map((name) => [name, measureBasePackage(name, worktree)]));
+  } finally {
+    Bun.spawnSync(["git", "worktree", "remove", "--force", worktree], { cwd: root });
+    rmSync(worktree, { recursive: true, force: true });
+  }
+};
+
+const baseMeasurementSelfTest = (): boolean => {
+  const cacheRoot = path.join(REPOSITORY_ROOT, ".cache");
+  mkdirSync(cacheRoot, { recursive: true });
+  const root = mkdtempSync(path.join(cacheRoot, "api-budget-self-test-"));
+  try {
+    const name = PACKAGES[0] ?? panic("api-surface-budget: no published packages");
+    mkdirSync(path.join(root, "packages", name, "dist"), { recursive: true });
+    const unpublished = measureBasePackage(name, root);
+    mkdirSync(path.join(root, "api-reports", name), { recursive: true });
+    const emptyReportsFail = Result.try(() => measureBasePackage(name, root)).isErr();
+    return (
+      METRIC_NAMES.every((metric) => unpublished[metric] === EMPTY_SURFACE[metric]) &&
+      emptyReportsFail
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 };
 
 const selfTest = (): number => {
@@ -233,7 +334,7 @@ const selfTest = (): number => {
   }
 
   const publishedPackageSlugs: string[] = [];
-  const packagesRoot = path.resolve(REPORT_ROOT, "../packages");
+  const packagesRoot = path.join(REPOSITORY_ROOT, "packages");
   for (const directory of readdirSync(packagesRoot, { withFileTypes: true })) {
     if (!directory.isDirectory()) {
       continue;
@@ -258,29 +359,43 @@ const selfTest = (): number => {
     );
     return 1;
   }
+  if (!baseMeasurementSelfTest()) {
+    console.error("api-surface-budget: base-measurement self-test failed");
+    return 1;
+  }
   console.log("api-surface-budget: self-test passed");
   return 0;
 };
 
-const mode = process.argv.at(2) ?? "--check";
-if (process.argv.length > 3 || !["--check", "--self-test", "--write"].includes(mode)) {
-  console.error("Usage: api-surface-budget.ts [--check|--self-test|--write]");
-  process.exit(2);
-}
-if (mode === "--self-test") {
-  process.exit(selfTest());
-}
-
-try {
-  const measured = measureAll();
-  report(measured);
-  if (mode === "--write") {
-    writeFileSync(BASELINE_PATH, `${JSON.stringify(Object.fromEntries(measured), null, 2)}\n`);
-    console.log("api-surface-budget: wrote scripts/api-surface-budget.json");
-    process.exit(0);
+if (import.meta.main) {
+  const args = process.argv.slice(2);
+  const mode = args.at(0) ?? "--check";
+  const baseIndex = args.indexOf("--base");
+  const baseArgument = baseIndex === -1 ? undefined : args.at(baseIndex + 1);
+  const base = baseArgument ?? process.env["API_BASE"];
+  const expectedLength = baseArgument === undefined ? 1 : 3;
+  if (
+    args.length > expectedLength ||
+    !["--check", "--self-test", "--write"].includes(mode) ||
+    (baseIndex !== -1 && (baseIndex !== 1 || baseArgument === undefined))
+  ) {
+    console.error("Usage: api-surface-budget.ts [--check|--self-test|--write] [--base <sha>]");
+    process.exit(2);
   }
-  process.exit(check(measured));
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+  if (mode === "--self-test") process.exit(selfTest());
+
+  try {
+    const measured = measureAll();
+    report(measured);
+    if (mode === "--write") {
+      writeFileSync(BASELINE_PATH, `${JSON.stringify(Object.fromEntries(measured), null, 2)}\n`);
+      console.log("api-surface-budget: wrote scripts/api-surface-budget.json");
+      process.exit(0);
+    }
+    if (!base) throw new TypeError("API budget checks require --base <sha>.");
+    process.exit(check(measureBase(base), measured));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }
