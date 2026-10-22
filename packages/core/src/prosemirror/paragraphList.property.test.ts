@@ -151,7 +151,7 @@ describe("paragraph list reader agreement", () => {
     ).toBe("marker");
   });
 
-  test("a cached list projection never stands in for a package or a resolved unnumbered style", () => {
+  test("a cached list projection never stands in for package numbering", () => {
     const projection = { marker: "1.", level: 0, numId: 1, isBullet: false };
     const numbering = createNumberingMap({
       abstractNums: [
@@ -165,9 +165,10 @@ describe("paragraph list reader agreement", () => {
     expect(
       resolveParagraphList({ ...unnumbered, inheritedReference: null }, numbering, projection).kind,
     ).toBe("none");
+    // Without a package, the projection is the list, whatever the style said.
     expect(
       resolveParagraphList({ ...unnumbered, inheritedReference: null }, null, projection).kind,
-    ).toBe("none");
+    ).toBe("marker");
   });
 
   test("an inherited style reference resolves through the numbering owner", () => {

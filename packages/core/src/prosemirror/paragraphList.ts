@@ -62,13 +62,10 @@ export const resolveParagraphList = (
         : (sources.inheritedReference ?? undefined),
   });
   // Only a package-free canonical model carries its list projection directly,
-  // and only while neither the paragraph's own numbering nor its resolved
-  // style says it is not a list.
+  // and only while the paragraph's own numbering does not cancel the list.
+  // With a package, the definitions alone decide.
   const projectionStandsIn =
-    numbering === null &&
-    standaloneRendering !== undefined &&
-    sources.numPr?.kind !== "none" &&
-    sources.inheritedReference !== null;
+    numbering === null && standaloneRendering !== undefined && sources.numPr?.kind !== "none";
   switch (resolved.kind) {
     case "none": {
       if (projectionStandsIn) {

@@ -571,6 +571,12 @@ describe("toMarkdown — block structure", () => {
     expect(toMarkdown(document)).toBe("text");
   });
 
+  test("a package-free paragraph carrying only its list projection exports as a list", () => {
+    expect(
+      md([{ type: "paragraph", content: [run("text")], listRendering: list(0, false, "1.") }]),
+    ).toBe("1. text");
+  });
+
   test("a hidden list marker (w:vanish) exports as plain prose", () => {
     const hidden: ListRendering = { ...list(0, true, "•"), markerHidden: true };
     expect(md([para([run("text")], { listRendering: hidden })])).toBe("text");
