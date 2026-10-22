@@ -113,7 +113,7 @@ test("nested calls preserve caller restrictions and require their own pinned fix
     `permissions:\n  contents: read\njobs:\n  child:\n    uses: ./.github/workflows/child.yml\n`,
   );
   const child = parsePermissionWorkflow(
-    `permissions:\n  contents: write\njobs:\n  work:\n    runs-on: ubuntu-latest\n`,
+    `permissions:\n  contents: write\njobs:\n  work:\n    runs-on: ubuntu-24.04\n`,
   );
   const problems = checkReusableWorkflowPermissions({
     source: "release-pr.yml",

@@ -18,6 +18,7 @@ import type {
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { contractViolation, normalizeForOps } from "../contract";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
+import { isCommentExhausted } from "../comments";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
@@ -45,6 +46,22 @@ const paragraph = (
 
 const documentOf = (...content: BlockContent[]): Document => ({
   package: { document: { content } },
+});
+
+const commentedDocument = (content: ParagraphContent[]): Document => ({
+  package: {
+    document: {
+      content: [paragraph("00000001", content)],
+      comments: [
+        {
+          id: 40,
+          anchorKind: "range",
+          author: "Reviewer",
+          content: [paragraph("00000040", [run("note")])],
+        },
+      ],
+    },
+  },
 });
 
 const at = (blockId: string, offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
@@ -87,6 +104,24 @@ const refusalOf = (document: Document, op: DocumentOp): string | undefined => {
 const blocks = (document: Document): BlockContent[] => document.package.document.content;
 
 describe("tracked text", () => {
+  test("a point comment is not exhausted without covered content", () => {
+    const document = commentedDocument([{ type: "commentReference", id: 40 }]);
+    document.package.document.comments![0]!.anchorKind = "point";
+
+    expect(isCommentExhausted({ type: "document", document, id: 40 })).toBe(false);
+  });
+
+  test("a note marker is surviving covered content for a ranged comment", () => {
+    const document = commentedDocument([
+      { type: "commentRangeStart", id: 40 },
+      { type: "run", content: [{ type: "noteMarker", kind: "footnote" }] },
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+    ]);
+
+    expect(isCommentExhausted({ type: "document", document, id: 40 })).toBe(false);
+  });
+
   // The L1 generator found an empty revision acting as a zero-width deletion
   // target. The input normalization must remove it for both operation modes.
   test.each(["insertion", "deletion", "moveFrom", "moveTo"] as const)(
@@ -140,6 +175,50 @@ describe("tracked text", () => {
       direct.document,
     );
     expect(resolved(tracked.document, [1], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+  });
+
+  test("rejecting a tracked insertion retires a comment that only covered inserted text", () => {
+    const document = commentedDocument([
+      run("before "),
+      { type: "commentRangeStart", id: 40 },
+      {
+        type: "insertion",
+        info: stamp(1),
+        content: [run("inserted")],
+      },
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+    ]);
+
+    const rejected = resolved(document, [1], REVISION_DECISIONS.REJECT);
+
+    expect(rejected.package.document.comments).toBeUndefined();
+  });
+
+  test("rejecting a tracked insertion keeps a comment that also covered original text", () => {
+    const document = commentedDocument([
+      { type: "commentRangeStart", id: 40 },
+      {
+        type: "insertion",
+        info: stamp(1),
+        content: [run("inserted ")],
+      },
+      run("original"),
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+    ]);
+
+    const rejected = resolved(document, [1], REVISION_DECISIONS.REJECT);
+
+    expect(rejected.package.document.comments).toHaveLength(1);
+    expect(blocks(rejected)).toEqual([
+      paragraph("00000001", [
+        { type: "commentRangeStart", id: 40 },
+        run("original"),
+        { type: "commentRangeEnd", id: 40 },
+        { type: "commentReference", id: 40 },
+      ]),
+    ]);
   });
 
   test("a tracked insertion with the same stamp joins the wrapper it follows", () => {
@@ -370,6 +449,83 @@ describe("tracked text", () => {
         },
       ]),
     ]);
+  });
+
+  test("accepting deletion of a comment's whole range retires it", () => {
+    const document = commentedDocument([
+      { type: "commentRangeStart", id: 40 },
+      run("x"),
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+      run(" remains"),
+    ]);
+    const deletion = {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at("00000001", 0),
+      to: at("00000001", 1),
+      revision: stamp(9),
+    } as const satisfies DocumentOp;
+    const tracked = applied(document, deletion);
+
+    expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.REJECT)).toStrictEqual(
+      document,
+    );
+    const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
+    expect(accepted.package.document.comments).toBeUndefined();
+
+    expect(blocks(accepted)).toEqual([paragraph("00000001", [run(" remains")])]);
+  });
+
+  test("accepting deletion keeps a range that still covers an inline object", () => {
+    const document = commentedDocument([
+      { type: "commentRangeStart", id: 40 },
+      run("x"),
+      { type: "run", content: [{ type: "drawing", data: "shape" }] },
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+    ]);
+    const tracked = applied(document, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at("00000001", 0),
+      to: at("00000001", 1),
+      revision: stamp(9),
+    });
+    const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
+
+    expect(accepted.package.document.comments).toHaveLength(1);
+  });
+
+  test("accepting a deleted row does not preserve an otherwise exhausted comment range", () => {
+    const document = commentedDocument([
+      { type: "commentRangeStart", id: 40 },
+      { type: "deletion", info: stamp(9), content: [run("gone")] },
+    ]);
+    document.package.document.content.push(
+      {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            structuralChange: { type: "tableRowDeletion", info: stamp(10) },
+            cells: [
+              {
+                type: "tableCell",
+                content: [paragraph("00000002", [run("removed with row")])],
+              },
+            ],
+          },
+        ],
+      },
+      paragraph("00000003", [
+        { type: "commentRangeEnd", id: 40 },
+        { type: "commentReference", id: 40 },
+      ]),
+    );
+
+    const accepted = resolved(document, [9, 10], REVISION_DECISIONS.ACCEPT);
+
+    expect(accepted.package.document.comments).toBeUndefined();
+    expect(blocks(accepted)).toHaveLength(2);
   });
 
   test("revisionIdDemand counts the ids a tracked operation takes past its stamp", () => {

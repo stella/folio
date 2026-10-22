@@ -130,6 +130,7 @@ export const canonicalReviewModel = (
         );
       }
       if (entry === undefined) continue;
+      if (key === "comments" && Array.isArray(entry) && entry.length === 0) continue;
       if (
         (key === "formatting" || key === "previousFormatting" || key === "currentFormatting") &&
         typeof entry === "object" &&

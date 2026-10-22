@@ -85,6 +85,7 @@ export const InsertionExtension = createMarkExtension({
       _docxOuterWrapperCount: { default: null },
       _docxResolutionJoins: { default: null },
       _docxRevisionAncestors: { default: null },
+      _docxCommentRangeBoundaries: { default: undefined },
     },
     inclusive: false,
     parseDOM: [
@@ -179,6 +180,7 @@ export const DeletionExtension = createMarkExtension({
       _docxOuterWrapperCount: { default: null },
       _docxResolutionJoins: { default: null },
       _docxRevisionAncestors: { default: null },
+      _docxCommentRangeBoundaries: { default: undefined },
     },
     inclusive: false,
     parseDOM: [

@@ -7,6 +7,7 @@
  */
 
 import type { ShadingProperties } from "../../types/colors";
+import type { TrackedCommentBoundary } from "../commentBoundaryOwnership";
 import type {
   EmphasisMark,
   Hyperlink,
@@ -158,6 +159,7 @@ export type TrackedChangeMarkAttrs = {
   /** Number of inline-wrapper layers authored outside this revision. */
   _docxOuterWrapperCount?: number;
   _docxResolutionJoins?: Insertion["resolutionJoins"];
+  _docxCommentRangeBoundaries?: readonly TrackedCommentBoundary[] | null;
   /** Outer revisions, in authored order, that ProseMirror cannot hold as nested marks. */
   _docxRevisionAncestors?: readonly TrackedRevisionAncestor[];
   /** Defaults to `"user"`; `"suggested"` for AI-proposed, non-serialized edits. */

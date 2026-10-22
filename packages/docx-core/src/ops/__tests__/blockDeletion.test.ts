@@ -116,6 +116,39 @@ test("interior deletion preserves the following object and reports physical chan
   expect(tracked.touched).toEqual({ modified: [first.paraId], inserted: [], removed: [] });
 });
 
+test("inverse restores a retired comment whose surviving anchors followed the deleted block", () => {
+  const removed: Paragraph = {
+    ...paragraph("00000001", "remove"),
+    content: [
+      { type: "commentRangeStart", id: 7 },
+      { type: "run", content: [{ type: "text", text: "remove" }] },
+    ],
+  };
+  const following: Paragraph = {
+    ...paragraph("00000002", "keep"),
+    content: [
+      { type: "commentRangeEnd", id: 7 },
+      { type: "commentReference", id: 7 },
+      { type: "run", content: [{ type: "text", text: "keep" }] },
+    ],
+  };
+  const document: Document = {
+    package: {
+      document: {
+        comments: [{ id: 7, author: "Reviewer", anchorKind: "range", content: [] }],
+        content: [removed, following],
+      },
+    },
+  };
+
+  const edit = apply(document, { ...deletion([removed.paraId ?? ""]), revision: undefined });
+  expect(edit.document.package.document.comments).toBeUndefined();
+  expect(edit.touched.modified).toEqual([following.paraId]);
+
+  const restored = applyDocumentOps(edit.document, edit.inverse).unwrap().document;
+  expect(restored).toStrictEqual(document);
+});
+
 test("a sole paragraph after a table is cleared without marking its final break", () => {
   const table = cell([paragraph("00000003", "cell")]);
   const final = paragraph("00000001", "remove");

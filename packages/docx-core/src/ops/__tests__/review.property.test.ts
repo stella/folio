@@ -44,7 +44,8 @@ import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { BlockContent, Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp, stampOf } from "../apply";
-import { storyParagraphs, withBodyContent } from "../blocks";
+import { paragraphMarkOutcome } from "../blockDeletion";
+import { blockListAt, storyParagraphs, withBodyContent } from "../blocks";
 import { contractViolation } from "../contract";
 import {
   IDENTITY_SPACES,
@@ -226,6 +227,18 @@ const follower = (document: Document, id: string): Paragraph | undefined => {
       candidate.index === at.index + 1 &&
       JSON.stringify(candidate.list) === JSON.stringify(at.list),
   )?.paragraph;
+};
+
+/** The first cell paragraph that can receive a paragraph retired before a table. */
+const tableRunInReceiver = (document: Document, id: string): Paragraph | undefined => {
+  const body = document.package.document;
+  const at = storyParagraphs(body).find(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(id),
+  );
+  if (at === undefined) return undefined;
+  let next = blockListAt(body.content, at.list).at(at.index + 1);
+  while (next?.type === "table") next = next.rows.at(0)?.cells.at(0)?.content.at(0);
+  return next?.type === "paragraph" ? next : undefined;
 };
 
 /** The leaves of a paragraph between two gaps. */
@@ -747,12 +760,46 @@ describe("tracked operations and their resolution", () => {
           const op = trackedOpFor(document, seed);
           cases.push([op, namedParagraphs(op)]);
           const holding = new Set<string>();
-          for (const { paragraph } of storyParagraphs(document.package.document)) {
+          for (const location of storyParagraphs(document.package.document)) {
+            const { paragraph } = location;
             const own = revisionIdsIn(paragraph);
             if (!ids.some((id) => own.has(id))) continue;
             holding.add(idKey(paragraph.paraId ?? ""));
+            for (const { node } of leafSpans(paragraph.content)) {
+              if (node.type === "footnoteRef") {
+                const note = document.package.footnotes?.find(({ id }) => id === node.id);
+                for (const paragraphId of paragraphIdsIn(note?.content ?? []))
+                  holding.add(idKey(paragraphId));
+              }
+              if (node.type === "endnoteRef") {
+                const note = document.package.endnotes?.find(({ id }) => id === node.id);
+                for (const paragraphId of paragraphIdsIn(note?.content ?? []))
+                  holding.add(idKey(paragraphId));
+              }
+            }
             const next = follower(document, paragraph.paraId ?? "");
             if (next !== undefined) holding.add(idKey(next.paraId ?? ""));
+            const mark = paragraph.pPrMark;
+            const markWasAdded = mark?.kind === "ins" || mark?.kind === "moveTo";
+            const markGoes =
+              mark !== undefined &&
+              ids.includes(mark.info.id) &&
+              markWasAdded !== (decision === REVISION_DECISIONS.ACCEPT);
+            if (
+              markGoes &&
+              paragraphMarkOutcome({
+                follows: "table",
+                holdsContent: paragraphLength(paragraph) > 0,
+                markWasAdded,
+                containerStillEndsWithParagraph:
+                  blockListAt(document.package.document.content, location.list).at(-1)?.type ===
+                  "paragraph",
+                followingTableCanReceiveRunIn: true,
+              }).kind === "run-in"
+            ) {
+              const receiver = tableRunInReceiver(document, paragraph.paraId ?? "");
+              if (receiver !== undefined) holding.add(idKey(receiver.paraId ?? ""));
+            }
           }
           cases.push([resolveOp(ids, decision), holding]);
           for (const [candidate, named] of cases) {
@@ -1050,6 +1097,8 @@ const namedParagraphs = (op: DocumentOp): Set<string> => {
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
       return new Set([idKey(op.at.blockId)]);
     case DOCUMENT_OP_TYPES.DELETE_RANGE:
     case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
@@ -1090,8 +1139,6 @@ const namedParagraphs = (op: DocumentOp): Set<string> => {
     case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
-    case DOCUMENT_OP_TYPES.ADD_NOTE:
-    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
       return new Set();

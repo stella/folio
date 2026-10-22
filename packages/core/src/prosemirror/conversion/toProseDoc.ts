@@ -166,6 +166,10 @@ import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtensi
 import { withEnclosingRevision } from "../contentControlRevisions";
 import { canCarryTrackedRunMark, trackedRunInlineAtomDisposition } from "../trackedRunInlineAtoms";
 import {
+  trackedCommentBoundaryOwner,
+  type TrackedCommentBoundary,
+} from "../commentBoundaryOwnership";
+import {
   resolveEffectiveTableCellFormatting,
   type TableCellMarginsAttrs,
   type TableCellPosition,
@@ -846,14 +850,14 @@ function convertParagraph(
   // paragraph's content is the only writer, and it sets this before entering
   // the switch, so every node the switch emits gets the item's own stack.
   let wrapperStack: readonly InlineWrapperLayer[] = [];
-  const emitInlineNodes = (nodes: PMNode[]): void => {
+  const emitInlineNodes = (nodes: PMNode[], commentsAlreadyApplied = false): void => {
     if (nodes.length === 0) {
       return;
     }
-    const markedNodes = applyCommentMarks(
-      withInlineWrapperMark(nodes, wrapperStack),
-      openCommentIds,
-    );
+    const wrappedNodes = withInlineWrapperMark(nodes, wrapperStack);
+    const markedNodes = commentsAlreadyApplied
+      ? wrappedNodes
+      : applyCommentMarks(wrappedNodes, openCommentIds);
     inlineNodes.push(...markedNodes);
     for (const node of markedNodes) {
       inlineOffset += node.nodeSize;
@@ -987,7 +991,9 @@ function convertParagraph(
         moveKind,
         textBoxAnchors,
         wrapperStack,
+        openCommentIds,
       ),
+      true,
     );
   };
 
@@ -1069,28 +1075,36 @@ function convertParagraph(
       }
       case "simpleField":
       case "complexField":
-        emitInlineNode(
-          convertField(content, {
-            getInheritedRunFormatting,
-            styleResolver,
-            nextHyperlinkInstanceIndex,
-            runScope,
-            textBoxAnchors,
-          }),
+        emitInlineNodes(
+          [
+            convertField(content, {
+              getInheritedRunFormatting,
+              styleResolver,
+              nextHyperlinkInstanceIndex,
+              runScope,
+              textBoxAnchors,
+              openCommentIds,
+            }),
+          ].filter((node): node is PMNode => node !== null),
+          true,
         );
         break;
       case "inlineSdt":
-        emitInlineNode(
-          convertInlineSdt(
-            content,
-            nextHyperlinkInstanceIndex,
-            runScope,
-            getInheritedRunFormatting,
-            trackedRunFormattingResolvers,
-            styleResolver,
-            textBoxAnchors,
-            stack,
-          ),
+        emitInlineNodes(
+          [
+            convertInlineSdt(
+              content,
+              nextHyperlinkInstanceIndex,
+              runScope,
+              getInheritedRunFormatting,
+              trackedRunFormattingResolvers,
+              styleResolver,
+              textBoxAnchors,
+              stack,
+              openCommentIds,
+            ),
+          ].filter((node): node is PMNode => node !== null),
+          true,
         );
         break;
       case "insertion":
@@ -1270,12 +1284,32 @@ function convertTrackedChange(
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
   runScope: RunConversionScope,
   runFormattingResolvers: TrackedRunFormattingResolvers,
-  styleResolver?: StyleEngine | null,
-  moveKind: "moveFrom" | "moveTo" | null = null,
-  textBoxAnchors?: ReadonlyMap<Shape, string>,
-  wrappedBy: readonly InlineWrapperLayer[] = [],
+  styleResolver: StyleEngine | null | undefined,
+  moveKind: "moveFrom" | "moveTo" | null,
+  textBoxAnchors: ReadonlyMap<Shape, string> | undefined,
+  wrappedBy: readonly InlineWrapperLayer[],
+  openCommentIds: Set<number>,
+  preserveParentBoundaryOwnership = true,
 ): PMNode[] {
   const nodes: PMNode[] = [];
+  const commentRangeBoundaries: TrackedCommentBoundary[] = [];
+  const commentsOpenBeforeRevision = new Set(openCommentIds);
+  const recordCommentBoundary = (
+    type: TrackedCommentBoundary["type"],
+    commentId: number,
+    owner: TrackedCommentBoundary["owner"],
+  ): void => {
+    commentRangeBoundaries.push({
+      type,
+      commentId,
+      owner: trackedCommentBoundaryOwner({
+        boundaries: commentRangeBoundaries,
+        type,
+        commentId,
+        fallback: owner,
+      }),
+    });
+  };
   const getTrackedRunFormatting =
     markType === "deletion" ? runFormattingResolvers.historical : runFormattingResolvers.current;
   // A wrapper or move-range boundary the revision holds stays inside it:
@@ -1285,12 +1319,28 @@ function convertTrackedChange(
   // The accumulation starts empty even when the revision itself sits inside a
   // wrapper: the caller marks what this returns, and `wrappedBy` reaches only
   // the leaves no caller can still see, those inside a content control.
-  for (const { content: item, stack } of withInlineWrapperStacks(change.content)) {
+  const stacked = withInlineWrapperStacks(change.content);
+  const emptyRanges = planEmptyRanges(stacked.map(({ content }) => content));
+  for (const [index, { content: item, stack }] of stacked.entries()) {
     if (!isTrackedChangeWrapperChild(item)) {
       continue;
     }
     const itemNodes: PMNode[] = [];
-    if (item.type === "run") {
+    let commentsAlreadyApplied = false;
+    const anchored = emptyRanges.anchorAt.get(index);
+    if (anchored) {
+      itemNodes.push(schema.node(RANGE_ANCHOR_NODE_NAME, anchored));
+    } else if (emptyRanges.closedAt.has(index)) {
+      continue;
+    } else if (item.type === "commentRangeStart") {
+      openCommentIds.add(item.id);
+      recordCommentBoundary("start", item.id, "revision");
+    } else if (item.type === "commentRangeEnd") {
+      openCommentIds.delete(item.id);
+      recordCommentBoundary("end", item.id, "revision");
+    } else if (item.type === "commentReference") {
+      itemNodes.push(schema.node("commentReference", { commentId: item.id }));
+    } else if (item.type === "run") {
       itemNodes.push(
         ...convertRun(
           item,
@@ -1318,10 +1368,12 @@ function convertTrackedChange(
         nextHyperlinkInstanceIndex,
         runScope,
         textBoxAnchors,
+        openCommentIds,
       });
       if (fieldNode) {
         itemNodes.push(fieldNode);
       }
+      commentsAlreadyApplied = true;
     } else if (item.type === "mathEquation") {
       const mathNode = convertMathEquation(item);
       if (mathNode) {
@@ -1347,8 +1399,14 @@ function convertTrackedChange(
           nestedMoveKind,
           textBoxAnchors,
           [...wrappedBy, ...stack],
+          openCommentIds,
+          preserveParentBoundaryOwnership,
         ),
       );
+      // The nested conversion applies comment ranges at each marker position.
+      // Applying the parent's final open-range set to the returned nodes would
+      // move a start inside the nested revision to the revision's first node.
+      commentsAlreadyApplied = true;
     } else if (item.type === "inlineSdt") {
       // The control keeps its node where the author put it, inside the
       // revision. The node is not an inline atom, so the revision lands on the
@@ -1362,10 +1420,12 @@ function convertTrackedChange(
         styleResolver,
         textBoxAnchors,
         [...wrappedBy, ...stack],
+        openCommentIds,
       );
       if (sdtNode) {
         itemNodes.push(sdtNode);
       }
+      commentsAlreadyApplied = true;
     } else if (item.type === "bookmarkStart") {
       itemNodes.push(
         schema.node("bookmarkBoundary", {
@@ -1398,7 +1458,26 @@ function convertTrackedChange(
       const unsupported: never = item;
       panic(`Unsupported tracked-run content: ${JSON.stringify(unsupported)}`);
     }
-    nodes.push(...withInlineWrapperMark(itemNodes, stack));
+    const wrappedNodes = withInlineWrapperMark(itemNodes, stack);
+    nodes.push(
+      ...(commentsAlreadyApplied ? wrappedNodes : applyCommentMarks(wrappedNodes, openCommentIds)),
+    );
+  }
+
+  // Structural inline nodes reconstruct their own child sequence on save and
+  // cannot place an adjacent positional marker in their parent. Preserve the
+  // established projection for those nodes; plain tracked runs can record the
+  // authored outer ownership exactly.
+  if (preserveParentBoundaryOwnership) {
+    for (const commentId of commentsOpenBeforeRevision) {
+      recordCommentBoundary("start", commentId, "parent");
+    }
+  }
+  const boundaryCommentIds = new Set(commentRangeBoundaries.map(({ commentId }) => commentId));
+  for (const commentId of boundaryCommentIds) {
+    if (openCommentIds.has(commentId)) {
+      recordCommentBoundary("end", commentId, "parent");
+    }
   }
 
   // SAFETY: markType is "insertion" | "deletion", both registered in schema
@@ -1411,6 +1490,8 @@ function convertTrackedChange(
     moveKind,
     _docxOuterWrapperCount: wrappedBy.length,
     _docxResolutionJoins: change.resolutionJoins ?? null,
+    _docxCommentRangeBoundaries:
+      commentRangeBoundaries.length > 0 ? commentRangeBoundaries : undefined,
     ...(markType === "deletion" ? { _historicalFormatting: true } : {}),
   });
 
@@ -2603,6 +2684,7 @@ type ConvertFieldOptions = {
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
   runScope: RunConversionScope;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
+  openCommentIds: Set<number>;
 };
 
 function convertField(
@@ -2613,12 +2695,14 @@ function convertField(
     nextHyperlinkInstanceIndex,
     runScope,
     textBoxAnchors,
+    openCommentIds,
   }: ConvertFieldOptions,
 ): PMNode | null {
   // Extract display text and formatting from field content/result
   let fieldFormatting: TextFormatting | undefined;
   let fieldPropertyChanges: readonly RunPropertyChange[] | undefined;
   const inlineNodes: PMNode[] = [];
+  const commentsOpenBeforeField = new Set(openCommentIds);
   const hasPageBreakContent = fieldResultHasPageBreakContent(field);
   const resultRuns =
     field.type === "complexField"
@@ -2687,6 +2771,7 @@ function convertField(
     // it held, the same carrier the paragraph and the link use.
     for (const { content, stack } of withInlineWrapperStacks(field.content)) {
       const itemNodes: PMNode[] = [];
+      let commentsAlreadyApplied = false;
       switch (content.type) {
         case "run":
           appendRun(content, itemNodes);
@@ -2727,21 +2812,38 @@ function convertField(
               styleResolver,
               content.type === "moveFrom" || content.type === "moveTo" ? content.type : null,
               textBoxAnchors,
+              [],
+              openCommentIds,
+              false,
             ),
           );
+          commentsAlreadyApplied = true;
           break;
         }
+        case "commentRangeStart":
+          openCommentIds.add(content.id);
+          break;
+        case "commentRangeEnd":
+          openCommentIds.delete(content.id);
+          break;
         // `SimpleField["content"]` holds the three above and the wrapper the
         // lift has already taken off, and a wrapper inside the field holds
         // what the field holds, because both read the field's handler map.
         default:
           break;
       }
-      inlineNodes.push(...withInlineWrapperMark(itemNodes, stack));
+      const wrappedNodes = withInlineWrapperMark(itemNodes, stack);
+      inlineNodes.push(
+        ...(commentsAlreadyApplied
+          ? wrappedNodes
+          : applyCommentMarks(wrappedNodes, openCommentIds)),
+      );
     }
   } else {
     for (const run of field.fieldResult) {
-      appendRun(run, inlineNodes);
+      const runNodes: PMNode[] = [];
+      appendRun(run, runNodes);
+      inlineNodes.push(...applyCommentMarks(runNodes, openCommentIds));
     }
   }
 
@@ -2785,7 +2887,7 @@ function convertField(
   if (!createStructuredField && resultPropertyChanges && resultPropertyChanges.length > 0) {
     marks.push(schema.mark("runPropertyChange", { changes: [...resultPropertyChanges] }));
   }
-  return schema.node(
+  const fieldNode = schema.node(
     createStructuredField ? "structuredField" : "field",
     {
       fieldType: field.fieldType,
@@ -2806,6 +2908,9 @@ function convertField(
     createStructuredField ? inlineNodes : undefined,
     marks,
   );
+  return createStructuredField
+    ? fieldNode
+    : (applyCommentMarks([fieldNode], commentsOpenBeforeField).at(0) ?? fieldNode);
 }
 
 /** An inline item the wrappers have been lifted off, and which ones they were. */
@@ -2939,12 +3044,14 @@ function convertInlineSdt(
   runScope: RunConversionScope,
   getInheritedRunFormatting: RunFormattingResolver,
   trackedRunFormattingResolvers: TrackedRunFormattingResolvers,
-  styleResolver?: StyleEngine | null,
-  textBoxAnchors?: ReadonlyMap<Shape, string>,
-  wrappedBy: readonly InlineWrapperLayer[] = [],
+  styleResolver: StyleEngine | null | undefined,
+  textBoxAnchors: ReadonlyMap<Shape, string> | undefined,
+  wrappedBy: readonly InlineWrapperLayer[],
+  openCommentIds: Set<number>,
 ): PMNode | null {
   const props = sdt.properties;
   const inlineNodes: PMNode[] = [];
+  const commentsOpenBeforeSdt = new Set(openCommentIds);
 
   // A wrapper inside the control is lifted here rather than out of it: a
   // wrapper lifted out of the control takes the control's content with it.
@@ -2955,6 +3062,7 @@ function convertInlineSdt(
       continue;
     }
     const itemNodes: PMNode[] = [];
+    let commentsAlreadyApplied = false;
     const anchored = emptyRanges.anchorAt.get(index);
     if (anchored) {
       inlineNodes.push(
@@ -2998,10 +3106,12 @@ function convertInlineSdt(
           nextHyperlinkInstanceIndex,
           runScope,
           textBoxAnchors,
+          openCommentIds,
         });
         if (fieldNode) {
           itemNodes.push(fieldNode);
         }
+        commentsAlreadyApplied = true;
         break;
       }
       case "inlineSdt": {
@@ -3014,10 +3124,12 @@ function convertInlineSdt(
           styleResolver,
           textBoxAnchors,
           stack,
+          openCommentIds,
         );
         if (nestedSdt) {
           itemNodes.push(nestedSdt);
         }
+        commentsAlreadyApplied = true;
         break;
       }
       case "insertion":
@@ -3034,8 +3146,12 @@ function convertInlineSdt(
             styleResolver,
             content.type === "moveTo" || content.type === "moveFrom" ? content.type : null,
             textBoxAnchors,
+            stack,
+            openCommentIds,
+            false,
           ),
         );
+        commentsAlreadyApplied = true;
         break;
       case "mathEquation": {
         const mathNode = convertMathEquation(content);
@@ -3085,14 +3201,20 @@ function convertInlineSdt(
         panic(`Unsupported inline SDT content: ${JSON.stringify(unsupported)}`);
       }
     }
-    inlineNodes.push(...withInlineWrapperMark(itemNodes, stack));
+    const wrappedNodes = withInlineWrapperMark(itemNodes, stack);
+    inlineNodes.push(
+      ...(commentsAlreadyApplied ? wrappedNodes : applyCommentMarks(wrappedNodes, openCommentIds)),
+    );
   }
 
-  return schema.node(
+  const sdtNode = schema.node(
     "sdt",
     sdtAttrsFromProperties(props),
     inlineNodes.length > 0 ? inlineNodes : undefined,
   );
+  return sdtNode.childCount > 0
+    ? sdtNode
+    : (applyCommentMarks([sdtNode], commentsOpenBeforeSdt).at(0) ?? sdtNode);
 }
 
 /**

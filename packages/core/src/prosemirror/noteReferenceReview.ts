@@ -9,6 +9,7 @@ import { addTrackedDeletionMark } from "./addTrackedDeletionMark";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { Transform } from "prosemirror-transform";
+import { setDocumentBodyComments } from "@stll/docx-core/model";
 
 import { withoutLostCommentThreads } from "../ai-edits/comment-lifecycle";
 import { visitCommentMarkers } from "../docx/commentAnchorIndex";
@@ -448,6 +449,10 @@ export const withoutUnreferencedNotes = (document: Document): Document => {
         ]),
       })
     : undefined;
+  const documentBody = { ...document.package.document };
+  if (keptComments !== undefined && keptComments.length !== comments?.length) {
+    setDocumentBodyComments(documentBody, keptComments);
+  }
   return {
     ...document,
     package: {
@@ -455,9 +460,7 @@ export const withoutUnreferencedNotes = (document: Document): Document => {
       ...(keptFootnotes !== undefined && { footnotes: keptFootnotes }),
       ...(keptEndnotes !== undefined && { endnotes: keptEndnotes }),
       ...(keptComments !== undefined &&
-        keptComments.length !== comments?.length && {
-          document: { ...document.package.document, comments: keptComments },
-        }),
+        keptComments.length !== comments?.length && { document: documentBody }),
     },
   };
 };

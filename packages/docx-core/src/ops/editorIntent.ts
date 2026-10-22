@@ -1385,6 +1385,7 @@ export const compileEditorIntent = (
             ];
       const anchors = new Set(anchorDeletions);
       const deletionOps: DocumentOp[] = [];
+      const movedNoteBodies: DocumentOp[] = [];
       let afterDeletion = document;
       for (const planned of logicalDeletions) {
         let op = planned;
@@ -1407,6 +1408,40 @@ export const compileEditorIntent = (
         if (applied.isErr()) return Result.err(applied.error);
         afterDeletion = applied.value.document;
         deletionOps.push(op);
+        for (const inverse of applied.value.inverse) {
+          if (
+            inverse.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS &&
+            (inverse.parts.footnotes !== undefined || inverse.parts.endnotes !== undefined)
+          )
+            movedNoteBodies.push({
+              type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+              expected: {
+                ...(inverse.expected.footnotes === undefined
+                  ? {}
+                  : { footnotes: inverse.expected.footnotes }),
+                ...(inverse.expected.endnotes === undefined
+                  ? {}
+                  : { endnotes: inverse.expected.endnotes }),
+              },
+              parts: {
+                ...(inverse.parts.footnotes === undefined
+                  ? {}
+                  : { footnotes: inverse.parts.footnotes }),
+                ...(inverse.parts.endnotes === undefined
+                  ? {}
+                  : { endnotes: inverse.parts.endnotes }),
+              },
+            });
+        }
+      }
+      if (movedNoteBodies.length > 0) {
+        // Each restoration expects the note parts its own deletion left, so
+        // they undo the deletions newest first.
+        const restorations = movedNoteBodies.toReversed();
+        const restored = applyDocumentOps(afterDeletion, restorations);
+        if (restored.isErr()) return Result.err(restored.error);
+        afterDeletion = restored.value.document;
+        deletionOps.push(...restorations);
       }
       let target = intent.target;
       for (const op of logicalDeletions) {
@@ -1754,7 +1789,8 @@ export const compileEditorIntent = (
       break;
     }
     case "replaceText": {
-      const { from, to, text } = intent;
+      const { text } = intent;
+      let { from, to } = intent;
       const paragraph = paragraphAt(document, from);
       if (paragraph === undefined) {
         return Result.err(
@@ -1764,6 +1800,39 @@ export const compileEditorIntent = (
             opType: DOCUMENT_OP_TYPES.INSERT_TEXT,
           }),
         );
+      }
+      if (idKey(from.blockId) === idKey(to.blockId)) {
+        const fromGap = {
+          offset: from.offset,
+          zeroWidthBefore:
+            from.zeroWidthBefore ?? zeroWidthLeavesAt(paragraph.content, from.offset).length,
+        };
+        const toGap = { offset: to.offset, zeroWidthBefore: to.zeroWidthBefore ?? 0 };
+        // Every leaf the selection touches, including a partly selected text leaf.
+        const selected = leafSpans(paragraph.content).filter(
+          ({ before, after }) => compareGaps(before, toGap) < 0 && compareGaps(fromGap, after) < 0,
+        );
+        const marker = selected.find(({ node }) => node.type === "noteMarker");
+        if (
+          marker !== undefined &&
+          selected.every(
+            ({ node, ancestors }) =>
+              node.type === "noteMarker" || ancestors.some(isRemovedRevisionNode),
+          )
+        ) {
+          // Only an empty replacement is a no-op: typed text over the protected marker
+          // is an insertion right after it, in both modes.
+          if (text.length === 0)
+            return Result.err(
+              new DocumentOpRefusal({
+                reason: DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+                message: "The range contains only the note story's automatic marker.",
+                opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
+              }),
+            );
+          from = { ...from, ...marker.after };
+          to = from;
+        }
       }
       const runProps = intentRunFormatting(document, intent);
       // Both modes insert the same authored run; source XML attributes belong
@@ -1809,6 +1878,37 @@ export const compileEditorIntent = (
           if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT)
             selection = replacementCaret(op.at, text);
         }
+        break;
+      }
+      const replacesWholeParagraph =
+        idKey(from.blockId) === idKey(to.blockId) &&
+        from.offset === 0 &&
+        to.offset === paragraphLength(paragraph) &&
+        paragraphLength(paragraph) > 0 &&
+        text.length > 0 &&
+        (from.zeroWidthBefore ?? 0) > 0 &&
+        !(document.package.document.comments ?? []).some(
+          ({ parentId, anchorKind }) => parentId === undefined && anchorKind !== "range",
+        );
+      if (replacesWholeParagraph) {
+        ops = [
+          {
+            type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+            story: from.story,
+            blockId: from.blockId,
+            expected: paragraph.content,
+            content: [
+              ...paragraph.content.filter(
+                (node) => isParagraphContent(node) && isRangeBoundary(node),
+              ),
+              ...content,
+              ...paragraph.content.filter(
+                (node) => isParagraphContent(node) && node.type === "commentReference",
+              ),
+            ],
+          },
+        ];
+        selection = { ...from, offset: text.length, zeroWidthBefore: 0 };
         break;
       }
       ops = [];

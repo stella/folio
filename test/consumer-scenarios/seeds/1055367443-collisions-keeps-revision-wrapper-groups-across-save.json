@@ -1,0 +1,7 @@
+{
+  "seed": 1055367443,
+  "steps": 10,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "keeps revision wrapper groups across save"
+}

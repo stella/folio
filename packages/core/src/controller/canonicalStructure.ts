@@ -8,14 +8,18 @@ import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { Result, panic } from "better-result";
 import type { EditorState } from "prosemirror-state";
 import {
+  DOCUMENT_OP_TYPES,
   OP_STORIES,
   editorParagraphGroups,
   editorPositionAtPhysicalPosition,
   physicalPositionAtEditorOffset,
+  type DocumentOp,
   type EditorIntent,
 } from "@stll/docx-core/ops";
 import { headingOutlineLevel, paragraphNumberingReference } from "@stll/docx-core/model";
-import type { Paragraph, ListLevel } from "../types/document";
+import type { BlockContent, Paragraph, ListLevel } from "../types/document";
+import { createNote } from "../docx/noteReferenceMark";
+import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 import { getCachedNumberingMap, numberingLevelUsesBulletMarker } from "../docx/numberingParser";
 import { listRequestsForMarker } from "../prosemirror/listAutoformatMarkers";
 import type { ListRequest } from "../prosemirror/listNumbering";
@@ -29,6 +33,14 @@ import {
 const DEFAULT_TOC_PAGE_WIDTH_TWIPS = 12240;
 const DEFAULT_TOC_MARGIN_TWIPS = 1440;
 
+/** The section endpoint a paragraph holds now, distinguishing an explicit `undefined` from an absent key. */
+const currentSectionEndpoint = (paragraph: Paragraph) => {
+  const current = paragraph.sectionProperties;
+  if (current !== undefined) return { type: "present", value: current } as const;
+  if (Object.hasOwn(paragraph, "sectionProperties")) return { type: "undefined" } as const;
+  return { type: "omitted" } as const;
+};
+
 const refuse = (message: string) =>
   Result.err(
     new CanonicalSessionError({ gap: CANONICAL_GAP.commands, message, reason: "refused" }),
@@ -39,16 +51,23 @@ const noChange = (message: string) =>
     new CanonicalSessionError({ gap: CANONICAL_GAP.commands, message, reason: "noChange" }),
   );
 
-const selectedParagraphs = (session: CanonicalSession, state: EditorState) => {
+const selectedParagraphs = (
+  session: CanonicalSession,
+  state: EditorState,
+  topLevelOnly = false,
+) => {
   const ids = new Set<string>();
-  state.doc.nodesBetween(state.selection.from, state.selection.to, (node) => {
-    if (node.type.name === "paragraph" && typeof node.attrs["paraId"] === "string")
-      ids.add(node.attrs["paraId"]);
+  const paragraphs: Paragraph[] = [];
+  state.doc.nodesBetween(state.selection.from, state.selection.to, (node, position) => {
+    if (node.type.name !== "paragraph" || typeof node.attrs["paraId"] !== "string") return;
+    if (topLevelOnly && state.doc.resolve(position).depth !== 0) return;
+    const id = node.attrs["paraId"];
+    if (ids.has(id)) return;
+    ids.add(id);
+    const paragraph = session.projection.paragraph(id)?.source;
+    if (paragraph !== undefined) paragraphs.push(paragraph);
   });
-  return session.document.package.document.content.filter(
-    (paragraph): paragraph is Paragraph =>
-      paragraph.type === "paragraph" && ids.has(paragraph.paraId ?? ""),
-  );
+  return paragraphs;
 };
 
 const effectiveNumbering = (paragraph: Paragraph | undefined) =>
@@ -59,17 +78,43 @@ const effectiveNumbering = (paragraph: Paragraph | undefined) =>
     }),
   );
 
-const numberingIntent = (
+type ParagraphPosition = {
+  container: readonly BlockContent[];
+  index: number;
+  paragraph: Paragraph;
+};
+
+/** List structure is local to the block container that owns each paragraph. */
+const paragraphPositions = (
   session: CanonicalSession,
   paragraphs: readonly Paragraph[],
+): Result<readonly ParagraphPosition[], CanonicalSessionError> => {
+  if (paragraphs.length === 0) return noChange("List changes require a paragraph selection.");
+  const positions: ParagraphPosition[] = [];
+  for (const paragraph of paragraphs) {
+    const address = session.projection.paragraph(paragraph.paraId ?? "");
+    if (address === undefined) return refuse("A selected paragraph has no canonical address.");
+    const index = address.container.findIndex((item) => item === paragraph);
+    if (index < 0) return refuse("A selected paragraph is missing from its block container.");
+    positions.push({ container: address.container, index, paragraph });
+  }
+  const container = positions.at(0)?.container;
+  if (positions.some((position) => position.container !== container))
+    return refuse("A list command cannot span multiple block containers.");
+  return Result.ok(positions);
+};
+
+const numberingIntent = (
+  session: CanonicalSession,
+  positions: readonly ParagraphPosition[],
   request: ListRequest,
 ): EditorIntent => {
   const definitions = session.document.package.numbering;
   const map = definitions === undefined ? undefined : getCachedNumberingMap(definitions);
-  const body = session.document.package.document.content;
-  const first = body.findIndex((item) => item === paragraphs.at(0));
-  const last = body.findIndex((item) => item === paragraphs.at(-1));
-  const neighbors = [first > 0 ? body.at(first - 1) : undefined, body.at(last + 1)];
+  const container = positions.at(0)?.container ?? [];
+  const first = positions.at(0)?.index ?? 0;
+  const last = positions.at(-1)?.index ?? first;
+  const neighbors = [first > 0 ? container.at(first - 1) : undefined, container.at(last + 1)];
   const neighbor = neighbors.find((item) => {
     if (
       item?.type !== "paragraph" ||
@@ -116,7 +161,7 @@ const numberingIntent = (
   return {
     type: "setList",
     target,
-    items: paragraphs.map((paragraph) => ({
+    items: positions.map(({ paragraph }) => ({
       at: { story: OP_STORIES.MAIN, blockId: paragraph.paraId ?? "", offset: 0 },
       ilvl,
     })),
@@ -130,7 +175,88 @@ export const prepareCanonicalCommands = (
   commands: readonly CanonicalCommandIntent[],
 ): Result<CanonicalCommit, CanonicalSessionError> => {
   const intents: EditorIntent[] = [];
+  const sectionCommands = commands.filter(
+    (command) => command.type === "setSectionBreak" || command.type === "removeSectionBreak",
+  );
+  if (sectionCommands.length > 0) {
+    if (sectionCommands.length !== commands.length || sectionCommands.length !== 1)
+      return refuse("A section change must be prepared on its own.");
+    const paragraphs = selectedParagraphs(session, state, true);
+    if (paragraphs.length === 0)
+      return refuse("Section breaks require a top-level document paragraph.");
+    const command = sectionCommands.at(0) ?? panic("A section command was counted.");
+    return session.prepareOperations(
+      state,
+      paragraphs.map((paragraph) => {
+        const current = paragraph.sectionProperties;
+        const expected = currentSectionEndpoint(paragraph);
+        return {
+          type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+          endpoint: {
+            type: "paragraph" as const,
+            blockId: paragraph.paraId ?? panic("A projected paragraph needs an identity."),
+          },
+          expected,
+          properties:
+            command.type === "removeSectionBreak"
+              ? ({ type: "omitted" } as const)
+              : ({
+                  type: "present",
+                  value: { ...current, sectionStart: command.breakType },
+                } as const),
+        };
+      }),
+    );
+  }
   const paragraphs = selectedParagraphs(session, state);
+  const noteCommands = commands.filter(
+    (command) => command.type === "insertNote" || command.type === "deleteNote",
+  );
+  if (noteCommands.length > 0) {
+    if (noteCommands.length !== commands.length)
+      return refuse("Note changes must be prepared on their own.");
+    const ops: DocumentOp[] = [];
+    const ordered = noteCommands.toReversed();
+    // One allocation for the whole batch keeps the inserted notes' identities disjoint.
+    const blockIdGroups = session.freshBlockIds(
+      ordered.map((command) => (command.type === "insertNote" ? command.content.length : 0)),
+    );
+    if (blockIdGroups.isErr()) return blockIdGroups;
+    for (const [commandIndex, command] of ordered.entries()) {
+      if (command.type === "deleteNote") {
+        const at = session.projection.addressAt(command.from);
+        if (at.isErr()) return at;
+        ops.push({
+          type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
+          at: at.value,
+          story: { kind: command.kind, id: command.id },
+        } as const);
+        continue;
+      }
+      const at = session.projection.addressAt(command.at);
+      if (at.isErr()) return at;
+      if (command.content.some((block) => block.type !== "paragraph"))
+        return refuse("Canonical note insertion requires paragraph content.");
+      const blockIds =
+        blockIdGroups.value[commandIndex] ?? panic("A fresh identity group was reserved per note.");
+      // Inserted note content is new text, so every paragraph takes a fresh identity.
+      const content = command.content.map((block, index) => {
+        if (block.type !== "paragraph") panic("Canonical note content was already validated.");
+        return cloneParagraphWithoutPropertySource(block, {
+          paraId: blockIds[index] ?? panic("A fresh identity was reserved per paragraph."),
+        });
+      });
+      ops.push({
+        type: DOCUMENT_OP_TYPES.ADD_NOTE,
+        at: at.value,
+        note:
+          command.kind === "footnote"
+            ? createNote("footnote", command.id, content)
+            : createNote("endnote", command.id, content),
+      });
+    }
+    return session.prepareOperations(state, ops);
+  }
   for (const command of commands) {
     switch (command.type) {
       case "generateTOC": {
@@ -195,6 +321,12 @@ export const prepareCanonicalCommands = (
         });
         break;
       }
+      case "setSectionBreak":
+      case "removeSectionBreak":
+        return panic("Section commands are prepared before editor intents.");
+      case "insertNote":
+      case "deleteNote":
+        return panic("Note commands are prepared before editor intents.");
       case "formatRun": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;
@@ -210,6 +342,8 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "toggleList": {
+        const positions = paragraphPositions(session, paragraphs);
+        if (positions.isErr()) return positions;
         const definitions = session.document.package.numbering;
         const map = definitions === undefined ? undefined : getCachedNumberingMap(definitions);
         const already =
@@ -224,7 +358,7 @@ export const prepareCanonicalCommands = (
           });
         if (!already) {
           intents.push(
-            numberingIntent(session, paragraphs, {
+            numberingIntent(session, positions.value, {
               kind: command.kind === "bullet" ? "bullet" : "numbered",
             }),
           );
@@ -239,6 +373,10 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "removeList":
+        {
+          const positions = paragraphPositions(session, paragraphs);
+          if (positions.isErr()) return positions;
+        }
         for (const paragraph of paragraphs)
           intents.push({
             type: "formatParagraph",
@@ -247,6 +385,10 @@ export const prepareCanonicalCommands = (
           });
         break;
       case "changeListLevel":
+        {
+          const positions = paragraphPositions(session, paragraphs);
+          if (positions.isErr()) return positions;
+        }
         for (const paragraph of paragraphs) {
           const numPr = effectiveNumbering(paragraph);
           if (numPr?.kind !== "reference") continue;
@@ -276,14 +418,15 @@ export const prepareCanonicalCommands = (
         break;
       case "restartNumbering":
       case "continueNumbering": {
+        const positions = paragraphPositions(session, paragraphs);
+        if (positions.isErr()) return positions;
         const source = paragraphs.at(0);
         const numPr = effectiveNumbering(source);
         const definitions = session.document.package.numbering;
         if (source === undefined || numPr?.kind !== "reference" || definitions === undefined)
           return noChange("Numbering changes require a list paragraph.");
-        const body = session.document.package.document.content;
-        const index = body.findIndex((item) => item === source);
-        const affected = body.slice(index).filter((item): item is Paragraph => {
+        const { container, index } = positions.value.at(0) ?? panic("Missing paragraph position");
+        const affected = container.slice(index).filter((item): item is Paragraph => {
           if (item.type !== "paragraph") return false;
           const effective = effectiveNumbering(item);
           return effective?.kind === "reference" && effective.numId === numPr.numId;
@@ -293,7 +436,7 @@ export const prepareCanonicalCommands = (
         if (command.type === "continueNumbering") {
           const map = getCachedNumberingMap(definitions);
           const bullet = numberingLevelUsesBulletMarker(map.getLevel(numPr.numId, numPr.ilvl ?? 0));
-          const earlier = body.slice(0, index).findLast((item) => {
+          const earlier = container.slice(0, index).findLast((item) => {
             if (item.type !== "paragraph") return false;
             const effective = effectiveNumbering(item);
             return (
@@ -383,12 +526,15 @@ export const prepareCanonicalAutoformat = (
   const request = requests?.at(0);
   const styleId = `Heading${heading?.length ?? 1}`;
   if (request === undefined && !session.hasStyle(styleId)) return undefined;
+  let paragraphIntent: EditorIntent;
+  if (request === undefined) {
+    paragraphIntent = { type: "formatParagraph", at: start, patch: { styleId } };
+  } else {
+    const positions = paragraphPositions(session, [source]);
+    if (positions.isErr()) return undefined;
+    paragraphIntent = numberingIntent(session, positions.value, request);
+  }
   return session.prepareIntents(state, {
-    intents: [
-      { type: "replaceText", from: start, to: at.value, text: "" },
-      request === undefined
-        ? { type: "formatParagraph", at: start, patch: { styleId } }
-        : numberingIntent(session, [source], request),
-    ],
+    intents: [{ type: "replaceText", from: start, to: at.value, text: "" }, paragraphIntent],
   });
 };

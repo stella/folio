@@ -13,13 +13,18 @@ import type {
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { CONSUMER_SCENARIO_REPLAY_INPUTS, consumerScenarioReplay } from "./consumer-scenario-args";
 import { extractFailureMarkers } from "./failure-fingerprints";
-import { failureClass } from "./fuzz-failure-class";
-import { type ClosedIssueDisposition, type Issue, type IssueStore } from "./fuzz-issue-classes";
+import { normalizeFailureMessage } from "./fuzz-failure-class";
+import {
+  type ClosedIssueDisposition,
+  fileClasses,
+  type Issue,
+  type IssueStore,
+} from "./fuzz-issue-classes";
 
 export const LABEL = {
   name: "fuzz-failure",
   color: "b60205",
-  description: "A failure a fuzz run found, one issue per signature",
+  description: "A failure a fuzz run found, one issue per invariant class",
 };
 
 export const TITLE_PREFIX = "Fuzz failure";
@@ -286,6 +291,7 @@ export type SignatureIssueStore = Pick<IssueStore, "list" | "create"> & {
   edit: (number: number, content: IssueContent) => Promise<void>;
   reopen: (number: number) => Promise<void>;
   close: (number: number, reason: CloseReason) => Promise<void>;
+  closingCommit?: (number: number) => Promise<string | null>;
 };
 
 const PAGE_SIZE = 100;
@@ -300,6 +306,23 @@ const ghPages = async (endpoint: string): Promise<unknown[]> => {
     pages.push(response);
     if (!Array.isArray(response) || response.length < PAGE_SIZE) return pages;
   }
+};
+
+/** The commit attached to the latest close event, or null for a manual close. */
+export const parseClosingCommitPages = (pages: unknown): string | null => {
+  if (!Array.isArray(pages) || !pages.every(Array.isArray)) {
+    throw new IssueResponseError({ message: "Invalid GitHub issue event pages" });
+  }
+  const closing = pages
+    .flat()
+    .findLast((event: unknown) => isRecord(event) && event["event"] === "closed");
+  if (!isRecord(closing)) return null;
+  const commit = closing["commit_id"];
+  if (commit === null || commit === undefined) return null;
+  if (typeof commit !== "string" || !/^[0-9a-f]{40}$/iu.test(commit)) {
+    throw new IssueResponseError({ message: "Invalid GitHub closing commit" });
+  }
+  return commit;
 };
 
 export const githubIssueStore = () =>
@@ -326,9 +349,27 @@ export const githubIssueStore = () =>
     close: async (number, reason) => {
       await $`gh api -X PATCH ${`repos/{owner}/{repo}/issues/${number}`} -f state=closed -f ${`state_reason=${reason}`}`.quiet();
     },
+    closingCommit: async (number) =>
+      parseClosingCommitPages(await ghPages(`repos/{owner}/{repo}/issues/${number}/events`)),
     comments: async (number: number) =>
       parseCommentPages(await ghPages(`repos/{owner}/{repo}/issues/${number}/comments`)),
   }) satisfies SignatureIssueStore & { comments: (number: number) => Promise<string[]> };
+
+const githubClassIssueStore = (): IssueStore => {
+  const issues = githubIssueStore();
+  return {
+    list: issues.list,
+    create: issues.create,
+    edit: async (number, body) => {
+      await $`gh issue edit ${number} --body-file ${writeBody(body)}`.quiet();
+    },
+    reopen: async (number, comment) => {
+      await issues.reopen(number);
+      await $`gh issue comment ${number} --body ${comment}`.quiet();
+    },
+    close: (number) => issues.close(number, "completed"),
+  };
+};
 
 class MissingFailuresError extends TaggedError("MissingFailuresError")<{ message: string }> {}
 
@@ -363,10 +404,43 @@ const code = (value: string, limit = FIELD_LIMIT): string => {
   return `${fence}\n${bounded}\n${fence}`;
 };
 
+/** JSON strings keep label text on one line; escaped pipes keep table cells structural. */
+const inlineText = (value: string, limit = FIELD_LIMIT): string =>
+  JSON.stringify(field(value, limit)).replaceAll("|", "\\u007c");
+
+const parseInlineText = (value: string, limit = FIELD_LIMIT): string | undefined => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  return typeof parsed === "string" && inlineText(parsed, limit) === value ? parsed : undefined;
+};
+
+const parseLegacyField = (value: string, limit = FIELD_LIMIT): string | undefined => {
+  // Remove this read-only path once no open fuzz-failure issue has a legacy body.
+  return line(value, limit) === value ? value : undefined;
+};
+
 export type Signature = { id: string; test: string; failure: string };
 
+const legacySignatureFailure = (assertion: string): string => {
+  if (/^Missing numbering format for displayed label/u.test(assertion))
+    return "Missing numbering format for displayed label";
+  if (/listLevel is .*expected/u.test(assertion)) return "listLevel mismatch";
+  if (/\[directTracked\]/u.test(assertion))
+    return "accepted tracked batches differ from direct batches";
+  if (/\[rejectAll\]/u.test(assertion)) return "rejected tracked batches differ from fixture";
+  if (/\[batchSequential\]/u.test(assertion)) return "batch differs from sequential operations";
+  if (/\[readerStability\]/u.test(assertion)) return "content reads differ after save";
+  if (/\[saveIdempotent\]/u.test(assertion)) return "saving reopened package changes XML";
+  if (/^block texts differ/u.test(assertion)) return "block texts differ";
+  return normalizeFailureMessage(assertion);
+};
+
 export const signatureOf = ({ test, assertion }: Pick<FailureMarker, "test" | "assertion">) => {
-  const failure = failureClass(test, assertion).message;
+  const failure = legacySignatureFailure(assertion);
   const id = createHash("sha256").update(`${test}\0${failure}`).digest("hex").slice(0, 16);
   return { id, test, failure } satisfies Signature;
 };
@@ -385,6 +459,7 @@ export type SignatureState = {
 };
 
 const ISSUE_BODY_LIMIT = 65_535;
+const ISSUE_BODY_FORMAT_MARKER = "<!-- fuzz-issue-format: 2 -->";
 const LANE_TABLE_HEADER = ["| Lane | Last run | Clean scheduled runs |", "| --- | --- | --- |"];
 
 type ShellWord = { raw: string; value: string };
@@ -520,16 +595,17 @@ export const renderSignatureIssue = (state: SignatureState): IssueContent => {
   const { signature } = state;
   const title = `${TITLE_PREFIX} [${signature.id}]: ${line(signature.test, 200)}: ${line(signature.failure, 200)}`;
   const prefix = [
+    ISSUE_BODY_FORMAT_MARKER,
     `Signature: ${signature.id}`,
-    `Test: ${line(signature.test)}`,
-    `Failure: ${line(signature.failure)}`,
+    `Test: ${inlineText(signature.test)}`,
+    `Failure: ${inlineText(signature.failure)}`,
     `Occurrences: ${state.occurrences}`,
     `Seeds: ${state.seeds.join(", ")}`,
-    `Last seen: ${state.lastSeen.lane} ${line(state.lastSeen.run, 500)}`,
+    `Last seen: ${state.lastSeen.lane} ${inlineText(state.lastSeen.run, 500)}`,
     "",
     ...LANE_TABLE_HEADER,
     ...state.lanes.map(
-      ({ lane, lastRun, cleanRuns }) => `| ${lane} | ${line(lastRun, 500)} | ${cleanRuns} |`,
+      ({ lane, lastRun, cleanRuns }) => `| ${lane} | ${inlineText(lastRun, 500)} | ${cleanRuns} |`,
     ),
     "",
     `Closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean scheduled runs in every lane.`,
@@ -577,8 +653,13 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   const malformed = (what: string) =>
     new SignatureStateError({ message: `Issue #${number} has a malformed ${what}` });
   if (!SIGNATURE.test(id)) throw malformed("signature");
-  const test = fieldOf(body, "Test");
-  const failure = fieldOf(body, "Failure");
+  // The writer emits the marker as the first line; a marker elsewhere is body text.
+  const format = body.split("\n", 1)[0] === ISSUE_BODY_FORMAT_MARKER ? "canonical" : "legacy";
+  const encodedTest = fieldOf(body, "Test") ?? "";
+  const encodedFailure = fieldOf(body, "Failure") ?? "";
+  const parseBodyField = format === "canonical" ? parseInlineText : parseLegacyField;
+  const test = parseBodyField(encodedTest);
+  const failure = parseBodyField(encodedFailure);
   const occurrences = Number(fieldOf(body, "Occurrences"));
   const seeds = seedsOf(fieldOf(body, "Seeds") ?? "");
   const lastSeen = /^Last seen: (\S+) (.*)$/mu.exec(body);
@@ -590,8 +671,14 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   if (test === undefined || failure === undefined) throw malformed("signature");
   if (!Number.isSafeInteger(occurrences) || occurrences < 0) throw malformed("occurrence count");
   if (!seeds.every(Number.isSafeInteger)) throw malformed("seed list");
-  const [, seenLane, seenRun] = lastSeen ?? [];
-  if (seenLane === undefined || seenRun === undefined) throw malformed("last seen run");
+  const [, seenLane, encodedSeenRun] = lastSeen ?? [];
+  const seenRun =
+    format === "canonical"
+      ? parseInlineText(encodedSeenRun ?? "", 500)
+      : parseLegacyField(encodedSeenRun ?? "", 500);
+  if (seenLane === undefined || !LANE.test(seenLane) || seenRun === undefined) {
+    throw malformed("last seen run");
+  }
   const [, reproSeed, , command] = repro ?? [];
   if (assertion === undefined || reproSeed === undefined || command === undefined) {
     throw malformed("evidence");
@@ -601,9 +688,15 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   const rows = body.slice(tableStart).split("\n").slice(LANE_TABLE_HEADER.length);
   const end = rows.findIndex((row) => !row.startsWith("|"));
   const lanes = rows.slice(0, end < 0 ? rows.length : end).map((row) => {
-    const [, lane = "", lastRun = "", cleanRuns = ""] =
-      /^\| (\S+) \| (.+) \| (\d+) \|$/u.exec(row) ?? [];
-    if (!LANE.test(lane) || lastRun === "") throw malformed("lane table");
+    const canonicalRow = /^\| (\S+) \| ((?:\\.|[^|])+) \| (\d+) \|$/u.exec(row);
+    const legacyRow = /^\| (\S+) \| (.+) \| (\d+) \|$/u.exec(row);
+    const [, lane = "", encodedLastRun = "", cleanRuns = ""] =
+      (format === "canonical" ? canonicalRow : legacyRow) ?? [];
+    const lastRun =
+      format === "canonical"
+        ? parseInlineText(encodedLastRun, 500)
+        : parseLegacyField(encodedLastRun, 500);
+    if (!LANE.test(lane) || lastRun === undefined) throw malformed("lane table");
     return { lane, lastRun, cleanRuns: Number(cleanRuns) };
   });
   return {
@@ -762,12 +855,25 @@ type FileFindingsOptions = {
   findings: readonly Finding[];
   context: Context;
   store?: SignatureIssueStore;
+  isAncestor?: (ancestor: string, descendant: string) => boolean | Promise<boolean>;
 };
 type FileFindingsResult = { filed: Filed[]; closed: number[] };
+
+export const gitIsAncestor = (ancestor: string, descendant: string): boolean => {
+  const result = Bun.spawnSync(["git", "merge-base", "--is-ancestor", ancestor, descendant], {
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  if (result.exitCode === 0) return true;
+  if (result.exitCode === 1) return false;
+  throw new Error(result.stderr.toString().trim() || "git merge-base --is-ancestor failed");
+};
+
 export const fileFindings = async ({
   findings,
   context,
   store = githubIssueStore(),
+  isAncestor = gitIsAncestor,
 }: FileFindingsOptions): Promise<FileFindingsResult> => {
   const tracked = (await store.list()).flatMap((issue) => {
     const state = parseSignatureState(issue);
@@ -783,6 +889,19 @@ export const fileFindings = async ({
   for (const finding of groupBySignature(unique)) {
     seen.add(finding.signature.id);
     const existing = trackedIssue(tracked, finding.signature.id);
+    if (existing?.issue.state === "closed" && existing.issue.disposition.type === "fixed") {
+      const closingCommit = await store.closingCommit?.(existing.issue.number);
+      // A manual close has no commit to compare, so preserve the established reopen behavior.
+      if (
+        closingCommit !== null &&
+        closingCommit !== undefined &&
+        context.sha !== null &&
+        !(await isAncestor(closingCommit, context.sha))
+      ) {
+        for (const fingerprint of finding.fingerprints) filed.push({ fingerprint, issue: null });
+        continue;
+      }
+    }
     const state = recordReproduction({ state: existing?.state ?? null, finding, context });
     let number: number;
     if (existing === undefined) {
@@ -827,21 +946,6 @@ export const readFindings = (logs: readonly string[], records: readonly string[]
       .flatMap((log) => extractFailureMarkers(readFileSync(log, "utf8"))),
   );
 
-const dryRunStore = (): SignatureIssueStore => {
-  let number = 0;
-  return {
-    list: () => Promise.resolve([]),
-    create: (title, body) => {
-      console.log(`=== ${title}\n${body}\n`);
-      number += 1;
-      return Promise.resolve({ number, title, body, state: "open", closedAt: null });
-    },
-    edit: () => Promise.resolve(),
-    reopen: () => Promise.resolve(),
-    close: () => Promise.resolve(),
-  };
-};
-
 const main = async (): Promise<void> => {
   const options = parseArgs(process.argv.slice(2));
   const artifacts =
@@ -861,15 +965,26 @@ const main = async (): Promise<void> => {
     lane: options.lane,
     trigger: options.trigger,
   };
-  const { filed, closed } = await fileFindings({
+  const filed = await fileClasses({
     findings,
     context,
-    ...(options.dryRun && { store: dryRunStore() }),
+    store: options.dryRun
+      ? {
+          list: () => Promise.resolve([]),
+          create: (title, body) => {
+            console.log(`=== ${title}\n${body}\n`);
+            return Promise.resolve({ number: 1, title, body, state: "open", closedAt: null });
+          },
+          edit: () => Promise.resolve(),
+          reopen: () => Promise.resolve(),
+          close: () => Promise.resolve(),
+        }
+      : githubClassIssueStore(),
+    known: new Map(),
   });
   for (const { fingerprint, issue } of filed) {
     console.log(`${fingerprint}: ${issue ?? "not filed"}`);
   }
-  for (const number of closed) console.log(`closed #${number}: not reproduced`);
 };
 
 if (import.meta.main) {

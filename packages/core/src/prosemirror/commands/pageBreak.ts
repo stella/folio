@@ -4,6 +4,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { Command } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import { pageBreakRunParagraphProjectionDisposition } from "../pageBreakRunProjection";
 import { withCanonicalCommand } from "../canonicalCommands";
@@ -72,7 +73,7 @@ const insertPageBreakCommand: Command = (state, dispatch) => {
  * legacy input boundary and is never emitted by this command.
  */
 export const insertPageBreak = withCanonicalCommand(insertPageBreakCommand, (state) =>
-  insertPageBreakCommand(state)
+  !(state.selection instanceof CellSelection) && insertPageBreakCommand(state)
     ? [
         {
           type: "insertBreak",

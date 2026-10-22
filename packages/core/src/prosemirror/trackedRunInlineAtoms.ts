@@ -19,9 +19,9 @@ export type TrackedRunInlineAtomDisposition =
  */
 export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   bookmarkBoundary: "carry",
-  // The model has no slot for a comment reference inside a tracked wrapper:
-  // `w:commentReference` is paragraph content, so a revision cannot own it.
-  commentReference: "transparent",
+  // The paragraph-level record stands for its w:r carrier, which can remain
+  // in the CT_RunTrackChange that owns its authored position.
+  commentReference: "carry",
   field: "field-carrier",
   hardBreak: "carry",
   image: "carry",
@@ -30,9 +30,8 @@ export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   noteMarker: "carry",
   pageBreakRun: "page-break-carrier",
   preservedXml: "carry",
-  // An empty comment range remains paragraph-level; move ranges use the
-  // dedicated boundary atom above and can stay inside a revision.
-  rangeAnchor: "transparent",
+  // A zero-width range owns its authored position inside the revision.
+  rangeAnchor: "carry",
   renderedPageBreak: "carry",
   shape: "carry",
   structuredField: "carry",

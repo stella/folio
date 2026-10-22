@@ -6,6 +6,7 @@ import {
   type Comment,
   type Document,
   type ParagraphContent,
+  setDocumentBodyComments,
 } from "../model/document";
 import { replaceParagraphs, storyParagraphs } from "./blocks";
 import { contractViolation } from "./contract";
@@ -62,18 +63,94 @@ const anchorId = (node: InlineNode): number | undefined => {
       return undefined;
   }
 };
+const storyBodiesIncludingTextBoxes = (
+  body: Pick<Document["package"]["document"], "content">,
+): Pick<Document["package"]["document"], "content">[] => {
+  const bodies = [body];
+  const paragraphs = storyParagraphs(body);
+  for (const location of paragraphs) {
+    for (const { node } of leafSpans(location.paragraph.content)) {
+      if (node.type !== "shape" || node.shape.textBody === undefined) continue;
+      bodies.push(...storyBodiesIncludingTextBoxes({ content: node.shape.textBody.content }));
+    }
+  }
+  return bodies;
+};
 type StoryAnchorSpan = LeafSpan & { story: OpStory; blockId: string };
 const anchorsIn = (document: Document) => {
   const anchors: StoryAnchorSpan[] = [];
   for (const story of documentStories(document)) {
-    for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
-      for (const span of leafSpans(paragraph.content)) {
-        if (isCommentAnchor(span.node))
-          anchors.push({ story, blockId: paragraph.paraId ?? "", ...span });
+    for (const body of storyBodiesIncludingTextBoxes(storyBody(document, story))) {
+      for (const { paragraph } of storyParagraphs(body)) {
+        for (const span of leafSpans(paragraph.content)) {
+          if (isCommentAnchor(span.node))
+            anchors.push({ story, blockId: paragraph.paraId ?? "", ...span });
+        }
       }
     }
   }
   return anchors;
+};
+
+/** Range coverage in source order; comment anchors themselves are only carriers. */
+const coveredCommentIds = (document: Document): Set<number> => {
+  const covered = new Set<number>();
+  for (const story of documentStories(document)) {
+    for (const body of storyBodiesIncludingTextBoxes(storyBody(document, story))) {
+      const open = new Set<number>();
+      for (const { paragraph } of storyParagraphs(body)) {
+        for (const { node } of leafSpans(paragraph.content)) {
+          if (node.type === "commentRangeStart") {
+            open.add(node.id);
+            continue;
+          }
+          if (node.type === "commentRangeEnd") {
+            open.delete(node.id);
+            continue;
+          }
+          if (isCommentAnchor(node)) continue;
+          for (const id of open) covered.add(id);
+        }
+      }
+    }
+  }
+  return covered;
+};
+
+export type CommentExhaustionInput =
+  | { type: "document"; document: Document; id: number }
+  | {
+      type: "coverage";
+      anchorKind: Comment["anchorKind"];
+      survivingNonCarrierContent: boolean;
+    };
+
+/** Whether a statically ranged comment currently covers no document content. */
+export const isCommentExhausted = (input: CommentExhaustionInput): boolean => {
+  if (input.type === "coverage")
+    return input.anchorKind === "range" && !input.survivingNonCarrierContent;
+  const { document, id } = input;
+  const comment = document.package.document.comments?.find((entry) => entry.id === id);
+  if (comment === undefined || comment.parentId !== undefined) return false;
+  return isCommentExhausted({
+    type: "coverage",
+    anchorKind: comment.anchorKind,
+    survivingNonCarrierContent: coveredCommentIds(document).has(id),
+  });
+};
+
+/** Comment definitions whose root range still has content, including their replies. */
+export const survivingComments = (document: Document): Comment[] => {
+  const comments = document.package.document.comments ?? [];
+  const exhausted = new Set(
+    comments
+      .filter(({ id }) => isCommentExhausted({ type: "document", document, id }))
+      .map(({ id }) => id),
+  );
+  return comments.filter(
+    ({ id, parentId }) =>
+      !exhausted.has(id) && (parentId === undefined || !exhausted.has(parentId)),
+  );
 };
 
 /**
@@ -333,11 +410,14 @@ const edited = (
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   if (op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
     after = reconcilePartRelationships(after, "comments");
+  const restoresExhaustedState =
+    op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE &&
+    [...ids].every((id) => isCommentExhausted({ type: "document", document: after, id }));
   const invalid = contractViolation(after);
-  if (invalid) return fail(op, invalid.message, invalid.reason);
+  if (invalid && !restoresExhaustedState) return fail(op, invalid.message, invalid.reason);
   // An edit may keep a loaded orphan, never strand another comment.
   const issue = commentDocumentIssue(after, orphanRootCommentIds(before));
-  if (issue) return fail(op, issue);
+  if (issue && !restoresExhaustedState) return fail(op, issue);
   const anchors = changedAnchors(before, after);
   const prior = capture(before, ids, anchors);
   const next = capture(after, ids, anchors);
@@ -370,7 +450,7 @@ const withComments = (
   const body = { ...document.package.document };
   switch (presence) {
     case "present":
-      body.comments = comments;
+      setDocumentBodyComments(body, comments);
       break;
     case "undefined":
       Reflect.set(body, "comments", undefined);
@@ -803,7 +883,14 @@ export const applyCommentOp = (
     return restore(document, op);
   }
   const issue = commentDocumentIssue(document, "all");
-  if (issue) return fail(op, issue);
+  if (
+    issue &&
+    !(
+      op.type === DOCUMENT_OP_TYPES.DELETE_COMMENT &&
+      isCommentExhausted({ type: "document", document, id: op.id })
+    )
+  )
+    return fail(op, issue);
   const orphans = orphanRootCommentIds(document);
   if (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) {
     if (op.anchor?.kind === "reply" && orphans.has(op.anchor.parentId))
@@ -816,12 +903,39 @@ export const applyCommentOp = (
       typeof op.anchor !== "object"
     )
       return fail(op, "The comment creation payload is invalid.");
-    return create(document, op, applyOps);
+    return create(
+      document,
+      {
+        ...op,
+        comment: {
+          ...op.comment,
+          ...(op.anchor.kind === "reply"
+            ? {}
+            : {
+                anchorKind:
+                  op.anchor.kind === "point" ||
+                  (op.anchor.kind === "range" &&
+                    sameStory(op.anchor.from.story, op.anchor.to.story) &&
+                    op.anchor.from.blockId === op.anchor.to.blockId &&
+                    op.anchor.from.offset === op.anchor.to.offset)
+                    ? "point"
+                    : "range",
+              }),
+        },
+      },
+      applyOps,
+    );
   }
   const comments = document.package.document.comments ?? [];
   const comment = comments.find(({ id }) => id === op.id);
   if (!comment) return fail(op, "The comment does not exist.");
-  if (orphans.has(comment.id))
+  if (
+    orphans.has(comment.id) &&
+    !(
+      op.type === DOCUMENT_OP_TYPES.DELETE_COMMENT &&
+      isCommentExhausted({ type: "document", document, id: comment.id })
+    )
+  )
     return fail(op, "A comment without a source anchor is preserved read-only.");
   if (op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT) {
     if (

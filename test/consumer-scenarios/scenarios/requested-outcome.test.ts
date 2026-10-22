@@ -35,8 +35,10 @@ import {
   compareWithModel,
   EXPECTATIONS,
   expectOperation,
+  KEEPS_NOTE_REFERENCES,
   modelOf,
   OPERATION_TYPES,
+  retireNoteReferences,
   type Row,
 } from "../support/oracle.ts";
 import { captureLinks, comparePreservedLinks } from "../support/link-oracle.ts";
@@ -143,14 +145,24 @@ describe("the requested-outcome oracle", () => {
               blockId: "b",
             };
             const removed = editStart <= anchorStart && editEnd >= anchorEnd;
-            const problems = compareComments(model, [comment], []);
+            const problems = compareComments(
+              model,
+              [comment],
+              [],
+              [row("b", text.slice(0, editStart) + text.slice(editEnd))],
+            );
             assert.equal(
               problems.length === 0,
               removed,
               JSON.stringify({ anchorStart, anchorEnd, editStart, editEnd }),
             );
             assert.equal(
-              compareComments(model, [comment], [comment]).length === 0,
+              compareComments(
+                model,
+                [comment],
+                [comment],
+                [row("b", text.slice(0, editStart) + text.slice(editEnd))],
+              ).length === 0,
               !removed,
               JSON.stringify({ anchorStart, anchorEnd, editStart, editEnd }),
             );
@@ -164,14 +176,14 @@ describe("the requested-outcome oracle", () => {
     const comment = { id: 1, text: "review", anchor: "bcd", blockId: "b" };
     const split = modelOf([row("b", "abcdef")]);
     expectOperation(split, { type: "splitBlock", blockId: "b", offset: 3 });
-    assert.equal(compareComments(split, [comment], []).length, 1);
+    assert.equal(compareComments(split, [comment], [], []).length, 1);
     const elsewhere = modelOf([row("a", "bcd"), row("b", "abcdef")]);
     expectOperation(elsewhere, {
       type: "replaceRange",
       range: { blockId: "a", startOffset: 0, endOffset: 3 },
       replace: "",
     });
-    assert.equal(compareComments(elsewhere, [comment], []).length, 1);
+    assert.equal(compareComments(elsewhere, [comment], [], []).length, 1);
   });
 
   test("does not guess which repeated quote a comment anchored", () => {
@@ -182,25 +194,38 @@ describe("the requested-outcome oracle", () => {
       range: { blockId: "b", startOffset: 0, endOffset: 3 },
       replace: "",
     });
-    assert.deepEqual(compareComments(model, [comment], []), []);
-    assert.deepEqual(compareComments(model, [comment], [comment]), []);
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+    assert.deepEqual(compareComments(model, [comment], [comment], [row("b", " foo")]), []);
   });
 
   test("a nonempty replacement carries a comment, while an empty one removes it", () => {
     const comment = { id: 1, text: "review", anchor: "Signed", blockId: "b" };
     const replaced = modelOf([row("b", "Signed")]);
     expectOperation(replaced, { type: "replaceBlock", blockId: "b", text: "Written" });
-    assert.deepEqual(compareComments(replaced, [comment], [{ ...comment, anchor: "Written" }]), []);
+    assert.deepEqual(
+      compareComments(
+        replaced,
+        [comment],
+        [{ ...comment, anchor: "Written" }],
+        [row("b", "Written")],
+      ),
+      [],
+    );
     assert.match(
-      compareComments(replaced, [comment], [{ ...comment, anchor: "Unrelated" }]).join("\n"),
+      compareComments(
+        replaced,
+        [comment],
+        [{ ...comment, anchor: "Unrelated" }],
+        [row("b", "Written")],
+      ).join("\n"),
       /no comment/u,
     );
-    assert.equal(compareComments(replaced, [comment], []).length, 1);
+    assert.equal(compareComments(replaced, [comment], [], [row("b", "Written")]).length, 1);
 
     const emptied = modelOf([row("b", "Signed")]);
     expectOperation(emptied, { type: "replaceBlock", blockId: "b", text: "" });
-    assert.deepEqual(compareComments(emptied, [comment], []), []);
-    assert.equal(compareComments(emptied, [comment], [comment]).length, 1);
+    assert.deepEqual(compareComments(emptied, [comment], [], []), []);
+    assert.equal(compareComments(emptied, [comment], [comment], []).length, 1);
   });
 
   test("a pending replacement may anchor both the old text and its insertion", () => {
@@ -209,7 +234,14 @@ describe("the requested-outcome oracle", () => {
     expectOperation(model, { type: "replaceBlock", blockId: "b", text: "New" });
 
     assert.deepEqual(
-      compareComments(model, [comment], [{ ...comment, anchor: "OldNew" }], [comment], "suggested"),
+      compareComments(
+        model,
+        [comment],
+        [{ ...comment, anchor: "OldNew" }],
+        [row("b", "New")],
+        [comment],
+        "suggested",
+      ),
       [],
     );
     assert.match(
@@ -217,6 +249,7 @@ describe("the requested-outcome oracle", () => {
         model,
         [comment],
         [{ ...comment, anchor: "New" }],
+        [row("b", "New")],
         [comment],
         "suggested",
       ).join("\n"),
@@ -227,6 +260,7 @@ describe("the requested-outcome oracle", () => {
         model,
         [comment],
         [{ ...comment, anchor: "NewOld" }],
+        [row("b", "New")],
         [comment],
         "suggested",
       ).join("\n"),
@@ -237,13 +271,14 @@ describe("the requested-outcome oracle", () => {
         model,
         [comment],
         [{ ...comment, anchor: "OldNew" }],
+        [row("b", "New")],
         [comment],
         "direct",
       ).join("\n"),
       /no comment/u,
     );
     assert.match(
-      compareComments(model, [comment], [], [comment], "suggested").join("\n"),
+      compareComments(model, [comment], [], [row("b", "New")], [comment], "suggested").join("\n"),
       /no comment/u,
     );
 
@@ -255,6 +290,7 @@ describe("the requested-outcome oracle", () => {
         sharedModel,
         [shared],
         [{ ...shared, anchor: "The BuyerSeller" }],
+        [row("c", "The Seller")],
         [shared],
         "suggested",
       ),
@@ -272,12 +308,120 @@ describe("the requested-outcome oracle", () => {
       comment: { text: "same note" },
     });
     assert.deepEqual(
-      compareComments(model, [old], [{ id: 2, text: "same note", anchor: "New", blockId: "b" }]),
+      compareComments(
+        model,
+        [old],
+        [{ id: 2, text: "same note", anchor: "New", blockId: "b" }],
+        [row("b", "New")],
+      ),
       [],
     );
-    const problems = compareComments(model, [old], [{ ...old, anchor: "New", blockId: "b" }]);
+    const problems = compareComments(
+      model,
+      [old],
+      [{ ...old, anchor: "New", blockId: "b" }],
+      [row("b", "New")],
+    );
     assert.match(problems.join("\n"), /no comment/u);
-    assert.match(problems.join("\n"), /outlived the block it anchored/u);
+  });
+
+  test("a comment retires with its removed note story", () => {
+    const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
+    const model = modelOf([row("note", "Note text")]);
+    model.story = "removed";
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+    assert.match(
+      compareComments(model, [comment], [comment], []).join("\n"),
+      /outlived the block it anchored/u,
+    );
+  });
+
+  test("a note comment retires when its body reference is removed", () => {
+    const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
+    const model = modelOf([row("body", "Reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+  });
+
+  test("a suggested removal of a note reference keeps the note's comment pending", () => {
+    const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
+    const model = modelOf([row("body", "Reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
+    assert.deepEqual(compareComments(model, [comment], [comment], [], [comment], "suggested"), []);
+    assert.match(
+      compareComments(model, [comment], [], [], [comment], "suggested").join("\n"),
+      /no comment/u,
+    );
+    const removedStory = modelOf([row("note", "Note text")]);
+    removedStory.story = "removed";
+    assert.deepEqual(
+      compareComments(removedStory, [comment], [comment], [], [comment], "suggested"),
+      [],
+    );
+  });
+
+  test("a merge keeps the note whose reference it moves, and a later deletion retires it", () => {
+    const footnote = { type: "footnote", noteId: 1 } as const;
+    const endnote = { type: "endnote", noteId: 2 } as const;
+    const references: Parameters<typeof retireNoteReferences>[0] = new Map([
+      ["first", [endnote]],
+      ["second", [footnote]],
+    ]);
+    assert.deepEqual(
+      retireNoteReferences(references, "mergeBlockWithNext", "first", ["second"]),
+      [],
+    );
+    assert.deepEqual(references.get("first"), [endnote, footnote]);
+    assert.equal(references.has("second"), false);
+    assert.deepEqual(retireNoteReferences(references, "deleteBlock", "first", ["first"]), [
+      "endnote:2",
+      "footnote:1",
+    ]);
+    assert.equal(references.size, 0);
+  });
+
+  test("a note whose reference an edit may have moved is not predicted either way", () => {
+    const comment = { id: 1, text: "review", anchor: "Note text", blockId: "note" };
+    const model = modelOf([row("body", "Reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.uncertainNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
+    assert.deepEqual(compareComments(model, [comment], [comment], []), []);
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+  });
+
+  test("every operation that keeps note references in place is a real operation type", () => {
+    for (const type of KEEPS_NOTE_REFERENCES) assert.ok(OPERATION_TYPES.includes(type), type);
+    assert.equal(KEEPS_NOTE_REFERENCES.has("splitBlock"), false);
+    assert.equal(KEEPS_NOTE_REFERENCES.has("replaceBlock"), false);
+  });
+
+  test("a note referenced from two blocks retires only with its last reference", () => {
+    const footnote = { type: "footnote", noteId: 1 } as const;
+    const references: Parameters<typeof retireNoteReferences>[0] = new Map([
+      ["first", [footnote]],
+      ["second", [footnote]],
+    ]);
+    assert.deepEqual(retireNoteReferences(references, "deleteBlock", "first", ["first"]), []);
+    assert.deepEqual(retireNoteReferences(references, "deleteBlock", "second", ["second"]), [
+      "footnote:1",
+    ]);
+  });
+
+  test("removing one of two footnote references retires only that note's comment", () => {
+    const first = { id: 1, text: "first review", anchor: "First note", blockId: "note-1" };
+    const second = { id: 2, text: "second review", anchor: "Second note", blockId: "note-2" };
+    const model = modelOf([row("body-1", "First reference"), row("body-2", "Second reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([
+      ["note-1", "footnote:1"],
+      ["note-2", "footnote:2"],
+    ]);
+
+    assert.deepEqual(compareComments(model, [first, second], [second], []), []);
+    assert.match(compareComments(model, [first, second], [], []).join("\n"), /second review/u);
   });
 
   test("a replaced paragraph's comment survives rejecting its tracked deletion", async () => {
@@ -334,13 +478,13 @@ describe("the requested-outcome oracle", () => {
         const live = { ...comment, anchor: liveAnchor };
         const model = modelOf([row("b", accepted)], [row("b", accepted)]);
         expectOperation(model, { type: "deleteBlock", blockId: "b" });
-        assert.deepEqual(compareComments(model, [comment], [], [live], "tracked-changes"), []);
+        assert.deepEqual(compareComments(model, [comment], [], [], [live], "tracked-changes"), []);
         assert.match(
-          compareComments(model, [comment], [comment], [live], "tracked-changes").join("\n"),
+          compareComments(model, [comment], [comment], [], [live], "tracked-changes").join("\n"),
           /outlived the block it anchored/u,
         );
         assert.match(
-          compareComments(model, [comment], [], [live], "suggested").join("\n"),
+          compareComments(model, [comment], [], [], [live], "suggested").join("\n"),
           /no comment/u,
         );
       }
@@ -354,10 +498,25 @@ describe("the requested-outcome oracle", () => {
     const model = modelOf([row("a", "First"), row("b", "Signed"), row("c", "Signed Last")]);
     expectOperation(model, { type: "deleteBlock", blockId: "b" });
     const live = [a, { ...moved, blockId: "b" }, c];
-    assert.deepEqual(compareComments(model, [a, moved, c], [a, c], live), []);
-    assert.match(
-      compareComments(model, [a, moved, c], [a, moved, c], live).join("\n"),
-      /outlived the block it anchored/u,
+    assert.deepEqual(
+      compareComments(
+        model,
+        [a, moved, c],
+        [a, c],
+        [row("a", "First"), row("c", "Signed Last")],
+        live,
+      ),
+      [],
+    );
+    assert.deepEqual(
+      compareComments(
+        model,
+        [a, moved, c],
+        [a, moved, c],
+        [row("a", "First"), row("c", "Signed Last")],
+        live,
+      ),
+      [],
     );
   });
 
@@ -368,12 +527,12 @@ describe("the requested-outcome oracle", () => {
       [row("a", "First"), row("b", "Signed"), row("c", "Other")],
     );
     expectOperation(model, { type: "replaceBlock", blockId: "c", text: "Revised" });
-    assert.deepEqual(compareComments(model, [joined], [joined], [joined]), []);
-    assert.equal(compareComments(model, [joined], [], [joined]).length, 1);
+    assert.deepEqual(compareComments(model, [joined], [joined], [], [joined]), []);
+    assert.equal(compareComments(model, [joined], [], [], [joined]).length, 1);
     expectOperation(model, { type: "deleteBlock", blockId: "b" });
-    assert.deepEqual(compareComments(model, [joined], [], [joined]), []);
+    assert.deepEqual(compareComments(model, [joined], [], [], [joined]), []);
     assert.match(
-      compareComments(model, [joined], [joined], [joined]).join("\n"),
+      compareComments(model, [joined], [joined], [], [joined]).join("\n"),
       /outlived the block it anchored/u,
     );
   });
@@ -382,9 +541,9 @@ describe("the requested-outcome oracle", () => {
     const comment = { id: 1, text: "review", anchor: "Live quote", blockId: "b" };
     const model = modelOf([row("b", "Accepted text")], [row("b", "Live quote")]);
     expectOperation(model, { type: "deleteBlock", blockId: "b" });
-    assert.deepEqual(compareComments(model, [comment], [], [comment]), []);
+    assert.deepEqual(compareComments(model, [comment], [], [], [comment]), []);
     assert.match(
-      compareComments(model, [comment], [comment], [comment]).join("\n"),
+      compareComments(model, [comment], [comment], [], [comment]).join("\n"),
       /outlived the block it anchored/u,
     );
   });
@@ -393,15 +552,18 @@ describe("the requested-outcome oracle", () => {
     const comment = { id: 1, text: "review", anchor: "FirstSecond", blockId: "b" };
     const model = modelOf([row("b", "First"), row("c", "Second")]);
     expectOperation(model, { type: "deleteBlock", blockId: "b" });
-    assert.deepEqual(compareComments(model, [comment], [comment]), []);
-    assert.equal(compareComments(model, [comment], []).length, 1);
+    assert.deepEqual(compareComments(model, [comment], [comment], []), []);
+    assert.equal(compareComments(model, [comment], [], [row("c", "Second")]).length, 1);
   });
 
   test("a suggested block deletion leaves the live comment in place", () => {
     const comment = { id: 1, text: "review", anchor: "Signed", blockId: "b" };
     const model = modelOf([row("b", "Signed")]);
     expectOperation(model, { type: "deleteBlock", blockId: "b" });
-    assert.deepEqual(compareComments(model, [comment], [comment], [comment], "suggested"), []);
+    assert.deepEqual(
+      compareComments(model, [comment], [comment], [row("b", "Signed")], [comment], "suggested"),
+      [],
+    );
   });
 });
 

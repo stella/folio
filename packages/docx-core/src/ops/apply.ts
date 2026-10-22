@@ -7,7 +7,7 @@ import {
   registerParagraphPropertySnapshot,
   transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
-import { noteContentWithAutomaticMark } from "./noteMarks";
+import { noteContentWithAutomaticMark, removedNoteStories } from "./noteMarks";
 import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
 import { documentStories, findStoryBody, sameStory } from "./stories";
 /**
@@ -64,6 +64,7 @@ import {
   type Paragraph,
   type ParagraphContent,
   type ParagraphFormatting,
+  finalizeParagraphFormatting,
   type Run,
   type RunPropertyChange,
 } from "../model/document";
@@ -124,6 +125,7 @@ import {
 } from "./inline";
 import {
   asParagraphContent,
+  compareGaps,
   leafSpans,
   childNodes,
   type Gap,
@@ -154,6 +156,7 @@ import {
   namesMarkFormatting,
   paragraphPropertiesOf,
   foldedParagraphPropertyChange,
+  isRemovedRevisionNode,
   paragraphPropertyChange,
   reviewFieldsOf,
   sameMarkFormatting,
@@ -807,6 +810,23 @@ const joinedContent = (
 
 const isCount = (value: number): boolean => Number.isInteger(value) && value >= 0;
 
+/** Find a note story's source-owned automatic mark inside a replacement range. */
+const automaticNoteMarkBetween = (
+  story: OpStory,
+  paragraph: Paragraph,
+  from: Gap,
+  to: Gap,
+): { before: Gap; after: Gap } | undefined => {
+  if (story === "main" || (story.kind !== "footnote" && story.kind !== "endnote")) return undefined;
+  return leafSpans(paragraph.content).find(
+    ({ node, before, after }) =>
+      node.type === "noteMarker" &&
+      node.kind === story.kind &&
+      compareGaps(from, before) <= 0 &&
+      compareGaps(after, to) <= 0,
+  );
+};
+
 const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
   const join = op.join ?? 0;
   if (!isCount(join)) {
@@ -824,13 +844,13 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
     return Result.err(located.error);
   }
   const { story, location, from, to, empty } = located.value;
+  const { paragraph } = location;
   const { expected } = op;
   if (empty) {
     return expected === undefined || expected.content.length === 0
       ? unchanged(document)
       : refuse(op, DOCUMENT_OP_REFUSAL_REASONS.STALE, "The range to delete is empty.");
   }
-  const { paragraph } = location;
   const { content: remaining, removed } = deleteBetween(paragraph.content, from, to);
   if (expected !== undefined && !equalForStaleness(expected, removed)) {
     return refuse(
@@ -841,6 +861,27 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
   }
   if (removed.content.length === 0) {
     return unchanged(document);
+  }
+  const protectedMark = automaticNoteMarkBetween(story, paragraph, from, to);
+  let content = remaining;
+  if (protectedMark !== undefined) {
+    // A leaf counts when the range covers any part of it, including part of a text leaf.
+    const hasOtherSurvivingContent = leafSpans(paragraph.content).some(
+      ({ node, ancestors, before, after }) =>
+        compareGaps(before, to) < 0 &&
+        compareGaps(from, after) < 0 &&
+        node.type !== "noteMarker" &&
+        !ancestors.some(isRemovedRevisionNode),
+    );
+    if (!hasOtherSurvivingContent) {
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+        "The range contains only the note story's automatic marker.",
+      );
+    }
+    const afterRemoved = deleteBetween(paragraph.content, protectedMark.after, to).content;
+    content = deleteBetween(afterRemoved, from, protectedMark.before).content;
   }
   if (op.revision !== undefined) {
     const wrapped = wrappedContent(op, {
@@ -869,10 +910,9 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
       (result) => Result.ok([contentRestoring(story, result, paragraph)]),
     );
   }
-  let content = remaining;
   let retired: NewIds = {};
   if (join > 0) {
-    const joined = joinedContent(op, joinAt(remaining, from, join), `at ${from.offset}`);
+    const joined = joinedContent(op, joinAt(content, from, join), `at ${from.offset}`);
     if (joined.isErr()) {
       return Result.err(joined.error);
     }
@@ -888,7 +928,10 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
       newIds: undefined,
     },
     (result) => {
-      if (cutHasResolutionProvenance({ content: paragraph.content, gaps: [from, to] }))
+      if (
+        protectedMark !== undefined ||
+        cutHasResolutionProvenance({ content: paragraph.content, gaps: [from, to] })
+      )
         return Result.ok([contentRestoring(story, result, paragraph)]);
       const insertion: InsertContentOp = {
         type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
@@ -1233,10 +1276,11 @@ const withParagraphFormatting = (
   formatting: ParagraphFormatting | undefined,
 ): Paragraph => {
   const next: Paragraph = { ...paragraph };
-  if (formatting === undefined) {
+  const finalized = finalizeParagraphFormatting(formatting);
+  if (finalized === undefined) {
     delete next.formatting;
   } else {
-    next.formatting = formatting;
+    next.formatting = finalized;
   }
   return next;
 };
@@ -1262,8 +1306,11 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
       "A paragraph property change does not record the paragraph mark's run properties.",
     );
   }
-  const formatting = patchedSet(paragraph.formatting, op.patch, op.whenEmpty);
-  if (structurallyEqual(formatting, paragraph.formatting)) {
+  const formatting = finalizeParagraphFormatting(
+    patchedSet(paragraph.formatting, op.patch, op.whenEmpty),
+  );
+  const currentFormatting = finalizeParagraphFormatting(paragraph.formatting);
+  if (structurallyEqual(formatting, currentFormatting)) {
     return unchanged(document);
   }
   const next = withParagraphFormatting(paragraph, formatting);
@@ -1686,7 +1733,7 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   }
   if (
     op.expectedSurvivor !== undefined &&
-    !equalForStaleness(reviewFieldsOf(survivor), op.expectedSurvivor)
+    !equalForStaleness(reviewFieldsOf(survivor), reviewFieldsOf(op.expectedSurvivor))
   ) {
     return refuse(
       op,
@@ -1994,7 +2041,7 @@ const setParagraphReview = (document: Document, op: SetParagraphReviewOp): Appli
     return Result.err(located.error);
   }
   const { paragraph } = located.value;
-  if (!equalForStaleness(reviewFieldsOf(paragraph), op.expected)) {
+  if (!equalForStaleness(reviewFieldsOf(paragraph), reviewFieldsOf(op.expected))) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
@@ -2060,7 +2107,22 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
       `${op.blockId} holds other content than expected.`,
     );
   }
-  const content = cloneModel(op.content);
+  let content = cloneModel(op.content);
+  const noteKind =
+    op.story !== "main" && (op.story.kind === "footnote" || op.story.kind === "endnote")
+      ? op.story.kind
+      : undefined;
+  if (
+    noteKind !== undefined &&
+    !leafSpans(content).some(({ node }) => node.type === "noteMarker" && node.kind === noteKind)
+  ) {
+    const carrier = paragraph.content.find((node) =>
+      leafSpans([node]).some(
+        ({ node: leaf }) => leaf.type === "noteMarker" && leaf.kind === noteKind,
+      ),
+    );
+    if (carrier !== undefined) content = [carrier, ...content];
+  }
   if (holdsEmptyRecord(content)) {
     return refuse(
       op,
@@ -2187,6 +2249,8 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
         openStart: 0,
         openEnd: 0,
       },
+      ...(op.revision === undefined ? {} : { revision: op.revision }),
+      ...(op.newIds === undefined ? {} : { newIds: op.newIds }),
     });
     if (reference.isErr()) return reference;
     return storyLifecycleEdit(document, reference.value.document, op);
@@ -2214,6 +2278,8 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
     type: DOCUMENT_OP_TYPES.DELETE_RANGE,
     from: op.at,
     to: { ...op.at, offset: op.at.offset + 1 },
+    ...(op.revision === undefined ? {} : { revision: op.revision }),
+    ...(op.newIds === undefined ? {} : { newIds: op.newIds }),
   });
   if (removed.isErr()) return removed;
   const stillReferenced = documentStories(removed.value.document).some((story) => {
@@ -2221,10 +2287,13 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
       return false;
     return storyParagraphs(storyBody(removed.value.document, story)).some(({ paragraph }) =>
       leafSpans(paragraph.content).some(
-        ({ node }) =>
+        ({ node, ancestors }) =>
           ((kind === "footnote" && node.type === "footnoteRef") ||
             (kind === "endnote" && node.type === "endnoteRef")) &&
-          node.id === id,
+          node.id === id &&
+          !ancestors.some(
+            (ancestor) => ancestor.type === "deletion" && ancestor.info.id === op.revision?.id,
+          ),
       ),
     );
   });
@@ -2234,6 +2303,7 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       "Another reference still owns this note.",
     );
+  if (op.revision !== undefined) return storyLifecycleEdit(document, removed.value.document, op);
   const next =
     kind === "footnote"
       ? {
@@ -2258,7 +2328,35 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
   return storyLifecycleEdit(document, next, op);
 };
 
-const dispatch = (document: Document, op: DocumentOp): Applied => {
+/** Direct text edits own the lifecycle of note bodies whose last reference they remove. */
+const withoutOrphanedNotes = (before: Document, after: Document): Document => {
+  const removed = new Set(
+    removedNoteStories(before, after).map(({ kind, id }) => `${kind}:${String(id)}`),
+  );
+  if (removed.size === 0) return after;
+  return {
+    ...after,
+    package: {
+      ...after.package,
+      ...(after.package.footnotes === undefined
+        ? {}
+        : {
+            footnotes: after.package.footnotes.filter(
+              ({ id }) => !removed.has(`footnote:${String(id)}`),
+            ),
+          }),
+      ...(after.package.endnotes === undefined
+        ? {}
+        : {
+            endnotes: after.package.endnotes.filter(
+              ({ id }) => !removed.has(`endnote:${String(id)}`),
+            ),
+          }),
+    },
+  };
+};
+
+const dispatchCore = (document: Document, op: DocumentOp): Applied => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
@@ -2335,6 +2433,30 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
   }
 };
 
+/**
+ * A direct operation owns the note records made unreachable by its text edit.
+ * Keeping this in dispatch makes the lifecycle edit part of the operation's
+ * result, so its inverse and touched-story contract include the removed body.
+ */
+const dispatch = (document: Document, op: DocumentOp): Applied => {
+  const applied = dispatchCore(document, op);
+  if (applied.isErr()) return applied;
+  if (
+    op.type === DOCUMENT_OP_TYPES.ADD_NOTE ||
+    op.type === DOCUMENT_OP_TYPES.REMOVE_NOTE ||
+    op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS
+  )
+    return applied;
+  const inverseCleanup = withoutOrphanedNotes(applied.value.document, document);
+  if ("revision" in op && op.revision !== undefined) {
+    if (inverseCleanup === document) return applied;
+    return storyLifecycleEdit(document, applied.value.document, op, true);
+  }
+  const cleaned = withoutOrphanedNotes(document, applied.value.document);
+  if (cleaned === applied.value.document && inverseCleanup === document) return applied;
+  return storyLifecycleEdit(document, cleaned, op, true);
+};
+
 /** The stamp of a tracked operation; `undefined` for a direct one. */
 export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
   switch (op.type) {
@@ -2359,6 +2481,8 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
       return op.revision;
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
@@ -2367,8 +2491,6 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
-    case DOCUMENT_OP_TYPES.ADD_NOTE:
-    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
