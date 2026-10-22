@@ -47,6 +47,7 @@ import { paragraphHoldsContent, paragraphLength } from "./offsets";
 import { identitySlots, withInlineIdentity } from "./slots";
 import { canonicalDeferredGroups } from "./identity";
 import { joinParagraphSeam } from "./inline";
+import { structurallyEqual } from "./equality";
 import { storyLifecycleEdit } from "./storyLifecycle";
 import { documentStories } from "./stories";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -1298,7 +1299,10 @@ const joinOps = (
     // A record left as it was keeps its identity through the merge; an emptied
     // one folded into its neighbour is rebuilt, and is no longer empty.
     ends.set(nextId, emptiedEndsOf(merged, emptied));
-    const survivor: Paragraph = { ...next, content: asParagraphContent(merged) };
+    const mergedContent = asParagraphContent(merged);
+    const survivor: Paragraph = structurallyEqual(mergedContent, next.content)
+      ? next
+      : { ...next, content: mergedContent };
     return Result.ok([
       {
         type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
