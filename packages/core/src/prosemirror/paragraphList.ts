@@ -61,25 +61,17 @@ export const resolveParagraphList = (
         ? sources.numPrFromStyle
         : (sources.inheritedReference ?? undefined),
   });
-  const effective =
-    resolved.kind === "none" &&
-    sources.numPr === undefined &&
-    sources.numPrFromStyle === undefined &&
-    standaloneRendering !== undefined
-      ? paragraphNumberingReference({
-          numId: standaloneRendering.numId,
-          ilvl: standaloneRendering.level,
-        })
-      : resolved;
-  switch (effective.kind) {
+  // Only a package-free canonical model carries its list projection directly,
+  // and only while neither the paragraph's own numbering nor its resolved
+  // style says it is not a list.
+  const projectionStandsIn =
+    numbering === null &&
+    standaloneRendering !== undefined &&
+    sources.numPr?.kind !== "none" &&
+    sources.inheritedReference !== null;
+  switch (resolved.kind) {
     case "none": {
-      // A package-free canonical model can carry its list projection directly,
-      // unless the paragraph's own numbering cancels the list.
-      if (
-        numbering === null &&
-        standaloneRendering !== undefined &&
-        sources.numPr?.kind !== "none"
-      ) {
+      if (projectionStandsIn) {
         const reference = paragraphNumberingReference({
           numId: standaloneRendering.numId,
           ilvl: standaloneRendering.level,
@@ -89,7 +81,7 @@ export const resolveParagraphList = (
       return { kind: "none" };
     }
     case "reference": {
-      const reference = effective;
+      const reference = resolved;
       if (numbering === null) {
         return standaloneRendering === undefined
           ? { kind: "markerless", reference, reason: "noNumbering" }
@@ -118,7 +110,7 @@ export const resolveParagraphList = (
         : { kind: "marker", reference, rendering };
     }
     default: {
-      const unhandled: never = effective;
+      const unhandled: never = resolved;
       return panic(`Unhandled paragraph numbering ${JSON.stringify(unhandled)}`);
     }
   }

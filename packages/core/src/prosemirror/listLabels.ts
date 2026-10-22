@@ -191,18 +191,24 @@ export const createListLabelCounter = (
       listMarkerSecondSlotOffsetTwips: attrs.listMarkerSecondSlotOffsetTwips,
       listFoldedMarkerSuffix: attrs.listFoldedMarkerSuffix,
     };
+    // When the list owner resolved a level-only override against its tracked
+    // predecessor, the counter gets that same owned reference: leaving the
+    // unresolved authored override would classify a marker the counter cannot
+    // advance. Every other paragraph keeps its own sources, so style numbering
+    // still counts as style numbering.
+    const countWithInheritedReference = (
+      reference: Extract<ResolvedParagraphNumbering, { kind: "reference" }>,
+    ): void => {
+      if (!inheritedReference) return;
+      counterInput.numPr = paragraphNumberingAttr(reference);
+      delete counterInput.numPrFromStyle;
+    };
     if (list.kind === "marker") {
       Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
-      // The list owner resolved a level-only override against its tracked
-      // predecessor. Give that same owned reference to the counter: leaving
-      // the unresolved authored override here would classify a marker that
-      // the counter cannot advance.
-      counterInput.numPr = paragraphNumberingAttr(list.reference);
-      delete counterInput.numPrFromStyle;
+      countWithInheritedReference(list.reference);
     } else if (list.kind === "markerless" && list.rendering !== undefined) {
       Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
-      counterInput.numPr = paragraphNumberingAttr(list.reference);
-      delete counterInput.numPrFromStyle;
+      countWithInheritedReference(list.reference);
     } else if (list.kind === "markerless" && projectedRendering?.markerHidden === true) {
       Object.assign(counterInput, listRenderingAttrPatch(projectedRendering));
     }

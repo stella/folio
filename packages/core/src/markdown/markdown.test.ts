@@ -554,6 +554,23 @@ describe("toMarkdown — block structure", () => {
     expect(toMarkdown(document)).toBe("1. first");
   });
 
+  test("a stale cached projection without paragraph or style numbering exports as plain prose", () => {
+    const document = doc([
+      { type: "paragraph", content: [run("text")], listRendering: list(0, false, "1.") },
+    ]);
+    document.package.numbering = {
+      abstractNums: [
+        {
+          abstractNumId: 1,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
+      ],
+      nums: [{ numId: 1, abstractNumId: 1 }],
+    };
+
+    expect(toMarkdown(document)).toBe("text");
+  });
+
   test("a hidden list marker (w:vanish) exports as plain prose", () => {
     const hidden: ListRendering = { ...list(0, true, "•"), markerHidden: true };
     expect(md([para([run("text")], { listRendering: hidden })])).toBe("text");

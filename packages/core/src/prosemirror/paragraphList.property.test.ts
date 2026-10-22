@@ -151,6 +151,25 @@ describe("paragraph list reader agreement", () => {
     ).toBe("marker");
   });
 
+  test("a cached list projection never stands in for a package or a resolved unnumbered style", () => {
+    const projection = { marker: "1.", level: 0, numId: 1, isBullet: false };
+    const numbering = createNumberingMap({
+      abstractNums: [
+        { abstractNumId: 1, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+      ],
+      nums: [{ numId: 1, abstractNumId: 1 }],
+    });
+    const unnumbered = { numPr: undefined, numPrFromStyle: undefined };
+
+    expect(resolveParagraphList(unnumbered, numbering, projection).kind).toBe("none");
+    expect(
+      resolveParagraphList({ ...unnumbered, inheritedReference: null }, numbering, projection).kind,
+    ).toBe("none");
+    expect(
+      resolveParagraphList({ ...unnumbered, inheritedReference: null }, null, projection).kind,
+    ).toBe("none");
+  });
+
   test("an inherited style reference resolves through the numbering owner", () => {
     const definitions: NumberingDefinitions = {
       abstractNums: [
