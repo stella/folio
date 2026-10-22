@@ -60,7 +60,12 @@ const buildSource = (): Promise<ArrayBuffer> => {
           table({
             widths: GRID_WIDTHS,
             gridSourceXml: GRID_SOURCE,
-            cells: [cell("A", 101), cell("B", 102), cell("C", 103), cell("Survivor")],
+            cells: [
+              cell("A", 101),
+              cell("B", 102),
+              cell("C", 103),
+              cell("Survivor"),
+            ],
           }),
           table({
             widths: [3000, 7000],
@@ -81,11 +86,17 @@ const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
   return entry.async("string");
 };
 
-const gridsFrom = (xml: string): string[] => xml.match(/<w:tblGrid>.*?<\/w:tblGrid>/gu) ?? [];
+const gridsFrom = (xml: string): string[] =>
+  xml.match(/<w:tblGrid>.*?<\/w:tblGrid>/gu) ?? [];
 
 const tablesFrom = async (buffer: ArrayBuffer): Promise<Table[]> => {
-  const parsed = await parseDocx(buffer, { detectVariables: false, preloadFonts: false });
-  return parsed.package.document.content.filter((block): block is Table => block.type === "table");
+  const parsed = await parseDocx(buffer, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
+  return parsed.package.document.content.filter(
+    (block): block is Table => block.type === "table",
+  );
 };
 
 describe("tracked table cell grid provenance", () => {
@@ -125,7 +136,10 @@ describe("tracked table cell grid provenance", () => {
     expect(tables.at(0)?.formatting?.gridSourceXml).toBe(GRID_SOURCE);
     expect(tables.at(1)?.columnWidths).toEqual([3000, 7000]);
     expect(tables.at(1)?.formatting?.gridSourceXml).toBe(UNCHANGED_GRID_SOURCE);
-    expect(gridsFrom(await documentXml(once))).toEqual([GRID_SOURCE, UNCHANGED_GRID_SOURCE]);
+    expect(gridsFrom(await documentXml(once))).toEqual([
+      GRID_SOURCE,
+      UNCHANGED_GRID_SOURCE,
+    ]);
 
     const reopened = await FolioDocxReviewer.fromBuffer(once);
     const twice = await reopened.toBuffer();

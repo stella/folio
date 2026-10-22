@@ -6,18 +6,18 @@
  * PR #595, trimmed to the sync continuous path.
  */
 
+import { createBuiltInStyleIndex } from "../docx/builtInStyles";
+import { createListLabelCounter } from "../prosemirror/listLabels";
 import {
   createStyleResolver,
   resolveStyleParagraphNumbering,
 } from "../prosemirror/styles/styleResolver";
-import { createBuiltInStyleIndex } from "../docx/builtInStyles";
-import { createListLabelCounter } from "../prosemirror/listLabels";
 import type { ParagraphFormatting, StyleDefinitions } from "../types/document";
 import {
   createNoteReferenceNumbering,
+  type NoteReferenceKind,
   noteReferenceMarker,
   noteReferenceToken,
-  type NoteReferenceKind,
 } from "../utils/noteReferenceLabels";
 import type { MarkdownOptions, RenderContext } from "./types";
 
@@ -38,10 +38,16 @@ export function newContext(
   return {
     paragraphNumbering: (styleId) => {
       if (!numbering.has(styleId))
-        numbering.set(styleId, resolveStyleParagraphNumbering(resolver, styleId));
+        numbering.set(
+          styleId,
+          resolveStyleParagraphNumbering(resolver, styleId),
+        );
       return numbering.get(styleId);
     },
-    builtInStyles: createBuiltInStyleIndex(styles?.styles ?? [], styles?.docDefaults),
+    builtInStyles: createBuiltInStyleIndex(
+      styles?.styles ?? [],
+      styles?.docDefaults,
+    ),
     opts: {
       annotations: opts.annotations ?? "html",
       trackedChanges: opts.trackedChanges ?? "annotate",

@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 
 import { createDefaultFindOptions } from "../utils/findReplace";
-import { findInProseMirrorDocument, resolveFindMatchRange } from "./findReplaceSelection";
+import {
+  findInProseMirrorDocument,
+  resolveFindMatchRange,
+} from "./findReplaceSelection";
 
 const schema = new Schema({
   nodes: {
@@ -85,11 +88,15 @@ describe("Folio find match selection", () => {
     ]);
     const options = createDefaultFindOptions();
 
-    expect(findInProseMirrorDocument(doc, "left", options).at(0)).toMatchObject({
-      from: 1,
-      to: 5,
-    });
-    expect(findInProseMirrorDocument(doc, "right", options).at(0)).toMatchObject({
+    expect(findInProseMirrorDocument(doc, "left", options).at(0)).toMatchObject(
+      {
+        from: 1,
+        to: 5,
+      },
+    );
+    expect(
+      findInProseMirrorDocument(doc, "right", options).at(0),
+    ).toMatchObject({
       from: 6,
       to: 11,
     });
@@ -108,14 +115,22 @@ describe("Folio find match selection", () => {
       ]),
     ]);
 
-    const matches = findInProseMirrorDocument(doc, "stock", createDefaultFindOptions());
+    const matches = findInProseMirrorDocument(
+      doc,
+      "stock",
+      createDefaultFindOptions(),
+    );
 
     expect(matches).toHaveLength(2);
-    expect(matches.map(({ paragraphIndex, text }) => ({ paragraphIndex, text }))).toEqual([
+    expect(
+      matches.map(({ paragraphIndex, text }) => ({ paragraphIndex, text })),
+    ).toEqual([
       { paragraphIndex: 0, text: "stock" },
       { paragraphIndex: 1, text: "stock" },
     ]);
-    expect(matches.every(({ from, to }) => doc.textBetween(from, to) === "stock")).toBe(true);
+    expect(
+      matches.every(({ from, to }) => doc.textBetween(from, to) === "stock"),
+    ).toBe(true);
   });
 
   test("finds paragraphs nested in block content controls", () => {
@@ -125,7 +140,11 @@ describe("Folio find match selection", () => {
       ]),
     ]);
 
-    const match = findInProseMirrorDocument(doc, "stock", createDefaultFindOptions()).at(0);
+    const match = findInProseMirrorDocument(
+      doc,
+      "stock",
+      createDefaultFindOptions(),
+    ).at(0);
 
     expect(match).toMatchObject({ paragraphIndex: 0, text: "stock" });
     expect(match && resolveFindMatchRange(doc, match)).toEqual(

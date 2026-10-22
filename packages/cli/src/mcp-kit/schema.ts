@@ -32,12 +32,18 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * down (1: the tool's own arguments) and strips it below, where a large
  * nested schema repeats itself.
  */
-const compactNode = (node: unknown, depth: number, describedDepth: number): unknown => {
-  if (Array.isArray(node)) return node.map((item) => compactNode(item, depth, describedDepth));
+const compactNode = (
+  node: unknown,
+  depth: number,
+  describedDepth: number,
+): unknown => {
+  if (Array.isArray(node))
+    return node.map((item) => compactNode(item, depth, describedDepth));
   if (!isRecord(node)) return node;
   const compacted: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(node)) {
-    const keptDescription = key === "description" && depth > 0 && depth <= describedDepth;
+    const keptDescription =
+      key === "description" && depth > 0 && depth <= describedDepth;
     if (ANNOTATION_KEYWORDS.has(key) && !keptDescription) continue;
     // A bound at the largest safe integer says only "an integer".
     if (key === "maximum" && value === Number.MAX_SAFE_INTEGER) continue;
@@ -85,7 +91,8 @@ const countSubschemas = (
   if (!isRoot) {
     const key = JSON.stringify(node);
     const occurrence = seen.get(key);
-    if (occurrence === undefined) seen.set(key, { count: 1, name, bytes: key.length });
+    if (occurrence === undefined)
+      seen.set(key, { count: 1, name, bytes: key.length });
     else occurrence.count += 1;
   }
   for (const [key, value] of Object.entries(node)) {
@@ -116,7 +123,8 @@ export const hoistRepeatedSchemas = (
     .toSorted(([, a], [, b]) => b.bytes - a.bytes);
   for (const [key, { name }] of repeated) {
     let defName = name;
-    for (let suffix = 2; defName in defs; suffix += 1) defName = `${name}${suffix}`;
+    for (let suffix = 2; defName in defs; suffix += 1)
+      defName = `${name}${suffix}`;
     refs.set(key, defName);
     defs[defName] = null;
   }
@@ -131,7 +139,10 @@ export const hoistRepeatedSchemas = (
       replaced[key] =
         SCHEMA_MAP_KEYWORDS.has(key) && isRecord(value)
           ? Object.fromEntries(
-              Object.entries(value).map(([child, sub]) => [child, replace(sub, false)]),
+              Object.entries(value).map(([child, sub]) => [
+                child,
+                replace(sub, false),
+              ]),
             )
           : replace(value, false);
     }

@@ -7,13 +7,21 @@
  * dropped.
  */
 
-import { normalizeAgentInput, type AgentInputPlaceholderPolicy } from "@stll/agent-input";
+import {
+  type AgentInputPlaceholderPolicy,
+  normalizeAgentInput,
+} from "@stll/agent-input";
 
 import type { JsonSchema, ToolAccess, ToolInputIssue } from "./types";
 
 export type ReadInput =
   | { ok: true; value: Record<string, unknown>; notes: readonly string[] }
-  | { ok: false; message: string; issues: readonly ToolInputIssue[]; hint: string };
+  | {
+      ok: false;
+      message: string;
+      issues: readonly ToolInputIssue[];
+      hint: string;
+    };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -44,7 +52,11 @@ type ReadInputOptions = {
   exactProperties?: readonly string[] | undefined;
 };
 
-const refusal = (message: string, issues: ToolInputIssue[], hint: string): ReadInput => ({
+const refusal = (
+  message: string,
+  issues: ToolInputIssue[],
+  hint: string,
+): ReadInput => ({
   ok: false,
   message,
   issues,
@@ -59,7 +71,11 @@ export const readToolInput = ({
   exactProperties = [],
 }: ReadInputOptions): ReadInput => {
   if (value !== undefined && !isRecord(value)) {
-    return refusal("Arguments must be a JSON object.", [], "Send the arguments as an object.");
+    return refusal(
+      "Arguments must be a JSON object.",
+      [],
+      "Send the arguments as an object.",
+    );
   }
   const properties = propertiesOf(schema);
   const required = requiredOf(schema);
@@ -94,7 +110,10 @@ export const readToolInput = ({
     schema: {
       ...schema,
       properties: Object.fromEntries(
-        Object.entries(properties).map(([key, property]) => [key, exact.has(key) ? {} : property]),
+        Object.entries(properties).map(([key, property]) => [
+          key,
+          exact.has(key) ? {} : property,
+        ]),
       ),
     },
     value: input,
@@ -107,7 +126,9 @@ export const readToolInput = ({
         message: `${received} is not ${expected}.`,
       })),
       normalized.issues
-        .map(({ path, hint }) => (path.length === 0 ? hint : `${path}: ${hint}`))
+        .map(({ path, hint }) =>
+          path.length === 0 ? hint : `${path}: ${hint}`,
+        )
         .join(" "),
     );
   }
@@ -116,7 +137,11 @@ export const readToolInput = ({
     .filter((key) => read[key] === undefined)
     .map((key) => ({ path: key, message: `Missing parameter: ${key}` }));
   if (missing.length > 0) {
-    return refusal("Arguments are incomplete.", missing, `Required: ${required.join(", ")}.`);
+    return refusal(
+      "Arguments are incomplete.",
+      missing,
+      `Required: ${required.join(", ")}.`,
+    );
   }
   return { ok: true, value: read, notes: normalized.notes };
 };

@@ -52,7 +52,8 @@ const IMPORT_REGEXES = [
 // A forbidden upward edge: engine/ reaching into a sibling concern. Engine
 // files reference siblings relatively, so a violation looks like
 // `../convert/toFlowBlocks` or `../dom/findBodyPmSpans`.
-const isUpwardEdge = (specifier: string): boolean => /(?:^|\/)(?:convert|dom)\//u.test(specifier);
+const isUpwardEdge = (specifier: string): boolean =>
+  /(?:^|\/)(?:convert|dom)\//u.test(specifier);
 
 type LayerViolation = { importer: string; specifier: string };
 
@@ -60,9 +61,14 @@ type LayerViolation = { importer: string; specifier: string };
 // mentions an import cannot trip it. The line-comment pattern keeps the
 // character before `//` so it does not eat a `:` from a `https://` URL.
 const stripComments = (source: string): string =>
-  source.replaceAll(/\/\*[\s\S]*?\*\//gu, "").replaceAll(/(?<lead>^|[^:])\/\/[^\n]*/gmu, "$<lead>");
+  source
+    .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
+    .replaceAll(/(?<lead>^|[^:])\/\/[^\n]*/gmu, "$<lead>");
 
-const upwardEdgesForSource = (filePath: string, source: string): LayerViolation[] => {
+const upwardEdgesForSource = (
+  filePath: string,
+  source: string,
+): LayerViolation[] => {
   const found: LayerViolation[] = [];
   const stripped = stripComments(source);
   for (const regex of IMPORT_REGEXES) {
@@ -101,7 +107,10 @@ describe("layout-bridge engine is the base layer", () => {
     const violations = collectEngineFiles().flatMap(upwardEdgesForFile);
     if (violations.length > 0) {
       const formatted = violations
-        .map((v) => `  ${v.importer.replace(ENGINE_DIR, "<engine>")} -> "${v.specifier}"`)
+        .map(
+          (v) =>
+            `  ${v.importer.replace(ENGINE_DIR, "<engine>")} -> "${v.specifier}"`,
+        )
         .join("\n");
       throw new Error(
         "layout-bridge/engine is the base layer and must not import from " +
@@ -143,7 +152,10 @@ describe("layout-bridge layering — synthetic fixtures", () => {
   });
 
   test("engine -> engine sibling import is allowed", () => {
-    const violations = upwardEdgesForSource(importer, 'import { getPageTop } from "./hitTest";');
+    const violations = upwardEdgesForSource(
+      importer,
+      'import { getPageTop } from "./hitTest";',
+    );
     expect(violations).toEqual([]);
   });
 

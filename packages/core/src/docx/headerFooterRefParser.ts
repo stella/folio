@@ -8,7 +8,11 @@
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
-import type { HeaderFooterType, HeaderReference, FooterReference } from "../types/document";
+import type {
+  FooterReference,
+  HeaderFooterType,
+  HeaderReference,
+} from "../types/document";
 import type { ParseContext } from "./parseContext";
 import { findChildren, getAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -57,7 +61,10 @@ export function parseHeaderFooterType(
  * schema rejects on the other. Null here keeps the reference out of the model
  * entirely, which is what the source said.
  */
-function parseHeaderFooterReference(element: XmlElement, context?: ParseContext) {
+function parseHeaderFooterReference(
+  element: XmlElement,
+  context?: ParseContext,
+) {
   const rId = getAttribute(element, "r", "id");
   if (rId === null || rId.length === 0) {
     return null;

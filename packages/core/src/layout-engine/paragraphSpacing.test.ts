@@ -5,9 +5,18 @@ import {
   resolveEffectiveParagraphSpacing,
   resolveEffectiveParagraphSpacingTree,
 } from "./paragraphSpacing";
-import type { ParagraphAttrs, ParagraphBlock, TableBlock, TextBoxBlock } from "./types";
+import type {
+  ParagraphAttrs,
+  ParagraphBlock,
+  TableBlock,
+  TextBoxBlock,
+} from "./types";
 
-const paragraph = (id: string, attrs: ParagraphAttrs, text = id): ParagraphBlock => ({
+const paragraph = (
+  id: string,
+  attrs: ParagraphAttrs,
+  text = id,
+): ParagraphBlock => ({
   kind: "paragraph",
   id,
   runs: [{ kind: "text", text }],
@@ -16,7 +25,11 @@ const paragraph = (id: string, attrs: ParagraphAttrs, text = id): ParagraphBlock
 
 describe("resolveEffectiveParagraphSpacing", () => {
   test("collapses only inherited spacing on an otherwise bare empty paragraph", () => {
-    const inherited = paragraph("inherited", { spacing: { before: 12, after: 18 } }, "");
+    const inherited = paragraph(
+      "inherited",
+      { spacing: { before: 12, after: 18 } },
+      "",
+    );
     const explicit = paragraph(
       "explicit",
       {
@@ -26,14 +39,24 @@ describe("resolveEffectiveParagraphSpacing", () => {
       "",
     );
 
-    expect(resolveEffectiveParagraphSpacing(inherited)).toEqual({ before: 0, after: 0 });
-    expect(resolveEffectiveParagraphSpacing(explicit)).toEqual({ before: 12, after: 0 });
+    expect(resolveEffectiveParagraphSpacing(inherited)).toEqual({
+      before: 0,
+      after: 0,
+    });
+    expect(resolveEffectiveParagraphSpacing(explicit)).toEqual({
+      before: 12,
+      after: 0,
+    });
   });
 
   test("preserves inherited spacing when the empty paragraph has authored provenance", () => {
     expect(
       resolveEffectiveParagraphSpacing(
-        paragraph("styled", { styleId: "Body", spacing: { before: 12, after: 18 } }, ""),
+        paragraph(
+          "styled",
+          { styleId: "Body", spacing: { before: 12, after: 18 } },
+          "",
+        ),
       ),
     ).toEqual({ before: 12, after: 18 });
   });
@@ -83,7 +106,11 @@ describe("resolveEffectiveParagraphSpacingTree", () => {
       spacing: { before: 18, after: 18 },
     });
 
-    const resolved = resolveEffectiveParagraphSpacingTree([first, second, boundary]);
+    const resolved = resolveEffectiveParagraphSpacingTree([
+      first,
+      second,
+      boundary,
+    ]);
 
     expect(resolved.map((block) => block.attrs?.spacing)).toEqual([
       { before: 18, after: 0 },
@@ -106,7 +133,12 @@ describe("resolveEffectiveParagraphSpacingTree", () => {
     const table: TableBlock = {
       kind: "table",
       id: "table",
-      rows: [{ id: "row", cells: [{ id: "cell", blocks: [tableFirst, tableSecond] }] }],
+      rows: [
+        {
+          id: "row",
+          cells: [{ id: "cell", blocks: [tableFirst, tableSecond] }],
+        },
+      ],
     };
     const textBoxFirst = paragraph("box-first", {
       styleId: "Box",
@@ -126,7 +158,11 @@ describe("resolveEffectiveParagraphSpacingTree", () => {
     };
     const unchanged = paragraph("unchanged", { spacing: { after: 4 } });
 
-    const resolved = resolveEffectiveParagraphSpacingTree([table, textBox, unchanged]);
+    const resolved = resolveEffectiveParagraphSpacingTree([
+      table,
+      textBox,
+      unchanged,
+    ]);
 
     expect(resolved.at(0)).not.toBe(table);
     expect(resolved.at(1)).not.toBe(textBox);
@@ -135,7 +171,10 @@ describe("resolveEffectiveParagraphSpacingTree", () => {
     const resolvedTextBox = resolved.at(1);
     expect(resolvedTable?.kind).toBe("table");
     expect(resolvedTextBox?.kind).toBe("textBox");
-    if (resolvedTable?.kind !== "table" || resolvedTextBox?.kind !== "textBox") {
+    if (
+      resolvedTable?.kind !== "table" ||
+      resolvedTextBox?.kind !== "textBox"
+    ) {
       return;
     }
     expect(

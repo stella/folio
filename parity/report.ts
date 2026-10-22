@@ -38,8 +38,10 @@ export type DocAssets = {
 };
 
 /** Stable in-memory key for one document/view comparison slice. */
-export const comparisonAssetKey = (file: string, reviewView: ReviewView): string =>
-  `${file}\0${reviewView}`;
+export const comparisonAssetKey = (
+  file: string,
+  reviewView: ReviewView,
+): string => `${file}\0${reviewView}`;
 
 const reviewViewLabel = (reviewView: ReviewView): string => {
   switch (reviewView) {
@@ -125,7 +127,9 @@ const sanitizeSlug = (name: string): string => {
   return cleaned.length > 0 ? cleaned : "doc";
 };
 
-const buildSlugs = (results: FeatureAttributedResult[]): Map<string, string> => {
+const buildSlugs = (
+  results: FeatureAttributedResult[],
+): Map<string, string> => {
   const slugs = new Map<string, string>();
   const used = new Set<string>();
 
@@ -146,11 +150,17 @@ const buildSlugs = (results: FeatureAttributedResult[]): Map<string, string> => 
   return slugs;
 };
 
-const copyDocAssets = async (slug: string, docAssets: DocAssets): Promise<CopiedPageAssets> => {
+const copyDocAssets = async (
+  slug: string,
+  docAssets: DocAssets,
+): Promise<CopiedPageAssets> => {
   const dir = path.join(REPORT_DIR, ASSETS_DIR_NAME, slug);
   await mkdir(dir, { recursive: true });
 
-  const copyOne = async (srcPath: string, destName: string): Promise<string | null> => {
+  const copyOne = async (
+    srcPath: string,
+    destName: string,
+  ): Promise<string | null> => {
     try {
       await copyFile(srcPath, path.join(dir, destName));
       return `${ASSETS_DIR_NAME}/${slug}/${destName}`;
@@ -160,13 +170,17 @@ const copyDocAssets = async (slug: string, docAssets: DocAssets): Promise<Copied
   };
 
   const referencePngs = await Promise.all(
-    docAssets.referencePagePngs.map((src, i) => copyOne(src, `reference-${i + 1}.png`)),
+    docAssets.referencePagePngs.map((src, i) =>
+      copyOne(src, `reference-${i + 1}.png`),
+    ),
   );
   const folioPngs = await Promise.all(
     docAssets.folioPagePngs.map((src, i) => copyOne(src, `folio-${i + 1}.png`)),
   );
   const rasterDiffPngs = await Promise.all(
-    docAssets.rasterDiffPagePngs.map((src, i) => copyOne(src, `diff-${i + 1}.png`)),
+    docAssets.rasterDiffPagePngs.map((src, i) =>
+      copyOne(src, `diff-${i + 1}.png`),
+    ),
   );
 
   return { referencePngs, folioPngs, rasterDiffPngs };
@@ -215,7 +229,9 @@ const rasterScoreSummary = (result: FeatureAttributedResult): string => {
   return `${raw} (${(comparison.revisionColorAdjustedScore * 100).toFixed(1)}% reviewer-color adjusted)`;
 };
 
-const fontReliabilityMessage = (result: FeatureAttributedResult): string | undefined => {
+const fontReliabilityMessage = (
+  result: FeatureAttributedResult,
+): string | undefined => {
   const assessment = result.fontEnvironment;
   if (assessment === undefined || isGeometryScoreReliable(assessment)) {
     return undefined;
@@ -228,14 +244,21 @@ const fontReliabilityMessage = (result: FeatureAttributedResult): string | undef
 
 /** Font notes for a scored run: aliased faces and lines excluded because the
  * renderers painted them in different families. */
-export const fontEnvironmentNotes = (result: FeatureAttributedResult): string[] => {
+export const fontEnvironmentNotes = (
+  result: FeatureAttributedResult,
+): string[] => {
   const assessment = result.fontEnvironment;
   const notes: string[] = [];
   if (assessment?.aliases !== undefined && assessment.aliases.length > 0) {
     const aliases = assessment.aliases
-      .map(({ requestedFamily, faceFamily }) => `${requestedFamily} → ${faceFamily}`)
+      .map(
+        ({ requestedFamily, faceFamily }) =>
+          `${requestedFamily} → ${faceFamily}`,
+      )
       .join(", ");
-    notes.push(`Folio rendered with the reference renderer's local faces: ${aliases}.`);
+    notes.push(
+      `Folio rendered with the reference renderer's local faces: ${aliases}.`,
+    );
   }
   if (assessment?.status === "partial-mismatch") {
     notes.push(
@@ -306,8 +329,13 @@ const compactDivergenceCounts = (divergences: Divergence[]): string => {
 
 // --- index.html ---
 
-const renderIndex = (report: CorpusReport, slugs: Map<string, string>): string => {
-  const rows = report.results.map((result) => renderIndexRow(result, slugs)).join("\n");
+const renderIndex = (
+  report: CorpusReport,
+  slugs: Map<string, string>,
+): string => {
+  const rows = report.results
+    .map((result) => renderIndexRow(result, slugs))
+    .join("\n");
   const clusterRows = report.clusters.map(renderClusterRow).join("\n");
   const failures = report.failures ?? [];
   const failureRows = failures
@@ -376,8 +404,12 @@ ${clusterRows.length > 0 ? clusterRows : `<tr><td colspan="7">No clusters.</td><
 `;
 };
 
-const renderIndexRow = (result: FeatureAttributedResult, slugs: Map<string, string>): string => {
-  const slug = slugs.get(comparisonAssetKey(result.file, result.reviewView)) ?? "";
+const renderIndexRow = (
+  result: FeatureAttributedResult,
+  slugs: Map<string, string>,
+): string => {
+  const slug =
+    slugs.get(comparisonAssetKey(result.file, result.reviewView)) ?? "";
   const name = path.basename(result.file);
   const counts = compactDivergenceCounts(result.divergences);
   const reliabilityMessage = fontReliabilityMessage(result);
@@ -465,7 +497,8 @@ const renderDocPage = ({
     .map((note) => `<div class="banner-warning">${escapeHtml(note)}</div>`)
     .join("\n");
   const fontExcludedSection =
-    result.fontExcludedDivergences !== undefined && result.fontExcludedDivergences.length > 0
+    result.fontExcludedDivergences !== undefined &&
+    result.fontExcludedDivergences.length > 0
       ? `<section class="divergences">
 <h2>Excluded: different font family</h2>
 ${renderDivergenceSections(result.fontExcludedDivergences)}
@@ -589,7 +622,9 @@ const renderRasterPanel = ({
   rasterPage,
 }: RenderRasterPanelOptions): string => {
   const label = `pixel diff — page ${pageIndex + 1}`;
-  const summary = rasterPage ? rasterPageSummary(rasterPage) : "comparison unavailable";
+  const summary = rasterPage
+    ? rasterPageSummary(rasterPage)
+    : "comparison unavailable";
   const image = imgPath
     ? `<img src="${escapeHtml(imgPath)}" alt="${escapeHtml(label)}" />`
     : `<div class="placeholder">diff unavailable</div>`;
@@ -656,9 +691,15 @@ ${crossBoxes}
 </div>`;
 };
 
-const renderBoxesSvgGroup = (lines: LineBox[], className: string, id?: string): string => {
+const renderBoxesSvgGroup = (
+  lines: LineBox[],
+  className: string,
+  id?: string,
+): string => {
   const idAttr = id ? ` id="${escapeHtml(id)}"` : "";
-  const hiddenStyle = className.includes("cross") ? ' style="display:none"' : "";
+  const hiddenStyle = className.includes("cross")
+    ? ' style="display:none"'
+    : "";
   const rects = lines
     .map(
       (line) =>
@@ -683,12 +724,17 @@ const renderDivergenceSections = (divergences: Divergence[]): string => {
     }
   }
 
-  return DIVERGENCE_KIND_ORDER.filter((kind) => (byKind.get(kind)?.length ?? 0) > 0)
+  return DIVERGENCE_KIND_ORDER.filter(
+    (kind) => (byKind.get(kind)?.length ?? 0) > 0,
+  )
     .map((kind) => renderDivergenceKindSection(kind, byKind.get(kind) ?? []))
     .join("\n");
 };
 
-const renderDivergenceKindSection = (kind: DivergenceKind, divergences: Divergence[]): string => {
+const renderDivergenceKindSection = (
+  kind: DivergenceKind,
+  divergences: Divergence[],
+): string => {
   const rows = divergences.map(renderDivergenceRow).join("\n");
   return `<h3>${escapeHtml(kind)} (${divergences.length})</h3>
 <table>

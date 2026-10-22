@@ -9,11 +9,16 @@
  * the React hook so the two adapters feel identical under drag.
  */
 import { onScopeDispose, type Ref } from "vue";
+
 import {
   getEditorScrollRoot,
   scrollEditorBy,
 } from "@stll/folio-core/paged-layout/editorScrollRoot";
-import { AUTO_SCROLL_EDGE_ZONE as EDGE_ZONE, computeAutoScrollDelta } from "../utils/autoScroll";
+
+import {
+  AUTO_SCROLL_EDGE_ZONE as EDGE_ZONE,
+  computeAutoScrollDelta,
+} from "../utils/autoScroll";
 
 export type DragAutoScrollOptions = {
   pagesContainer: Ref<HTMLElement | null>;

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { createNonce, editorContentSecurityPolicy, editorShellHtml } from "./shell";
+import {
+  createNonce,
+  editorContentSecurityPolicy,
+  editorShellHtml,
+} from "./shell";
 
 describe("createNonce", () => {
   test("is fresh each time", () => {
@@ -32,13 +36,19 @@ describe("editorShellHtml", () => {
       "worker-src 'none'",
       "connect-src 'none'",
     ]);
-    expect(html).toContain(`content="default-src 'none'; script-src 'nonce-n0nce' ${source};`);
+    expect(html).toContain(
+      `content="default-src 'none'; script-src 'nonce-n0nce' ${source};`,
+    );
   });
 
   test("links the stylesheet and nonces the one script", () => {
-    expect(html).toContain(`<link rel="stylesheet" href="${source}/ext/dist/editor/editor.css">`);
+    expect(html).toContain(
+      `<link rel="stylesheet" href="${source}/ext/dist/editor/editor.css">`,
+    );
     expect(html.match(/<script/gu)).toHaveLength(1);
-    expect(html).toContain(`<script nonce="n0nce" src="${source}/ext/dist/editor/editor.js">`);
+    expect(html).toContain(
+      `<script nonce="n0nce" src="${source}/ext/dist/editor/editor.js">`,
+    );
     expect(html).toContain("Q3 &quot;draft&quot;.docx");
     expect(html).not.toContain("folio-test-type");
   });

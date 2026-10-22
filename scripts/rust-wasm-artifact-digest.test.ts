@@ -11,8 +11,12 @@ const packageOf = (name: string, version = "1.0.0") => ({
   id: `${name} ${version}`,
   name,
   version,
-  source: name === "app" || name === "other" ? null : "registry+https://example.invalid/index",
-  checksum: name === "app" || name === "other" ? null : `${name}-${version}-checksum`,
+  source:
+    name === "app" || name === "other"
+      ? null
+      : "registry+https://example.invalid/index",
+  checksum:
+    name === "app" || name === "other" ? null : `${name}-${version}-checksum`,
 });
 
 const dependencyOn = (name: string, version: string, kind: DependencyKind) => ({
@@ -73,7 +77,9 @@ describe("resolvedWasmBuildGraphDescription", () => {
     const baseline = fixture();
     const bumped = fixture({ devVersion: "2.0.0" });
     bumped.packages.push(packageOf("another-dev-helper"));
-    bumped.resolve.nodes.at(0)?.deps.push(dependencyOn("another-dev-helper", "1.0.0", "dev"));
+    bumped.resolve.nodes
+      .at(0)
+      ?.deps.push(dependencyOn("another-dev-helper", "1.0.0", "dev"));
     bumped.resolve.nodes.push({ id: "another-dev-helper 1.0.0", deps: [] });
 
     expect(describeFixture(bumped)).toBe(describeFixture(baseline));
@@ -82,19 +88,27 @@ describe("resolvedWasmBuildGraphDescription", () => {
   test("changes for direct and transitive normal dependency bumps", () => {
     const baseline = describeFixture();
 
-    expect(describeFixture(fixture({ dependencyVersion: "2.0.0" }))).not.toBe(baseline);
-    expect(describeFixture(fixture({ transitiveVersion: "2.0.0" }))).not.toBe(baseline);
+    expect(describeFixture(fixture({ dependencyVersion: "2.0.0" }))).not.toBe(
+      baseline,
+    );
+    expect(describeFixture(fixture({ transitiveVersion: "2.0.0" }))).not.toBe(
+      baseline,
+    );
   });
 
   test("changes for build-dependency bumps", () => {
-    expect(describeFixture(fixture({ buildVersion: "2.0.0" }))).not.toBe(describeFixture());
+    expect(describeFixture(fixture({ buildVersion: "2.0.0" }))).not.toBe(
+      describeFixture(),
+    );
   });
 
   test("changes for a host-only dependency of a build dependency", () => {
     const withHostDependency = (version: string) => {
       const metadata = fixture();
       metadata.packages.push(packageOf("host-only", version));
-      const buildHelper = metadata.resolve.nodes.find(({ id }) => id === "build-helper 1.0.0");
+      const buildHelper = metadata.resolve.nodes.find(
+        ({ id }) => id === "build-helper 1.0.0",
+      );
       buildHelper?.deps.push({
         pkg: `host-only ${version}`,
         dep_kinds: [{ kind: null, target: "cfg(unix)" }],
@@ -109,7 +123,9 @@ describe("resolvedWasmBuildGraphDescription", () => {
   });
 
   test("ignores dependencies owned by another workspace member", () => {
-    expect(describeFixture(fixture({ otherVersion: "2.0.0" }))).toBe(describeFixture());
+    expect(describeFixture(fixture({ otherVersion: "2.0.0" }))).toBe(
+      describeFixture(),
+    );
   });
 
   test("is independent of package and node order", () => {
@@ -152,18 +168,26 @@ describe("manifestBuildDescription", () => {
   test("ignores dev-dependency edits, including target-specific ones", () => {
     const baseline = manifestBuildDescription(manifest());
 
-    expect(manifestBuildDescription(manifest({ devDependency: '{ version = "9.0.1" }' }))).toBe(
-      baseline,
-    );
-    expect(manifestBuildDescription(manifest({ targetDevDependency: '"3"' }))).toBe(baseline);
+    expect(
+      manifestBuildDescription(
+        manifest({ devDependency: '{ version = "9.0.1" }' }),
+      ),
+    ).toBe(baseline);
+    expect(
+      manifestBuildDescription(manifest({ targetDevDependency: '"3"' })),
+    ).toBe(baseline);
   });
 
   test("changes for dependency and feature edits", () => {
     const baseline = manifestBuildDescription(manifest());
 
-    expect(manifestBuildDescription(manifest({ dependency: '"2"' }))).not.toBe(baseline);
+    expect(manifestBuildDescription(manifest({ dependency: '"2"' }))).not.toBe(
+      baseline,
+    );
     expect(
-      manifestBuildDescription(manifest({ feature: '["dep:js-sys", "dep:web-sys"]' })),
+      manifestBuildDescription(
+        manifest({ feature: '["dep:js-sys", "dep:web-sys"]' }),
+      ),
     ).not.toBe(baseline);
   });
 
@@ -184,6 +208,8 @@ wasm = ["dep:js-sys"]
 name = "app"
 `;
 
-    expect(manifestBuildDescription(reordered)).toBe(manifestBuildDescription(manifest()));
+    expect(manifestBuildDescription(reordered)).toBe(
+      manifestBuildDescription(manifest()),
+    );
   });
 });

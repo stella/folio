@@ -62,7 +62,9 @@ export class FakeElement {
   }
 
   get textContent(): string {
-    return this.ownText + this.children.map((child) => child.textContent).join("");
+    return (
+      this.ownText + this.children.map((child) => child.textContent).join("")
+    );
   }
 
   set textContent(value: string) {
@@ -132,7 +134,9 @@ export class FakeElement {
   }
 
   private querySelectorAllMatching(selectors: string[]): FakeElement[] {
-    const matches = selectors.some((selector) => this.matches(selector)) ? [this] : [];
+    const matches = selectors.some((selector) => this.matches(selector))
+      ? [this]
+      : [];
     for (const child of this.children) {
       matches.push(...child.querySelectorAllMatching(selectors));
     }
@@ -202,7 +206,10 @@ export function collectPmAnchors(element: FakeElement): FakeElement[] {
   return anchors;
 }
 
-export function findByClass(element: FakeElement, className: string): FakeElement | undefined {
+export function findByClass(
+  element: FakeElement,
+  className: string,
+): FakeElement | undefined {
   if (element.className.split(" ").includes(className)) {
     return element;
   }
@@ -217,8 +224,13 @@ export function findByClass(element: FakeElement, className: string): FakeElemen
   return undefined;
 }
 
-export function collectByClass(element: FakeElement, className: string): FakeElement[] {
-  const matches = element.className.split(" ").includes(className) ? [element] : [];
+export function collectByClass(
+  element: FakeElement,
+  className: string,
+): FakeElement[] {
+  const matches = element.className.split(" ").includes(className)
+    ? [element]
+    : [];
 
   for (const child of element.children) {
     matches.push(...collectByClass(child, className));

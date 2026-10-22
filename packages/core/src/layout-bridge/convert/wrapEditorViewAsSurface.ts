@@ -26,7 +26,10 @@ export type Surface = {
   setSelection: (anchor: number, head?: number) => void;
 };
 
-export function wrapEditorViewAsSurface(view: EditorView | null, rId: string): Surface {
+export function wrapEditorViewAsSurface(
+  view: EditorView | null,
+  rId: string,
+): Surface {
   return {
     kind: "hf",
     rId,
@@ -42,11 +45,16 @@ export function wrapEditorViewAsSurface(view: EditorView | null, rId: string): S
       const { state, dispatch } = view;
       const docEnd = state.doc.content.size;
       const clampedAnchor = Math.max(0, Math.min(anchor, docEnd));
-      const clampedHead = head === undefined ? clampedAnchor : Math.max(0, Math.min(head, docEnd));
+      const clampedHead =
+        head === undefined
+          ? clampedAnchor
+          : Math.max(0, Math.min(head, docEnd));
       const $anchor = state.doc.resolve(clampedAnchor);
       const $head = state.doc.resolve(clampedHead);
       const selection =
-        head === undefined ? Selection.near($anchor) : TextSelection.between($anchor, $head);
+        head === undefined
+          ? Selection.near($anchor)
+          : TextSelection.between($anchor, $head);
       dispatch(state.tr.setSelection(selection));
     },
   };

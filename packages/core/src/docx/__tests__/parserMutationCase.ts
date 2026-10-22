@@ -9,7 +9,11 @@ import { DocxParseError, parseDocx } from "../parser";
 const publicRead = (reviewer: FolioDocxReviewer) => ({
   blocks: reviewer.getContent().map((block) => {
     if (block.kind === "diagnostic") {
-      return { kind: block.kind, text: block.text, diagnostic: block.diagnostic };
+      return {
+        kind: block.kind,
+        text: block.text,
+        diagnostic: block.diagnostic,
+      };
     }
     return {
       kind: block.kind,
@@ -21,13 +25,15 @@ const publicRead = (reviewer: FolioDocxReviewer) => ({
   }),
   stories: reviewer.listStories().map(({ handle, text }) => ({ handle, text })),
   notes: reviewer.getNotesAsText(),
-  comments: reviewer.getComments().map(({ author, text, anchoredText, done, replies }) => ({
-    author,
-    text,
-    anchoredText,
-    done,
-    replies: replies.map((reply) => reply.text),
-  })),
+  comments: reviewer
+    .getComments()
+    .map(({ author, text, anchoredText, done, replies }) => ({
+      author,
+      text,
+      anchoredText,
+      done,
+      replies: replies.map((reply) => reply.text),
+    })),
   changes: reviewer.getChanges().map(({ type, author }) => ({ type, author })),
 });
 
@@ -54,7 +60,10 @@ const run = async (): Promise<void> => {
   try {
     await parseDocx(input, { preloadFonts: false, detectVariables: false });
   } catch (error) {
-    assert.ok(isTypedRefusal(error), `untyped parser refusal: ${String(error)}`);
+    assert.ok(
+      isTypedRefusal(error),
+      `untyped parser refusal: ${String(error)}`,
+    );
     process.stdout.write("refused\n");
     return;
   }
@@ -63,11 +72,17 @@ const run = async (): Promise<void> => {
   const before = publicRead(reviewer);
   const saved = await reviewer.toBuffer();
   const reopened = await FolioDocxReviewer.fromBuffer(saved);
-  assert.deepEqual(publicRead(reopened), before, "save/reopen changed public reader output");
+  assert.deepEqual(
+    publicRead(reopened),
+    before,
+    "save/reopen changed public reader output",
+  );
   process.stdout.write("opened\n");
 };
 
 await run().catch((error: unknown) => {
-  process.stderr.write(error instanceof Error ? (error.stack ?? error.message) : String(error));
+  process.stderr.write(
+    error instanceof Error ? (error.stack ?? error.message) : String(error),
+  );
   process.exitCode = 1;
 });

@@ -42,12 +42,14 @@ export const PANEL_METRICS = {
 } as const;
 
 /** Width the comments take beside the page: gap, cards, gap. */
-export const COMMENTS_TRACK_WIDTH = PANEL_METRICS.commentsWidth + 2 * PANEL_METRICS.commentsGap;
+export const COMMENTS_TRACK_WIDTH =
+  PANEL_METRICS.commentsWidth + 2 * PANEL_METRICS.commentsGap;
 
 export type PanelLayoutTier = "wide" | "medium" | "narrow";
 
 /** How the outline is shown: a column, tick rail, drawer, or explicitly opened track. */
-export type OutlinePresentation = "none" | "column" | "rail" | "drawer" | "expanded";
+export type OutlinePresentation =
+  "none" | "column" | "rail" | "drawer" | "expanded";
 
 /** How the comments are shown: a column beside the page, a drawer, or not at all. */
 export type CommentsPresentation = "hidden" | "column" | "drawer";
@@ -75,7 +77,8 @@ export type PanelLayout = {
   thresholds: { wide: number; medium: number };
 };
 
-const pageTrackWidth = (pageWidth: number) => pageWidth + 2 * PANEL_METRICS.pageMargin;
+const pageTrackWidth = (pageWidth: number) =>
+  pageWidth + 2 * PANEL_METRICS.pageMargin;
 
 /**
  * The smallest available width for each tier with the comments wanted as
@@ -91,8 +94,12 @@ export const panelLayoutThresholds = ({
   const commentsTrack = comments === "open" ? COMMENTS_TRACK_WIDTH : 0;
   const hasOutline = outline !== "absent";
   return {
-    wide: page + commentsTrack + (hasOutline ? PANEL_METRICS.outlineColumnWidth : 0),
-    medium: page + commentsTrack + (hasOutline ? PANEL_METRICS.outlineRailWidth : 0),
+    wide:
+      page +
+      commentsTrack +
+      (hasOutline ? PANEL_METRICS.outlineColumnWidth : 0),
+    medium:
+      page + commentsTrack + (hasOutline ? PANEL_METRICS.outlineRailWidth : 0),
   };
 };
 
@@ -103,8 +110,12 @@ const OUTLINE_TRACK_WIDTH = {
   drawer: 0,
 } as const satisfies Record<Exclude<OutlinePresentation, "expanded">, number>;
 
-const tierFor = (outline: OutlinePresentation, comments: CommentsPresentation): PanelLayoutTier => {
-  if (outline === "drawer" || outline === "expanded" || comments === "drawer") return "narrow";
+const tierFor = (
+  outline: OutlinePresentation,
+  comments: CommentsPresentation,
+): PanelLayoutTier => {
+  if (outline === "drawer" || outline === "expanded" || comments === "drawer")
+    return "narrow";
   if (outline === "rail") return "medium";
   return "wide";
 };
@@ -116,7 +127,8 @@ export const computePanelLayout = (input: PanelLayoutInput): PanelLayout => {
   const page = pageTrackWidth(input.pageWidth);
   const comments = ((): CommentsPresentation => {
     if (input.comments === "closed") return "hidden";
-    const requiredWidth = input.outline === "expanded" ? thresholds.wide : thresholds.medium;
+    const requiredWidth =
+      input.outline === "expanded" ? thresholds.wide : thresholds.medium;
     return availableWidth >= requiredWidth ? "column" : "drawer";
   })();
   const commentsGutter = comments === "column" ? COMMENTS_TRACK_WIDTH : 0;
@@ -125,7 +137,8 @@ export const computePanelLayout = (input: PanelLayoutInput): PanelLayout => {
     if (input.outline === "expanded") return "expanded";
     const beside = page + commentsGutter;
     if (availableWidth >= thresholds.wide) return "column";
-    if (availableWidth >= beside + PANEL_METRICS.outlineRailWidth) return "rail";
+    if (availableWidth >= beside + PANEL_METRICS.outlineRailWidth)
+      return "rail";
     return "drawer";
   })();
   return {
@@ -136,7 +149,10 @@ export const computePanelLayout = (input: PanelLayoutInput): PanelLayout => {
       outline === "expanded"
         ? Math.min(
             PANEL_METRICS.outlineColumnWidth,
-            Math.max(PANEL_METRICS.controlMinimumSize, (availableWidth - commentsGutter) / 2),
+            Math.max(
+              PANEL_METRICS.controlMinimumSize,
+              (availableWidth - commentsGutter) / 2,
+            ),
           )
         : OUTLINE_TRACK_WIDTH[outline],
     commentsGutter,

@@ -60,7 +60,11 @@ through `getReadOnlyReason()` and `onReadonlyEditAttempt(reason)`.
 Create a legal-shaped blank document with the built-in preset:
 
 ```ts
-import { createDocx, createEmptyDocument, createStellaStyleDocumentPreset } from "@stll/folio-core";
+import {
+  createDocx,
+  createEmptyDocument,
+  createStellaStyleDocumentPreset,
+} from "@stll/folio-core";
 
 const document = createEmptyDocument({
   preset: createStellaStyleDocumentPreset(),
@@ -155,8 +159,12 @@ for (const event of result.value.events) {
   if (revisedSource) persistSourceAnchor(revisedSource.anchorId);
 }
 
-const rejectedBlocks = result.value.events.flatMap(({ baseBlocks }) => baseBlocks);
-const acceptedBlocks = result.value.events.flatMap(({ revisedBlocks }) => revisedBlocks);
+const rejectedBlocks = result.value.events.flatMap(
+  ({ baseBlocks }) => baseBlocks,
+);
+const acceptedBlocks = result.value.events.flatMap(
+  ({ revisedBlocks }) => revisedBlocks,
+);
 ```
 
 Events retain the caller's complete block subtype, including custom metadata,
@@ -198,12 +206,15 @@ as JSON alongside the document. After reopening the saved DOCX, call
 `reopened.loadPendingSuggestions(records)` to revalidate and restage them:
 
 ```ts
-import { FolioDocxReviewer } from "@stll/folio-core/server";
 import type { FolioPendingSuggestionRecord } from "@stll/folio-core/ai-edits";
+import { FolioDocxReviewer } from "@stll/folio-core/server";
 
-const records: FolioPendingSuggestionRecord[] = reviewer.exportPendingSuggestions();
+const records: FolioPendingSuggestionRecord[] =
+  reviewer.exportPendingSuggestions();
 await saveRecords(records);
-const reopened = await FolioDocxReviewer.fromBuffer(savedDocx, { author: "Reviewer" });
+const reopened = await FolioDocxReviewer.fromBuffer(savedDocx, {
+  author: "Reviewer",
+});
 const results = reopened.loadPendingSuggestions(await loadRecords());
 ```
 

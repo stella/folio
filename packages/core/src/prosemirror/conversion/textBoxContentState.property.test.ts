@@ -2,7 +2,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { Document, Paragraph, Run, Table } from "../../types/document";
 import { schema } from "../schema";
 import { stableProjectionIdentity } from "./__tests__/stableProjectionIdentity";
@@ -12,16 +15,22 @@ import { toProseDoc } from "./toProseDoc";
 setDefaultTimeout(propertyTestTimeout(30_000));
 
 const generatedText = fc
-  .array(fc.constantFrom("alpha", " ", "beta", "\n", "§", "😀", "č", "م", "e\u0301"), {
-    maxLength: 8,
-  })
+  .array(
+    fc.constantFrom("alpha", " ", "beta", "\n", "§", "😀", "č", "م", "e\u0301"),
+    {
+      maxLength: 8,
+    },
+  )
   .map((parts) => parts.join(""));
 
 const generatedNonEmptyText = fc
-  .array(fc.constantFrom("alpha", " ", "beta", "§", "😀", "č", "م", "e\u0301"), {
-    minLength: 1,
-    maxLength: 8,
-  })
+  .array(
+    fc.constantFrom("alpha", " ", "beta", "§", "😀", "č", "م", "e\u0301"),
+    {
+      minLength: 1,
+      maxLength: 8,
+    },
+  )
   .map((parts) => parts.join(""));
 
 const generatedParagraph = fc
@@ -33,7 +42,9 @@ const generatedParagraph = fc
   })
   .map(({ text, alignment }) => {
     const content = (
-      text.length === 0 ? [] : [{ type: "run", content: [{ type: "text", text }] }]
+      text.length === 0
+        ? []
+        : [{ type: "run", content: [{ type: "text", text }] }]
     ) satisfies Paragraph["content"];
     if (alignment === undefined) {
       return { type: "paragraph", content } satisfies Paragraph;
@@ -53,7 +64,11 @@ const generatedTextBody = fc.oneof(
 );
 
 type PlaceholderEdit =
-  | { readonly type: "identity"; readonly paraId: string; readonly textId: string }
+  | {
+      readonly type: "identity";
+      readonly paraId: string;
+      readonly textId: string;
+    }
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "formatting"; readonly alignment: "center" | "right" };
 
@@ -89,7 +104,9 @@ describe("text-box content provenance properties", () => {
       fc.property(generatedTextBody, (body) => {
         const source = documentWithTextBody(body);
         const projected = toProseDoc(source);
-        const restored = fromProseDoc(projected, source, { stylesheetSource: { type: "package" } });
+        const restored = fromProseDoc(projected, source, {
+          stylesheetSource: { type: "package" },
+        });
         const reprojected = toProseDoc(restored);
         const restoredAgain = fromProseDoc(reprojected, restored, {
           stylesheetSource: { type: "package" },
@@ -100,7 +117,9 @@ describe("text-box content provenance properties", () => {
         expect(textBoxContentState(projected)).toEqual({
           type: body.length === 0 ? "source-empty" : "authored",
         });
-        expect(stableProjectionIdentity(reprojected)).toBe(stableProjectionIdentity(projected));
+        expect(stableProjectionIdentity(reprojected)).toBe(
+          stableProjectionIdentity(projected),
+        );
       }),
       propertyConfig({ numRuns: 200 }),
     );
@@ -113,7 +132,10 @@ describe("text-box content provenance properties", () => {
         const projected = toProseDoc(source);
         const textBox = projected.firstChild;
         const placeholder = textBox?.firstChild;
-        if (textBox?.type.name !== "textBox" || placeholder?.type.name !== "paragraph") {
+        if (
+          textBox?.type.name !== "textBox" ||
+          placeholder?.type.name !== "paragraph"
+        ) {
           throw new Error("Expected a source-empty text-box placeholder");
         }
 
@@ -121,11 +143,17 @@ describe("text-box content provenance properties", () => {
           switch (edit.type) {
             case "identity":
               return placeholder.type.create(
-                { ...placeholder.attrs, paraId: edit.paraId, textId: edit.textId },
+                {
+                  ...placeholder.attrs,
+                  paraId: edit.paraId,
+                  textId: edit.textId,
+                },
                 placeholder.content,
               );
             case "text":
-              return placeholder.type.create(placeholder.attrs, [schema.text(edit.text)]);
+              return placeholder.type.create(placeholder.attrs, [
+                schema.text(edit.text),
+              ]);
             case "formatting":
               return placeholder.type.create(
                 { ...placeholder.attrs, alignment: edit.alignment },
@@ -140,24 +168,32 @@ describe("text-box content provenance properties", () => {
         const edited = schema.node("doc", projected.attrs, [
           textBox.type.create(textBox.attrs, [editedParagraph]),
         ]);
-        const restored = fromProseDoc(edited, source, { stylesheetSource: { type: "package" } });
+        const restored = fromProseDoc(edited, source, {
+          stylesheetSource: { type: "package" },
+        });
         const reprojected = toProseDoc(restored);
         const body = textBodyContent(restored);
 
         switch (edit.type) {
           case "identity":
             expect(body).toEqual([]);
-            expect(textBoxContentState(reprojected)).toEqual({ type: "source-empty" });
+            expect(textBoxContentState(reprojected)).toEqual({
+              type: "source-empty",
+            });
             break;
           case "text":
             expect(paragraphText(body.at(0))).toBe(edit.text);
-            expect(textBoxContentState(reprojected)).toEqual({ type: "authored" });
+            expect(textBoxContentState(reprojected)).toEqual({
+              type: "authored",
+            });
             break;
           case "formatting":
             expect(body).toMatchObject([
               { type: "paragraph", formatting: { alignment: edit.alignment } },
             ]);
-            expect(textBoxContentState(reprojected)).toEqual({ type: "authored" });
+            expect(textBoxContentState(reprojected)).toEqual({
+              type: "authored",
+            });
             break;
           default: {
             const exhaustive: never = edit;
@@ -168,7 +204,9 @@ describe("text-box content provenance properties", () => {
         expect(
           stableProjectionIdentity(
             toProseDoc(
-              fromProseDoc(reprojected, restored, { stylesheetSource: { type: "package" } }),
+              fromProseDoc(reprojected, restored, {
+                stylesheetSource: { type: "package" },
+              }),
             ),
           ),
         ).toBe(stableProjectionIdentity(reprojected));
@@ -183,7 +221,9 @@ describe("text-box content provenance properties", () => {
         const first = projectionWithIdentityClasses(classes, "first");
         const second = projectionWithIdentityClasses(classes, "second");
 
-        expect(stableProjectionIdentity(first)).toBe(stableProjectionIdentity(second));
+        expect(stableProjectionIdentity(first)).toBe(
+          stableProjectionIdentity(second),
+        );
       }),
       propertyConfig({ numRuns: 200 }),
     );
@@ -201,8 +241,14 @@ describe("text-box content provenance properties", () => {
         const splitIndex = classes.lastIndexOf(repeatedClass);
         const splitClasses = classes.with(splitIndex, Math.max(...classes) + 1);
 
-        expect(stableProjectionIdentity(projectionWithIdentityClasses(classes, "first"))).not.toBe(
-          stableProjectionIdentity(projectionWithIdentityClasses(splitClasses, "second")),
+        expect(
+          stableProjectionIdentity(
+            projectionWithIdentityClasses(classes, "first"),
+          ),
+        ).not.toBe(
+          stableProjectionIdentity(
+            projectionWithIdentityClasses(splitClasses, "second"),
+          ),
         );
       }),
       propertyConfig({ numRuns: 200 }),
@@ -238,12 +284,16 @@ const documentWithTextBody = (content: readonly Paragraph[]): Document => ({
   },
 });
 
-const textBodyContent = (document: Document): readonly (Paragraph | Table)[] => {
+const textBodyContent = (
+  document: Document,
+): readonly (Paragraph | Table)[] => {
   const host = document.package.document.content.at(0);
   if (host?.type !== "paragraph") {
     throw new Error("Expected text-box host paragraph");
   }
-  const run = host.content.find((content): content is Run => content.type === "run");
+  const run = host.content.find(
+    (content): content is Run => content.type === "run",
+  );
   const shape = run?.content.find((content) => content.type === "shape");
   if (shape?.type !== "shape" || shape.shape.shapeType !== "textBox") {
     throw new Error("Expected text-box shape");
@@ -251,7 +301,9 @@ const textBodyContent = (document: Document): readonly (Paragraph | Table)[] => 
   return shape.shape.textBody?.content ?? [];
 };
 
-const paragraphText = (block: Paragraph | Table | undefined): string | undefined => {
+const paragraphText = (
+  block: Paragraph | Table | undefined,
+): string | undefined => {
   if (block?.type !== "paragraph") {
     return undefined;
   }
@@ -264,7 +316,10 @@ const paragraphText = (block: Paragraph | Table | undefined): string | undefined
 const textBoxContentState = (document: PMNode): unknown =>
   document.firstChild?.attrs["_docxTextBodyContentState"];
 
-const projectionWithIdentityClasses = (classes: readonly number[], namespace: string): PMNode =>
+const projectionWithIdentityClasses = (
+  classes: readonly number[],
+  namespace: string,
+): PMNode =>
   schema.node(
     "doc",
     null,

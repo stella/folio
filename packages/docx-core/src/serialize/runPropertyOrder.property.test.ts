@@ -26,8 +26,10 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Document } from "../model/document";
 import type { TextFormatting } from "../model/formatting";
 import { SEQUENCE_CHILDREN } from "../schema/sequenceChildren";
@@ -54,7 +56,9 @@ const SAMPLES = {
   shading: { shading: { pattern: "clear", fill: { rgb: "D9D9D9" } } },
   fontSize: { fontSize: 24 },
   fontSizeCs: { fontSizeCs: 26 },
-  fontFamily: { fontFamily: { ascii: "Georgia", hAnsi: "Georgia", cs: "Amiri" } },
+  fontFamily: {
+    fontFamily: { ascii: "Georgia", hAnsi: "Georgia", cs: "Amiri" },
+  },
   language: { language: { val: "cs-CZ" } },
   spacing: { spacing: 20 },
   position: { position: 6 },
@@ -82,7 +86,9 @@ const documentWith = (formatting: TextFormatting): Document => ({
       content: [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "x" }], formatting }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "x" }], formatting },
+          ],
         },
       ],
     },
@@ -90,7 +96,11 @@ const documentWith = (formatting: TextFormatting): Document => ({
 });
 
 const readDocumentXml = async (buf: ArrayBuffer): Promise<string> => {
-  const xml = await (await JSZip.loadAsync(buf)).file("word/document.xml")?.async("string");
+  const xml = await (
+    await JSZip.loadAsync(buf)
+  )
+    .file("word/document.xml")
+    ?.async("string");
   if (xml === undefined) {
     throw new Error("word/document.xml missing from serialized docx");
   }
@@ -118,12 +128,19 @@ const declaredPositions = (documentXml: string): number[] => {
 test("a compiled run property set is written in the schema's child order", async () => {
   await fc.assert(
     fc.asyncProperty(fc.subarray(FIELDS, { minLength: 2 }), async (fields) => {
-      const formatting = Object.assign({}, ...fields.map((field) => SAMPLES[field]));
+      const formatting = Object.assign(
+        {},
+        ...fields.map((field) => SAMPLES[field]),
+      );
       const positions = declaredPositions(
-        await readDocumentXml(await serializeDocumentToDocx(documentWith(formatting))),
+        await readDocumentXml(
+          await serializeDocumentToDocx(documentWith(formatting)),
+        ),
       );
 
-      expect(positions).toEqual([...positions].toSorted((left, right) => left - right));
+      expect(positions).toEqual(
+        [...positions].toSorted((left, right) => left - right),
+      );
     }),
     propertyConfig({ numRuns: 200 }),
   );
@@ -135,7 +152,11 @@ test("a font and a size come out in the order the schema declares them", async (
   // folio-core's serializer came out in two different orders.
   const documentXml = await readDocumentXml(
     await serializeDocumentToDocx(
-      documentWith({ fontFamily: { ascii: "Georgia" }, fontSize: 24, highlight: "yellow" }),
+      documentWith({
+        fontFamily: { ascii: "Georgia" },
+        fontSize: 24,
+        highlight: "yellow",
+      }),
     ),
   );
 

@@ -40,7 +40,10 @@ const lintFixture = (fixture: string) => {
   const { diagnostics } = z
     .object({ diagnostics: z.array(z.object({ code: z.string() })) })
     .parse(JSON.parse(result.stdout.toString()));
-  return { status: result.exitCode, ruleIds: diagnostics.map(({ code }) => code) };
+  return {
+    status: result.exitCode,
+    ruleIds: diagnostics.map(({ code }) => code),
+  };
 };
 
 describe("canonical load evaluation ownership", () => {
@@ -55,6 +58,9 @@ describe("canonical load evaluation ownership", () => {
 
   for (const [fixture, ruleIds] of Object.entries(FIXTURE_CASES))
     test(fixture, () => {
-      expect(lintFixture(fixture)).toEqual({ status: ruleIds.length === 0 ? 0 : 1, ruleIds });
+      expect(lintFixture(fixture)).toEqual({
+        status: ruleIds.length === 0 ? 0 : 1,
+        ruleIds,
+      });
     });
 });

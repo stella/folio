@@ -9,8 +9,15 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { ImageRun, MeasuredLine, ParagraphBlock } from "../layout-engine/types";
-import { inlineImageBoundingBox, parseRotationDegrees } from "../utils/rotationBoundingBox";
+import type {
+  ImageRun,
+  MeasuredLine,
+  ParagraphBlock,
+} from "../layout-engine/types";
+import {
+  inlineImageBoundingBox,
+  parseRotationDegrees,
+} from "../utils/rotationBoundingBox";
 import { renderLine } from "./renderParagraph";
 
 class FakeElement {

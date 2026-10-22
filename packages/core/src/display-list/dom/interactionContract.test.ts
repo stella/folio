@@ -68,7 +68,8 @@ const SOURCES = {
   "collapsed-space-advance": "run: collapsedEdge.spaceAdvancePx",
 } as const;
 
-const sourceOf = (reader: string): string => readFileSync(new URL(reader, import.meta.url), "utf8");
+const sourceOf = (reader: string): string =>
+  readFileSync(new URL(reader, import.meta.url), "utf8");
 
 /** Class names a reader looks for, however it spells the lookup. */
 const classHooks = (source: string): readonly string[] => [
@@ -87,7 +88,9 @@ const dataHooks = (source: string): readonly string[] => [
       ...source.matchAll(/dataset\["([a-zA-Z]+)"\]/gu),
       ...source.matchAll(/\[data-([a-z-]+)[\]=]/gu),
     ].flatMap(([, name]) =>
-      name === undefined ? [] : [name.replaceAll(/[A-Z]/gu, (upper) => `-${upper.toLowerCase()}`)],
+      name === undefined
+        ? []
+        : [name.replaceAll(/[A-Z]/gu, (upper) => `-${upper.toLowerCase()}`)],
     ),
   ),
 ];
@@ -115,8 +118,12 @@ describe("the interaction layer reads nothing the display list cannot emit", () 
       }
       // A class is emitted verbatim; a data attribute is written through
       // `dataset`, which spells it in camel case.
-      const camel = hook.replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
-      return backend.includes(`"${hook}"`) || backend.includes(`"${camel}"`) ? [] : [hook];
+      const camel = hook.replaceAll(/-([a-z])/gu, (_, letter: string) =>
+        letter.toUpperCase(),
+      );
+      return backend.includes(`"${hook}"`) || backend.includes(`"${camel}"`)
+        ? []
+        : [hook];
     });
 
     expect(missing).toEqual([]);

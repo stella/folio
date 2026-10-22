@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+
+import { createEmptyDocument } from "../utils/createDocument";
 import { parseHeader } from "./headerFooterParser";
 import {
   canReplayHeaderFooterVerbatim,
@@ -6,7 +8,6 @@ import {
   getHeaderFooterSourceBaseline,
 } from "./headerFooterVerbatim";
 import { cloneDocumentWithParagraphPropertySources } from "./paragraphPropertySource";
-import { createEmptyDocument } from "../utils/createDocument";
 import { serializeHeaderFooter } from "./serializer/headerFooterSerializer";
 
 const HEADER =
@@ -15,10 +16,16 @@ const HEADER =
 test("reconstructed property insertion order retains the original source part", () => {
   const header = parseHeader(HEADER);
   const paragraph = header.content.at(0);
-  if (paragraph?.type !== "paragraph") throw new Error("Missing source paragraph");
+  if (paragraph?.type !== "paragraph")
+    throw new Error("Missing source paragraph");
   const derived = {
     ...header,
-    content: [{ ...paragraph, formatting: { keepNext: true, alignment: "start" as const } }],
+    content: [
+      {
+        ...paragraph,
+        formatting: { keepNext: true, alignment: "start" as const },
+      },
+    ],
   };
   expect(canReplayHeaderFooterVerbatim(derived)).toBe(true);
   expect(serializeHeaderFooter(derived)).toBe(HEADER);
@@ -35,25 +42,42 @@ test("changing the story kind cannot replay the previous root", () => {
 test("source baselines survive spreads but never trust replaced fingerprints", () => {
   const header = parseHeader(HEADER);
   const baseline = getHeaderFooterSourceBaseline(header);
-  expect(baseline).toEqual({ type: "captured", content: structuredClone(header.content) });
+  expect(baseline).toEqual({
+    type: "captured",
+    content: structuredClone(header.content),
+  });
   const derived = { ...header };
   expect(getHeaderFooterSourceBaseline(derived)).toEqual(baseline);
   for (const fingerprint of [
     "invalid",
-    JSON.stringify({ type: "header", content: [{ type: "table", rows: null }] }),
+    JSON.stringify({
+      type: "header",
+      content: [{ type: "table", rows: null }],
+    }),
   ]) {
-    expect(getHeaderFooterSourceBaseline({ ...derived, verbatimFingerprint: fingerprint })).toEqual(
-      { type: "mismatch" },
-    );
+    expect(
+      getHeaderFooterSourceBaseline({
+        ...derived,
+        verbatimFingerprint: fingerprint,
+      }),
+    ).toEqual({ type: "mismatch" });
   }
-  expect(getHeaderFooterSourceBaseline(JSON.parse(JSON.stringify(header)))).toEqual({
+  expect(
+    getHeaderFooterSourceBaseline(JSON.parse(JSON.stringify(header))),
+  ).toEqual({
     type: "missing",
   });
   const paragraph = header.content.at(0);
   if (paragraph?.type !== "paragraph") throw new Error("Missing paragraph");
-  paragraph.content.push({ type: "run", content: [{ type: "text", text: "edit" }] });
+  paragraph.content.push({
+    type: "run",
+    content: [{ type: "text", text: "edit" }],
+  });
   expect(getHeaderFooterSourceBaseline(header)).toEqual(baseline);
-  expect(baseline).not.toEqual({ type: "captured", content: structuredClone(header.content) });
+  expect(baseline).not.toEqual({
+    type: "captured",
+    content: structuredClone(header.content),
+  });
 });
 
 test("missing capture provenance serializes in full without a diagnostic", () => {
@@ -80,7 +104,9 @@ test("forged capture provenance emits a typed diagnostic and serializes in full"
   });
   expect(saved).toContain("w:hdr");
   expect(saved).not.toBe(HEADER);
-  expect(diagnostics).toEqual([{ type: "sourceReplayMismatch", part: "word/header1.xml" }]);
+  expect(diagnostics).toEqual([
+    { type: "sourceReplayMismatch", part: "word/header1.xml" },
+  ]);
 });
 
 test("journal copies recover source ownership only within their parsed package", () => {
@@ -98,7 +124,9 @@ test("journal copies recover source ownership only within their parsed package",
   const cloned = cloneDocumentWithParagraphPropertySources(document);
   for (const [key, header] of cloned.package.headers ?? []) {
     const original = document.package.headers?.get(key);
-    expect(getHeaderFooterSourceBaseline(header, cloned.originalBuffer).type).toBe("captured");
+    expect(
+      getHeaderFooterSourceBaseline(header, cloned.originalBuffer).type,
+    ).toBe("captured");
     expect(
       serializeHeaderFooter(header, {
         path: "word/header1.xml",
@@ -116,15 +144,21 @@ test("journal copies recover source ownership only within their parsed package",
       originalBuffer: document.originalBuffer,
       onDiagnostic: (diagnostic: unknown) => diagnostics.push(diagnostic),
     };
-    expect(getHeaderFooterSourceBaseline(restored, document.originalBuffer).type).toBe("captured");
+    expect(
+      getHeaderFooterSourceBaseline(restored, document.originalBuffer).type,
+    ).toBe("captured");
     expect(serializeHeaderFooter(restored, options)).toBe(header.verbatimXml);
     expect(diagnostics).toEqual([]);
-    expect(getHeaderFooterSourceBaseline(restored, new ArrayBuffer(0))).toEqual({
-      type: "missing",
-    });
+    expect(getHeaderFooterSourceBaseline(restored, new ArrayBuffer(0))).toEqual(
+      {
+        type: "missing",
+      },
+    );
   }
   const forged = { ...first, verbatimXml: alternate };
-  expect(getHeaderFooterSourceBaseline(forged, document.originalBuffer)).toEqual({
+  expect(
+    getHeaderFooterSourceBaseline(forged, document.originalBuffer),
+  ).toEqual({
     type: "mismatch",
   });
 });

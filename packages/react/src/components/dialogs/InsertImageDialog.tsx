@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -85,11 +86,15 @@ function InsertImageDialogForm({
       <DialogPortal>
         <DialogBackdrop className={DIALOG_BACKDROP_CLASS} />
         <DialogPopup className={DIALOG_POPUP_CLASS}>
-          <DialogTitle className={DIALOG_TITLE_CLASS}>{t("dialogs.insertImage.title")}</DialogTitle>
+          <DialogTitle className={DIALOG_TITLE_CLASS}>
+            {t("dialogs.insertImage.title")}
+          </DialogTitle>
 
           <div className={DIALOG_BODY_CLASS}>
             <label className="flex flex-col gap-1" htmlFor={fieldIds.file}>
-              <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertImage.imageFile")}</span>
+              <span className={DIALOG_LABEL_CLASS}>
+                {t("dialogs.insertImage.imageFile")}
+              </span>
               <input
                 accept={accept}
                 className={DIALOG_INPUT_CLASS}
@@ -100,7 +105,9 @@ function InsertImageDialogForm({
             </label>
 
             <label className="flex flex-col gap-1" htmlFor={fieldIds.alt}>
-              <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertImage.altText")}</span>
+              <span className={DIALOG_LABEL_CLASS}>
+                {t("dialogs.insertImage.altText")}
+              </span>
               <input
                 className={DIALOG_INPUT_CLASS}
                 id={fieldIds.alt}

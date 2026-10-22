@@ -15,7 +15,10 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { parseDocx } from "../../docx/parser";
 import { createDocx, repackDocx } from "../../docx/rezip";
 import type {
@@ -82,7 +85,11 @@ const runFor = (placement: Placement, sibling: RunContent | undefined): Run => {
 const WRAPPERS = ["direct", "insertion", "deletion", "inlineSdt"] as const;
 type Wrapper = (typeof WRAPPERS)[number];
 
-const REVISION = { id: 91, author: "Reviewer", date: "2026-09-09T00:00:00.000Z" } as const;
+const REVISION = {
+  id: 91,
+  author: "Reviewer",
+  date: "2026-09-09T00:00:00.000Z",
+} as const;
 
 const wrapRun = (wrapper: Wrapper, run: Run): ParagraphContent => {
   switch (wrapper) {
@@ -93,14 +100,21 @@ const wrapRun = (wrapper: Wrapper, run: Run): ParagraphContent => {
     case "deletion":
       return { type: "deletion", info: REVISION, content: [run] };
     case "inlineSdt":
-      return { type: "inlineSdt", properties: { sdtType: "richText" }, content: [run] };
+      return {
+        type: "inlineSdt",
+        properties: { sdtType: "richText" },
+        content: [run],
+      };
   }
 };
 
 const CONTAINERS = ["body", "tableCell"] as const;
 type Container = (typeof CONTAINERS)[number];
 
-const containerise = (container: Container, paragraph: Paragraph): BlockContent => {
+const containerise = (
+  container: Container,
+  paragraph: Paragraph,
+): BlockContent => {
   if (container === "body") {
     return paragraph;
   }
@@ -109,7 +123,12 @@ const containerise = (container: Container, paragraph: Paragraph): BlockContent 
     rows: [
       {
         type: "tableRow",
-        cells: [{ type: "tableCell", content: [{ type: "paragraph", content: [] }, paragraph] }],
+        cells: [
+          {
+            type: "tableCell",
+            content: [{ type: "paragraph", content: [] }, paragraph],
+          },
+        ],
       },
     ],
   };
@@ -123,11 +142,15 @@ type Shape = {
   container: Container;
 };
 
-const shapeArbitrary = (siblings: readonly (keyof typeof SIBLINGS)[]): fc.Arbitrary<Shape> =>
+const shapeArbitrary = (
+  siblings: readonly (keyof typeof SIBLINGS)[],
+): fc.Arbitrary<Shape> =>
   fc.record<Shape>({
     placement: fc.constantFrom<Placement>("only", "first", "last", "middle"),
     sibling: fc.constantFrom(...siblings),
-    formatting: fc.constantFrom(...(Object.keys(FORMATTINGS) as (keyof typeof FORMATTINGS)[])),
+    formatting: fc.constantFrom(
+      ...(Object.keys(FORMATTINGS) as (keyof typeof FORMATTINGS)[]),
+    ),
     wrapper: fc.constantFrom(...WRAPPERS),
     container: fc.constantFrom(...CONTAINERS),
   });
@@ -142,11 +165,19 @@ const ALL_SIBLINGS = Object.keys(SIBLINGS) as (keyof typeof SIBLINGS)[];
  */
 const SAVEABLE_SIBLINGS = ALL_SIBLINGS.filter((name) => name !== "fieldChar");
 
-const documentFor = ({ placement, sibling, formatting, wrapper, container }: Shape) => {
+const documentFor = ({
+  placement,
+  sibling,
+  formatting,
+  wrapper,
+  container,
+}: Shape) => {
   const document = createEmptyDocument();
   const paragraph: Paragraph = {
     type: "paragraph",
-    ...(FORMATTINGS[formatting] === undefined ? {} : { formatting: FORMATTINGS[formatting] }),
+    ...(FORMATTINGS[formatting] === undefined
+      ? {}
+      : { formatting: FORMATTINGS[formatting] }),
     content: [
       { type: "run", content: [{ type: "text", text: "before" }] },
       wrapRun(wrapper, runFor(placement, SIBLINGS[sibling])),
@@ -157,7 +188,9 @@ const documentFor = ({ placement, sibling, formatting, wrapper, container }: Sha
   return document;
 };
 
-const countProjectedPageBreaks = (doc: ReturnType<typeof toProseDoc>): number => {
+const countProjectedPageBreaks = (
+  doc: ReturnType<typeof toProseDoc>,
+): number => {
   let count = 0;
   doc.descendants((node) => {
     if (node.type.name === "pageBreakRun" || node.type.name === "pageBreak") {
@@ -181,7 +214,8 @@ const countModelPageBreaks = (blocks: readonly BlockContent[]): number => {
         visitRun(content);
         return;
       case "hyperlink":
-        for (const child of content.children) if (child.type === "run") visitRun(child);
+        for (const child of content.children)
+          if (child.type === "run") visitRun(child);
         return;
       case "simpleField":
       case "inlineSdt":
@@ -206,7 +240,8 @@ const countModelPageBreaks = (blocks: readonly BlockContent[]): number => {
     }
     if (block.type === "table") {
       for (const row of block.rows) {
-        for (const cell of row.cells) for (const child of cell.content) visitBlock(child);
+        for (const cell of row.cells)
+          for (const child of cell.content) visitBlock(child);
       }
       return;
     }
@@ -266,9 +301,12 @@ describe("page-break projection is total", () => {
         const rebuilt = fromProseDoc(toProseDoc(opened), opened, {
           stylesheetSource: { type: "package" },
         });
-        const reparsed = await parseDocx(await repackDocx(rebuilt, { updateModifiedDate: false }), {
-          preloadFonts: false,
-        });
+        const reparsed = await parseDocx(
+          await repackDocx(rebuilt, { updateModifiedDate: false }),
+          {
+            preloadFonts: false,
+          },
+        );
         expect({
           shape,
           breaks: countModelPageBreaks(reparsed.package.document.content) > 0,

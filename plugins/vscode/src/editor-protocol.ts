@@ -19,5 +19,7 @@ export {
 } from "../../../packages/editor-web/src/protocol";
 
 /** `folio save --save-strategy` for how the editor serialized. */
-export const saveStrategyFlag = (strategy: FolioEditorSaveStrategy): "selective" | "full-repack" =>
+export const saveStrategyFlag = (
+  strategy: FolioEditorSaveStrategy,
+): "selective" | "full-repack" =>
   strategy.type === "full-repack" ? "full-repack" : "selective";

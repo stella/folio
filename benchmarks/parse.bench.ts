@@ -5,11 +5,12 @@
  * cannot skew the next run.
  */
 import { withCodSpeed } from "@codspeed/tinybench-plugin";
-import { parseDocx as folioParse } from "@stll/folio-core/docx/parser";
 import { Bench } from "tinybench";
 
+import { parseDocx as folioParse } from "@stll/folio-core/docx/parser";
+
 import { MICRO_BENCH_OPTIONS } from "./config";
-import { FIXTURES, fixtureLabel, freshArrayBuffer } from "./fixtures";
+import { fixtureLabel, FIXTURES, freshArrayBuffer } from "./fixtures";
 
 export function parseBench(): Bench {
   const bench = withCodSpeed(new Bench(MICRO_BENCH_OPTIONS));

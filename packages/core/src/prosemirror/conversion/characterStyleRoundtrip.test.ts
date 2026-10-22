@@ -14,20 +14,28 @@ import { EditorState, TextSelection } from "prosemirror-state";
 
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { parseDocumentBody } from "../../docx/documentParser";
-import { parseDocx } from "../../docx/parser";
 import {
   cloneDocumentWithParagraphPropertySources,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
 } from "../../docx/paragraphPropertySource";
+import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import { serializeDocument } from "../../docx/serializer/documentSerializer";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
-import type { Document, Paragraph, Run, StyleDefinitions } from "../../types/document";
-import { schema } from "../schema";
+import type {
+  Document,
+  Paragraph,
+  Run,
+  StyleDefinitions,
+} from "../../types/document";
 import { acceptAllChanges, rejectAllChanges } from "../commands/comments";
-import { applyFormatMarks, captureFormatMarks } from "../commands/formatPainter";
+import {
+  applyFormatMarks,
+  captureFormatMarks,
+} from "../commands/formatPainter";
 import { createDocumentStylesPlugin } from "../plugins/documentStyles";
+import { schema } from "../schema";
 import { fromProseDoc, marksToTextFormatting } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -50,7 +58,8 @@ const wrapParagraph = (paragraph: Paragraph): Document => ({
   },
 });
 
-const wrap = (...runs: Run[]): Document => wrapParagraph({ type: "paragraph", content: runs });
+const wrap = (...runs: Run[]): Document =>
+  wrapParagraph({ type: "paragraph", content: runs });
 
 const styles: StyleDefinitions = {
   styles: [
@@ -106,17 +115,25 @@ const styles: StyleDefinitions = {
 
 const stylesWithDefaultCharacter: StyleDefinitions = {
   styles: styles.styles.map((style) =>
-    style.styleId === "DefaultStrongCharacter" ? { ...style, default: true } : style,
+    style.styleId === "DefaultStrongCharacter"
+      ? { ...style, default: true }
+      : style,
   ),
 };
 
-const withStyles = (document: Document, styleDefinitions: StyleDefinitions = styles): Document => {
+const withStyles = (
+  document: Document,
+  styleDefinitions: StyleDefinitions = styles,
+): Document => {
   document.package.styles = styleDefinitions;
   return document;
 };
 
 const reopenThroughDocx = async (document: Document): Promise<Document> =>
-  parseDocx(await createDocx(document), { detectVariables: false, preloadFonts: false });
+  parseDocx(await createDocx(document), {
+    detectVariables: false,
+    preloadFonts: false,
+  });
 
 const firstParagraph = (document: Document): Paragraph => {
   const block = document.package.document.content.at(0);
@@ -180,7 +197,11 @@ const selectText = (state: EditorState, text: string): EditorState => {
   if (!range) {
     throw new Error(`Expected PM text node ${text}`);
   }
-  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, range.from, range.to)));
+  return state.apply(
+    state.tr.setSelection(
+      TextSelection.create(state.doc, range.from, range.to),
+    ),
+  );
 };
 
 const reopenSerializedBody = (document: Document): Document => ({
@@ -219,7 +240,9 @@ describe("characterStyle mark schema registration", () => {
   });
 
   test("run override schema exposes no raw source-formatting payloads", () => {
-    const attrs = Object.keys(schema.marks["runFormattingOverride"]?.spec.attrs ?? {});
+    const attrs = Object.keys(
+      schema.marks["runFormattingOverride"]?.spec.attrs ?? {},
+    );
     expect(attrs).not.toContain("_baseRPr");
     expect(attrs).not.toContain("_effectiveRPr");
     expect(attrs).not.toContain("_directRPr");
@@ -266,7 +289,10 @@ describe("resolver-less snapshots", () => {
   test.each([
     {
       label: "ordinary visual formatting",
-      marks: [schema.mark("characterStyle", { styleId: "Character" }), schema.mark("bold")],
+      marks: [
+        schema.mark("characterStyle", { styleId: "Character" }),
+        schema.mark("bold"),
+      ],
       expected: { bold: true, styleId: "Character" },
     },
     {
@@ -317,7 +343,9 @@ describe("character style rendering resolution", () => {
   });
 
   test("direct formatting wins over the character style", () => {
-    const input = wrap(runText("Term", { styleId: "DefinedTerm", color: { rgb: "FF0000" } }));
+    const input = wrap(
+      runText("Term", { styleId: "DefinedTerm", color: { rgb: "FF0000" } }),
+    );
     const pmDoc = toProseDoc(input, { styles });
     let rgb: unknown;
     pmDoc.descendants((node) => {
@@ -358,17 +386,23 @@ describe("character style round-trip", () => {
   test("a pure style reference round-trips without baked direct formatting", () => {
     const input = withStyles(wrap(runText("Term", { styleId: "DefinedTerm" })));
     const pmDoc = toProseDoc(input, { styles });
-    const out = fromProseDoc(pmDoc, input, { stylesheetSource: { type: "package" } });
+    const out = fromProseDoc(pmDoc, input, {
+      stylesheetSource: { type: "package" },
+    });
     const run = findRun(firstParagraph(out), "Term");
     expect(run.formatting).toEqual({ styleId: "DefinedTerm" });
   });
 
   test("direct overrides survive next to the style reference", () => {
     const input = withStyles(
-      wrap(runText("Term", { styleId: "DefinedTerm", color: { rgb: "FF0000" } })),
+      wrap(
+        runText("Term", { styleId: "DefinedTerm", color: { rgb: "FF0000" } }),
+      ),
     );
     const pmDoc = toProseDoc(input, { styles });
-    const out = fromProseDoc(pmDoc, input, { stylesheetSource: { type: "package" } });
+    const out = fromProseDoc(pmDoc, input, {
+      stylesheetSource: { type: "package" },
+    });
     const run = findRun(firstParagraph(out), "Term");
     expect(run.formatting?.styleId).toBe("DefinedTerm");
     expect(run.formatting?.color).toEqual({ rgb: "FF0000" });
@@ -437,7 +471,9 @@ describe("character style round-trip", () => {
 
     const proseDoc = toProseDoc(input, { styles });
     const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
-    const out = fromProseDoc(clonedProseDoc, input, { stylesheetSource: { type: "package" } });
+    const out = fromProseDoc(clonedProseDoc, input, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(findRun(firstParagraph(out), "Term").formatting).toEqual({
       styleId: "StrongCharacter",
@@ -445,11 +481,15 @@ describe("character style round-trip", () => {
   });
 
   test("independent complex-script style toggles survive a JSON clone without direct formatting", () => {
-    const input = withStyles(wrap(runText("Term", { styleId: "LatinEmphasis" })));
+    const input = withStyles(
+      wrap(runText("Term", { styleId: "LatinEmphasis" })),
+    );
 
     const proseDoc = toProseDoc(input, { styles });
     const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
-    const out = fromProseDoc(clonedProseDoc, input, { stylesheetSource: { type: "package" } });
+    const out = fromProseDoc(clonedProseDoc, input, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(findRun(firstParagraph(out), "Term").formatting).toEqual({
       styleId: "LatinEmphasis",
@@ -569,7 +609,9 @@ describe("character style round-trip", () => {
     const clonedProseDoc = schema.nodeFromJSON(
       toProseDoc(input, { styles: initialStyles }).toJSON(),
     );
-    const saved = fromProseDoc(clonedProseDoc, input, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(clonedProseDoc, input, {
+      stylesheetSource: { type: "package" },
+    });
     const changedStyles: StyleDefinitions = {
       styles: [
         {
@@ -592,7 +634,9 @@ describe("character style round-trip", () => {
     const changedFlowParagraph = toFlowBlocks(changedProseDoc, {}).find(
       (block) => block.kind === "paragraph",
     );
-    const changedFlowRun = changedFlowParagraph?.runs.find((run) => run.kind === "text");
+    const changedFlowRun = changedFlowParagraph?.runs.find(
+      (run) => run.kind === "text",
+    );
 
     expect(findRun(firstParagraph(saved), "Term").formatting).toEqual({
       styleId: "C",
@@ -620,7 +664,9 @@ describe("character style round-trip", () => {
 
     const proseDoc = toProseDoc(input, { styles });
     const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
-    const out = fromProseDoc(clonedProseDoc, input, { stylesheetSource: { type: "package" } });
+    const out = fromProseDoc(clonedProseDoc, input, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(findRun(firstParagraph(out), "Term").formatting).toEqual({
       styleId: "StrongCharacter",
@@ -640,7 +686,9 @@ describe("character style round-trip", () => {
 
     const proseDoc = toProseDoc(input, { styles: stylesWithDefaultCharacter });
     const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
-    const out = fromProseDoc(clonedProseDoc, input, { stylesheetSource: { type: "package" } });
+    const out = fromProseDoc(clonedProseDoc, input, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(findRun(firstParagraph(out), "Term").formatting).toBeUndefined();
   });
@@ -658,7 +706,9 @@ describe("character style round-trip", () => {
     });
     const changedStyles: StyleDefinitions = {
       styles: styles.styles.map((style) =>
-        style.styleId === "ToggleHeading" ? { ...style, rPr: { bold: false } } : style,
+        style.styleId === "ToggleHeading"
+          ? { ...style, rPr: { bold: false } }
+          : style,
       ),
     };
 
@@ -682,12 +732,18 @@ describe("character style round-trip", () => {
       }),
       stylesWithDefaultCharacter,
     );
-    const saved = fromProseDoc(toProseDoc(input, { styles: stylesWithDefaultCharacter }), input, {
-      stylesheetSource: { type: "package" },
-    });
+    const saved = fromProseDoc(
+      toProseDoc(input, { styles: stylesWithDefaultCharacter }),
+      input,
+      {
+        stylesheetSource: { type: "package" },
+      },
+    );
     const changedStyles: StyleDefinitions = {
       styles: stylesWithDefaultCharacter.styles.map((style) =>
-        style.styleId === "ToggleHeading" ? { ...style, rPr: { bold: false } } : style,
+        style.styleId === "ToggleHeading"
+          ? { ...style, rPr: { bold: false } }
+          : style,
       ),
     };
 
@@ -708,17 +764,26 @@ describe("character style round-trip", () => {
     }));
     const plain: Document = {
       package: {
-        document: { content: paragraphs.map(({ content, type }) => ({ content, type })) },
+        document: {
+          content: paragraphs.map(({ content, type }) => ({ content, type })),
+        },
       },
     };
     const styled: Document = {
-      package: { document: { content: paragraphs }, styles: stylesWithDefaultCharacter },
+      package: {
+        document: { content: paragraphs },
+        styles: stylesWithDefaultCharacter,
+      },
     };
 
     const plainSize = JSON.stringify(toProseDoc(plain).toJSON()).length;
-    const styledProseDoc = toProseDoc(styled, { styles: stylesWithDefaultCharacter });
+    const styledProseDoc = toProseDoc(styled, {
+      styles: stylesWithDefaultCharacter,
+    });
     const styledJson = JSON.stringify(styledProseDoc.toJSON());
-    const saved = fromProseDoc(styledProseDoc, styled, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(styledProseDoc, styled, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(styledJson.length).toBeLessThan(plainSize * 2);
     expect(styledJson).not.toContain("_effectiveRPr");
@@ -749,14 +814,20 @@ describe("character style round-trip", () => {
       },
     };
     let state = createStyledEditorState(input, styles);
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 5)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1, 5)),
+    );
     const captured = captureFormatMarks(state);
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 7, 9)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 7, 9)),
+    );
     applyFormatMarks(captured)(state, (transaction) => {
       state = state.apply(transaction);
     });
 
-    const saved = fromProseDoc(state.doc, input, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(state.doc, input, {
+      stylesheetSource: { type: "package" },
+    });
     const target = saved.package.document.content.at(1);
     if (target?.type !== "paragraph") {
       throw new Error("Expected target paragraph");
@@ -799,14 +870,20 @@ describe("character style round-trip", () => {
       },
     };
     let state = createStyledEditorState(input, styles);
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 5)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1, 5)),
+    );
     const captured = captureFormatMarks(state);
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 7, 9)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 7, 9)),
+    );
     applyFormatMarks(captured)(state, (transaction) => {
       state = state.apply(transaction);
     });
 
-    const saved = fromProseDoc(state.doc, input, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(state.doc, input, {
+      stylesheetSource: { type: "package" },
+    });
     const target = saved.package.document.content.at(1);
     if (target?.type !== "paragraph") {
       throw new Error("Expected target paragraph");
@@ -873,19 +950,25 @@ describe("character style round-trip", () => {
         ),
       );
 
-      const saved = fromProseDoc(copied.doc, input, { stylesheetSource: { type: "package" } });
+      const saved = fromProseDoc(copied.doc, input, {
+        stylesheetSource: { type: "package" },
+      });
       const targetParagraph = saved.package.document.content.at(1);
       if (targetParagraph?.type !== "paragraph") {
         throw new Error("Expected target paragraph");
       }
-      expect(findRun(targetParagraph, "Source").formatting).toEqual(expectedFormatting);
+      expect(findRun(targetParagraph, "Source").formatting).toEqual(
+        expectedFormatting,
+      );
 
       const reopened = await reopenThroughDocx(saved);
       const reopenedTarget = reopened.package.document.content.at(1);
       if (reopenedTarget?.type !== "paragraph") {
         throw new Error("Expected reopened target paragraph");
       }
-      expect(findRun(reopenedTarget, "Source").formatting).toEqual(expectedFormatting);
+      expect(findRun(reopenedTarget, "Source").formatting).toEqual(
+        expectedFormatting,
+      );
     },
   );
 
@@ -906,10 +989,14 @@ describe("character style round-trip", () => {
     const saved = fromProseDoc(edited.doc, input, {
       stylesheetSource: { type: "supplied", styles },
     });
-    expect(findRun(firstParagraph(saved), "Term").formatting).toEqual({ bold: false });
+    expect(findRun(firstParagraph(saved), "Term").formatting).toEqual({
+      bold: false,
+    });
 
     const reopened = await reopenThroughDocx(saved);
-    expect(findRun(firstParagraph(reopened), "Term").formatting).toEqual({ bold: false });
+    expect(findRun(firstParagraph(reopened), "Term").formatting).toEqual({
+      bold: false,
+    });
   });
 
   test("painting independent complex-script style toggles emits no redundant direct offs", () => {
@@ -933,20 +1020,28 @@ describe("character style round-trip", () => {
       },
     };
     let state = createStyledEditorState(input, styles);
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 5)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1, 5)),
+    );
     const captured = captureFormatMarks(state);
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 7, 9)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 7, 9)),
+    );
     applyFormatMarks(captured)(state, (transaction) => {
       state = state.apply(transaction);
     });
 
-    const saved = fromProseDoc(state.doc, input, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(state.doc, input, {
+      stylesheetSource: { type: "package" },
+    });
     const target = saved.package.document.content.at(1);
     if (target?.type !== "paragraph") {
       throw new Error("Expected target paragraph");
     }
 
-    expect(findRun(target, "To").formatting).toEqual({ styleId: "LatinEmphasis" });
+    expect(findRun(target, "To").formatting).toEqual({
+      styleId: "LatinEmphasis",
+    });
   });
 
   test("preserves effective ordinary and complex-script toggles across every style context", () => {
@@ -965,7 +1060,10 @@ describe("character style round-trip", () => {
                 rPr: {
                   bold: false,
                   boldCs: false,
-                  fontFamily: { asciiTheme: "minorHAnsi", hAnsiTheme: "minorHAnsi" },
+                  fontFamily: {
+                    asciiTheme: "minorHAnsi",
+                    hAnsiTheme: "minorHAnsi",
+                  },
                   fontSize: 22,
                   fontSizeCs: 22,
                   italic: false,
@@ -1026,7 +1124,9 @@ describe("character style round-trip", () => {
                     {
                       type: "paragraph",
                       formatting: { styleId: "SourceParagraph" },
-                      content: [runText("From", { styleId: "SourceCharacter" })],
+                      content: [
+                        runText("From", { styleId: "SourceCharacter" }),
+                      ],
                     },
                     {
                       type: "paragraph",
@@ -1046,13 +1146,23 @@ describe("character style round-trip", () => {
               state = state.apply(transaction);
             });
 
-            const saved = fromProseDoc(state.doc, input, { stylesheetSource: { type: "package" } });
+            const saved = fromProseDoc(state.doc, input, {
+              stylesheetSource: { type: "package" },
+            });
             const reopened = reopenSerializedBody(saved);
             let reopenedState = createStyledEditorState(reopened, matrixStyles);
             reopenedState = selectText(reopenedState, "To");
             const target = captureFormatMarks(reopenedState);
-            const matrixCase = [sourceParagraph, sourceCharacter, targetParagraph, targetCharacter]
-              .map(({ ordinary, complex }) => `${Number(ordinary)}${Number(complex)}`)
+            const matrixCase = [
+              sourceParagraph,
+              sourceCharacter,
+              targetParagraph,
+              targetCharacter,
+            ]
+              .map(
+                ({ ordinary, complex }) =>
+                  `${Number(ordinary)}${Number(complex)}`,
+              )
               .join("/");
 
             expect({
@@ -1072,9 +1182,9 @@ describe("character style round-trip", () => {
               },
               matrixCase,
             });
-            expect(findRun(paragraphAt(saved, 1), "To").formatting?.styleId).toBe(
-              "SourceCharacter",
-            );
+            expect(
+              findRun(paragraphAt(saved, 1), "To").formatting?.styleId,
+            ).toBe("SourceCharacter");
           }
         }
       }
@@ -1108,7 +1218,11 @@ describe("character style round-trip", () => {
             {
               type: "paragraph",
               formatting: { styleId: "DefaultActiveParagraph" },
-              content: [runText("Defaults stay active", { styleId: "DefaultActiveCharacter" })],
+              content: [
+                runText("Defaults stay active", {
+                  styleId: "DefaultActiveCharacter",
+                }),
+              ],
             },
           ],
         },
@@ -1127,18 +1241,27 @@ describe("character style round-trip", () => {
       italic: true,
     });
 
-    const saved = fromProseDoc(proseDoc, input, { stylesheetSource: { type: "package" } });
-    expect(findRun(firstParagraph(saved), "Defaults stay active").formatting).toEqual({
+    const saved = fromProseDoc(proseDoc, input, {
+      stylesheetSource: { type: "package" },
+    });
+    expect(
+      findRun(firstParagraph(saved), "Defaults stay active").formatting,
+    ).toEqual({
       styleId: "DefaultActiveCharacter",
     });
 
     const reopened = await reopenThroughDocx(saved);
-    expect(findRun(firstParagraph(reopened), "Defaults stay active").formatting).toEqual({
+    expect(
+      findRun(firstParagraph(reopened), "Defaults stay active").formatting,
+    ).toEqual({
       styleId: "DefaultActiveCharacter",
     });
-    const afterReopen = toFlowBlocks(toProseDoc(reopened, { styles: defaultsActiveStyles }), {
-      styles: defaultsActiveStyles,
-    })
+    const afterReopen = toFlowBlocks(
+      toProseDoc(reopened, { styles: defaultsActiveStyles }),
+      {
+        styles: defaultsActiveStyles,
+      },
+    )
       .flatMap((block) => (block.kind === "paragraph" ? block.runs : []))
       .find((run) => run.kind === "text");
     expect(afterReopen).toMatchObject({
@@ -1160,7 +1283,10 @@ describe("character style round-trip", () => {
       effect: "none" as const,
       emboss: false,
       emphasisMark: "none" as const,
-      fontFamily: { asciiTheme: "minorHAnsi" as const, hAnsiTheme: "minorHAnsi" },
+      fontFamily: {
+        asciiTheme: "minorHAnsi" as const,
+        hAnsiTheme: "minorHAnsi",
+      },
       fontSize: 22,
       fontSizeCs: 22,
       highlight: "none" as const,
@@ -1208,8 +1334,16 @@ describe("character style round-trip", () => {
     const contextualStyles: StyleDefinitions = {
       docDefaults: { rPr: plainFormatting },
       styles: [
-        { styleId: "PlainParagraph", type: "paragraph", name: "Plain Paragraph" },
-        { styleId: "PlainCharacter", type: "character", name: "Plain Character" },
+        {
+          styleId: "PlainParagraph",
+          type: "paragraph",
+          name: "Plain Paragraph",
+        },
+        {
+          styleId: "PlainCharacter",
+          type: "character",
+          name: "Plain Character",
+        },
         {
           styleId: "ContextParagraph",
           type: "paragraph",
@@ -1220,7 +1354,11 @@ describe("character style round-trip", () => {
           styleId: "ContextCharacter",
           type: "character",
           name: "Context Character",
-          rPr: { color: { rgb: "AA0000" }, fontSize: 30, underline: { style: "double" } },
+          rPr: {
+            color: { rgb: "AA0000" },
+            fontSize: 30,
+            underline: { style: "double" },
+          },
         },
       ],
     };
@@ -1265,15 +1403,21 @@ describe("character style round-trip", () => {
     });
     expect(targetMarks).toBeDefined();
     expect(
-      targetMarks?.find((mark) => mark.type.name === "runFormattingOverride")?.attrs,
+      targetMarks?.find((mark) => mark.type.name === "runFormattingOverride")
+        ?.attrs,
     ).toMatchObject({ shading: { pattern: "nil" } });
     expect(
-      marksToTextFormatting(targetMarks ?? [], { inheritedFormatting: contextualFormatting })
-        .shading,
+      marksToTextFormatting(targetMarks ?? [], {
+        inheritedFormatting: contextualFormatting,
+      }).shading,
     ).toEqual({ pattern: "nil" });
 
-    const saved = fromProseDoc(state.doc, input, { stylesheetSource: { type: "package" } });
-    expect(findRun(paragraphAt(saved, 1), "To").formatting?.shading).toEqual({ pattern: "nil" });
+    const saved = fromProseDoc(state.doc, input, {
+      stylesheetSource: { type: "package" },
+    });
+    expect(findRun(paragraphAt(saved, 1), "To").formatting?.shading).toEqual({
+      pattern: "nil",
+    });
     const xml = serializeDocument(saved);
     expect(xml).toContain('<w:color w:val="auto"/>');
     expect(xml).toContain('<w:highlight w:val="none"/>');
@@ -1284,7 +1428,9 @@ describe("character style round-trip", () => {
     let reopenedState = createStyledEditorState(reopened, contextualStyles);
     reopenedState = selectText(reopenedState, "To");
     const target = captureFormatMarks(reopenedState);
-    const targetFlowRun = toFlowBlocks(reopenedState.doc, { styles: contextualStyles })
+    const targetFlowRun = toFlowBlocks(reopenedState.doc, {
+      styles: contextualStyles,
+    })
       .flatMap((block) => (block.kind === "paragraph" ? block.runs : []))
       .find((run) => run.kind === "text" && run.text === "To");
 
@@ -1315,7 +1461,9 @@ describe("character style round-trip", () => {
     expect(targetFlowRun?.letterSpacing).toBeUndefined();
     expect(targetFlowRun?.shading).toBeUndefined();
     expect(targetFlowRun?.textEffect).toBeUndefined();
-    expect(findRun(paragraphAt(reopened, 1), "To").formatting?.styleId).toBe("PlainCharacter");
+    expect(findRun(paragraphAt(reopened, 1), "To").formatting?.styleId).toBe(
+      "PlainCharacter",
+    );
   });
 
   test("preserves a target revision through paint and save before accept or reject", () => {
@@ -1331,7 +1479,10 @@ describe("character style round-trip", () => {
           styleId: "SourceCharacter",
           type: "character",
           name: "Source Character",
-          rPr: { bold: true, color: { themeColor: "accent2", themeTint: "66" } },
+          rPr: {
+            bold: true,
+            color: { themeColor: "accent2", themeTint: "66" },
+          },
         },
       ],
     };
@@ -1348,7 +1499,11 @@ describe("character style round-trip", () => {
               content: [
                 {
                   type: "insertion",
-                  info: { id: 7, author: "Reviewer", date: "2026-09-09T08:00:00Z" },
+                  info: {
+                    id: 7,
+                    author: "Reviewer",
+                    date: "2026-09-09T08:00:00Z",
+                  },
                   content: [runText("To")],
                 },
               ],
@@ -1368,12 +1523,16 @@ describe("character style round-trip", () => {
       }),
     ).toBe(true);
 
-    const saved = fromProseDoc(state.doc, input, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(state.doc, input, {
+      stylesheetSource: { type: "package" },
+    });
     const reopened = reopenSerializedBody(saved);
     const pendingState = createStyledEditorState(reopened, revisionStyles);
     let pendingInsertionCount = 0;
     pendingState.doc.descendants((node) => {
-      pendingInsertionCount += node.marks.filter((mark) => mark.type.name === "insertion").length;
+      pendingInsertionCount += node.marks.filter(
+        (mark) => mark.type.name === "insertion",
+      ).length;
     });
     expect(pendingInsertionCount).toBe(1);
     const savedTarget = paragraphAt(saved, 1).content.at(0);
@@ -1396,8 +1555,12 @@ describe("character style round-trip", () => {
     expect(accepted.doc.textContent).toBe("FromTo");
     expect(JSON.stringify(accepted.doc.toJSON())).not.toContain("insertion");
     const acceptedTarget = captureFormatMarks(selectText(accepted, "To"));
-    expect(acceptedTarget.effectiveFormatting.bold).toBe(source.effectiveFormatting.bold);
-    expect(acceptedTarget.effectiveFormatting.color).toEqual(source.effectiveFormatting.color);
+    expect(acceptedTarget.effectiveFormatting.bold).toBe(
+      source.effectiveFormatting.bold,
+    );
+    expect(acceptedTarget.effectiveFormatting.color).toEqual(
+      source.effectiveFormatting.color,
+    );
 
     let rejected = pendingState;
     expect(
@@ -1421,8 +1584,12 @@ describe("character style round-trip", () => {
       ],
     });
     const pmDoc = toProseDoc(input, { styles });
-    const out = fromProseDoc(pmDoc, input, { stylesheetSource: { type: "supplied", styles } });
-    const hyperlink = firstParagraph(out).content.find((content) => content.type === "hyperlink");
+    const out = fromProseDoc(pmDoc, input, {
+      stylesheetSource: { type: "supplied", styles },
+    });
+    const hyperlink = firstParagraph(out).content.find(
+      (content) => content.type === "hyperlink",
+    );
     if (hyperlink?.type !== "hyperlink") {
       throw new Error("Expected hyperlink");
     }
@@ -1452,7 +1619,9 @@ describe("save stylesheet authority", () => {
     if (!liveHeading) throw new Error("Expected the live heading style");
     liveHeading.rPr = { bold: false };
 
-    const saved = fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(proseDoc, base, {
+      stylesheetSource: { type: "package" },
+    });
     expect(saved.package.styles).toEqual(capturedStylesSnapshot);
     const reopened = await reopenThroughDocx(saved);
     expect(
@@ -1471,7 +1640,9 @@ describe("save stylesheet authority", () => {
     expect(() => {
       savedHeading.rPr = { bold: false };
     }).toThrow(TypeError);
-    const savedAgain = fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } });
+    const savedAgain = fromProseDoc(proseDoc, base, {
+      stylesheetSource: { type: "package" },
+    });
     expect(savedAgain.package.styles).toBe(saved.package.styles);
     expect(savedAgain.package.styles).toEqual(capturedStylesSnapshot);
     // Callers that author additions explicitly own their mutable copy.
@@ -1479,7 +1650,8 @@ describe("save stylesheet authority", () => {
     const mutableHeading = saved.package.styles?.styles.find(
       ({ styleId }) => styleId === "ToggleHeading",
     );
-    if (!mutableHeading) throw new Error("Expected the caller-owned heading style");
+    if (!mutableHeading)
+      throw new Error("Expected the caller-owned heading style");
     mutableHeading.rPr = { bold: false };
     expect(savedAgain.package.styles).toEqual(capturedStylesSnapshot);
   });
@@ -1502,7 +1674,9 @@ describe("save stylesheet authority", () => {
     } as const satisfies StyleDefinitions["styles"][number];
     liveStyles.styles.push(addedStyle);
     const proseDoc = toProseDoc(base);
-    const saved = fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(proseDoc, base, {
+      stylesheetSource: { type: "package" },
+    });
     const savedAddition = saved.package.styles?.styles.find(
       ({ styleId }) => styleId === "AddedHeading",
     );
@@ -1510,7 +1684,9 @@ describe("save stylesheet authority", () => {
     expect(savedAddition).not.toBe(addedStyle);
     const reopened = await reopenThroughDocx(saved);
     expect(
-      reopened.package.styles?.styles.find(({ styleId }) => styleId === "AddedHeading"),
+      reopened.package.styles?.styles.find(
+        ({ styleId }) => styleId === "AddedHeading",
+      ),
     ).toMatchObject(addedStyle);
     expect(
       findTextNode(toProseDoc(reopened), "Term").node.marks.some(
@@ -1536,9 +1712,9 @@ describe("save stylesheet authority", () => {
       { styleId: "AddedHeading", type: "paragraph", rPr: { bold: false } },
     );
     const proseDoc = toProseDoc(base);
-    expect(() => fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } })).toThrow(
-      "Duplicate added style ID: AddedHeading.",
-    );
+    expect(() =>
+      fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } }),
+    ).toThrow("Duplicate added style ID: AddedHeading.");
   });
 
   test("package save retains added styles when the parsed package had no stylesheet part", async () => {
@@ -1549,10 +1725,13 @@ describe("save stylesheet authority", () => {
     });
     const zip = await JSZip.loadAsync(await createDocx(input));
     zip.remove("word/styles.xml");
-    const base = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-      detectVariables: false,
-      preloadFonts: false,
-    });
+    const base = await parseDocx(
+      await zip.generateAsync({ type: "arraybuffer" }),
+      {
+        detectVariables: false,
+        preloadFonts: false,
+      },
+    );
     expect(base.package.styles).toBeUndefined();
     const addedStyles: StyleDefinitions = {
       styles: [
@@ -1566,7 +1745,9 @@ describe("save stylesheet authority", () => {
     base.package.styles = structuredClone(addedStyles);
     const proseDoc = toProseDoc(base, { styles: addedStyles });
 
-    const saved = fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(proseDoc, base, {
+      stylesheetSource: { type: "package" },
+    });
     expect(saved.package.styles).toEqual(addedStyles);
     const reopened = await reopenThroughDocx(saved);
     expect(
@@ -1587,7 +1768,9 @@ describe("save stylesheet authority", () => {
       if (baseStyles === "different") {
         input.package.styles = {
           styles: styles.styles.map((style) =>
-            style.styleId === "ToggleHeading" ? { ...style, rPr: { bold: false } } : style,
+            style.styleId === "ToggleHeading"
+              ? { ...style, rPr: { bold: false } }
+              : style,
           ),
         };
       }
@@ -1596,7 +1779,9 @@ describe("save stylesheet authority", () => {
         stylesheetSource: { type: "supplied", styles },
       });
       expect(saved.package.styles).toEqual(styles);
-      expect(findRun(firstParagraph(saved), "Term").formatting?.bold).toBeUndefined();
+      expect(
+        findRun(firstParagraph(saved), "Term").formatting?.bold,
+      ).toBeUndefined();
       const reopened = await reopenThroughDocx(saved);
       expect(
         findTextNode(toProseDoc(reopened), "Term").node.marks.some(
@@ -1620,7 +1805,9 @@ describe("save stylesheet authority", () => {
       throw new Error("Expected parsed package styles");
     }
     const divergentStyles = structuredClone(capturedStyles);
-    const heading = divergentStyles.styles.find(({ styleId }) => styleId === "ToggleHeading");
+    const heading = divergentStyles.styles.find(
+      ({ styleId }) => styleId === "ToggleHeading",
+    );
     if (!heading) throw new Error("Expected the captured heading style");
     heading.rPr = { bold: false };
     base.package.styles = structuredClone(divergentStyles);
@@ -1632,7 +1819,9 @@ describe("save stylesheet authority", () => {
       fromProseDoc(proseDoc, base, {
         stylesheetSource: { type: "supplied", styles: divergentStyles },
       }),
-    ).toThrow(/Supplied stylesheet differs from the parsed package:.*ToggleHeading/);
+    ).toThrow(
+      /Supplied stylesheet differs from the parsed package:.*ToggleHeading/,
+    );
     expect(base.package).toEqual(baseBefore);
     expect(proseDoc.toJSON()).toEqual(proseBefore);
   });
@@ -1668,7 +1857,9 @@ describe("save stylesheet authority", () => {
       fromProseDoc(proseDoc, base, {
         stylesheetSource: { type: "supplied", styles: divergentStyles },
       }),
-    ).toThrow(/Supplied stylesheet differs from the parsed package:.*docDefaults/);
+    ).toThrow(
+      /Supplied stylesheet differs from the parsed package:.*docDefaults/,
+    );
     expect(base.package).toEqual(baseBefore);
     expect(proseDoc.toJSON()).toEqual(proseBefore);
   });
@@ -1698,7 +1889,11 @@ describe("save stylesheet authority", () => {
       stylesheetSource: { type: "supplied", styles: suppliedStyles },
     });
 
-    expect(saved.package.styles?.styles.some((style) => style.styleId === "AddedBold")).toBe(true);
+    expect(
+      saved.package.styles?.styles.some(
+        (style) => style.styleId === "AddedBold",
+      ),
+    ).toBe(true);
     const reopened = await reopenThroughDocx(saved);
     expect(
       findTextNode(toProseDoc(reopened), "Term").node.marks.some(
@@ -1713,18 +1908,29 @@ describe("save stylesheet authority", () => {
     if (!sourceStyles) throw new Error("Expected parsed package styles");
     const suppliedStyles = {
       ...sourceStyles,
-      styles: sourceStyles.styles.filter(({ styleId }) => styleId !== "ToggleHeading"),
+      styles: sourceStyles.styles.filter(
+        ({ styleId }) => styleId !== "ToggleHeading",
+      ),
     };
     expect(() =>
       fromProseDoc(toProseDoc(base, { styles: suppliedStyles }), base, {
         stylesheetSource: { type: "supplied", styles: suppliedStyles },
       }),
-    ).toThrow(/Supplied stylesheet differs from the parsed package:.*ToggleHeading/);
+    ).toThrow(
+      /Supplied stylesheet differs from the parsed package:.*ToggleHeading/,
+    );
   });
 
   test("refuses a new default whose precedence differs from append order", async () => {
     const input = withStyles(wrap(runText("Term")), {
-      styles: [{ type: "paragraph", styleId: "SourceDefault", default: true, rPr: { bold: true } }],
+      styles: [
+        {
+          type: "paragraph",
+          styleId: "SourceDefault",
+          default: true,
+          rPr: { bold: true },
+        },
+      ],
     });
     const base = await reopenThroughDocx(input);
     const sourceStyles = base.package.styles;
@@ -1732,7 +1938,12 @@ describe("save stylesheet authority", () => {
     const suppliedStyles: StyleDefinitions = {
       ...sourceStyles,
       styles: [
-        { type: "paragraph", styleId: "NewDefault", default: true, rPr: { italic: true } },
+        {
+          type: "paragraph",
+          styleId: "NewDefault",
+          default: true,
+          rPr: { italic: true },
+        },
         ...sourceStyles.styles,
       ],
     };
@@ -1740,7 +1951,9 @@ describe("save stylesheet authority", () => {
       fromProseDoc(toProseDoc(base, { styles: suppliedStyles }), base, {
         stylesheetSource: { type: "supplied", styles: suppliedStyles },
       }),
-    ).toThrow(/Supplied stylesheet differs from the parsed package:.*NewDefault/);
+    ).toThrow(
+      /Supplied stylesheet differs from the parsed package:.*NewDefault/,
+    );
   });
 
   test("accepts a semantically matching supplied stylesheet with reordered object keys", async () => {
@@ -1767,9 +1980,14 @@ describe("save stylesheet authority", () => {
     if (!capturedStyles) throw new Error("Expected parsed package styles");
     const suppliedStyles: StyleDefinitions = {
       ...capturedStyles,
-      styles: capturedStyles.styles.map(({ rPr, ...style }) => ({ rPr, ...style })),
+      styles: capturedStyles.styles.map(({ rPr, ...style }) => ({
+        rPr,
+        ...style,
+      })),
     };
-    expect(JSON.stringify(capturedStyles)).not.toBe(JSON.stringify(suppliedStyles));
+    expect(JSON.stringify(capturedStyles)).not.toBe(
+      JSON.stringify(suppliedStyles),
+    );
 
     const proseDoc = toProseDoc(base, { styles: suppliedStyles });
     const saved = fromProseDoc(proseDoc, base, {
@@ -1784,7 +2002,9 @@ describe("unknown and malformed style references", () => {
   test("unknown styleId round-trips verbatim with direct formatting intact", () => {
     const input = wrap(runText("Term", { styleId: "NoSuchStyle", bold: true }));
     const pmDoc = toProseDoc(input, { styles });
-    const out = fromProseDoc(pmDoc, input, { stylesheetSource: { type: "supplied", styles } });
+    const out = fromProseDoc(pmDoc, input, {
+      stylesheetSource: { type: "supplied", styles },
+    });
     const run = findRun(firstParagraph(out), "Term");
     expect(run.formatting?.styleId).toBe("NoSuchStyle");
     expect(run.formatting?.bold).toBe(true);
@@ -1800,7 +2020,9 @@ describe("unknown and malformed style references", () => {
     const input = wrap(runText("Term", { styleId: "DefinedTerm" }));
     const pmDoc = toProseDoc(input);
     const before = pmDoc.toJSON();
-    expect(() => fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })).toThrow(
+    expect(() =>
+      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }),
+    ).toThrow(
       "Saving style-dependent content requires its authoritative stylesheet.",
     );
     expect(pmDoc.toJSON()).toEqual(before);
@@ -1810,17 +2032,28 @@ describe("unknown and malformed style references", () => {
     const input = wrapParagraph({
       type: "paragraph",
       formatting: { styleId: "UnknownParagraph" },
-      content: [runText("Term", { styleId: "UnknownCharacter", bold: true, italic: false })],
+      content: [
+        runText("Term", {
+          styleId: "UnknownCharacter",
+          bold: true,
+          italic: false,
+        }),
+      ],
     });
     const zip = await JSZip.loadAsync(await createDocx(input));
     zip.remove("word/styles.xml");
-    const base = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-      detectVariables: false,
-      preloadFonts: false,
-    });
+    const base = await parseDocx(
+      await zip.generateAsync({ type: "arraybuffer" }),
+      {
+        detectVariables: false,
+        preloadFonts: false,
+      },
+    );
     expect(base.package.styles).toBeUndefined();
     const projection = toProseDoc(base);
-    const saved = fromProseDoc(projection, base, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(projection, base, {
+      stylesheetSource: { type: "package" },
+    });
     expect(saved.package.styles).toBeUndefined();
     expect(firstParagraph(saved).formatting?.styleId).toBe("UnknownParagraph");
     expect(findRun(firstParagraph(saved), "Term").formatting).toMatchObject({
@@ -1833,11 +2066,14 @@ describe("unknown and malformed style references", () => {
     // ownership keys, not content or formatting identities.
     const contentSnapshot = (document: PMNode) =>
       JSON.stringify(document.toJSON(), (key, value: unknown) =>
-        key === PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR || key === PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR
+        key === PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR ||
+        key === PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR
           ? undefined
           : value,
       );
-    expect(contentSnapshot(toProseDoc(reopened))).toEqual(contentSnapshot(projection));
+    expect(contentSnapshot(toProseDoc(reopened))).toEqual(
+      contentSnapshot(projection),
+    );
   });
 
   test("basedOn cycle in style definitions terminates and round-trips", () => {
@@ -1864,7 +2100,9 @@ describe("unknown and malformed style references", () => {
     const out = fromProseDoc(pmDoc, input, {
       stylesheetSource: { type: "supplied", styles: cyclicStyles },
     });
-    expect(findRun(firstParagraph(out), "Term").formatting?.styleId).toBe("CycleA");
+    expect(findRun(firstParagraph(out), "Term").formatting?.styleId).toBe(
+      "CycleA",
+    );
   });
 });
 
@@ -1898,9 +2136,13 @@ describe("character style under editing", () => {
     });
     const runs = paragraphRuns(firstParagraph(out));
     expect(runs).toHaveLength(3);
-    expect(findRun(firstParagraph(out), "Te").formatting?.styleId).toBe("DefinedTerm");
+    expect(findRun(firstParagraph(out), "Te").formatting?.styleId).toBe(
+      "DefinedTerm",
+    );
     expect(findRun(firstParagraph(out), "PLAIN").formatting).toBeUndefined();
-    expect(findRun(firstParagraph(out), "rm").formatting?.styleId).toBe("DefinedTerm");
+    expect(findRun(firstParagraph(out), "rm").formatting?.styleId).toBe(
+      "DefinedTerm",
+    );
   });
 
   test("removing the characterStyle mark strips the reference but keeps visuals", () => {
@@ -1933,7 +2175,9 @@ describe("character style under editing", () => {
     // supplied, as the toolbar's italic toggle would.
     const tr = state.tr.removeMark(1, 5, italic);
     const edited = state.apply(tr);
-    const out = fromProseDoc(edited.doc, input, { stylesheetSource: { type: "package" } });
+    const out = fromProseDoc(edited.doc, input, {
+      stylesheetSource: { type: "package" },
+    });
     const run = findRun(firstParagraph(out), "Term");
     // The style reference survives, but the removed italic must serialize as
     // an explicit negative so a consumer does not re-impose it from the style.

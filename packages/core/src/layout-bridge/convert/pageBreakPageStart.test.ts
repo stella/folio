@@ -14,7 +14,12 @@ import {
   withFakeTextMeasure,
 } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
 import { measureBlocks } from "../../layout-engine/measure/measureBlocks";
-import type { FlowBlock, Layout, LayoutOptions, PageMargins } from "../../layout-engine/types";
+import type {
+  FlowBlock,
+  Layout,
+  LayoutOptions,
+  PageMargins,
+} from "../../layout-engine/types";
 import { schema } from "../../prosemirror/schema";
 import { toFlowBlocks } from "./toFlowBlocks";
 
@@ -29,7 +34,8 @@ const BOX_OFFSET_PX = 96;
 const text = (value: string, attrs: Record<string, unknown> | null = null) =>
   schema.node("paragraph", attrs, [schema.text(value)]);
 const heading = (value: string) => text(value, { pageBreakBefore: true });
-const breakOnly = () => schema.node("paragraph", null, [schema.node("pageBreakRun")]);
+const breakOnly = () =>
+  schema.node("paragraph", null, [schema.node("pageBreakRun")]);
 const anchoredBox = (anchorId: string, value: string) =>
   schema.node(
     "textBox",
@@ -37,7 +43,9 @@ const anchoredBox = (anchorId: string, value: string) =>
       width: 300,
       height: 60,
       _docxAnchorId: anchorId,
-      position: { vertical: { relativeTo: "paragraph", posOffset: BOX_OFFSET_EMU } },
+      position: {
+        vertical: { relativeTo: "paragraph", posOffset: BOX_OFFSET_EMU },
+      },
     },
     [text(value)],
   );
@@ -52,7 +60,11 @@ const layOut = (doc: PMNode): LaidOut => {
       const blocks = toFlowBlocks(doc);
       laidOut = {
         blocks,
-        layout: layoutDocument(blocks, measureBlocks(blocks, CONTENT_WIDTH), LAYOUT_OPTIONS),
+        layout: layoutDocument(
+          blocks,
+          measureBlocks(blocks, CONTENT_WIDTH),
+          LAYOUT_OPTIONS,
+        ),
       };
     },
     { charWidth: fixedCharWidth(5) },
@@ -71,7 +83,9 @@ const placementOf = ({ blocks, layout }: LaidOut, value: string) => {
       candidate.runs.some((run) => run.kind === "text" && run.text === value),
   );
   for (const [pageIndex, page] of layout.pages.entries()) {
-    const fragment = page.fragments.find((candidate) => candidate.blockId === block?.id);
+    const fragment = page.fragments.find(
+      (candidate) => candidate.blockId === block?.id,
+    );
     if (fragment) {
       return { pageIndex, y: fragment.y };
     }
@@ -81,7 +95,9 @@ const placementOf = ({ blocks, layout }: LaidOut, value: string) => {
 
 const textBoxPlacement = ({ layout }: LaidOut) => {
   for (const [pageIndex, page] of layout.pages.entries()) {
-    const fragment = page.fragments.find((candidate) => candidate.kind === "textBox");
+    const fragment = page.fragments.find(
+      (candidate) => candidate.kind === "textBox",
+    );
     if (fragment) {
       return { pageIndex, y: fragment.y };
     }
@@ -91,21 +107,32 @@ const textBoxPlacement = ({ layout }: LaidOut) => {
 
 describe("w:pageBreakBefore on a page a page break just opened", () => {
   test("starts on that page after a break-only paragraph", () => {
-    const laidOut = layOut(schema.node("doc", null, [text("cover"), breakOnly(), heading("one")]));
+    const laidOut = layOut(
+      schema.node("doc", null, [text("cover"), breakOnly(), heading("one")]),
+    );
 
-    expect(placementOf(laidOut, "one")).toEqual({ pageIndex: 1, y: MARGINS.top });
+    expect(placementOf(laidOut, "one")).toEqual({
+      pageIndex: 1,
+      y: MARGINS.top,
+    });
     expect(laidOut.layout.pages).toHaveLength(2);
   });
 
   test("starts on that page after a break that ends a text paragraph", () => {
     const laidOut = layOut(
       schema.node("doc", null, [
-        schema.node("paragraph", null, [schema.text("cover"), schema.node("pageBreakRun")]),
+        schema.node("paragraph", null, [
+          schema.text("cover"),
+          schema.node("pageBreakRun"),
+        ]),
         heading("one"),
       ]),
     );
 
-    expect(placementOf(laidOut, "one")).toEqual({ pageIndex: 1, y: MARGINS.top });
+    expect(placementOf(laidOut, "one")).toEqual({
+      pageIndex: 1,
+      y: MARGINS.top,
+    });
     expect(laidOut.layout.pages).toHaveLength(2);
   });
 
@@ -123,7 +150,9 @@ describe("w:pageBreakBefore on a page a page break just opened", () => {
   });
 
   test("still breaks after visible content", () => {
-    const laidOut = layOut(schema.node("doc", null, [text("cover"), heading("one")]));
+    const laidOut = layOut(
+      schema.node("doc", null, [text("cover"), heading("one")]),
+    );
 
     expect(placementOf(laidOut, "one")?.pageIndex).toBe(1);
   });
@@ -134,7 +163,10 @@ describe("a text box anchored before a page break in its paragraph", () => {
     const laidOut = layOut(
       schema.node("doc", null, [
         text("title page"),
-        schema.node("paragraph", null, [anchor("box"), schema.node("pageBreakRun")]),
+        schema.node("paragraph", null, [
+          anchor("box"),
+          schema.node("pageBreakRun"),
+        ]),
         anchoredBox("box", "boxed title"),
         text("next page"),
       ]),
@@ -147,7 +179,10 @@ describe("a text box anchored before a page break in its paragraph", () => {
     // Nothing of the anchoring paragraph precedes the break, so it starts
     // right below the previous paragraph.
     expect(box?.y).toBeGreaterThan((titlePage?.y ?? 0) + BOX_OFFSET_PX);
-    expect(placementOf(laidOut, "next page")).toEqual({ pageIndex: 1, y: MARGINS.top });
+    expect(placementOf(laidOut, "next page")).toEqual({
+      pageIndex: 1,
+      y: MARGINS.top,
+    });
     expect(laidOut.layout.pages).toHaveLength(2);
   });
 
@@ -190,7 +225,8 @@ describe("a text box anchored before a page break in its paragraph", () => {
     );
 
     const boxPages = laidOut.layout.pages.map(
-      (page) => page.fragments.filter((fragment) => fragment.kind === "textBox").length,
+      (page) =>
+        page.fragments.filter((fragment) => fragment.kind === "textBox").length,
     );
 
     expect(boxPages).toEqual([1, 1, 0]);

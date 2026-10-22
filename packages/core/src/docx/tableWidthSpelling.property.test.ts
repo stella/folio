@@ -16,15 +16,19 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /** `w:type`, plus the absence the schema allows and folio used to read as `dxa`. */
 const DECLARED_TYPES = ["absent", "auto", "dxa", "nil", "pct"] as const;
@@ -43,7 +47,9 @@ type Width = { declared: DeclaredType; spelling: Spelling; percent: number };
 
 const attributesFor = ({ declared, spelling, percent }: Width): string => {
   const value =
-    spelling === "percentSign" ? `${percent}%` : String(percent * FIFTIETHS_PER_PERCENT);
+    spelling === "percentSign"
+      ? `${percent}%`
+      : String(percent * FIFTIETHS_PER_PERCENT);
   const type = declared === "absent" ? "" : ` w:type="${declared}"`;
   return `w:w="${value}"${type}`;
 };
@@ -55,17 +61,25 @@ const attributesFor = ({ declared, spelling, percent }: Width): string => {
  * twips is written that way; `auto` and `nil` do not read `w:w` as a width at
  * all, so the declared type stands.
  */
-const expectedFor = ({ declared, spelling, percent }: Width): { value: number; type: string } => {
+const expectedFor = ({
+  declared,
+  spelling,
+  percent,
+}: Width): { value: number; type: string } => {
   if (declared === "auto" || declared === "nil") {
     return {
-      value: spelling === "percentSign" ? percent : percent * FIFTIETHS_PER_PERCENT,
+      value:
+        spelling === "percentSign" ? percent : percent * FIFTIETHS_PER_PERCENT,
       type: declared,
     };
   }
   if (spelling === "percentSign") {
     return { value: percent * FIFTIETHS_PER_PERCENT, type: "pct" };
   }
-  return { value: percent * FIFTIETHS_PER_PERCENT, type: declared === "absent" ? "dxa" : declared };
+  return {
+    value: percent * FIFTIETHS_PER_PERCENT,
+    type: declared === "absent" ? "dxa" : declared,
+  };
 };
 
 const bodyFor = (width: Width): string =>
@@ -85,8 +99,12 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
 
 type ReadWidths = { table: unknown; cell: unknown };
 
-const widthsOf = (document: Awaited<ReturnType<typeof parseDocx>>): ReadWidths => {
-  const table = document.package.document.content.find((block) => block.type === "table");
+const widthsOf = (
+  document: Awaited<ReturnType<typeof parseDocx>>,
+): ReadWidths => {
+  const table = document.package.document.content.find(
+    (block) => block.type === "table",
+  );
   if (table?.type !== "table") {
     throw new Error("the fixture lost its table");
   }
@@ -97,12 +115,19 @@ const widthsOf = (document: Awaited<ReturnType<typeof parseDocx>>): ReadWidths =
 };
 
 /** Parse, force a rebuild rather than a replay, and parse what was written. */
-const throughSave = async (body: string): Promise<{ read: ReadWidths; resaved: ReadWidths }> => {
-  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
-  const read = widthsOf(parsed);
-  const reopened = await parseDocx(await repackDocx(parsed, { updateModifiedDate: false }), {
+const throughSave = async (
+  body: string,
+): Promise<{ read: ReadWidths; resaved: ReadWidths }> => {
+  const parsed = await parseDocx(await buildDocx(body), {
     preloadFonts: false,
   });
+  const read = widthsOf(parsed);
+  const reopened = await parseDocx(
+    await repackDocx(parsed, { updateModifiedDate: false }),
+    {
+      preloadFonts: false,
+    },
+  );
   return { read, resaved: widthsOf(reopened) };
 };
 

@@ -9,7 +9,8 @@ import {
   RELATIONSHIP_TYPES,
 } from "./relsParser";
 
-const STRICT_RELATIONSHIP_PREFIX = "http://purl.oclc.org/ooxml/officeDocument/relationships/";
+const STRICT_RELATIONSHIP_PREFIX =
+  "http://purl.oclc.org/ooxml/officeDocument/relationships/";
 
 describe("Strict relationship types", () => {
   test("normalizes every known office relationship type", () => {
@@ -20,7 +21,8 @@ describe("Strict relationship types", () => {
         continue;
       }
 
-      const strictType = STRICT_RELATIONSHIP_PREFIX + type.slice(transitionalPrefix.length);
+      const strictType =
+        STRICT_RELATIONSHIP_PREFIX + type.slice(transitionalPrefix.length);
       const relationships = parseRelationships(
         `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
           `<Relationship Id="known" Type="${strictType}" Target="part.xml"/>` +
@@ -43,7 +45,9 @@ describe("Strict relationship types", () => {
     expect(getImages(relationships).map(({ id }) => id)).toEqual(["image"]);
     expect(isExternalHyperlink(relationships.get("link")!)).toBe(true);
     expect(relationships.get("header")?.type).toBe(RELATIONSHIP_TYPES.header);
-    expect(getRelationshipTypeName(relationships.get("image")!.type)).toBe("image");
+    expect(getRelationshipTypeName(relationships.get("image")!.type)).toBe(
+      "image",
+    );
   });
 
   test("leaves unknown Strict relationship types intact", () => {

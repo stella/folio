@@ -1,13 +1,18 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "./parser";
 import { parseRelationships, RELATIONSHIP_TYPES } from "./relsParser";
 import { createEmptyDocx, DocxPackageFidelityError, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
-const RELS_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships";
+const RELS_NAMESPACE =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
 const HEADER_RELS = "word/_rels/header1.xml.rels";
 const HEADER = "word/header1.xml";
 const IMAGE = "word/media/watermark.png";
@@ -18,7 +23,11 @@ type RelationshipFixtureOptions = {
   state: "free" | "matching" | "conflicting" | "unresolved";
   prefixed: boolean;
 };
-const fixture = async ({ requestedId, state, prefixed }: RelationshipFixtureOptions) => {
+const fixture = async ({
+  requestedId,
+  state,
+  prefixed,
+}: RelationshipFixtureOptions) => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   const types = await zip.file("[Content_Types].xml")?.async("text");
   zip.file(
@@ -28,7 +37,9 @@ const fixture = async ({ requestedId, state, prefixed }: RelationshipFixtureOpti
       '<Default Extension="png" ContentType="image/png"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>',
     ) ?? "",
   );
-  const documentRels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const documentRels = await zip
+    .file("word/_rels/document.xml.rels")
+    ?.async("text");
   zip.file(
     "word/_rels/document.xml.rels",
     documentRels?.replace(
@@ -45,7 +56,9 @@ const fixture = async ({ requestedId, state, prefixed }: RelationshipFixtureOpti
     '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:p w14:paraId="00000002"/></w:hdr>',
   );
   const prefix = prefixed ? "p:" : "";
-  const root = prefixed ? `xmlns:p="${RELS_NAMESPACE}"` : `xmlns="${RELS_NAMESPACE}"`;
+  const root = prefixed
+    ? `xmlns:p="${RELS_NAMESPACE}"`
+    : `xmlns="${RELS_NAMESPACE}"`;
   const foreign = `<${prefix}Relationship Id="rIdOpaque" Type="urn:foreign" Target="../custom/opaque.bin" opaque="authored"/>`;
   const occupied =
     state === "matching" || state === "conflicting"
@@ -76,13 +89,23 @@ test("generated canonical watermark relationships preserve free and matching ids
       fc.boolean(),
       async (suffix, prefixed) => {
         const requestedId = `rId${suffix}`;
-        for (const state of ["free", "matching", "conflicting", "unresolved"] as const) {
+        for (const state of [
+          "free",
+          "matching",
+          "conflicting",
+          "unresolved",
+        ] as const) {
           const input = await fixture({ requestedId, state, prefixed });
           if (state === "conflicting" || state === "unresolved") {
             await expect(
-              repackDocx(input.document, { bodyAuthority: "canonical", updateModifiedDate: false }),
+              repackDocx(input.document, {
+                bodyAuthority: "canonical",
+                updateModifiedDate: false,
+              }),
             ).rejects.toBeInstanceOf(DocxPackageFidelityError);
-            expect(input.document.package.headers?.get("rIdHeader99")?.watermark).toMatchObject({
+            expect(
+              input.document.package.headers?.get("rIdHeader99")?.watermark,
+            ).toMatchObject({
               imageRId: requestedId,
             });
             continue;
@@ -101,7 +124,9 @@ test("generated canonical watermark relationships preserve free and matching ids
             "media/watermark.png",
           );
           const reopened = await parseDocx(saved, { preloadFonts: false });
-          expect(reopened.package.headers?.get("rIdHeader99")?.watermark).toMatchObject({
+          expect(
+            reopened.package.headers?.get("rIdHeader99")?.watermark,
+          ).toMatchObject({
             kind: "picture",
             imageRId: requestedId,
             imageTarget: IMAGE,
@@ -131,14 +156,20 @@ test("generated canonical watermark relationships preserve free and matching ids
 });
 
 test("default watermark rebinding still reuses an existing matching relationship", async () => {
-  const input = await fixture({ requestedId: "rIdRequested", state: "free", prefixed: false });
+  const input = await fixture({
+    requestedId: "rIdRequested",
+    state: "free",
+    prefixed: false,
+  });
   const saved = await repackDocx(input.document, { updateModifiedDate: false });
   const reopened = await parseDocx(saved, { preloadFonts: false });
-  expect(reopened.package.headers?.get("rIdHeader99")?.watermark).toMatchObject({
-    kind: "picture",
-    imageRId: "rIdAlias",
-    imageTarget: IMAGE,
-  });
+  expect(reopened.package.headers?.get("rIdHeader99")?.watermark).toMatchObject(
+    {
+      kind: "picture",
+      imageRId: "rIdAlias",
+      imageTarget: IMAGE,
+    },
+  );
   const zip = await JSZip.loadAsync(saved);
   expect(await zip.file(HEADER_RELS)?.async("text")).toBe(input.rels);
 });

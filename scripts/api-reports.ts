@@ -28,19 +28,30 @@ import {
   ExtractorConfig,
   ExtractorLogLevel,
 } from "@microsoft/api-extractor";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import path from "node:path";
 
 import { isStaleDeclaration } from "./lib/api-report-diff";
 import { renderApiReportDrift } from "./lib/api-report-drift";
-import { PUBLISHED_PACKAGES, type PublishedPackage } from "./lib/published-packages";
+import {
+  PUBLISHED_PACKAGES,
+  type PublishedPackage,
+} from "./lib/published-packages";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 
 type Entry = { key: string; slug: string; dts: string };
 
 // Drop the trailing extension so a base can be re-suffixed with `.d.ts`.
-const stripExt = (file: string): string => file.slice(0, file.length - path.extname(file).length);
+const stripExt = (file: string): string =>
+  file.slice(0, file.length - path.extname(file).length);
 
 // Slug for a report filename: "." -> "index", "./prosemirror/attrs" ->
 // "prosemirror-attrs".
@@ -50,14 +61,19 @@ const slugForKey = (key: string): string =>
 // Candidate dist declaration bases for a source export, most-specific first —
 // the same order `prepare-publish.ts` uses to pick the emitted artifact.
 const distBases = (subpath: string, srcPath: string): string[] => {
-  const flat = subpath === "." ? "index" : stripExt(subpath.replace(/^\.\//u, ""));
+  const flat =
+    subpath === "." ? "index" : stripExt(subpath.replace(/^\.\//u, ""));
   const nested = stripExt(srcPath.replace(/^\.\/src\//u, ""));
   return flat === nested ? [flat] : [flat, nested];
 };
 
 // Resolve the built `.d.ts` for a source export. Returns null when the export
 // carries no type surface we can snapshot (see `entriesFor`).
-const resolveDts = (packageRoot: string, subpath: string, srcPath: string): string | null => {
+const resolveDts = (
+  packageRoot: string,
+  subpath: string,
+  srcPath: string,
+): string | null => {
   for (const base of distBases(subpath, srcPath)) {
     const rel = `dist/${base}.d.ts`;
     if (existsSync(path.join(packageRoot, rel))) return rel;
@@ -86,14 +102,19 @@ const distTypesFromExport = (target: unknown): string | null => {
 //   - explicit `null` targets     private exceptions to a wildcard export
 //   - non-JS assets (`*.css`,     stylesheet or WebAssembly, carries no
 //     `*.wasm`)                   declarations
-const entriesFor = (pkg: PublishedPackage): { entries: Entry[]; missing: string[] } => {
-  const pkgJson = JSON.parse(readFileSync(path.join(pkg.root, "package.json"), "utf8")) as {
+const entriesFor = (
+  pkg: PublishedPackage,
+): { entries: Entry[]; missing: string[] } => {
+  const pkgJson = JSON.parse(
+    readFileSync(path.join(pkg.root, "package.json"), "utf8"),
+  ) as {
     exports: Record<string, unknown>;
   };
   const entries: Entry[] = [];
   const missing: string[] = [];
   for (const [key, srcPath] of Object.entries(pkgJson.exports)) {
-    if (key === "./package.json" || key.includes("*") || srcPath === null) continue;
+    if (key === "./package.json" || key.includes("*") || srcPath === null)
+      continue;
 
     // Dist-shaped conditional-export object (@stll/folio-vue): the built .d.ts
     // is named directly in `types`, so snapshot it as-is.
@@ -123,7 +144,8 @@ const entriesFor = (pkg: PublishedPackage): { entries: Entry[]; missing: string[
       );
       process.exit(1);
     }
-    if (path.extname(srcPath) === ".css" || path.extname(srcPath) === ".wasm") continue;
+    if (path.extname(srcPath) === ".css" || path.extname(srcPath) === ".wasm")
+      continue;
     const dts = resolveDts(pkg.root, key, srcPath);
     if (dts) {
       entries.push({ key, slug: slugForKey(key), dts });
@@ -146,7 +168,12 @@ type BuildConfigOptions = {
   tempDir: string;
 };
 
-const buildConfig = ({ pkg, entry, reportDir, tempDir }: BuildConfigOptions): ExtractorConfig => {
+const buildConfig = ({
+  pkg,
+  entry,
+  reportDir,
+  tempDir,
+}: BuildConfigOptions): ExtractorConfig => {
   const packageJsonFullPath = path.join(pkg.root, "package.json");
   return ExtractorConfig.prepare({
     configObject: {
@@ -194,7 +221,9 @@ const newestSourceModifiedMs = (directory: string): number => {
   let newest = 0;
   for (const dirent of readdirSync(directory, { withFileTypes: true })) {
     const full = path.join(directory, dirent.name);
-    const candidate = dirent.isDirectory() ? newestSourceModifiedMs(full) : statSync(full).mtimeMs;
+    const candidate = dirent.isDirectory()
+      ? newestSourceModifiedMs(full)
+      : statSync(full).mtimeMs;
     if (candidate > newest) newest = candidate;
   }
   return newest;
@@ -208,7 +237,10 @@ const newestSourceModifiedMs = (directory: string): number => {
  * gate used to say "run api:update" for both, which sends a reader after a
  * snapshot that was never wrong.
  */
-const staleEntries = (pkg: PublishedPackage, entries: readonly Entry[]): Entry[] => {
+const staleEntries = (
+  pkg: PublishedPackage,
+  entries: readonly Entry[],
+): Entry[] => {
   const sourceRoot = path.join(pkg.root, "src");
   if (!existsSync(sourceRoot)) return [];
   const watermark = newestSourceModifiedMs(sourceRoot);
@@ -228,7 +260,9 @@ const runPackage = (pkg: PublishedPackage, isLocal: boolean): RunResult => {
   const { entries, missing } = entriesFor(pkg);
 
   if (missing.length > 0) {
-    console.error(`\nMissing built .d.ts for ${missing.length} export(s) in ${pkg.name}:`);
+    console.error(
+      `\nMissing built .d.ts for ${missing.length} export(s) in ${pkg.name}:`,
+    );
     for (const m of missing) console.error(`  - ${m}`);
     console.error(`\nFix: bun --filter '${pkg.name}' build`);
     process.exit(1);
@@ -261,15 +295,25 @@ const runPackage = (pkg: PublishedPackage, isLocal: boolean): RunResult => {
 
   // Share one CompilerState across every entry so the tsconfig is parsed and
   // the dist tree walked once, not once per subpath.
-  const firstConfig = buildConfig({ pkg, entry: entries[0], reportDir, tempDir });
+  const firstConfig = buildConfig({
+    pkg,
+    entry: entries[0],
+    reportDir,
+    tempDir,
+  });
   const compilerState = CompilerState.create(firstConfig, {
-    additionalEntryPoints: entries.slice(1).map((e) => path.join(pkg.root, e.dts)),
+    additionalEntryPoints: entries
+      .slice(1)
+      .map((e) => path.join(pkg.root, e.dts)),
   });
 
   const stale = isLocal ? [] : staleEntries(pkg, entries);
   if (stale.length > 0) {
-    console.error(`\nStale build for ${pkg.name}: ${stale.length} declaration(s) predate src/:`);
-    for (const entry of stale) console.error(`  - ${entry.slug} (${entry.dts})`);
+    console.error(
+      `\nStale build for ${pkg.name}: ${stale.length} declaration(s) predate src/:`,
+    );
+    for (const entry of stale)
+      console.error(`  - ${entry.slug} (${entry.dts})`);
     console.error(
       `\nThe report would describe an earlier tree, so any difference it finds is not drift.` +
         `\nFix: bun --filter '${pkg.name}' build`,
@@ -280,24 +324,27 @@ const runPackage = (pkg: PublishedPackage, isLocal: boolean): RunResult => {
   let errors = 0;
   const drifted: DriftedEntry[] = [];
   for (const entry of entries) {
-    const result = Extractor.invoke(buildConfig({ pkg, entry, reportDir, tempDir }), {
-      localBuild: isLocal,
-      showVerboseMessages: false,
-      compilerState,
-      // Suppress console/info chatter (bundled-TS version banners, per-entry
-      // "copy the file" drift hints — the driver prints its own drift summary)
-      // and warning spam (`ae-missing-release-tag` on every untagged symbol).
-      // Error-severity messages fall through to API Extractor's default
-      // handler so their text is printed. Note `errorCount`/`warningCount`
-      // are incremented before the `handled` check (MessageRouter), so even a
-      // handled error still fails the run via `totalErrors` below; letting
-      // errors through only restores the diagnostic text.
-      messageCallback: (message) => {
-        if (message.logLevel !== ExtractorLogLevel.Error) {
-          message.handled = true;
-        }
+    const result = Extractor.invoke(
+      buildConfig({ pkg, entry, reportDir, tempDir }),
+      {
+        localBuild: isLocal,
+        showVerboseMessages: false,
+        compilerState,
+        // Suppress console/info chatter (bundled-TS version banners, per-entry
+        // "copy the file" drift hints — the driver prints its own drift summary)
+        // and warning spam (`ae-missing-release-tag` on every untagged symbol).
+        // Error-severity messages fall through to API Extractor's default
+        // handler so their text is printed. Note `errorCount`/`warningCount`
+        // are incremented before the `handled` check (MessageRouter), so even a
+        // handled error still fails the run via `totalErrors` below; letting
+        // errors through only restores the diagnostic text.
+        messageCallback: (message) => {
+          if (message.logLevel !== ExtractorLogLevel.Error) {
+            message.handled = true;
+          }
+        },
       },
-    });
+    );
     errors += result.errorCount;
     if (!isLocal && result.apiReportChanged) drifted.push({ pkg, entry });
   }
@@ -334,9 +381,13 @@ for (const pkg of targets) {
 }
 
 if (allDrifted.length > 0) {
-  console.error(`\nPublic-API surface drift in ${allDrifted.length} entr(y/ies):`);
+  console.error(
+    `\nPublic-API surface drift in ${allDrifted.length} entr(y/ies):`,
+  );
   for (const { pkg, entry } of allDrifted) {
-    console.error(`\n--- api-reports/${pkg.slug}/${entry.slug}.api.md (${entry.key})`);
+    console.error(
+      `\n--- api-reports/${pkg.slug}/${entry.slug}.api.md (${entry.key})`,
+    );
     console.error(
       renderApiReportDrift({
         baselinePath: path.join(reportDirFor(pkg), `${entry.slug}.api.md`),
@@ -346,11 +397,18 @@ if (allDrifted.length > 0) {
       }),
     );
   }
-  console.error(`\nThe exported API changed but the committed snapshot did not.`);
-  console.error(`Run \`bun run api:update\`, review the diff under api-reports/, and commit it.`);
+  console.error(
+    `\nThe exported API changed but the committed snapshot did not.`,
+  );
+  console.error(
+    `Run \`bun run api:update\`, review the diff under api-reports/, and commit it.`,
+  );
   process.exit(1);
 }
 if (totalErrors > 0) process.exit(1);
 
-if (isLocal) console.log("\nSnapshots written to api-reports/. Review and commit the diff.");
+if (isLocal)
+  console.log(
+    "\nSnapshots written to api-reports/. Review and commit the diff.",
+  );
 else console.log("\nPublic-API snapshots up to date.");

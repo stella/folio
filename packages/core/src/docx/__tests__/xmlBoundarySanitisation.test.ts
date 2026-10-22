@@ -53,10 +53,16 @@ describe("the content-control fill boundary", () => {
         },
       },
     };
-    const filled = setContentControlContent(document, { tag: "party" }, `Acme${NUL} Ltd`);
+    const filled = setContentControlContent(
+      document,
+      { tag: "party" },
+      `Acme${NUL} Ltd`,
+    );
     const control = filled.package.document.content.at(0);
-    const paragraph = control?.type === "blockSdt" ? control.content.at(0) : undefined;
-    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const paragraph =
+      control?.type === "blockSdt" ? control.content.at(0) : undefined;
+    const run =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
     const text = run?.type === "run" ? run.content.at(0) : undefined;
     expect(text?.type === "text" ? text.text : null).toBe("Acme Ltd");
   });

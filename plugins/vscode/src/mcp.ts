@@ -33,7 +33,9 @@ export type McpLaunchOptions = {
 };
 
 /** The author to pass, or `undefined` when the setting is blank. */
-export const configuredAuthor = (author: string | undefined): string | undefined => {
+export const configuredAuthor = (
+  author: string | undefined,
+): string | undefined => {
   const trimmed = author?.trim() ?? "";
   return trimmed === "" ? undefined : trimmed;
 };

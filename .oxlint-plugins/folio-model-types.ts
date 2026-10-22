@@ -86,7 +86,10 @@ const MODEL_MODULE_PATHS = new Set(
     (name) => `/${MODEL_MODULE_DIR}${name}`,
   ),
 );
-const MODEL_PACKAGE_SPECIFIERS = new Set(["@stll/docx-core", "@stll/docx-core/model"]);
+const MODEL_PACKAGE_SPECIFIERS = new Set([
+  "@stll/docx-core",
+  "@stll/docx-core/model",
+]);
 
 const normalizePath = (segments: string[]): string[] => {
   const out: string[] = [];
@@ -103,12 +106,20 @@ const normalizePath = (segments: string[]): string[] => {
   return out;
 };
 
-const resolvesToModelModule = (filename: string, specifier: string): boolean => {
-  const dir = normalizePath(filename.replaceAll("\\", "/").split("/")).slice(0, -1);
+const resolvesToModelModule = (
+  filename: string,
+  specifier: string,
+): boolean => {
+  const dir = normalizePath(filename.replaceAll("\\", "/").split("/")).slice(
+    0,
+    -1,
+  );
   const resolved = normalizePath([...dir, ...specifier.split("/")]).join("/");
   // oxlint hands over repo-relative filenames; anchor so both spellings match.
   const stripped = `/${resolved.endsWith(".ts") ? resolved.slice(0, -3) : resolved}`;
-  return [...MODEL_MODULE_PATHS].some((modulePath) => stripped.endsWith(modulePath));
+  return [...MODEL_MODULE_PATHS].some((modulePath) =>
+    stripped.endsWith(modulePath),
+  );
 };
 
 const isModelImportSource = (filename: string, value: string): boolean =>
@@ -118,7 +129,10 @@ const isModelImportSource = (filename: string, value: string): boolean =>
 /** The file's model type names: the local names of every specifier imported
  * (as a type or as a value; `import type { X }` and `import { type X }` both
  * qualify) from a model-type import source. */
-const collectModelTypeNames = (program: AstNode, filename: string): Set<string> => {
+const collectModelTypeNames = (
+  program: AstNode,
+  filename: string,
+): Set<string> => {
   const names = new Set<string>();
   const visit = (node: AstNode): void => {
     if (node.type === "ImportDeclaration") {
@@ -151,7 +165,10 @@ const collectModelTypeNames = (program: AstNode, filename: string): Set<string> 
 
 /** The model type name a `TSTypeReference` names, directly or through
  * `NonNullable<...>` / `Readonly<...>`, else `null`. */
-const modelReferenceName = (node: unknown, modelTypeNames: Set<string>): string | null => {
+const modelReferenceName = (
+  node: unknown,
+  modelTypeNames: Set<string>,
+): string | null => {
   if (!isAstNode(node)) {
     return null;
   }
@@ -209,8 +226,12 @@ const uniqueSymbolNames = (context: WideningContext): Set<string> => {
   const source = sourceTextForContext(context);
   return new Set(
     [
-      ...source.matchAll(/\b(?:declare\s+)?const\s+(?<name>[$\w]+)\s*:\s*unique\s+symbol\b/gu),
-    ].flatMap(({ groups }) => (groups?.["name"] === undefined ? [] : [groups["name"]])),
+      ...source.matchAll(
+        /\b(?:declare\s+)?const\s+(?<name>[$\w]+)\s*:\s*unique\s+symbol\b/gu,
+      ),
+    ].flatMap(({ groups }) =>
+      groups?.["name"] === undefined ? [] : [groups["name"]],
+    ),
   );
 };
 
@@ -261,10 +282,18 @@ const checkIntersectionWidening = (
       hasDataLiteral = true;
     }
   }
-  if (modelName === null || !hasDataLiteral || isTypePredicateAnnotation(node)) {
+  if (
+    modelName === null ||
+    !hasDataLiteral ||
+    isTypePredicateAnnotation(node)
+  ) {
     return;
   }
-  context.report({ node, messageId: "intersectionWidening", data: { name: modelName } });
+  context.report({
+    node,
+    messageId: "intersectionWidening",
+    data: { name: modelName },
+  });
 };
 
 // --- Rule 2: no-in-check-on-model ------------------------------------------
@@ -275,7 +304,11 @@ const FUNCTION_NODE_TYPES = new Set([
   "ArrowFunctionExpression",
 ]);
 
-const SCOPE_BODY_NODE_TYPES = new Set(["BlockStatement", "Program", "StaticBlock"]);
+const SCOPE_BODY_NODE_TYPES = new Set([
+  "BlockStatement",
+  "Program",
+  "StaticBlock",
+]);
 
 /** The `Identifier` a binding pattern declares, unwrapping a default value. */
 const bindingIdentifier = (pattern: unknown): AstNode | null => {
@@ -391,7 +424,11 @@ const checkInCheckOnModel = (
     return;
   }
   const left = node["left"];
-  if (!isAstNode(left) || left.type !== "Literal" || typeof left["value"] !== "string") {
+  if (
+    !isAstNode(left) ||
+    left.type !== "Literal" ||
+    typeof left["value"] !== "string"
+  ) {
     return;
   }
   const right = node["right"];
@@ -402,8 +439,13 @@ const checkInCheckOnModel = (
   if (modelTypeOfBinding(node, root["name"], modelTypeNames) === null) {
     return;
   }
-  const name = (isAstNode(right) ? textOf(context, right) : null) ?? root["name"];
-  context.report({ node, messageId: "inCheckOnModel", data: { key: left["value"], name } });
+  const name =
+    (isAstNode(right) ? textOf(context, right) : null) ?? root["name"];
+  context.report({
+    node,
+    messageId: "inCheckOnModel",
+    data: { key: left["value"], name },
+  });
 };
 
 export default {
@@ -428,14 +470,22 @@ export default {
             if (!isAstNode(node)) {
               return;
             }
-            const modelTypeNames = collectModelTypeNames(node, context.filename);
+            const modelTypeNames = collectModelTypeNames(
+              node,
+              context.filename,
+            );
             if (modelTypeNames.size === 0) {
               return;
             }
             const brands = uniqueSymbolNames(context);
             const visit = (child: AstNode): void => {
               if (child.type === "TSIntersectionType") {
-                checkIntersectionWidening(child, modelTypeNames, brands, context);
+                checkIntersectionWidening(
+                  child,
+                  modelTypeNames,
+                  brands,
+                  context,
+                );
               }
               forEachChild(child, visit);
             };
@@ -460,7 +510,10 @@ export default {
             if (!isAstNode(node)) {
               return;
             }
-            const modelTypeNames = collectModelTypeNames(node, context.filename);
+            const modelTypeNames = collectModelTypeNames(
+              node,
+              context.filename,
+            );
             if (modelTypeNames.size === 0) {
               return;
             }

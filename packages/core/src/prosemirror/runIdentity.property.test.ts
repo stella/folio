@@ -25,13 +25,15 @@ import { Window } from "happy-dom";
 import { DOMParser, DOMSerializer, type Mark } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Paragraph, Run } from "../types/document";
 import { proseDocToBlocks } from "./conversion/fromProseDoc";
 import { toProseDoc } from "./conversion/toProseDoc";
-import { createStarterKit } from "./extensions/StarterKit";
 import { ExtensionManager } from "./extensions/ExtensionManager";
+import { createStarterKit } from "./extensions/StarterKit";
 import { RUN_IDENTITY_ATTRIBUTE, runIdentityAttrs } from "./runIdentity";
 import { schema } from "./schema";
 
@@ -73,7 +75,8 @@ const editorStateOf = (doc: ReturnType<typeof toProseDoc>): EditorState => {
 };
 
 // SAFETY: the fixture states exactly this shape; `toProseDoc` accepts it.
-const authoredDocument = () => toProseDoc(documentWithOneAuthoredRun() as never);
+const authoredDocument = () =>
+  toProseDoc(documentWithOneAuthoredRun() as never);
 
 /** The saved runs of the one paragraph, as `(text, carries the rsid)` pairs. */
 const savedRuns = (state: EditorState): [string, boolean][] => {
@@ -84,7 +87,9 @@ const savedRuns = (state: EditorState): [string, boolean][] => {
   return block.content
     .filter((item): item is Run => item.type === "run")
     .map((run) => [
-      run.content.map((item) => (item.type === "text" ? item.text : "")).join(""),
+      run.content
+        .map((item) => (item.type === "text" ? item.text : ""))
+        .join(""),
       run.preservedAttributes?.some(({ value }) => value === RSID) ?? false,
     ]);
 };
@@ -111,7 +116,9 @@ describe("text the editor inserts claims no editing session", () => {
         const before = editorStateOf(authoredDocument());
         const at = authoredStart(before) + offset;
         const typed = before.apply(
-          before.tr.setSelection(TextSelection.create(before.doc, at)).insertText("X", at),
+          before.tr
+            .setSelection(TextSelection.create(before.doc, at))
+            .insertText("X", at),
         );
 
         // Whatever the cut, the inserted character is a run of its own that
@@ -158,7 +165,8 @@ const throughTheDom = (marks: readonly Mark[]): readonly Mark[] => {
   const host = document.createElement("div");
   host.append(
     DOMSerializer.fromSchema(schema).serializeFragment(
-      schema.node("paragraph", undefined, [schema.text("x", [...marks])]).content,
+      schema.node("paragraph", undefined, [schema.text("x", [...marks])])
+        .content,
       { document },
     ),
   );
@@ -203,7 +211,10 @@ const payloadArbitrary = fc.record(
     ),
     preserved: fc.record({
       children: fc.array(
-        fc.record({ index: fc.nat({ max: 4 }), xml: fc.constantFrom("<w:u/>", "<w:bdr/>") }),
+        fc.record({
+          index: fc.nat({ max: 4 }),
+          xml: fc.constantFrom("<w:u/>", "<w:bdr/>"),
+        }),
         { maxLength: 2 },
       ),
     }),
@@ -215,15 +226,21 @@ describe("the identity's key", () => {
   test("a mark built by the factory keys the same however its payload was spelled", () => {
     fc.assert(
       fc.property(fc.nat({ max: 1000 }), payloadArbitrary, (id, payload) => {
-        const direct = schema.mark("runIdentity", runIdentityAttrs(id, payload));
+        const direct = schema.mark(
+          "runIdentity",
+          runIdentityAttrs(id, payload),
+        );
         // The same payload with its keys in the other order: what `JSON.parse`
         // hands back from a stored attrs object, and what the key class is.
         const reordered = schema.mark(
           "runIdentity",
           runIdentityAttrs(id, {
             preserved: payload.preserved,
-            preservedAttributes: payload.preservedAttributes?.map(({ value, name, namespace }) =>
-              namespace === undefined ? { value, name } : { value, name, namespace },
+            preservedAttributes: payload.preservedAttributes?.map(
+              ({ value, name, namespace }) =>
+                namespace === undefined
+                  ? { value, name }
+                  : { value, name, namespace },
             ),
           }),
         );
@@ -240,10 +257,14 @@ describe("the identity's key", () => {
         fc.nat({ max: 1000 }),
         payloadArbitrary.filter(
           ({ preservedAttributes, preserved }) =>
-            (preservedAttributes?.length ?? 0) > 0 || (preserved?.children?.length ?? 0) > 0,
+            (preservedAttributes?.length ?? 0) > 0 ||
+            (preserved?.children?.length ?? 0) > 0,
         ),
         (id, payload) => {
-          const source = schema.mark("runIdentity", runIdentityAttrs(id, payload));
+          const source = schema.mark(
+            "runIdentity",
+            runIdentityAttrs(id, payload),
+          );
           const pasted = throughTheDom([source]);
 
           // The id travels, so a copied page-break-bearing run still rejoins.
@@ -269,7 +290,9 @@ describe("the identity's key", () => {
           schema.text("x", [
             schema.mark(
               "runIdentity",
-              runIdentityAttrs(9, { preservedAttributes: [{ name: "rsidR", value: RSID }] }),
+              runIdentityAttrs(9, {
+                preservedAttributes: [{ name: "rsidR", value: RSID }],
+              }),
             ),
           ]),
         ]).content,

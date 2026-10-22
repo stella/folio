@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import JSZip from "jszip";
-import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./headless";
-import { createDocx } from "../docx/rezip";
-import { parseRelationships, RELATIONSHIP_TYPES } from "../docx/relsParser";
-import { createEmptyDocument } from "../utils/createDocument";
+
 import { compareDocx } from "../compare/compare";
+import { parseRelationships, RELATIONSHIP_TYPES } from "../docx/relsParser";
+import { createDocx } from "../docx/rezip";
+import { createEmptyDocument } from "../utils/createDocument";
+import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./headless";
 
 const sourceDocument = () => {
   const document = createEmptyDocument();
@@ -36,10 +37,17 @@ const sourceDocument = () => {
 };
 
 test("comparison story imports are empty, collision-safe, and captured by saves", async () => {
-  const source = await FolioDocxReviewer.fromBuffer(await createDocx(sourceDocument()));
-  const sourceHandle = source.listStories().find(({ handle }) => handle.type === "header")?.handle;
-  if (!sourceHandle || sourceHandle.type !== "header") throw new Error("Missing source header");
-  const destination = await FolioDocxReviewer.fromBuffer(await createDocx(createEmptyDocument()));
+  const source = await FolioDocxReviewer.fromBuffer(
+    await createDocx(sourceDocument()),
+  );
+  const sourceHandle = source
+    .listStories()
+    .find(({ handle }) => handle.type === "header")?.handle;
+  if (!sourceHandle || sourceHandle.type !== "header")
+    throw new Error("Missing source header");
+  const destination = await FolioDocxReviewer.fromBuffer(
+    await createDocx(createEmptyDocument()),
+  );
   const original = destination.toDocument();
   const access = getFolioDocxComparisonAccess(destination);
   const first = await access.createComparisonHeaderFooter(source, sourceHandle);
@@ -47,12 +55,17 @@ test("comparison story imports are empty, collision-safe, and captured by saves"
   expect(original.package.relationships?.has(first.relationshipId)).toBe(false);
   expect(destination.readStory(first)?.text).toBe("");
   const firstSave = destination.toBuffer();
-  const second = await access.createComparisonHeaderFooter(source, sourceHandle);
+  const second = await access.createComparisonHeaderFooter(
+    source,
+    sourceHandle,
+  );
   if (!second) throw new Error("Second header import refused");
   expect(second.relationshipId).not.toBe(first.relationshipId);
   expect(original.package.headers?.size ?? 0).toBe(0);
   const saved = await FolioDocxReviewer.fromBuffer(await firstSave);
-  expect(saved.listStories().filter(({ handle }) => handle.type === "header")).toHaveLength(1);
+  expect(
+    saved.listStories().filter(({ handle }) => handle.type === "header"),
+  ).toHaveLength(1);
   expect(saved.readStory(first)?.text).toBe("");
   expect(source.readStory(sourceHandle)?.text).toBe("Header text");
 });
@@ -65,11 +78,18 @@ test("comparison stages a new story's inherited formatting from another package"
     docDefaults: { rPr: { bold: true } },
   };
   const source = await FolioDocxReviewer.fromBuffer(await createDocx(document));
-  const sourceHandle = source.listStories().find(({ handle }) => handle.type === "header")?.handle;
-  if (!sourceHandle || sourceHandle.type !== "header") throw new Error("Missing source header");
-  const destination = await FolioDocxReviewer.fromBuffer(await createDocx(createEmptyDocument()));
+  const sourceHandle = source
+    .listStories()
+    .find(({ handle }) => handle.type === "header")?.handle;
+  if (!sourceHandle || sourceHandle.type !== "header")
+    throw new Error("Missing source header");
+  const destination = await FolioDocxReviewer.fromBuffer(
+    await createDocx(createEmptyDocument()),
+  );
   const access = getFolioDocxComparisonAccess(destination);
-  expect(await access.createComparisonHeaderFooter(source, sourceHandle)).not.toBeNull();
+  expect(
+    await access.createComparisonHeaderFooter(source, sourceHandle),
+  ).not.toBeNull();
   const result = access.stageTargetStyles({
     source,
     snapshots: [],
@@ -91,7 +111,9 @@ test("comparison rebinds an imported header's external hyperlink relationship", 
           type: "hyperlink",
           href: "https://example.test/imported-header-link",
           tooltip: "Imported header link",
-          children: [{ type: "run", content: [{ type: "text", text: "Linked header" }] }],
+          children: [
+            { type: "run", content: [{ type: "text", text: "Linked header" }] },
+          ],
         },
       ],
     },
@@ -116,17 +138,21 @@ test("comparison rebinds an imported header's external hyperlink relationship", 
     }
     const buffer = await reviewer.toBuffer();
     const reopened = await FolioDocxReviewer.fromBuffer(buffer);
-    expect(reopened.toDocument().package.headers?.size ?? 0).toBe(decision === "accept" ? 1 : 0);
+    expect(reopened.toDocument().package.headers?.size ?? 0).toBe(
+      decision === "accept" ? 1 : 0,
+    );
     if (decision === "reject") continue;
     const zip = await JSZip.loadAsync(buffer);
     const rels = Object.entries(zip.files).find(([path]) =>
       /^word\/_rels\/header\d+\.xml\.rels$/u.test(path),
     );
     if (!rels) throw new Error("Missing imported header relationships");
-    const relationship = [...parseRelationships(await rels[1].async("text")).values()].find(
-      ({ type }) => type === RELATIONSHIP_TYPES.hyperlink,
+    const relationship = [
+      ...parseRelationships(await rels[1].async("text")).values(),
+    ].find(({ type }) => type === RELATIONSHIP_TYPES.hyperlink);
+    expect(relationship?.target).toBe(
+      "https://example.test/imported-header-link",
     );
-    expect(relationship?.target).toBe("https://example.test/imported-header-link");
     expect(relationship?.targetMode).toBe("External");
   }
 });
@@ -154,7 +180,12 @@ test("comparison preserves an imported footer's empty hyperlink container", asyn
               {
                 type: "hyperlink",
                 href: "",
-                children: [{ type: "run", content: [{ type: "text", text: "Container text" }] }],
+                children: [
+                  {
+                    type: "run",
+                    content: [{ type: "text", text: "Container text" }],
+                  },
+                ],
               },
             ],
           },
@@ -182,7 +213,9 @@ test("comparison preserves an imported footer's empty hyperlink container", asyn
     }
     const buffer = await reviewer.toBuffer();
     const zip = await JSZip.loadAsync(buffer);
-    const footers = Object.keys(zip.files).filter((path) => /^word\/footer\d+\.xml$/u.test(path));
+    const footers = Object.keys(zip.files).filter((path) =>
+      /^word\/footer\d+\.xml$/u.test(path),
+    );
     expect(footers).toHaveLength(decision === "accept" ? 1 : 0);
     if (decision === "accept") {
       const footer = footers.at(0);

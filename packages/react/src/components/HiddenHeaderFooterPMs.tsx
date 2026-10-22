@@ -1,7 +1,12 @@
-import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
 /** Thin React binding for core's persistent header/footer editor manager. */
-
-import { forwardRef, memo, useEffect, useLayoutEffect, useImperativeHandle, useRef } from "react";
+import {
+  forwardRef,
+  memo,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import type { CSSProperties } from "react";
 
 import type { EditorView } from "prosemirror-view";
@@ -17,7 +22,12 @@ import type {
   HeaderFooterPartKind,
 } from "@stll/folio-core/controller/headerFooterEditorManager";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
-import type { Document, StyleDefinitions, Theme } from "@stll/folio-core/types/document";
+import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
+import type {
+  Document,
+  StyleDefinitions,
+  Theme,
+} from "@stll/folio-core/types/document";
 
 import "prosemirror-view/style/prosemirror.css";
 
@@ -62,83 +72,104 @@ const HOST_STYLES: CSSProperties = {
 
 /* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools. */
 export const HiddenHeaderFooterPMs = memo(
-  forwardRef<HiddenHeaderFooterPMsRef, HiddenHeaderFooterPMsProps>(function HiddenHeaderFooterPMs(
-    {
-      document,
-      readOnly,
-      styles,
-      theme,
-      onTransaction,
-      experimentalSession,
-      getCanonicalApi,
-      onSessionRefusal,
-    },
-    ref,
-  ) {
-    const hostRef = useRef<HTMLDivElement>(null);
-    const documentRef = useRef(document);
-    const readOnlyRef = useRef(readOnly);
-    const stylesRef = useRef(styles);
-    const themeRef = useRef(theme);
-    const onTransactionRef = useRef(onTransaction);
-    const canonicalApiRef = useRef(getCanonicalApi);
-    const sessionRef = useRef(experimentalSession);
-    const refusalRef = useRef(onSessionRefusal);
-
-    const managerRef = useRef<HeaderFooterEditorManager | null>(null);
-    useLayoutEffect(() => {
-      documentRef.current = document;
-      readOnlyRef.current = readOnly;
-      stylesRef.current = styles;
-      themeRef.current = theme;
-      onTransactionRef.current = onTransaction;
-      canonicalApiRef.current = getCanonicalApi;
-      sessionRef.current = experimentalSession;
-      refusalRef.current = onSessionRefusal;
-      managerRef.current ??= createHeaderFooterEditorManager({
-        getHost: () => hostRef.current,
-        getDocument: () => documentRef.current,
-        getReadOnly: () => readOnlyRef.current ?? false,
-        getStyles: () => stylesRef.current,
-        getTheme: () => themeRef.current,
-        getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
-        getExperimentalSession: () => sessionRef.current,
-        onSessionRefusal: (reason, gap, error) => refusalRef.current?.(reason, gap, error),
-        onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
-          onTransactionRef.current?.(rId, kind, view, docChanged, selectionChanged);
-        },
-      });
-      managerRef.current.sync();
-    }, [
-      document,
-      readOnly,
-      styles,
-      theme,
-      onTransaction,
-      getCanonicalApi,
-      experimentalSession,
-      onSessionRefusal,
-    ]);
-
-    useEffect(
-      () => () => {
-        managerRef.current?.destroy();
+  forwardRef<HiddenHeaderFooterPMsRef, HiddenHeaderFooterPMsProps>(
+    function HiddenHeaderFooterPMs(
+      {
+        document,
+        readOnly,
+        styles,
+        theme,
+        onTransaction,
+        experimentalSession,
+        getCanonicalApi,
+        onSessionRefusal,
       },
-      [],
-    );
-
-    useImperativeHandle(
       ref,
-      () => ({
-        getHostElement: () => hostRef.current,
-        getView: (rId) => managerRef.current?.getView(rId) ?? null,
-        listSlots: () => managerRef.current?.listSlots() ?? [],
-      }),
-      [],
-    );
+    ) {
+      const hostRef = useRef<HTMLDivElement>(null);
+      const documentRef = useRef(document);
+      const readOnlyRef = useRef(readOnly);
+      const stylesRef = useRef(styles);
+      const themeRef = useRef(theme);
+      const onTransactionRef = useRef(onTransaction);
+      const canonicalApiRef = useRef(getCanonicalApi);
+      const sessionRef = useRef(experimentalSession);
+      const refusalRef = useRef(onSessionRefusal);
 
-    return <div ref={hostRef} className="paged-editor__hidden-hf-pm" style={HOST_STYLES} />;
-  }),
+      const managerRef = useRef<HeaderFooterEditorManager | null>(null);
+      useLayoutEffect(() => {
+        documentRef.current = document;
+        readOnlyRef.current = readOnly;
+        stylesRef.current = styles;
+        themeRef.current = theme;
+        onTransactionRef.current = onTransaction;
+        canonicalApiRef.current = getCanonicalApi;
+        sessionRef.current = experimentalSession;
+        refusalRef.current = onSessionRefusal;
+        managerRef.current ??= createHeaderFooterEditorManager({
+          getHost: () => hostRef.current,
+          getDocument: () => documentRef.current,
+          getReadOnly: () => readOnlyRef.current ?? false,
+          getStyles: () => stylesRef.current,
+          getTheme: () => themeRef.current,
+          getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
+          getExperimentalSession: () => sessionRef.current,
+          onSessionRefusal: (reason, gap, error) =>
+            refusalRef.current?.(reason, gap, error),
+          onTransaction: ({
+            rId,
+            kind,
+            view,
+            docChanged,
+            selectionChanged,
+          }) => {
+            onTransactionRef.current?.(
+              rId,
+              kind,
+              view,
+              docChanged,
+              selectionChanged,
+            );
+          },
+        });
+        managerRef.current.sync();
+      }, [
+        document,
+        readOnly,
+        styles,
+        theme,
+        onTransaction,
+        getCanonicalApi,
+        experimentalSession,
+        onSessionRefusal,
+      ]);
+
+      useEffect(
+        () => () => {
+          managerRef.current?.destroy();
+        },
+        [],
+      );
+
+      useImperativeHandle(
+        ref,
+        () => ({
+          getHostElement: () => hostRef.current,
+          getView: (rId) => managerRef.current?.getView(rId) ?? null,
+          listSlots: () => managerRef.current?.listSlots() ?? [],
+        }),
+        [],
+      );
+
+      return (
+        <div
+          ref={hostRef}
+          className="paged-editor__hidden-hf-pm"
+          style={HOST_STYLES}
+        />
+      );
+    },
+  ),
 );
 /* eslint-enable prefer-arrow-callback */
 

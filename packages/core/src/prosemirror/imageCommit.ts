@@ -20,7 +20,8 @@ import { expectImageAttrs, mergeImageAttrs } from "./attrs";
  * and keep the aspect ratio; the 4 edge midpoints ('n'/'s'/'e'/'w') resize a
  * single axis so the user can deliberately stretch the image (break aspect).
  */
-export type ImageResizeHandle = "nw" | "ne" | "se" | "sw" | "n" | "s" | "e" | "w";
+export type ImageResizeHandle =
+  "nw" | "ne" | "se" | "sw" | "n" | "s" | "e" | "w";
 
 const MIN_IMAGE_PX = 20;
 const MAX_IMAGE_PX = 2000;
@@ -56,7 +57,8 @@ export function calculateResizedImageDimensions(
     newHeight = startHeight * scale;
   }
 
-  const clamp = (n: number) => Math.max(MIN_IMAGE_PX, Math.min(MAX_IMAGE_PX, n));
+  const clamp = (n: number) =>
+    Math.max(MIN_IMAGE_PX, Math.min(MAX_IMAGE_PX, n));
   return {
     width: drivesWidth ? clamp(newWidth) : startWidth,
     height: drivesHeight ? clamp(newHeight) : startHeight,
@@ -80,7 +82,8 @@ export function isFloatingImage(node: PMNode): boolean {
 function imageNodeAt(view: EditorView, pmPos: number): PMNode | null {
   const node = view.state.doc.nodeAt(pmPos);
   if (!node || node.type.name !== "image") return null;
-  if (!allowsDirectDrawingEdit(expectImageAttrs(node)._docxRawXmlMode)) return null;
+  if (!allowsDirectDrawingEdit(expectImageAttrs(node)._docxRawXmlMode))
+    return null;
   return node;
 }
 

@@ -4,6 +4,7 @@ import * as yjs from "yjs";
 
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion";
 import type { Document } from "@stll/folio-core/types/document";
+
 import { createHiddenEditorState } from "./HiddenProseMirror";
 
 const docWithoutParaIds = (): Document => ({
@@ -24,7 +25,9 @@ const docWithoutParaIds = (): Document => ({
   },
 });
 
-const collectParaIds = (state: ReturnType<typeof createHiddenEditorState>): string[] => {
+const collectParaIds = (
+  state: ReturnType<typeof createHiddenEditorState>,
+): string[] => {
   const ids: string[] = [];
   state.doc.descendants((node) => {
     if (node.type.name !== "paragraph") {
@@ -67,7 +70,10 @@ describe("createHiddenEditorState collaborative paraId allocation", () => {
   test("allocates paraIds when opening an existing collaborative fragment", () => {
     const ydoc = new yjs.Doc();
     const yXmlFragment = ydoc.get("prosemirror", yjs.XmlFragment);
-    yProseMirror.prosemirrorToYXmlFragment(toProseDoc(docWithoutParaIds()), yXmlFragment);
+    yProseMirror.prosemirrorToYXmlFragment(
+      toProseDoc(docWithoutParaIds()),
+      yXmlFragment,
+    );
 
     const state = createHiddenEditorState({
       document: null,

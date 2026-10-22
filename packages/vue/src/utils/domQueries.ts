@@ -15,10 +15,12 @@
  */
 
 import type { EditorView } from "prosemirror-view";
-import { findBodyPmSpans } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
+
 import { clickToPositionDom } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
-import { findWordBoundaries } from "./textSelection";
+import { findBodyPmSpans } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import { scrollPagesToPmPosition } from "@stll/folio-core/paged-layout/scrollToPmPosition";
+
+import { findWordBoundaries } from "./textSelection";
 
 /**
  * Resolve the painted header/footer instance nearest the viewport center — the
@@ -26,8 +28,12 @@ import { scrollPagesToPmPosition } from "@stll/folio-core/paged-layout/scrollToP
  * `r:id`), so the chrome outline must track the active page rather than snap to
  * page one's copy (mirrors core's `getHfDomSnapshot` host pick; #691).
  */
-export function nearestHfHostEl(position: "header" | "footer"): HTMLElement | null {
-  const hosts = window.document.querySelectorAll<HTMLElement>(`.layout-page-${position}`);
+export function nearestHfHostEl(
+  position: "header" | "footer",
+): HTMLElement | null {
+  const hosts = window.document.querySelectorAll<HTMLElement>(
+    `.layout-page-${position}`,
+  );
   const first = hosts[0];
   if (!first) return null;
   const vpCenter = window.innerHeight / 2;
@@ -70,7 +76,12 @@ export function findElementAtPosition(
   for (const el of els) {
     const start = Number(el.dataset["pmStart"]);
     const end = Number(el.dataset["pmEnd"]);
-    if (!Number.isNaN(start) && !Number.isNaN(end) && pmPos >= start && pmPos <= end) {
+    if (
+      !Number.isNaN(start) &&
+      !Number.isNaN(end) &&
+      pmPos >= start &&
+      pmPos <= end
+    ) {
       return el;
     }
   }

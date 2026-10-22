@@ -138,7 +138,10 @@
         <template v-else>{{ t("loadingDocument") }}</template>
       </slot>
     </div>
-    <div v-else-if="!isReady && !hasDocumentInput" class="docx-editor-vue__placeholder">
+    <div
+      v-else-if="!isReady && !hasDocumentInput"
+      class="docx-editor-vue__placeholder"
+    >
       <slot name="placeholder">
         <VNodeRenderer v-if="placeholder" :node="placeholder" />
         <template v-else>No document loaded</template>
@@ -149,8 +152,14 @@
       {{ refusalNotice }}
     </div>
 
-    <div ref="hiddenPmRef" class="docx-editor-vue__hidden-pm paged-editor__hidden-pm" />
-    <div ref="hiddenHfPmRef" class="docx-editor-vue__hidden-pm paged-editor__hidden-hf-pm" />
+    <div
+      ref="hiddenPmRef"
+      class="docx-editor-vue__hidden-pm paged-editor__hidden-pm"
+    />
+    <div
+      ref="hiddenHfPmRef"
+      class="docx-editor-vue__hidden-pm paged-editor__hidden-hf-pm"
+    />
 
     <div
       ref="panelsRowRef"
@@ -160,7 +169,9 @@
       :data-folio-comments="panelLayout.comments"
     >
       <DocumentOutline
-        v-if="panelLayout.outline === 'column' || panelLayout.outline === 'rail'"
+        v-if="
+          panelLayout.outline === 'column' || panelLayout.outline === 'rail'
+        "
         :headings="visibleOutlineHeadings"
         :available="outlineHeadings.length > 1"
         :outline-depth="outlineDepth"
@@ -211,7 +222,10 @@
 
           <!-- Vertical ruler — far-left gutter, does not track page centering
              (word-processor gutter convention). Mirrors React's placement. -->
-          <div v-if="rulerVisible && !readOnly" class="docx-editor-vue__ruler-v">
+          <div
+            v-if="rulerVisible && !readOnly"
+            class="docx-editor-vue__ruler-v"
+          >
             <VerticalRuler
               :section-props="currentSectionProps"
               :zoom="zoom"
@@ -246,7 +260,9 @@
                 ref="pagesRef"
                 :class="[
                   'docx-editor-vue__pages paged-editor__pages',
-                  hfEdit ? `paged-editor--hf-editing paged-editor--editing-${hfEdit.position}` : '',
+                  hfEdit
+                    ? `paged-editor--hf-editing paged-editor--editing-${hfEdit.position}`
+                    : '',
                 ]"
                 :style="pagesContainerStyle"
               />
@@ -334,7 +350,11 @@
             >
               <header class="docx-editor-vue__note-editor-header">
                 <span>{{ activeNoteStoryLabel }}</span>
-                <button type="button" :aria-label="t('common.closeDialog')" @click="closeNoteStory">
+                <button
+                  type="button"
+                  :aria-label="t('common.closeDialog')"
+                  @click="closeNoteStory"
+                >
                   ×
                 </button>
               </header>
@@ -365,8 +385,15 @@
               v-if="tableInsertButton"
               type="button"
               class="docx-editor-vue__table-insert-btn"
-              :style="{ left: tableInsertButton.x + 'px', top: tableInsertButton.y + 'px' }"
-              :aria-label="tableInsertButton.type === 'row' ? 'Insert row' : 'Insert column'"
+              :style="{
+                left: tableInsertButton.x + 'px',
+                top: tableInsertButton.y + 'px',
+              }"
+              :aria-label="
+                tableInsertButton.type === 'row'
+                  ? 'Insert row'
+                  : 'Insert column'
+              "
               @mousedown="handleTableInsertClick"
             >
               +
@@ -389,14 +416,18 @@
               :tracked-changes="trackedChanges"
               :show-resolved="true"
               :is-adding-comment="commentLifecycle.isAddingComment.value"
-              :add-comment-y-position="commentLifecycle.addCommentYPosition.value"
+              :add-comment-y-position="
+                commentLifecycle.addCommentYPosition.value
+              "
               :pages-container="pagesRef"
               :page-width-px="pageWidthPx"
               :zoom="zoom"
               :active-item-id="activeSidebarItem"
               @close="dismissComments"
               @dismiss="dismissComments"
-              @update:active-item-id="(id: string | null) => (activeSidebarItem = id)"
+              @update:active-item-id="
+                (id: string | null) => (activeSidebarItem = id)
+              "
               @add-comment="handleCommentAdd"
               @cancel-add-comment="commentLifecycle.handleCancelAddComment"
               @comment-reply="handleCommentReply"
@@ -476,29 +507,52 @@
       @close-image-context-menu="imageContextMenu = null"
       @open-image-properties="showImageProperties = true"
     />
-    <ContentControlWidgetsOverlay :event-root="readOnly ? null : pagesRef" :view="editorView" />
+    <ContentControlWidgetsOverlay
+      :event-root="readOnly ? null : pagesRef"
+      :view="editorView"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import {
-  CANONICAL_GAP,
-  usesCanonicalSession,
-  type CanonicalGap,
-  canonicalRefusalMessage,
-} from "@stll/folio-core/types/canonicalCapabilities";
-
-import {
   computed,
+  type FunctionalComponent,
   onBeforeUnmount,
   onMounted,
   ref,
   shallowRef,
-  watch,
-  type FunctionalComponent,
   type VNodeChild,
+  watch,
 } from "vue";
 
+import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
+import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
+import {
+  clearAllCaches,
+  resetCanvasContext,
+} from "@stll/folio-core/layout-bridge/engine/measuring";
+import {
+  getEditorReadOnlyReason,
+  isTrackChangesMode,
+  toggledTrackChangesMode,
+} from "@stll/folio-core/managers/EditorModeManager";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import {
+  DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
+  historyShortcutOwner,
+} from "@stll/folio-core/managers/editorShortcuts";
+import { reviewDisplayModeToDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
+import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
+import { twipsToPixels } from "@stll/folio-core/paged-layout/sectionGeometry";
+import {
+  computePanelLayout,
+  PANEL_METRICS,
+  type PanelOverlay,
+} from "@stll/folio-core/panel-layout";
 import {
   extractSelectionState,
   insertImageFromFile,
@@ -509,32 +563,25 @@ import {
 import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
-import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
-import { useTransientNotice } from "../composables/useTransientNotice";
-import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
-import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import {
-  DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
-  historyShortcutOwner,
-} from "@stll/folio-core/managers/editorShortcuts";
-import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
-import {
-  clearAllCaches,
-  resetCanvasContext,
-} from "@stll/folio-core/layout-bridge/engine/measuring";
-import { onFontsLoaded } from "@stll/folio-core/utils/fontLoader";
-import { twipsToPixels } from "@stll/folio-core/paged-layout/sectionGeometry";
-import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
-import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
-import {
-  computePanelLayout,
-  PANEL_METRICS,
-  type PanelOverlay,
-} from "@stll/folio-core/panel-layout";
+  CANONICAL_GAP,
+  type CanonicalGap,
+  canonicalRefusalMessage,
+  usesCanonicalSession,
+} from "@stll/folio-core/types/canonicalCapabilities";
 import type { Comment } from "@stll/folio-core/types/content";
-import type { Document, SectionProperties, Style } from "@stll/folio-core/types/document";
+import type {
+  Document,
+  SectionProperties,
+  Style,
+} from "@stll/folio-core/types/document";
+import type { FindResult } from "@stll/folio-core/utils/findReplace";
+import { onFontsLoaded } from "@stll/folio-core/utils/fontLoader";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
-import { DEFAULT_OUTLINE_DEPTH, filterHeadingsByDepth } from "@stll/folio-core/utils/outlineDepth";
+import {
+  DEFAULT_OUTLINE_DEPTH,
+  filterHeadingsByDepth,
+} from "@stll/folio-core/utils/outlineDepth";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import {
@@ -543,8 +590,33 @@ import {
   type Watermark,
 } from "@stll/folio-core/watermark";
 
+import { useColorMode } from "../composables/useColorMode";
+import { useCommentLifecycle } from "../composables/useCommentLifecycle";
+import { useCommentManagement } from "../composables/useCommentManagement";
+import { useContextMenus } from "../composables/useContextMenus";
+import { useDocumentLifecycle } from "../composables/useDocumentLifecycle";
+import { useDocxEditor } from "../composables/useDocxEditor";
+import { useDocxEditorRefApi } from "../composables/useDocxEditorRefApi";
+import { useFindReplace } from "../composables/useFindReplace";
+import { useFontLifecycle } from "../composables/useFontLifecycle";
+import { useFormattingActions } from "../composables/useFormattingActions";
+import { useHyperlinkManagement } from "../composables/useHyperlinkManagement";
+import { useImageActions } from "../composables/useImageActions";
+import { useKeyboardShortcuts } from "../composables/useKeyboardShortcuts";
+import { useOutlineSidebar } from "../composables/useOutlineSidebar";
+import { usePageSetupControls } from "../composables/usePageSetupControls";
+import { usePagesPointer } from "../composables/usePagesPointer";
+import { provideDocxPortalClass } from "../composables/usePortalClass";
+import { useRemoteSelectionSync } from "../composables/useRemoteSelectionSync";
+import { useSelectionSync } from "../composables/useSelectionSync";
+import { useTableResize } from "../composables/useTableResize";
+import { useTrackedChanges } from "../composables/useTrackedChanges";
+import { useTransientNotice } from "../composables/useTransientNotice";
+import { useZoom } from "../composables/useZoom";
+import { useTranslation } from "../i18n";
+import { provideFolioUI } from "../ui/folio-ui";
+import type { FontOption } from "../utils/fontOptions";
 import AnonymizationRectsOverlay from "./AnonymizationRectsOverlay.vue";
-import PassageHighlightOverlay from "./PassageHighlightOverlay.vue";
 import AutocompleteSuggestionOverlay from "./AutocompleteSuggestionOverlay.vue";
 import CommentMarginMarkers from "./CommentMarginMarkers.vue";
 import ContentControlWidgetsOverlay from "./ContentControlWidgetsOverlay.vue";
@@ -554,19 +626,13 @@ import DocxEditorDialogs from "./DocxEditor/DocxEditorDialogs.vue";
 import DocxEditorMenuBar from "./DocxEditor/DocxEditorMenuBar.vue";
 import DocxEditorOverlays from "./DocxEditor/DocxEditorOverlays.vue";
 import type { DocxEditorProps, EditorMode } from "./DocxEditor/types";
-import {
-  isTrackChangesMode,
-  getEditorReadOnlyReason,
-  toggledTrackChangesMode,
-} from "@stll/folio-core/managers/EditorModeManager";
-import { reviewDisplayModeToDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
-import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
-import ImageSelectionOverlay from "./ImageSelectionOverlay.vue";
 import HeaderFooterSelectionOverlay from "./HeaderFooterSelectionOverlay.vue";
+import ImageSelectionOverlay from "./ImageSelectionOverlay.vue";
 import InlineHeaderFooterEditor from "./InlineHeaderFooterEditor.vue";
 import PageIndicator from "./PageIndicator.vue";
-import TemplateDirectivesOverlay from "./TemplateDirectivesOverlay.vue";
+import PassageHighlightOverlay from "./PassageHighlightOverlay.vue";
 import type { TrackedChangeEntry } from "./sidebar/sidebarUtils";
+import TemplateDirectivesOverlay from "./TemplateDirectivesOverlay.vue";
 import Toolbar from "./Toolbar.vue";
 import HorizontalRuler from "./ui/HorizontalRuler.vue";
 import HyperlinkPopup from "./ui/HyperlinkPopup.vue";
@@ -574,33 +640,6 @@ import MaterialSymbol from "./ui/MaterialSymbol.vue";
 import TableToolbar from "./ui/TableToolbar.vue";
 import VerticalRuler from "./ui/VerticalRuler.vue";
 import UnifiedSidebar from "./UnifiedSidebar.vue";
-
-import { useCommentLifecycle } from "../composables/useCommentLifecycle";
-import { useCommentManagement } from "../composables/useCommentManagement";
-import { useColorMode } from "../composables/useColorMode";
-import { useContextMenus } from "../composables/useContextMenus";
-import { useDocumentLifecycle } from "../composables/useDocumentLifecycle";
-import { useDocxEditor } from "../composables/useDocxEditor";
-import { useFindReplace } from "../composables/useFindReplace";
-import type { FindResult } from "@stll/folio-core/utils/findReplace";
-import { useDocxEditorRefApi } from "../composables/useDocxEditorRefApi";
-import { useFormattingActions } from "../composables/useFormattingActions";
-import { useFontLifecycle } from "../composables/useFontLifecycle";
-import { useHyperlinkManagement } from "../composables/useHyperlinkManagement";
-import { useImageActions } from "../composables/useImageActions";
-import { useKeyboardShortcuts } from "../composables/useKeyboardShortcuts";
-import { useOutlineSidebar } from "../composables/useOutlineSidebar";
-import { usePageSetupControls } from "../composables/usePageSetupControls";
-import { usePagesPointer } from "../composables/usePagesPointer";
-import { useRemoteSelectionSync } from "../composables/useRemoteSelectionSync";
-import { useSelectionSync } from "../composables/useSelectionSync";
-import { provideDocxPortalClass } from "../composables/usePortalClass";
-import { useTableResize } from "../composables/useTableResize";
-import { useTrackedChanges } from "../composables/useTrackedChanges";
-import { useZoom } from "../composables/useZoom";
-import type { FontOption } from "../utils/fontOptions";
-import { useTranslation } from "../i18n";
-import { provideFolioUI } from "../ui/folio-ui";
 
 const props = withDefaults(defineProps<DocxEditorProps>(), {
   documentBuffer: null,
@@ -647,7 +686,10 @@ const isDark = useColorMode();
 provideDocxPortalClass(isDark);
 
 const canonicalAuthoritySession = computed(() =>
-  usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting),
+  usesCanonicalSession(
+    props.experimentalSession,
+    CANONICAL_GAP.authorityRouting,
+  ),
 );
 
 function notifyDocumentChange(doc: Document): void {
@@ -662,7 +704,8 @@ function notifyDocumentChange(doc: Document): void {
   emit("update:document", cloneDocumentWithParagraphPropertySources(doc));
 }
 
-const { message: refusalNotice, show: showRefusalNotice } = useTransientNotice();
+const { message: refusalNotice, show: showRefusalNotice } =
+  useTransientNotice();
 
 function reportEditorError(error: Error): void {
   if (CanonicalSessionRefusalError.is(error)) showRefusalNotice(error.message);
@@ -671,7 +714,12 @@ function reportEditorError(error: Error): void {
 }
 
 function refuseCanonicalModelEdit(gap: CanonicalGap, message: string): boolean {
-  if (!usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting))
+  if (
+    !usesCanonicalSession(
+      props.experimentalSession,
+      CANONICAL_GAP.authorityRouting,
+    )
+  )
     return false;
   const error = new CanonicalSessionRefusalError({
     gap,
@@ -736,12 +784,15 @@ const { t } = useTranslation();
 // so Vue patches the node in place instead of remounting the subtree on every
 // reactive tick (each `stateTick` bump). `props: ["node"]` consumes `node` as a
 // prop so it is not forwarded as a stray DOM attribute.
-const VNodeRenderer: FunctionalComponent<{ node: VNodeChild }> = ({ node }) => node;
+const VNodeRenderer: FunctionalComponent<{ node: VNodeChild }> = ({ node }) =>
+  node;
 VNodeRenderer.props = ["node"];
 
 // Whether the host supplied a document to load. Drives the loading-vs-placeholder
 // split while `isReady` is false (mirrors React's history.state gate).
-const hasDocumentInput = computed(() => props.documentBuffer != null || props.document != null);
+const hasDocumentInput = computed(
+  () => props.documentBuffer != null || props.document != null,
+);
 
 // True while a document is currently present (painted) — the Vue analogue of
 // React's truthy `history.state`, which tracks the *current* document, not a
@@ -799,7 +850,9 @@ const showTableProperties = ref(false);
 const showWatermark = ref(false);
 const showOutline = ref(props.showOutline);
 const outlineDepthState = ref<OutlineDepth>(DEFAULT_OUTLINE_DEPTH);
-const outlineDepth = computed(() => props.outlineDepth ?? outlineDepthState.value);
+const outlineDepth = computed(
+  () => props.outlineDepth ?? outlineDepthState.value,
+);
 const handleOutlineDepthChange = (depth: OutlineDepth) => {
   if (props.outlineDepth === undefined) outlineDepthState.value = depth;
   props.onOutlineDepthChange?.(depth);
@@ -899,10 +952,12 @@ const {
   collaboration: () => props.collaboration,
   // Anonymization highlights + template directives are driven by the overlay
   // components below; these thread the plugin callbacks and the directive gate.
-  onAnonymizationMatchesChange: (matches) => props.onAnonymizationMatchesChange?.(matches),
+  onAnonymizationMatchesChange: (matches) =>
+    props.onAnonymizationMatchesChange?.(matches),
   showTemplateDirectives: () => props.showTemplateDirectives,
   onSlashMenuChange: (state) => props.onSlashMenuChange?.(state),
-  onSlashMenuKeyAction: (action) => props.onSlashMenuKeyAction?.(action) ?? false,
+  onSlashMenuKeyAction: (action) =>
+    props.onSlashMenuKeyAction?.(action) ?? false,
   onChange: notifyDocumentChange,
   onError: reportEditorError,
   onSelectionUpdate: (state) => {
@@ -939,7 +994,12 @@ const {
 // disappear once the doc changes). Selection-only transactions keep the same
 // doc node, so they leave the highlight in place.
 watch(editorState, (next, prev) => {
-  if (passageHighlightRange.value !== null && next && prev && !next.doc.eq(prev.doc)) {
+  if (
+    passageHighlightRange.value !== null &&
+    next &&
+    prev &&
+    !next.doc.eq(prev.doc)
+  ) {
     passageHighlightRange.value = null;
   }
 });
@@ -974,7 +1034,10 @@ const showLoadingIndicator = computed(
   () =>
     !isReady.value &&
     hasDocumentInput.value &&
-    !(props.preserveDocumentWhileLoading === true && hasRenderedDocumentOnce.value),
+    !(
+      props.preserveDocumentWhileLoading === true &&
+      hasRenderedDocumentOnce.value
+    ),
 );
 
 // Font faces affect line measurement, so both embedded document fonts and
@@ -1006,7 +1069,12 @@ const {
   imageToolbarContext,
   handleToolbarImageWrap,
   handleImageTransform,
-} = useImageActions({ editorView: activeEditorView, zoom, stateTick, getCommands });
+} = useImageActions({
+  editorView: activeEditorView,
+  zoom,
+  stateTick,
+  getCommands,
+});
 
 const selectionSync = useSelectionSync({
   editorView,
@@ -1062,7 +1130,8 @@ const {
   readOnly,
   showHeaderFooterEditing: computed(() => props.showHeaderFooterEditing),
   getExperimentalSession: () => props.experimentalSession,
-  applyCanonicalOperations: (operations) => editor.applyCanonicalOperations(operations),
+  applyCanonicalOperations: (operations) =>
+    editor.applyCanonicalOperations(operations),
   zoom,
   layout,
   tableResize: {
@@ -1142,8 +1211,10 @@ const {
   // Host `custom:` entries perform edits, so drop them in read-only mode —
   // mirrors React, whose context-menu builder returns only copy/selectAll when
   // readOnly and never surfaces the custom list.
-  customContextMenuItems: () => (readOnly.value ? undefined : props.customContextMenuItems),
-  onCustomContextAction: (id, range) => props.onCustomContextAction?.(id, range),
+  customContextMenuItems: () =>
+    readOnly.value ? undefined : props.customContextMenuItems,
+  onCustomContextAction: (id, range) =>
+    props.onCustomContextAction?.(id, range),
   onCopy: () => props.onCopy?.(),
   onCut: () => props.onCut?.(),
   onPaste: () => props.onPaste?.(),
@@ -1154,7 +1225,9 @@ const {
 // stateTick. `entries` is core's TrackedChangeEntry, which the sidebar's
 // (re-exported) type now matches exactly, so no reconciliation is needed.
 const trackedChangesResult = useTrackedChanges(editorView, stateTick);
-const trackedChanges = computed<TrackedChangeEntry[]>(() => trackedChangesResult.value.entries);
+const trackedChanges = computed<TrackedChangeEntry[]>(
+  () => trackedChangesResult.value.entries,
+);
 
 // Comment thread state + mutation handlers (add/reply/resolve/accept/reject),
 // wired to core's comment ops. `onCommentsChange` fans out to the host prop and
@@ -1182,7 +1255,8 @@ const commentLifecycle = useCommentLifecycle({
   readOnly,
   createComment: commentManagement.createComment,
   pushComment: commentManagement.pushComment,
-  sessionKind: () => (canonicalAuthoritySession.value ? "canonical" : "prosemirror"),
+  sessionKind: () =>
+    canonicalAuthoritySession.value ? "canonical" : "prosemirror",
   createCanonicalComment: (text, range) => {
     const result = editor.applyCanonicalComment({
       type: "create",
@@ -1281,7 +1355,8 @@ const toolbarDynamicProps = computed(() => {
 });
 
 const pageWidthPx = computed(
-  () => twipsToPixels(currentSectionProps.value?.pageWidth ?? 12240) * zoom.value,
+  () =>
+    twipsToPixels(currentSectionProps.value?.pageWidth ?? 12240) * zoom.value,
 );
 
 const widestPageWidthPx = computed(() => {
@@ -1295,17 +1370,27 @@ const panelLayout = computed(() =>
   computePanelLayout({
     availableWidth: availablePanelWidth.value,
     pageWidth: widestPageWidthPx.value,
-    outline: showOutline.value && outlineHeadings.value.length > 1 ? "available" : "absent",
+    outline:
+      showOutline.value && outlineHeadings.value.length > 1
+        ? "available"
+        : "absent",
     comments: showSidebar.value ? "open" : "closed",
   }),
 );
 const commentsSurface = computed(() => {
   if (panelLayout.value.comments === "column") return "column";
-  if (panelLayout.value.comments === "drawer" && panelOverlay.value === "comments") return "drawer";
+  if (
+    panelLayout.value.comments === "drawer" &&
+    panelOverlay.value === "comments"
+  )
+    return "drawer";
   return null;
 });
 const openCommentThreadCount = computed(
-  () => comments.value.filter((comment) => !comment.done && comment.parentId == null).length,
+  () =>
+    comments.value.filter(
+      (comment) => !comment.done && comment.parentId == null,
+    ).length,
 );
 const editorAreaStyle = computed(() => ({
   minWidth:
@@ -1316,11 +1401,13 @@ const editorAreaStyle = computed(() => ({
 }));
 const pagesViewportStyle = computed(() => ({
   paddingLeft: PANEL_METRICS.pageMargin + "px",
-  paddingRight: PANEL_METRICS.pageMargin + panelLayout.value.commentsGutter + "px",
+  paddingRight:
+    PANEL_METRICS.pageMargin + panelLayout.value.commentsGutter + "px",
 }));
 const rulerStyle = computed(() => ({
   paddingLeft: PANEL_METRICS.pageMargin + "px",
-  paddingRight: PANEL_METRICS.pageMargin + panelLayout.value.commentsGutter + "px",
+  paddingRight:
+    PANEL_METRICS.pageMargin + panelLayout.value.commentsGutter + "px",
   minWidth:
     widestPageWidthPx.value +
     2 * PANEL_METRICS.pageMargin +
@@ -1352,7 +1439,8 @@ function updateActiveHeading(): void {
 }
 
 function dismissComments(): void {
-  if (commentLifecycle.isAddingComment.value) commentLifecycle.handleCancelAddComment();
+  if (commentLifecycle.isAddingComment.value)
+    commentLifecycle.handleCancelAddComment();
   showSidebar.value = false;
   activeSidebarItem.value = null;
   panelOverlay.value = "none";
@@ -1373,7 +1461,10 @@ function toggleComments(): void {
     computePanelLayout({
       availableWidth: availablePanelWidth.value,
       pageWidth: widestPageWidthPx.value,
-      outline: showOutline.value && outlineHeadings.value.length > 1 ? "available" : "absent",
+      outline:
+        showOutline.value && outlineHeadings.value.length > 1
+          ? "available"
+          : "absent",
       comments: "open",
     }).comments === "drawer"
   )
@@ -1391,13 +1482,21 @@ function handleOutlineNavigate(pmPos: number): void {
 }
 
 watch(panelLayout, (next) => {
-  if (panelOverlay.value === "outline" && next.outline !== "rail" && next.outline !== "drawer")
+  if (
+    panelOverlay.value === "outline" &&
+    next.outline !== "rail" &&
+    next.outline !== "drawer"
+  )
     panelOverlay.value = "none";
-  if (panelOverlay.value === "comments" && next.comments !== "drawer") panelOverlay.value = "none";
+  if (panelOverlay.value === "comments" && next.comments !== "drawer")
+    panelOverlay.value = "none";
 });
-watch([() => commentLifecycle.isAddingComment.value, panelLayout], ([adding, next]) => {
-  if (adding && next.comments === "drawer") panelOverlay.value = "comments";
-});
+watch(
+  [() => commentLifecycle.isAddingComment.value, panelLayout],
+  ([adding, next]) => {
+    if (adding && next.comments === "drawer") panelOverlay.value = "comments";
+  },
+);
 
 const resolvedCommentIds = computed(() => {
   const ids = new Set<number>();
@@ -1531,7 +1630,9 @@ const {
 const paragraphIndent = computed(() => {
   void stateTick.value;
   const view = activeEditorView.value;
-  const pf = view ? extractSelectionContext(view.state).paragraphFormatting : {};
+  const pf = view
+    ? extractSelectionContext(view.state).paragraphFormatting
+    : {};
   return {
     indentLeft: pf.indentLeft ?? 0,
     indentRight: pf.indentRight ?? 0,
@@ -1709,7 +1810,11 @@ watch(
   (ready) => {
     if (ready) return;
     initialScrollAppliedRef.value = false;
-    scrollEditorTo(editorScrollRef.value, { top: 0, left: 0, behavior: "instant" });
+    scrollEditorTo(editorScrollRef.value, {
+      top: 0,
+      left: 0,
+      behavior: "instant",
+    });
   },
   { flush: "sync" },
 );
@@ -1743,7 +1848,12 @@ watch(isReady, (ready) => {
 // Seeding the comments and marking the document ready can settle in either
 // order. Watch both so an open thread auto-opens exactly once per load.
 watch([isReady, openCommentThreadCount], ([ready, count]) => {
-  if (!ready || count === 0 || props.autoOpenReviewSidebar === false || sidebarAutoOpenedRef.value)
+  if (
+    !ready ||
+    count === 0 ||
+    props.autoOpenReviewSidebar === false ||
+    sidebarAutoOpenedRef.value
+  )
     return;
   sidebarAutoOpenedRef.value = true;
   showSidebar.value = true;
@@ -1811,7 +1921,8 @@ const documentSearch = useFindReplace({
     const comment = comments.value.find(({ id }) => id === commentId);
     activeSidebarItem.value = `comment-${comment?.parentId ?? commentId}`;
     showSidebar.value = true;
-    if (panelLayout.value.comments === "drawer") panelOverlay.value = "comments";
+    if (panelLayout.value.comments === "drawer")
+      panelOverlay.value = "comments";
   },
   displayMode,
   readOnly,
@@ -1854,13 +1965,19 @@ const { exposed } = useDocxEditorRefApi({
   },
   author: () => props.author,
   // Mint during the held operation, then publish applied comments after commit.
-  createAIEditComment: (text, author) => commentManagement.createComment(text, undefined, author),
+  createAIEditComment: (text, author) =>
+    commentManagement.createComment(text, undefined, author),
   publishAIEditComments: (nextComments) => {
     commentManagement.appendComments(nextComments);
   },
   getComments: () =>
-    usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting)
-      ? commentManagement.comments.value.map((comment) => structuredClone(comment))
+    usesCanonicalSession(
+      props.experimentalSession,
+      CANONICAL_GAP.authorityRouting,
+    )
+      ? commentManagement.comments.value.map((comment) =>
+          structuredClone(comment),
+        )
       : commentManagement.comments.value,
   setComments: (nextComments) => {
     commentManagement.setComments(nextComments);
@@ -1873,7 +1990,8 @@ const { exposed } = useDocxEditorRefApi({
     const note = activeNoteStory.value;
     if (note) return { kind: note.kind, id: note.noteId };
     const headerFooter = hfEdit.value;
-    if (headerFooter?.rId) return { kind: headerFooter.position, rId: headerFooter.rId };
+    if (headerFooter?.rId)
+      return { kind: headerFooter.position, rId: headerFooter.rId };
     return "main";
   },
   closeNoteStory,
@@ -1889,7 +2007,10 @@ const { exposed } = useDocxEditorRefApi({
 const activeHistoryAvailability = computed(() => {
   void stateTick.value;
   const paged = exposed.getEditorRef();
-  return { canUndo: paged?.canUndo() ?? false, canRedo: paged?.canRedo() ?? false };
+  return {
+    canUndo: paged?.canUndo() ?? false,
+    canRedo: paged?.canRedo() ?? false,
+  };
 });
 
 function undoActiveStory(): void {

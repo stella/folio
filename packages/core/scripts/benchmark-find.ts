@@ -1,12 +1,15 @@
-/** Run with Bun: selects the largest fixture by uncompressed document.xml bytes. */
-import { resolve, relative } from "node:path";
-import JSZip from "jszip";
 import { panic } from "better-result";
+import JSZip from "jszip";
+/** Run with Bun: selects the largest fixture by uncompressed document.xml bytes. */
+import { relative, resolve } from "node:path";
 
 import { parseDocx } from "../src/docx/parser";
 import { toProseDoc } from "../src/prosemirror/conversion/toProseDoc";
-import { createDefaultFindOptions, findInDocument } from "../src/utils/findReplace";
 import { resolveDocumentFindRanges } from "../src/utils/findMatchView";
+import {
+  createDefaultFindOptions,
+  findInDocument,
+} from "../src/utils/findReplace";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const fixtureRoots = [
@@ -17,17 +20,26 @@ const fixtureRoots = [
 const query = process.argv.at(2) ?? "a";
 const sampleCount = 15;
 
-type FixtureCandidate = { path: string; documentXmlBytes: number; compressedBytes: number };
+type FixtureCandidate = {
+  path: string;
+  documentXmlBytes: number;
+  compressedBytes: number;
+};
 let largest: FixtureCandidate | null = null;
 let fixtureCount = 0;
 for (const directory of fixtureRoots) {
   const glob = new Bun.Glob("**/*.docx");
-  for await (const path of glob.scan({ cwd: resolve(repositoryRoot, directory), absolute: true })) {
+  for await (const path of glob.scan({
+    cwd: resolve(repositoryRoot, directory),
+    absolute: true,
+  })) {
     const bytes = await Bun.file(path).arrayBuffer();
     const zip = await JSZip.loadAsync(bytes);
     const documentXml = zip.file("word/document.xml");
     if (!documentXml)
-      panic("Fixture has no document.xml", { fixture: relative(repositoryRoot, path) });
+      panic("Fixture has no document.xml", {
+        fixture: relative(repositoryRoot, path),
+      });
     const documentXmlBytes = (await documentXml.async("uint8array")).length;
     fixtureCount++;
     if (!largest || documentXmlBytes > largest.documentXmlBytes) {

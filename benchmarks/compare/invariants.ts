@@ -8,8 +8,11 @@
  */
 
 import { compareDocx } from "@stll/folio-core";
+import type {
+  CompareChange,
+  CompareDocxOptions,
+} from "@stll/folio-core/compare/types";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
-import type { CompareChange, CompareDocxOptions } from "@stll/folio-core/compare/types";
 
 import { equivalentNumberingAliases } from "./numbering-equivalence";
 import type { PackageValidator } from "./validator";
@@ -61,7 +64,9 @@ export type InvariantOutcome =
 
 const sha256 = async (buffer: ArrayBuffer): Promise<string> => {
   const digest = await crypto.subtle.digest("SHA-256", buffer);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 };
 
 const sha256Text = async (text: string): Promise<string> =>
@@ -84,7 +89,10 @@ export const digestsOf = async (
 
 type ResolveView = "accept" | "reject";
 
-const resolvedBufferOf = async (redlined: ArrayBuffer, view: ResolveView): Promise<ArrayBuffer> => {
+const resolvedBufferOf = async (
+  redlined: ArrayBuffer,
+  view: ResolveView,
+): Promise<ArrayBuffer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(redlined);
   if (view === "accept") {
     reviewer.acceptAll();
@@ -103,7 +111,8 @@ type ChangeCount = { changes: readonly CompareChange[] } | { error: string };
  * round trip would demand that accepting a redline change a part the redline
  * never touched.
  */
-const isRepresentable = ({ kind }: CompareChange): boolean => kind !== "numbering";
+const isRepresentable = ({ kind }: CompareChange): boolean =>
+  kind !== "numbering";
 
 const changeCountBetween = async (
   left: ArrayBuffer,
@@ -143,7 +152,8 @@ const checkRoundTrip = async ({
   view,
   options,
 }: RoundTripOptions): Promise<InvariantOutcome> => {
-  const invariant: Invariant = view === "accept" ? "accept-returns-target" : "reject-returns-base";
+  const invariant: Invariant =
+    view === "accept" ? "accept-returns-target" : "reject-returns-base";
   const outcome = await changeCountBetween(original, resolved, options);
   if ("error" in outcome) {
     return { invariant, status: "failed", detail: outcome.error };
@@ -153,7 +163,9 @@ const checkRoundTrip = async ({
     outcome.changes.some(isNumberingAliasChange) &&
     (await equivalentNumberingAliases(original, resolved))
   ) {
-    remaining = outcome.changes.filter((change) => !isNumberingAliasChange(change)).length;
+    remaining = outcome.changes.filter(
+      (change) => !isNumberingAliasChange(change),
+    ).length;
   }
   return remaining === 0
     ? { invariant, status: "passed" }
@@ -173,7 +185,11 @@ const classificationsOf = async (buffer: ArrayBuffer): Promise<string[]> => {
   return reviewer
     .getContent()
     .map(({ kind, headingLevel, styleId }) =>
-      [kind, headingLevel === undefined ? "-" : String(headingLevel), styleId ?? "-"].join(" "),
+      [
+        kind,
+        headingLevel === undefined ? "-" : String(headingLevel),
+        styleId ?? "-",
+      ].join(" "),
     );
 };
 
@@ -189,7 +205,9 @@ const checkClassification = async ({
   view,
 }: ResolvedCheckOptions): Promise<InvariantOutcome> => {
   const invariant: Invariant =
-    view === "accept" ? "accept-keeps-target-classification" : "reject-keeps-base-classification";
+    view === "accept"
+      ? "accept-keeps-target-classification"
+      : "reject-keeps-base-classification";
   const expected = await classificationsOf(original);
   const actual = await classificationsOf(resolved);
   if (actual.length !== expected.length) {
@@ -199,7 +217,9 @@ const checkClassification = async ({
       detail: `${String(actual.length)} blocks against ${String(expected.length)}`,
     };
   }
-  const index = expected.findIndex((entry, position) => entry !== actual[position]);
+  const index = expected.findIndex(
+    (entry, position) => entry !== actual[position],
+  );
   return index === -1
     ? { invariant, status: "passed" }
     : {
@@ -242,13 +262,18 @@ const differenceIsReported = ({
  * markup view so ids are the ones a consumer would see, rather than the ones
  * the engine believes it allocated.
  */
-const revisionIdsAreUnique = async (redlined: ArrayBuffer): Promise<InvariantOutcome> => {
+const revisionIdsAreUnique = async (
+  redlined: ArrayBuffer,
+): Promise<InvariantOutcome> => {
   const invariant: Invariant = "revision-ids-are-unique";
   const reviewer = await FolioDocxReviewer.fromBuffer(redlined);
   const seen = new Map<number, string>();
   const collisions: string[] = [];
   for (const { handle } of reviewer.listStories()) {
-    const story = reviewer.readReviewedStory({ story: handle, view: "current-markup" });
+    const story = reviewer.readReviewedStory({
+      story: handle,
+      view: "current-markup",
+    });
     const label = JSON.stringify(handle);
     for (const { id } of story?.changes ?? []) {
       const owner = seen.get(id);
@@ -261,7 +286,11 @@ const revisionIdsAreUnique = async (redlined: ArrayBuffer): Promise<InvariantOut
   }
   return collisions.length === 0
     ? { invariant, status: "passed" }
-    : { invariant, status: "failed", detail: collisions.slice(0, 5).join(" | ") };
+    : {
+        invariant,
+        status: "failed",
+        detail: collisions.slice(0, 5).join(" | "),
+      };
 };
 
 const selfCompareIsEmpty = (outcome: ChangeCount): InvariantOutcome => {
@@ -281,7 +310,11 @@ const selfCompareIsEmpty = (outcome: ChangeCount): InvariantOutcome => {
 const schemaValidity = (errors: readonly string[] | null): InvariantOutcome => {
   const invariant: Invariant = "schema-validity";
   if (errors === null) {
-    return { invariant, status: "skipped", detail: "no Open XML SDK validator on this machine" };
+    return {
+      invariant,
+      status: "skipped",
+      detail: "no Open XML SDK validator on this machine",
+    };
   }
   return errors.length === 0
     ? { invariant, status: "passed" }
@@ -320,15 +353,35 @@ export const checkInvariants = async ({
   const rejected = await resolvedBufferOf(redlined, "reject");
   const accepted = await resolvedBufferOf(redlined, "accept");
   const outcomes: InvariantOutcome[] = [
-    await checkRoundTrip({ original: base, resolved: rejected, view: "reject", options }),
-    await checkRoundTrip({ original: target, resolved: accepted, view: "accept", options }),
-    await checkClassification({ original: base, resolved: rejected, view: "reject" }),
-    await checkClassification({ original: target, resolved: accepted, view: "accept" }),
+    await checkRoundTrip({
+      original: base,
+      resolved: rejected,
+      view: "reject",
+      options,
+    }),
+    await checkRoundTrip({
+      original: target,
+      resolved: accepted,
+      view: "accept",
+      options,
+    }),
+    await checkClassification({
+      original: base,
+      resolved: rejected,
+      view: "reject",
+    }),
+    await checkClassification({
+      original: target,
+      resolved: accepted,
+      view: "accept",
+    }),
   ];
 
   outcomes.push(differenceIsReported({ expectation, changes, unsupported }));
 
-  outcomes.push(selfCompareIsEmpty(await changeCountBetween(base, base, options)));
+  outcomes.push(
+    selfCompareIsEmpty(await changeCountBetween(base, base, options)),
+  );
 
   outcomes.push(await revisionIdsAreUnique(redlined));
 
@@ -341,7 +394,10 @@ export const checkInvariants = async ({
       detail: `${repeated.error.name}: ${repeated.error.message}`,
     });
   } else {
-    const again = await digestsOf(repeated.value.buffer, repeated.value.changes);
+    const again = await digestsOf(
+      repeated.value.buffer,
+      repeated.value.changes,
+    );
     outcomes.push(
       again.buffer === digests.buffer && again.changes === digests.changes
         ? { invariant: "byte-determinism", status: "passed" }

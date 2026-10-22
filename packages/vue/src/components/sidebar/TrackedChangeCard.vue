@@ -19,13 +19,23 @@
       <Avatar :name="authorName" :size="32" />
       <div class="tc-card__author-block">
         <div class="tc-card__author">{{ authorName }}</div>
-        <div v-if="change.date" class="tc-card__date">{{ formatDate(change.date) }}</div>
+        <div v-if="change.date" class="tc-card__date">
+          {{ formatDate(change.date) }}
+        </div>
       </div>
       <div v-if="expanded" class="tc-card__actions">
-        <button class="tc-card__icon-btn" :title="t('acceptChange')" @click.stop="onAccept">
+        <button
+          class="tc-card__icon-btn"
+          :title="t('acceptChange')"
+          @click.stop="onAccept"
+        >
           <MaterialSymbol name="check" :size="20" />
         </button>
-        <button class="tc-card__icon-btn" :title="t('rejectChange')" @click.stop="onReject">
+        <button
+          class="tc-card__icon-btn"
+          :title="t('rejectChange')"
+          @click.stop="onReject"
+        >
           <MaterialSymbol name="close" :size="20" />
         </button>
       </div>
@@ -38,7 +48,9 @@
           >&quot;{{ truncateText(change.deletedText || "") }}&quot;</span
         >
         {{ t("trackedChanges.with") }}
-        <span class="tc-card__inserted">&quot;{{ truncateText(change.text) }}&quot;</span>
+        <span class="tc-card__inserted"
+          >&quot;{{ truncateText(change.text) }}&quot;</span
+        >
       </template>
       <template v-else-if="change.type === 'paragraphMarkInsertion'">
         {{ t("revisions.paragraphMarkInserted")
@@ -59,9 +71,11 @@
         >
       </template>
       <template v-else-if="propertyRevision">
-        <span v-if="propertyRevision.shape === 'label-only'" class="tc-card__changed">{{
-          propertyRevision.label
-        }}</span>
+        <span
+          v-if="propertyRevision.shape === 'label-only'"
+          class="tc-card__changed"
+          >{{ propertyRevision.label }}</span
+        >
         <template v-else
           >{{ propertyRevision.label
           }}<template v-if="change.text"
@@ -97,14 +111,22 @@
         <span class="tc-card__changed">{{ t("revisions.cellMerged") }}</span>
       </template>
       <template v-else-if="change.type === 'tableInserted'">
-        <span class="tc-card__inserted">{{ t("revisions.tableInserted") }}</span>
+        <span class="tc-card__inserted">{{
+          t("revisions.tableInserted")
+        }}</span>
       </template>
       <template v-else-if="change.type === 'tableDeleted'">
         <span class="tc-card__deleted">{{ t("revisions.tableDeleted") }}</span>
       </template>
       <template v-else>
         {{ change.type === "insertion" ? t("inserted") : t("deleted") }}
-        <span :class="change.type === 'insertion' ? 'tc-card__inserted' : 'tc-card__deleted'">
+        <span
+          :class="
+            change.type === 'insertion'
+              ? 'tc-card__inserted'
+              : 'tc-card__deleted'
+          "
+        >
           &quot;{{ truncateText(change.text) }}&quot;
         </span>
       </template>
@@ -124,15 +146,17 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { Comment } from "@stll/folio-core/types/content";
+
 import type { PropertyRevisionCarrier } from "@stll/folio-core/prosemirror/revisionCarriers";
+import type { Comment } from "@stll/folio-core/types/content";
+
+import { useTranslation } from "../../i18n";
+import MaterialSymbol from "../ui/MaterialSymbol.vue";
+import Avatar from "./Avatar.vue";
+import ReplyInput from "./ReplyInput.vue";
+import ReplyThread from "./ReplyThread.vue";
 import type { TrackedChangeEntry } from "./sidebarUtils";
 import { formatDate, truncateText } from "./sidebarUtils";
-import Avatar from "./Avatar.vue";
-import MaterialSymbol from "../ui/MaterialSymbol.vue";
-import ReplyThread from "./ReplyThread.vue";
-import ReplyInput from "./ReplyInput.vue";
-import { useTranslation } from "../../i18n";
 
 const { t } = useTranslation();
 
@@ -151,7 +175,9 @@ const emit = defineEmits<{
   (e: "reply", revisionId: number, text: string): void;
 }>();
 
-const authorName = computed(() => props.change.author || t("trackedChanges.unknown"));
+const authorName = computed(
+  () => props.change.author || t("trackedChanges.unknown"),
+);
 
 /**
  * How each tracked property revision reads on a card: a paragraph's quotes the
@@ -164,14 +190,26 @@ const PROPERTY_REVISION_CARDS = {
     shape: "with-text",
     key: "revisions.paragraphPropertiesChanged",
   },
-  sectionPropertiesChanged: { shape: "with-text", key: "revisions.sectionPropertiesChanged" },
-  tablePropertiesChanged: { shape: "label-only", key: "revisions.tablePropertiesChanged" },
+  sectionPropertiesChanged: {
+    shape: "with-text",
+    key: "revisions.sectionPropertiesChanged",
+  },
+  tablePropertiesChanged: {
+    shape: "label-only",
+    key: "revisions.tablePropertiesChanged",
+  },
   tablePropertyExceptionsChanged: {
     shape: "label-only",
     key: "revisions.tablePropertyExceptionsChanged",
   },
-  rowPropertiesChanged: { shape: "label-only", key: "revisions.rowPropertiesChanged" },
-  cellPropertiesChanged: { shape: "label-only", key: "revisions.cellPropertiesChanged" },
+  rowPropertiesChanged: {
+    shape: "label-only",
+    key: "revisions.rowPropertiesChanged",
+  },
+  cellPropertiesChanged: {
+    shape: "label-only",
+    key: "revisions.cellPropertiesChanged",
+  },
 } as const satisfies Record<
   PropertyRevisionCarrier,
   { shape: "with-text" | "label-only"; key: string }
@@ -192,7 +230,10 @@ const propertyRevision = computed(() => {
 // (author, date) coalescing.
 function allRevisionIds(): number[] {
   const ids = new Set<number>([props.change.revisionId]);
-  if (props.change.type === "replacement" && props.change.insertionRevisionId != null) {
+  if (
+    props.change.type === "replacement" &&
+    props.change.insertionRevisionId != null
+  ) {
     ids.add(props.change.insertionRevisionId);
   }
   for (const id of props.change.coalescedRevisionIds ?? []) ids.add(id);

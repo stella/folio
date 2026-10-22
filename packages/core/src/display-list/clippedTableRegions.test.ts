@@ -6,7 +6,11 @@ import {
   withFakeTextMeasure,
 } from "../layout-engine/measure/__tests__/fakeTextMeasure";
 import { measureBlocks } from "../layout-engine/measure/measureBlocks";
-import type { FlowBlock, PageMargins, TableBlock } from "../layout-engine/types";
+import type {
+  FlowBlock,
+  PageMargins,
+  TableBlock,
+} from "../layout-engine/types";
 import type { BlockLookup } from "../layout-painter/index";
 import { buildDisplayList } from "./build/buildDisplayList";
 import { renderDisplayPageToDom } from "./dom/renderDisplayListToDom";
@@ -47,10 +51,14 @@ const createStubElement = (): StubElement => {
 
 // SAFETY: the renderer touches only createElement plus the element properties
 // StubElement declares; nothing here reaches the rest of the DOM API.
-const stubDocument = () => ({ createElement: createStubElement }) as unknown as Document;
+const stubDocument = () =>
+  ({ createElement: createStubElement }) as unknown as Document;
 const asStub = (element: HTMLElement) => element as unknown as StubElement;
 
-const findByClass = (element: StubElement, className: string): StubElement | undefined => {
+const findByClass = (
+  element: StubElement,
+  className: string,
+): StubElement | undefined => {
   if (element.className.split(" ").includes(className)) {
     return element;
   }
@@ -68,10 +76,14 @@ const findAll = (
   predicate: (candidate: StubElement) => boolean,
 ): StubElement[] => {
   const matches = predicate(element) ? [element] : [];
-  return matches.concat(element.children.flatMap((child) => findAll(child, predicate)));
+  return matches.concat(
+    element.children.flatMap((child) => findAll(child, predicate)),
+  );
 };
 
-const flattenRegions = (regions: readonly DisplayHitRegion[]): DisplayHitRegion[] =>
+const flattenRegions = (
+  regions: readonly DisplayHitRegion[],
+): DisplayHitRegion[] =>
   regions.flatMap((region) => [region, ...flattenRegions(region.children)]);
 
 test("clipped table-row continuations keep editing regions", () => {
@@ -94,7 +106,9 @@ test("clipped table-row continuations keep editing regions", () => {
                   {
                     kind: "paragraph",
                     id: "header-paragraph",
-                    runs: [{ kind: "text", text: "Header", pmStart: 1, pmEnd: 7 }],
+                    runs: [
+                      { kind: "text", text: "Header", pmStart: 1, pmEnd: 7 },
+                    ],
                     pmStart: 0,
                     pmEnd: 8,
                   },
@@ -108,7 +122,9 @@ test("clipped table-row continuations keep editing regions", () => {
               {
                 id: "body-cell",
                 padding: { top: 0, right: 0, bottom: 0, left: 0 },
-                borders: { bottom: { width: 2, style: "solid", color: "#123456" } },
+                borders: {
+                  bottom: { width: 2, style: "solid", color: "#123456" },
+                },
                 blocks: [
                   {
                     kind: "paragraph",
@@ -136,12 +152,16 @@ test("clipped table-row continuations keep editing regions", () => {
         [String(table.id), { block: table, measure: measures[0]! }],
       ]);
       const list = buildDisplayList({
-        layout: layoutDocument(blocks, measures, { pageSize: { w: 100, h: 100 }, margins }),
+        layout: layoutDocument(blocks, measures, {
+          pageSize: { w: 100, h: 100 },
+          margins,
+        }),
         blockLookup,
       });
       const pageIndex = list.pages.findIndex(
         (page, index) =>
-          index > 0 && page.primitives.some((primitive) => primitive.kind === "clipGroup"),
+          index > 0 &&
+          page.primitives.some((primitive) => primitive.kind === "clipGroup"),
       );
       expect(pageIndex).toBeGreaterThan(0);
       const page = list.pages[pageIndex];
@@ -149,7 +169,9 @@ test("clipped table-row continuations keep editing regions", () => {
       if (page === undefined) {
         return;
       }
-      const clipPrimitive = page.primitives.find((primitive) => primitive.kind === "clipGroup");
+      const clipPrimitive = page.primitives.find(
+        (primitive) => primitive.kind === "clipGroup",
+      );
       expect(clipPrimitive?.kind).toBe("clipGroup");
       if (clipPrimitive?.kind !== "clipGroup") {
         return;
@@ -176,10 +198,13 @@ test("clipped table-row continuations keep editing regions", () => {
         (region) => region.kind === "tableRow" && region.model?.rowIndex === 1,
       );
       const paragraphRegion = clipRegions.find(
-        (region) => region.kind === "paragraph" && region.model?.blockId === "body-paragraph",
+        (region) =>
+          region.kind === "paragraph" &&
+          region.model?.blockId === "body-paragraph",
       );
       const lineRegion = clipRegions.find(
-        (region) => region.kind === "line" && region.model?.blockId === "body-paragraph",
+        (region) =>
+          region.kind === "line" && region.model?.blockId === "body-paragraph",
       );
       expect(tableRegion).toBeDefined();
       expect(rowRegion).toBeDefined();
@@ -203,14 +228,16 @@ test("clipped table-row continuations keep editing regions", () => {
         }),
       );
       const pageContent = findByClass(rendered, "layout-page-content");
-      const tableElement = pageContent && findByClass(pageContent, "layout-table");
+      const tableElement =
+        pageContent && findByClass(pageContent, "layout-table");
       expect(tableElement).toBeDefined();
       if (tableElement === undefined) {
         return;
       }
       const clips = findAll(
         tableElement,
-        (element) => element !== tableElement && element.style.overflow === "hidden",
+        (element) =>
+          element !== tableElement && element.style.overflow === "hidden",
       );
       expect(clips).toHaveLength(1);
       const clip = clips[0];
@@ -218,8 +245,12 @@ test("clipped table-row continuations keep editing regions", () => {
       if (clip === undefined) {
         return;
       }
-      expect(clip.style.left).toBe(`${clipPrimitive.rect.xPx - tableRegion.rect.xPx}px`);
-      expect(clip.style.top).toBe(`${clipPrimitive.rect.yPx - tableRegion.rect.yPx}px`);
+      expect(clip.style.left).toBe(
+        `${clipPrimitive.rect.xPx - tableRegion.rect.xPx}px`,
+      );
+      expect(clip.style.top).toBe(
+        `${clipPrimitive.rect.yPx - tableRegion.rect.yPx}px`,
+      );
 
       const row = findByClass(clip, "layout-table-row");
       expect(row).toBeDefined();
@@ -227,8 +258,12 @@ test("clipped table-row continuations keep editing regions", () => {
         return;
       }
       expect(row.dataset).toMatchObject({ rowIndex: "1" });
-      expect(row.style.left).toBe(`${rowRegion.rect.xPx - clipPrimitive.rect.xPx}px`);
-      expect(row.style.top).toBe(`${rowRegion.rect.yPx - clipPrimitive.rect.yPx}px`);
+      expect(row.style.left).toBe(
+        `${rowRegion.rect.xPx - clipPrimitive.rect.xPx}px`,
+      );
+      expect(row.style.top).toBe(
+        `${rowRegion.rect.yPx - clipPrimitive.rect.yPx}px`,
+      );
       expect(findByClass(clip, "layout-table-cell")?.dataset).toMatchObject({
         rowIndex: "1",
         columnIndex: "0",
@@ -247,8 +282,12 @@ test("clipped table-row continuations keep editing regions", () => {
         pmEnd: String(lineRegion.model.pmRange.end),
         story: "body",
       });
-      expect(line.style.left).toBe(`${lineRegion.rect.xPx - paragraphRegion.rect.xPx}px`);
-      expect(line.style.top).toBe(`${lineRegion.rect.yPx - paragraphRegion.rect.yPx}px`);
+      expect(line.style.left).toBe(
+        `${lineRegion.rect.xPx - paragraphRegion.rect.xPx}px`,
+      );
+      expect(line.style.top).toBe(
+        `${lineRegion.rect.yPx - paragraphRegion.rect.yPx}px`,
+      );
 
       const headerRows = findAll(
         rendered,
@@ -257,9 +296,9 @@ test("clipped table-row continuations keep editing regions", () => {
           element.dataset["rowIndex"] === "0",
       );
       expect(headerRows).toHaveLength(1);
-      expect(findByClass(clip, "layout-paragraph")?.dataset["blockId"]).not.toBe(
-        "header-paragraph",
-      );
+      expect(
+        findByClass(clip, "layout-paragraph")?.dataset["blockId"],
+      ).not.toBe("header-paragraph");
     },
     { charWidth: fixedCharWidth(5) },
   );

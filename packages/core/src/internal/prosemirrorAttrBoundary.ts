@@ -60,12 +60,17 @@ export const attrsResult = <T>(
   };
 };
 
-export const expectAttrs = <T>(result: ReadProseMirrorAttrsResult<T>, label: string): T => {
+export const expectAttrs = <T>(
+  result: ReadProseMirrorAttrsResult<T>,
+  label: string,
+): T => {
   if (result.ok) {
     return result.value;
   }
 
-  const details = result.issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n");
+  const details = result.issues
+    .map((issue) => `${issue.path}: ${issue.message}`)
+    .join("\n");
   panic(`Invalid ProseMirror ${label}:\n${details}`);
 };
 

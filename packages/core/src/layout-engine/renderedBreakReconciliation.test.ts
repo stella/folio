@@ -164,7 +164,11 @@ describe("rendered break reconciliation", () => {
   });
 
   test("a section boundary preserves explicit paragraph spacing", () => {
-    const previous: FlowBlock = { kind: "sectionBreak", id: 1, type: "nextPage" };
+    const previous: FlowBlock = {
+      kind: "sectionBreak",
+      id: 1,
+      type: "nextPage",
+    };
     const marker = paragraph(2, {
       renderedPageBreakBefore: true,
       spacing: { before: 24 },
@@ -185,7 +189,11 @@ describe("rendered break reconciliation", () => {
   });
 
   test("a section boundary consumes inherited paragraph spacing", () => {
-    const previous: FlowBlock = { kind: "sectionBreak", id: 1, type: "nextPage" };
+    const previous: FlowBlock = {
+      kind: "sectionBreak",
+      id: 1,
+      type: "nextPage",
+    };
     const marker = paragraph(2, {
       renderedPageBreakBefore: true,
       spacing: { before: 24 },
@@ -206,7 +214,11 @@ describe("rendered break reconciliation", () => {
 
   test("a continuous section boundary preserves spacing when the marker snaps", () => {
     const prior = paragraph(1);
-    const previous: FlowBlock = { kind: "sectionBreak", id: 2, type: "continuous" };
+    const previous: FlowBlock = {
+      kind: "sectionBreak",
+      id: 2,
+      type: "continuous",
+    };
     const decision = reconcileBreakBeforeBlock({
       state: INITIAL_RENDERED_BREAK_STATE,
       block: paragraph(3, {
@@ -226,7 +238,11 @@ describe("rendered break reconciliation", () => {
 
   test("a continuous section boundary preserves inherited spacing without a page advance", () => {
     const prior = paragraph(1);
-    const previous: FlowBlock = { kind: "sectionBreak", id: 2, type: "continuous" };
+    const previous: FlowBlock = {
+      kind: "sectionBreak",
+      id: 2,
+      type: "continuous",
+    };
     const decision = reconcileBreakBeforeBlock({
       state: INITIAL_RENDERED_BREAK_STATE,
       block: paragraph(3, {
@@ -415,7 +431,9 @@ describe("rendered break reconciliation", () => {
   });
 
   test("ordinary movement satisfies a marker within one numbered sequence", () => {
-    const previous = paragraph(1, { numPr: { kind: "reference", numId: 4, ilvl: 1 } });
+    const previous = paragraph(1, {
+      numPr: { kind: "reference", numId: 4, ilvl: 1 },
+    });
     const marker = paragraph(2, {
       numPr: { kind: "reference", numId: 4, ilvl: 1 },
       renderedPageBreakBefore: true,
@@ -434,10 +452,11 @@ describe("rendered break reconciliation", () => {
   });
 
   test("different tab layouts leave a cached marker authoritative", () => {
-    const previous = paragraph(1, { styleId: "Tabular", tabs: [{ val: "start", pos: 720 }] }, [
-      { kind: "text", text: "First" },
-      { kind: "tab" },
-    ]);
+    const previous = paragraph(
+      1,
+      { styleId: "Tabular", tabs: [{ val: "start", pos: 720 }] },
+      [{ kind: "text", text: "First" }, { kind: "tab" }],
+    );
     const marker = paragraph(
       2,
       {
@@ -666,7 +685,9 @@ describe("rendered break state transitions", () => {
         },
         block: paragraph(
           2,
-          { borders: { bottom: { style: "solid", width: 1, color: "#000000" } } },
+          {
+            borders: { bottom: { style: "solid", width: 1, color: "#000000" } },
+          },
           [],
         ),
         pageNumberBefore: 2,

@@ -1,23 +1,23 @@
-import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 
 import type { FolioRevisionStamp } from "../ai-edits/apply";
 import { sourceDocumentOf, styleResolverOf } from "../ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
+import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import {
   expectHyperlinkMarkAttrs,
   expectRunPropertyChangeMarkAttrs,
   expectTableCellAttrs,
 } from "../prosemirror/attrs";
+import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import {
   applyMarksToRunFormattingRepresentation,
   expandRunFormattingCarrier,
-  runFormattingCarrierReviewText,
   type RunFormattingCarrier,
   type RunFormattingCarrierRepresentation,
+  runFormattingCarrierReviewText,
 } from "../prosemirror/runFormattingInlineCarriers";
-import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
@@ -100,7 +100,10 @@ const hyperlinkIdentity = (node: PMNode): string => {
 const isInserted = (node: PMNode): boolean =>
   node.marks.some(({ type }) => type.name === "insertion");
 
-const carrierRepresentations = ({ carrier, paragraph }: InlineCarrier): CarrierRepresentation[] =>
+const carrierRepresentations = ({
+  carrier,
+  paragraph,
+}: InlineCarrier): CarrierRepresentation[] =>
   carrier.representations.map((representation) => ({
     ...representation,
     from: representation.position,
@@ -115,7 +118,13 @@ const targetBlockIdLookup = (anchors: FolioAIEditSnapshot["anchors"]) => {
   const active: (typeof ordered)[number][] = [];
   let nextAnchor = 0;
 
-  return ({ position, nodeSize }: { position: number; nodeSize: number }): string | undefined => {
+  return ({
+    position,
+    nodeSize,
+  }: {
+    position: number;
+    nodeSize: number;
+  }): string | undefined => {
     while (nextAnchor < ordered.length) {
       const anchor = ordered.at(nextAnchor);
       if (!anchor || anchor.from > position) break;
@@ -153,7 +162,9 @@ const collectCarriers = ({
   targetSnapshot?: FolioAIEditSnapshot;
 }): InlineCarrier[] | null => {
   const carriers: InlineCarrier[] = [];
-  const targetBlockIdAt = targetSnapshot ? targetBlockIdLookup(targetSnapshot.anchors) : undefined;
+  const targetBlockIdAt = targetSnapshot
+    ? targetBlockIdLookup(targetSnapshot.anchors)
+    : undefined;
   let unanchoredTargetCarrier = false;
   // The walk visits every ancestor before its descendants, so the paragraphs
   // still open at a position are exactly its paragraph ancestors. Recording the
@@ -161,7 +172,9 @@ const collectCarriers = ({
   // from the root and made the provenance pass O(runs x blocks).
   const openParagraphs: { node: PMNode; end: number }[] = [];
   doc.descendants((node, position) => {
-    while ((openParagraphs.at(-1)?.end ?? Number.POSITIVE_INFINITY) <= position) {
+    while (
+      (openParagraphs.at(-1)?.end ?? Number.POSITIVE_INFINITY) <= position
+    ) {
       openParagraphs.pop();
     }
     if (node.type.name === "paragraph") {
@@ -169,7 +182,10 @@ const collectCarriers = ({
     }
     if (
       (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
-      !isTableCellRetainedInReviewView(expectTableCellAttrs(node).cellMarker?.kind, "final")
+      !isTableCellRetainedInReviewView(
+        expectTableCellAttrs(node).cellMarker?.kind,
+        "final",
+      )
     ) {
       return false;
     }
@@ -183,7 +199,10 @@ const collectCarriers = ({
     if (isDeleted(carrier)) {
       return false;
     }
-    const targetBlockId = targetBlockIdAt?.({ position, nodeSize: node.nodeSize });
+    const targetBlockId = targetBlockIdAt?.({
+      position,
+      nodeSize: node.nodeSize,
+    });
     if (targetSnapshot && targetBlockId === undefined) {
       unanchoredTargetCarrier = true;
       return false;
@@ -199,8 +218,14 @@ const collectCarriers = ({
   return unanchoredTargetCarrier ? null : carriers;
 };
 
-const sameCarrierShape = (left: InlineCarrier, right: InlineCarrier): boolean => {
-  if (left.carrier.disposition !== right.carrier.disposition || left.text !== right.text) {
+const sameCarrierShape = (
+  left: InlineCarrier,
+  right: InlineCarrier,
+): boolean => {
+  if (
+    left.carrier.disposition !== right.carrier.disposition ||
+    left.text !== right.text
+  ) {
     return false;
   }
   const leftRepresentations = left.carrier.representations;
@@ -239,7 +264,11 @@ const matchCarrierStreams = ({
   while (liveIndex < live.length || targetIndex < target.length) {
     const liveCarrier = live.at(liveIndex);
     const targetCarrier = target.at(targetIndex);
-    if (!liveCarrier || !targetCarrier || targetCarrier.targetBlockId === undefined) {
+    if (
+      !liveCarrier ||
+      !targetCarrier ||
+      targetCarrier.targetBlockId === undefined
+    ) {
       return null;
     }
     const liveText = liveCarrier.text.slice(liveOffset);
@@ -248,7 +277,11 @@ const matchCarrierStreams = ({
     const targetIsText = targetCarrier.carrier.disposition === "text-run";
 
     if (!liveIsText || !targetIsText) {
-      if (liveOffset !== 0 || targetOffset !== 0 || !sameCarrierShape(liveCarrier, targetCarrier)) {
+      if (
+        liveOffset !== 0 ||
+        targetOffset !== 0 ||
+        !sameCarrierShape(liveCarrier, targetCarrier)
+      ) {
         return null;
       }
       const liveRepresentations = carrierRepresentations(liveCarrier);
@@ -316,7 +349,10 @@ const authoredFormattingAt = ({
   styleResolver: RunStyleResolver | null;
 }): TextFormatting =>
   readAuthoredRunFormatting({
-    context: nearestParagraphRunStyleContext(representation.paragraph, styleResolver),
+    context: nearestParagraphRunStyleContext(
+      representation.paragraph,
+      styleResolver,
+    ),
     marks: representation.node.marks,
     styleResolver,
   });
@@ -348,11 +384,17 @@ export const matchInlineProvenance = ({
   }
   const targetDocument = sourceDocumentOf(targetSnapshot);
   const liveCarriers = collectCarriers({ doc: state.doc });
-  const targetCarriers = collectCarriers({ doc: targetDocument, targetSnapshot });
+  const targetCarriers = collectCarriers({
+    doc: targetDocument,
+    targetSnapshot,
+  });
   if (!liveCarriers || !targetCarriers) {
     return { status: "unalignable" };
   }
-  const matched = matchCarrierStreams({ live: liveCarriers, target: targetCarriers });
+  const matched = matchCarrierStreams({
+    live: liveCarriers,
+    target: targetCarriers,
+  });
   if (!matched) {
     return { status: "unalignable" };
   }
@@ -370,7 +412,8 @@ export const matchInlineProvenance = ({
       styleResolver: targetStyleResolver,
     });
     const hyperlinkChange =
-      hyperlinkIdentity(segment.live.node) === hyperlinkIdentity(segment.target.node)
+      hyperlinkIdentity(segment.live.node) ===
+      hyperlinkIdentity(segment.target.node)
         ? "unchanged"
         : "replace";
     if (hyperlinkChange === "replace" && !segment.live.node.isText)
@@ -386,7 +429,8 @@ export const matchInlineProvenance = ({
       : undefined;
     const propertyChange =
       existingPropertyChange &&
-      expectRunPropertyChangeMarkAttrs(existingPropertyChange).changes.length > 0
+      expectRunPropertyChangeMarkAttrs(existingPropertyChange).changes.length >
+        0
         ? existingPropertyChange
         : undefined;
     if (
@@ -417,7 +461,10 @@ export const matchInlineProvenance = ({
   let nextRevisionId = revisionStamp.idSeed;
   const changedTargetBlockIds = new Set<string>();
   for (const change of planned.toReversed()) {
-    const context = nearestParagraphRunStyleContext(change.live.paragraph, liveStyleResolver);
+    const context = nearestParagraphRunStyleContext(
+      change.live.paragraph,
+      liveStyleResolver,
+    );
     const formattingMarks = reconcileRunFormattingMarks({
       authoredFormatting: change.formatting,
       context,
@@ -429,7 +476,8 @@ export const matchInlineProvenance = ({
       const hyperlinkType = state.schema.marks["hyperlink"];
       const insertionType = state.schema.marks["insertion"];
       const deletionType = state.schema.marks["deletion"];
-      if (!hyperlinkType || !insertionType || !deletionType) return { status: "unalignable" };
+      if (!hyperlinkType || !insertionType || !deletionType)
+        return { status: "unalignable" };
       marks = hyperlinkType.removeFromSet(marks);
       const targetLink = hyperlinkOf(change.target.node);
       if (targetLink) {
@@ -439,7 +487,11 @@ export const matchInlineProvenance = ({
       if (!change.inserted) {
         if (propertyChangeType) marks = propertyChangeType.removeFromSet(marks);
         marks = insertionType
-          .create({ revisionId: nextRevisionId++, author, date: revisionStamp.date })
+          .create({
+            revisionId: nextRevisionId++,
+            author,
+            date: revisionStamp.date,
+          })
           .addToSet(marks);
         const text = state.doc.textBetween(change.live.from, change.live.to);
         addTrackedDeletionMark({
@@ -465,7 +517,10 @@ export const matchInlineProvenance = ({
           .create({
             ...change.propertyChange.attrs,
             changes: attrs.changes.map((entry) =>
-              changeWithCurrentFormatting({ change: entry, formatting: change.formatting }),
+              changeWithCurrentFormatting({
+                change: entry,
+                formatting: change.formatting,
+              }),
             ),
           })
           .addToSet(formattingMarks);
@@ -477,7 +532,9 @@ export const matchInlineProvenance = ({
             ? { previousFormatting: change.previousFormatting }
             : {}),
         };
-        marks = propertyChangeType.create({ changes: [propertyChange] }).addToSet(formattingMarks);
+        marks = propertyChangeType
+          .create({ changes: [propertyChange] })
+          .addToSet(formattingMarks);
       }
     }
     applyMarksToRunFormattingRepresentation({
@@ -503,12 +560,21 @@ export const sameAuthoredInlineProvenance = (
 ): boolean => {
   const baseDocument = sourceDocumentOf(baseSnapshot);
   const targetDocument = sourceDocumentOf(targetSnapshot);
-  const baseCarriers = collectCarriers({ doc: baseDocument, targetSnapshot: baseSnapshot });
-  const targetCarriers = collectCarriers({ doc: targetDocument, targetSnapshot });
+  const baseCarriers = collectCarriers({
+    doc: baseDocument,
+    targetSnapshot: baseSnapshot,
+  });
+  const targetCarriers = collectCarriers({
+    doc: targetDocument,
+    targetSnapshot,
+  });
   if (!baseCarriers || !targetCarriers) {
     return false;
   }
-  const matched = matchCarrierStreams({ live: baseCarriers, target: targetCarriers });
+  const matched = matchCarrierStreams({
+    live: baseCarriers,
+    target: targetCarriers,
+  });
   if (!matched) {
     return false;
   }

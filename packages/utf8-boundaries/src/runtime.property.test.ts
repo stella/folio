@@ -1,12 +1,16 @@
-import { expect, test, setDefaultTimeout } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import { Readable } from "node:stream";
-import { assertProperty, propertyTestTimeout } from "../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../test/property-testing";
 import { createTextReader, encodeUtf8 } from "./encoding";
-import { writeZipEntry } from "./zip";
 import { truncateCodePoints, truncateGraphemes } from "./sliceText";
 import { assertTextRoundTrip, textAtBoundary } from "./testing";
+import { writeZipEntry } from "./zip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -33,7 +37,9 @@ test(
           const reader = createTextReader({ fatal: true, ignoreBOM: true });
           const chunks: string[] = [];
           for (let offset = 0; offset < bytes.length; offset += chunkSize)
-            chunks.push(reader.read(bytes.subarray(offset, offset + chunkSize)));
+            chunks.push(
+              reader.read(bytes.subarray(offset, offset + chunkSize)),
+            );
           expect(chunks.join("") + reader.finish()).toBe(text);
         }
       }),
@@ -51,7 +57,9 @@ test("the round-trip assertion detects raw ZIP string encoding", async () => {
       roundTrip: async (value) => {
         const zip = new JSZip();
         zip.file("text.xml", value);
-        const loaded = await JSZip.loadAsync(await zip.generateAsync({ type: "uint8array" }));
+        const loaded = await JSZip.loadAsync(
+          await zip.generateAsync({ type: "uint8array" }),
+        );
         return (await loaded.file("text.xml")?.async("string")) ?? "";
       },
     }),
@@ -66,7 +74,9 @@ test("byte arrays and buffers preserve bytes and entry options", async () => {
   writeZipEntry(zip, "buffer", bytes.buffer);
   writeZipEntry(zip, "promised", Promise.resolve(bytes));
   expect(zip.file("bytes")?.date).toEqual(date);
-  const loaded = await JSZip.loadAsync(await zip.generateAsync({ type: "uint8array" }));
+  const loaded = await JSZip.loadAsync(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
   for (const name of ["bytes", "buffer", "promised"])
     expect(await loaded.file(name)?.async("uint8array")).toEqual(bytes);
 });
@@ -74,10 +84,19 @@ test("byte arrays and buffers preserve bytes and entry options", async () => {
 test("truncation retains complete scalars and graphemes", async () => {
   await assertProperty(
     fc.property(textAtBoundary, fc.nat({ max: 30 }), (text, limit) => {
-      expect(truncateCodePoints(text, limit)).toBe(Array.from(text).slice(0, limit).join(""));
-      const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-      const graphemes = Array.from(segmenter.segment(text), ({ segment }) => segment);
-      expect(truncateGraphemes(text, limit)).toBe(graphemes.slice(0, limit).join(""));
+      expect(truncateCodePoints(text, limit)).toBe(
+        Array.from(text).slice(0, limit).join(""),
+      );
+      const segmenter = new Intl.Segmenter(undefined, {
+        granularity: "grapheme",
+      });
+      const graphemes = Array.from(
+        segmenter.segment(text),
+        ({ segment }) => segment,
+      );
+      expect(truncateGraphemes(text, limit)).toBe(
+        graphemes.slice(0, limit).join(""),
+      );
     }),
     { numRuns: 20, id: "shared truncation retains complete text units" },
   );
@@ -97,14 +116,22 @@ test("ZIP input normalization preserves complete text and binary representations
     array: Array.from(bytes),
     blob: new Blob([bytes]),
     view: new DataView(padded.buffer, 2, bytes.length),
-    byteStream: Readable.from([bytes.subarray(0, 16 * 1024), bytes.subarray(16 * 1024)]),
-    textStream: Readable.from([text.slice(0, 16 * 1024), text.slice(16 * 1024)]),
+    byteStream: Readable.from([
+      bytes.subarray(0, 16 * 1024),
+      bytes.subarray(16 * 1024),
+    ]),
+    textStream: Readable.from([
+      text.slice(0, 16 * 1024),
+      text.slice(16 * 1024),
+    ]),
     promisedBuffer: Promise.resolve(bytes.buffer),
   };
   for (const input of Object.values(inputs)) {
     const zip = new JSZip();
     writeZipEntry(zip, "entry", input);
-    const loaded = await JSZip.loadAsync(await zip.generateAsync({ type: "uint8array" }));
+    const loaded = await JSZip.loadAsync(
+      await zip.generateAsync({ type: "uint8array" }),
+    );
     expect(await loaded.file("entry")?.async("uint8array")).toEqual(bytes);
     expect(await loaded.file("entry")?.async("string")).toBe(text);
   }
@@ -114,9 +141,13 @@ test("explicit string encodings are normalized before byte flags are forced", as
   const zip = new JSZip();
   writeZipEntry(zip, "binary", "\x00\xff\x80", { binary: true });
   writeZipEntry(zip, "base64", "AP+A", { base64: true });
-  const loaded = await JSZip.loadAsync(await zip.generateAsync({ type: "uint8array" }));
+  const loaded = await JSZip.loadAsync(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
   for (const name of ["binary", "base64"])
-    expect(await loaded.file(name)?.async("uint8array")).toEqual(Uint8Array.of(0, 255, 128));
+    expect(await loaded.file(name)?.async("uint8array")).toEqual(
+      Uint8Array.of(0, 255, 128),
+    );
 });
 
 test("ZIP stream errors propagate to archive generation", async () => {
@@ -127,5 +158,7 @@ test("ZIP stream errors propagate to archive generation", async () => {
     },
   });
   writeZipEntry(zip, "entry", stream);
-  await expect(zip.generateAsync({ type: "uint8array" })).rejects.toThrow("broken stream");
+  await expect(zip.generateAsync({ type: "uint8array" })).rejects.toThrow(
+    "broken stream",
+  );
 });

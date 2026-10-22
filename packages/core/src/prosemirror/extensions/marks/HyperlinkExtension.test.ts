@@ -31,17 +31,23 @@ describe("HyperlinkExtension parseDOM — href sanitization", () => {
   });
 
   test("strips data: hrefs to an empty href", () => {
-    const attrs = getParseDomAttrs(fakeAnchorDom({ href: "data:text/html,<script></script>" }));
+    const attrs = getParseDomAttrs(
+      fakeAnchorDom({ href: "data:text/html,<script></script>" }),
+    );
     expect((attrs as { href: string }).href).toBe("");
   });
 
   test("strips file: hrefs to an empty href", () => {
-    const attrs = getParseDomAttrs(fakeAnchorDom({ href: "file:///etc/passwd" }));
+    const attrs = getParseDomAttrs(
+      fakeAnchorDom({ href: "file:///etc/passwd" }),
+    );
     expect((attrs as { href: string }).href).toBe("");
   });
 
   test("keeps allow-listed https hrefs", () => {
-    const attrs = getParseDomAttrs(fakeAnchorDom({ href: "https://example.com/doc" }));
+    const attrs = getParseDomAttrs(
+      fakeAnchorDom({ href: "https://example.com/doc" }),
+    );
     expect((attrs as { href: string }).href).toBe("https://example.com/doc");
   });
 
@@ -52,9 +58,15 @@ describe("HyperlinkExtension parseDOM — href sanitization", () => {
 
   test("keeps a valid imported hyperlink index", () => {
     const attrs = getParseDomAttrs(
-      fakeAnchorDom({ href: "https://example.com/doc", "data-docx-hyperlink-index": "4" }),
+      fakeAnchorDom({
+        href: "https://example.com/doc",
+        "data-docx-hyperlink-index": "4",
+      }),
     );
-    expect(attrs).toMatchObject({ href: "https://example.com/doc", _docxHyperlinkIndex: 4 });
+    expect(attrs).toMatchObject({
+      href: "https://example.com/doc",
+      _docxHyperlinkIndex: 4,
+    });
   });
 });
 
@@ -68,7 +80,12 @@ describe("HyperlinkExtension toDOM — defense-in-depth href sanitization", () =
     const executableHref = ["java", "script:alert(1)"].join("");
     const fakeMark = {
       type: { name: "hyperlink" },
-      attrs: { href: executableHref, tooltip: null, rId: null, _docxHyperlinkIndex: null },
+      attrs: {
+        href: executableHref,
+        tooltip: null,
+        rId: null,
+        _docxHyperlinkIndex: null,
+      },
     } as Parameters<typeof spec.toDOM>[0];
 
     const output = spec.toDOM(fakeMark, true);
@@ -86,7 +103,11 @@ describe("HyperlinkExtension toDOM — defense-in-depth href sanitization", () =
     }
     const fakeMark = {
       type: { name: "hyperlink" },
-      attrs: { href: "https://example.com/doc", tooltip: null, _docxHyperlinkIndex: 4 },
+      attrs: {
+        href: "https://example.com/doc",
+        tooltip: null,
+        _docxHyperlinkIndex: 4,
+      },
     } as Parameters<typeof spec.toDOM>[0];
 
     const output = spec.toDOM(fakeMark, true);

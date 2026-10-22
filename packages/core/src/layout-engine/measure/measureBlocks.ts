@@ -1,21 +1,24 @@
-import { recordMeasureBlock, recordMeasureBlockError } from "../layoutInstrumentation";
 import { hasPageBreakBefore } from "../keep-together";
+import {
+  recordMeasureBlock,
+  recordMeasureBlockError,
+} from "../layoutInstrumentation";
 import { isParagraphFrameTextBox } from "../paragraphFrame";
 import { resolveTableSpacing } from "../paragraphSpacing";
 import { sectionStartAdvanceOf } from "../section-breaks";
 import type { SectionStartAdvance } from "../section-breaks";
 import {
-  createTableCellFlowState,
-  finishTableCellFlow,
-  placeTableCellBlock,
-} from "./tableCellFlow";
-import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "../textBoxFlow";
+  bandFragmentX,
+  bandTopContentY,
+  isPageFrameRelativeAnchor,
+} from "../textBoxFlow";
 import { getTextBoxGroupId } from "../textBoxGroup";
 import {
   DEFAULT_TEXTBOX_MARGINS,
   floatingTextBoxReservesBand,
   floatingTextBoxWrapsText,
   resolveTableCellPadding,
+  resolveTableWidthPx,
   tableColumnsArePinned,
 } from "../types";
 import type {
@@ -32,12 +35,24 @@ import type {
   TextBoxBlock,
   TextBoxMeasure,
 } from "../types";
-import { resolveTableWidthPx } from "../types";
 import { getCachedParagraphMeasure, setCachedParagraphMeasure } from "./cache";
-import { getHyphenationDictionaryMisses } from "./hyphenationDictionaries";
-import { findClearLineY, measureParagraph, MIN_WRAP_SEGMENT_WIDTH } from "./measureParagraph";
-import type { FloatingImageZone } from "./measureParagraph";
 import { resolveFloatingTablePageX } from "./floatingTablePosition";
+import { getHyphenationDictionaryMisses } from "./hyphenationDictionaries";
+import {
+  findClearLineY,
+  measureParagraph,
+  MIN_WRAP_SEGMENT_WIDTH,
+} from "./measureParagraph";
+import type { FloatingImageZone } from "./measureParagraph";
+import {
+  buildTableCellFloatingZones,
+  getTableCellFloatingImages,
+} from "./tableCellFloating";
+import {
+  createTableCellFlowState,
+  finishTableCellFlow,
+  placeTableCellBlock,
+} from "./tableCellFlow";
 import {
   buildTableCellGrid,
   getFirstAvailableColumn,
@@ -45,7 +60,6 @@ import {
   getTableCellSpacingInsetsY,
   getTableCellVerticalBorderHeight,
 } from "./tableCellGrid";
-import { buildTableCellFloatingZones, getTableCellFloatingImages } from "./tableCellFloating";
 import { layoutTextBoxContent } from "./textBoxParagraphLayout";
 
 /**
@@ -144,8 +158,18 @@ function wrapTableCellParagraphsAroundFloats(
       continue;
     }
     if (block.kind === "paragraph") {
-      const preview = placeTableCellBlock({ ...flowState }, block, blockMeasure);
-      blockMeasure = measureBlock(block, contentWidth, zones, preview.contentTop, fieldValues);
+      const preview = placeTableCellBlock(
+        { ...flowState },
+        block,
+        blockMeasure,
+      );
+      blockMeasure = measureBlock(
+        block,
+        contentWidth,
+        zones,
+        preview.contentTop,
+        fieldValues,
+      );
       cellMeasure.blocks[blockIdx] = blockMeasure;
     }
     placeTableCellBlock(flowState, block, blockMeasure);
@@ -159,7 +183,11 @@ export function measureTableBlock(
 ): TableMeasure {
   // columnWidths are already in pixels (converted in toFlowBlocks)
   let columnWidths = tableBlock.columnWidths ?? [];
-  const explicitWidthPx = resolveTableWidthPx(tableBlock.width, tableBlock.widthType, contentWidth);
+  const explicitWidthPx = resolveTableWidthPx(
+    tableBlock.width,
+    tableBlock.widthType,
+    contentWidth,
+  );
 
   if (columnWidths.length === 0 && tableBlock.rows.length > 0) {
     // Determine total columns from first row's colSpans
@@ -182,7 +210,11 @@ export function measureTableBlock(
       tableBlock.layout !== "fixed" &&
       (tableBlock.widthType === undefined || tableBlock.widthType === "dxa") &&
       totalWidth - explicitWidthPx > 1;
-    if (!preserveExpandedGrid && totalWidth > 0 && Math.abs(totalWidth - explicitWidthPx) > 1) {
+    if (
+      !preserveExpandedGrid &&
+      totalWidth > 0 &&
+      Math.abs(totalWidth - explicitWidthPx) > 1
+    ) {
       const scale = explicitWidthPx / totalWidth;
       columnWidths = columnWidths.map((w) => w * scale);
     }
@@ -207,14 +239,22 @@ export function measureTableBlock(
   // Calculate cell widths based on colSpan and columnWidths,
   // skipping columns occupied by spanning cells from previous rows.
   const rows = tableBlock.rows.map((row, rowIdx) => {
-    let columnIndex = getFirstAvailableColumn(cellGrid, rowIdx, row.gridBefore ?? 0);
+    let columnIndex = getFirstAvailableColumn(
+      cellGrid,
+      rowIdx,
+      row.gridBefore ?? 0,
+    );
 
     return {
       cells: row.cells.map((cell, cellIdx) => {
         const colSpan = cell.colSpan ?? 1;
         // Calculate cell width as sum of spanned columns
         let cellWidth = 0;
-        for (let c = 0; c < colSpan && columnIndex + c < columnWidths.length; c++) {
+        for (
+          let c = 0;
+          c < colSpan && columnIndex + c < columnWidths.length;
+          c++
+        ) {
           cellWidth += columnWidths[columnIndex + c] ?? 0;
         }
         // Fallback to cell.width or default if columnWidths not available
@@ -227,10 +267,18 @@ export function measureTableBlock(
           colSpan,
           columnWidths.length,
         );
-        cellWidth = Math.max(0, cellWidth - spacingInsets.start - spacingInsets.end);
-        columnIndex = getFirstAvailableColumn(cellGrid, rowIdx, columnIndex + colSpan);
+        cellWidth = Math.max(
+          0,
+          cellWidth - spacingInsets.start - spacingInsets.end,
+        );
+        columnIndex = getFirstAvailableColumn(
+          cellGrid,
+          rowIdx,
+          columnIndex + colSpan,
+        );
 
-        const { left: padLeft, right: padRight } = resolveTableCellPadding(cell);
+        const { left: padLeft, right: padRight } =
+          resolveTableCellPadding(cell);
         const cellContentWidth = Math.max(1, cellWidth - padLeft - padRight);
         // `w:noWrap` (§17.4.30): in an auto-width table Word honors it by
         // widening the column, so measure against an effectively unbounded
@@ -239,7 +287,9 @@ export function measureTableBlock(
         // pinned Word cannot widen, so overflowing content wraps: measure at the
         // real content width like an ordinary cell.
         const keepSingleLine = cell.noWrap === true && !columnsPinned;
-        const measureWidth = keepSingleLine ? NO_WRAP_MEASURE_WIDTH : cellContentWidth;
+        const measureWidth = keepSingleLine
+          ? NO_WRAP_MEASURE_WIDTH
+          : cellContentWidth;
         const cellMeasure: TableCellMeasure = {
           blocks: cell.blocks.map((b) =>
             measureBlock(b, measureWidth, undefined, undefined, fieldValues),
@@ -303,7 +353,8 @@ export function measureTableBlock(
         placeTableCellBlock(flowState, sourceBlock, blockMeasure);
       }
       cell.height = finishTableCellFlow(flowState);
-      const { top: padTop, bottom: padBottom } = resolveTableCellPadding(sourceCell);
+      const { top: padTop, bottom: padBottom } =
+        resolveTableCellPadding(sourceCell);
       cell.height += padTop + padBottom;
       if ((sourceCell?.rowSpan ?? 1) > 1) {
         continue;
@@ -314,8 +365,14 @@ export function measureTableBlock(
         rowIdx,
         bordersSeparated,
       );
-      maxCellHeightWithBorders = Math.max(maxCellHeightWithBorders, cell.height + borderHeight);
-      maxCellInsets = Math.max(maxCellInsets, padTop + padBottom + borderHeight);
+      maxCellHeightWithBorders = Math.max(
+        maxCellHeightWithBorders,
+        cell.height + borderHeight,
+      );
+      maxCellInsets = Math.max(
+        maxCellInsets,
+        padTop + padBottom + borderHeight,
+      );
     }
 
     // Apply heightRule from the source row
@@ -325,7 +382,12 @@ export function measureTableBlock(
     // Cell spacing sits outside the cell boxes, so it adds to the row's pitch.
     // An exact height is the one exception: it already spends one spacing
     // unit, leaving the cell box that much shorter than the stated height.
-    const spacing = getTableCellSpacingInsetsY(cellSpacing, rowIdx, 1, rowCount);
+    const spacing = getTableCellSpacingInsetsY(
+      cellSpacing,
+      rowIdx,
+      1,
+      rowCount,
+    );
     const spacingHeight = spacing.top + spacing.bottom;
     if (explicitHeight && heightRule === "exact") {
       const exactBoxHeight = bordersSeparated
@@ -336,7 +398,8 @@ export function measureTableBlock(
       // Compatibility layouts treat both 'atLeast' and auto-with-val as a
       // content floor; cell padding and horizontal borders remain outside it.
       row.height =
-        Math.max(maxCellHeightWithBorders, explicitHeight + maxCellInsets) + spacingHeight;
+        Math.max(maxCellHeightWithBorders, explicitHeight + maxCellInsets) +
+        spacingHeight;
     } else {
       // No explicit height — use content height directly.
       row.height = maxCellHeightWithBorders + spacingHeight;
@@ -362,20 +425,38 @@ export function measureTableBlock(
       }
       const spanEnd = Math.min(rows.length, rowIdx + rowSpan);
       let combinedHeight = 0;
-      for (let spannedRowIdx = rowIdx; spannedRowIdx < spanEnd; spannedRowIdx++) {
+      for (
+        let spannedRowIdx = rowIdx;
+        spannedRowIdx < spanEnd;
+        spannedRowIdx++
+      ) {
         combinedHeight += rows[spannedRowIdx]?.height ?? 0;
       }
-      const spanSpacing = getTableCellSpacingInsetsY(cellSpacing, rowIdx, rowSpan, rowCount);
+      const spanSpacing = getTableCellSpacingInsetsY(
+        cellSpacing,
+        rowIdx,
+        rowSpan,
+        rowCount,
+      );
       const requiredHeight =
         measuredCell.height +
-        getTableCellVerticalBorderHeight(cellGrid, sourceCell, rowIdx, bordersSeparated) +
+        getTableCellVerticalBorderHeight(
+          cellGrid,
+          sourceCell,
+          rowIdx,
+          bordersSeparated,
+        ) +
         spanSpacing.top +
         spanSpacing.bottom;
       const deficit = requiredHeight - combinedHeight;
       if (deficit <= 0) {
         continue;
       }
-      for (let spannedRowIdx = spanEnd - 1; spannedRowIdx >= rowIdx; spannedRowIdx--) {
+      for (
+        let spannedRowIdx = spanEnd - 1;
+        spannedRowIdx >= rowIdx;
+        spannedRowIdx--
+      ) {
         if (tableBlock.rows[spannedRowIdx]?.heightRule === "exact") {
           continue;
         }
@@ -386,7 +467,10 @@ export function measureTableBlock(
   }
 
   const totalHeight = rows.reduce((h, r) => h + r.height, 0);
-  const totalWidth = columnWidths.reduce((w, cw) => w + cw, 0) || explicitWidthPx || contentWidth;
+  const totalWidth =
+    columnWidths.reduce((w, cw) => w + cw, 0) ||
+    explicitWidthPx ||
+    contentWidth;
 
   return {
     kind: "table",
@@ -572,7 +656,9 @@ function extractFloatingZones(
 ): ExtractedFloatingZone[] {
   const zones: FloatingZoneWithAnchor[] = [];
   const tablePageRects: FloatingTablePageRectTemplateWithAnchor[] = [];
-  const defaultContentWidth = Array.isArray(contentWidth) ? (contentWidth[0] ?? 0) : contentWidth;
+  const defaultContentWidth = Array.isArray(contentWidth)
+    ? (contentWidth[0] ?? 0)
+    : contentWidth;
   const textBoxGroupAnchors = new Map<string, number>();
   const paragraphFrameGroupSizes = new Map<string, number>();
   for (const block of blocks) {
@@ -581,22 +667,33 @@ function extractFloatingZones(
     }
     const groupId = getTextBoxGroupId(block);
     if (groupId !== undefined) {
-      paragraphFrameGroupSizes.set(groupId, (paragraphFrameGroupSizes.get(groupId) ?? 0) + 1);
+      paragraphFrameGroupSizes.set(
+        groupId,
+        (paragraphFrameGroupSizes.get(groupId) ?? 0) + 1,
+      );
     }
   }
-  const defaultMarginTop = Array.isArray(marginTop) ? (marginTop[0] ?? 0) : marginTop;
+  const defaultMarginTop = Array.isArray(marginTop)
+    ? (marginTop[0] ?? 0)
+    : marginTop;
   const pageWidthInput = pageGeometry?.pageWidth ?? defaultContentWidth;
   const pageHeightInput = pageGeometry?.pageHeight ?? 0;
   const marginLeftInput = pageGeometry?.marginLeft ?? 0;
   const marginRightInput = pageGeometry?.marginRight ?? 0;
   const marginBottomInput = pageGeometry?.marginBottom ?? 0;
   const contentLeftInput = pageGeometry?.contentLeft ?? marginLeftInput;
-  const physicalPageWidthInput = pageGeometry?.physicalPage?.pageWidth ?? pageWidthInput;
-  const physicalPageHeightInput = pageGeometry?.physicalPage?.pageHeight ?? pageHeightInput;
-  const physicalMarginTopInput = pageGeometry?.physicalPage?.marginTop ?? marginTop;
-  const physicalMarginLeftInput = pageGeometry?.physicalPage?.marginLeft ?? marginLeftInput;
-  const physicalMarginRightInput = pageGeometry?.physicalPage?.marginRight ?? marginRightInput;
-  const physicalMarginBottomInput = pageGeometry?.physicalPage?.marginBottom ?? marginBottomInput;
+  const physicalPageWidthInput =
+    pageGeometry?.physicalPage?.pageWidth ?? pageWidthInput;
+  const physicalPageHeightInput =
+    pageGeometry?.physicalPage?.pageHeight ?? pageHeightInput;
+  const physicalMarginTopInput =
+    pageGeometry?.physicalPage?.marginTop ?? marginTop;
+  const physicalMarginLeftInput =
+    pageGeometry?.physicalPage?.marginLeft ?? marginLeftInput;
+  const physicalMarginRightInput =
+    pageGeometry?.physicalPage?.marginRight ?? marginRightInput;
+  const physicalMarginBottomInput =
+    pageGeometry?.physicalPage?.marginBottom ?? marginBottomInput;
   const defaultPageWidth = Array.isArray(pageWidthInput)
     ? (pageWidthInput[0] ?? defaultContentWidth)
     : pageWidthInput;
@@ -648,7 +745,8 @@ function extractFloatingZones(
       }
       const imgRun = run as ImageRun;
 
-      const positionedBand = imgRun.wrapType === "topAndBottom" && imgRun.position !== undefined;
+      const positionedBand =
+        imgRun.wrapType === "topAndBottom" && imgRun.position !== undefined;
       if (!isSideWrappingImageRun(imgRun) && !positionedBand) {
         continue;
       }
@@ -663,13 +761,27 @@ function extractFloatingZones(
 
       if (positionedBand && position !== undefined) {
         const vertical = position.vertical;
-        const blockMarginTop = perBlockNumberValue(marginTop, blockIndex, defaultMarginTop);
-        const pageFrameRelative = isPageFrameRelativeAnchor(vertical?.relativeTo);
+        const blockMarginTop = perBlockNumberValue(
+          marginTop,
+          blockIndex,
+          defaultMarginTop,
+        );
+        const pageFrameRelative = isPageFrameRelativeAnchor(
+          vertical?.relativeTo,
+        );
         const rawTop = pageFrameRelative
           ? bandTopContentY(vertical, {
-              pageHeight: perBlockNumberValue(pageHeightInput, blockIndex, defaultPageHeight),
+              pageHeight: perBlockNumberValue(
+                pageHeightInput,
+                blockIndex,
+                defaultPageHeight,
+              ),
               marginTop: blockMarginTop,
-              marginBottom: perBlockNumberValue(marginBottomInput, blockIndex, defaultMarginBottom),
+              marginBottom: perBlockNumberValue(
+                marginBottomInput,
+                blockIndex,
+                defaultMarginBottom,
+              ),
               boxHeight: imgRun.height,
             })
           : emuToPixels(vertical?.posOffset ?? 0);
@@ -730,7 +842,8 @@ function extractFloatingZones(
       if (leftMargin > 0 || rightMargin > 0) {
         // Images positioned relative to margin/page apply globally (before their anchor paragraph)
         const isMarginRelative =
-          position?.vertical?.relativeTo === "margin" || position?.vertical?.relativeTo === "page";
+          position?.vertical?.relativeTo === "margin" ||
+          position?.vertical?.relativeTo === "page";
         zones.push({
           leftMargin,
           rightMargin,
@@ -786,8 +899,16 @@ function extractFloatingZones(
       blockIndex,
       defaultPhysicalMarginBottom,
     );
-    const blockContentWidth = perBlockNumberValue(contentWidth, blockIndex, defaultContentWidth);
-    const blockContentLeft = perBlockNumberValue(contentLeftInput, blockIndex, defaultContentLeft);
+    const blockContentWidth = perBlockNumberValue(
+      contentWidth,
+      blockIndex,
+      defaultContentWidth,
+    );
+    const blockContentLeft = perBlockNumberValue(
+      contentLeftInput,
+      blockIndex,
+      defaultContentLeft,
+    );
     const tableMeasure = measureTableBlock(tableBlock, blockContentWidth);
     const tableWidth = tableMeasure.totalWidth;
     const tableHeight = tableMeasure.totalHeight;
@@ -840,19 +961,51 @@ function extractFloatingZones(
     }
 
     const measure = measureTextBoxBlock(tb);
-    const blockMarginTop = perBlockNumberValue(marginTop, blockIndex, defaultMarginTop);
-    const blockMarginLeft = perBlockNumberValue(marginLeftInput, blockIndex, defaultMarginLeft);
-    const blockMarginRight = perBlockNumberValue(marginRightInput, blockIndex, defaultMarginRight);
-    const blockPageWidth = perBlockNumberValue(pageWidthInput, blockIndex, defaultPageWidth);
-    const blockContentWidth = perBlockNumberValue(contentWidth, blockIndex, defaultContentWidth);
-    const blockContentLeft = perBlockNumberValue(contentLeftInput, blockIndex, defaultContentLeft);
+    const blockMarginTop = perBlockNumberValue(
+      marginTop,
+      blockIndex,
+      defaultMarginTop,
+    );
+    const blockMarginLeft = perBlockNumberValue(
+      marginLeftInput,
+      blockIndex,
+      defaultMarginLeft,
+    );
+    const blockMarginRight = perBlockNumberValue(
+      marginRightInput,
+      blockIndex,
+      defaultMarginRight,
+    );
+    const blockPageWidth = perBlockNumberValue(
+      pageWidthInput,
+      blockIndex,
+      defaultPageWidth,
+    );
+    const blockContentWidth = perBlockNumberValue(
+      contentWidth,
+      blockIndex,
+      defaultContentWidth,
+    );
+    const blockContentLeft = perBlockNumberValue(
+      contentLeftInput,
+      blockIndex,
+      defaultContentLeft,
+    );
     const vertical = tb.position.vertical;
     const pageFrameRelative = isPageFrameRelativeAnchor(vertical?.relativeTo);
     const topY = pageFrameRelative
       ? bandTopContentY(vertical, {
-          pageHeight: perBlockNumberValue(pageHeightInput, blockIndex, defaultPageHeight),
+          pageHeight: perBlockNumberValue(
+            pageHeightInput,
+            blockIndex,
+            defaultPageHeight,
+          ),
           marginTop: blockMarginTop,
-          marginBottom: perBlockNumberValue(marginBottomInput, blockIndex, defaultMarginBottom),
+          marginBottom: perBlockNumberValue(
+            marginBottomInput,
+            blockIndex,
+            defaultMarginBottom,
+          ),
           boxHeight: measure.height,
         })
       : emuToPixels(vertical?.posOffset ?? 0);
@@ -895,9 +1048,14 @@ function extractFloatingZones(
       boxWidth: measure.width,
       contentWidth: blockContentWidth,
     });
-    const leftMargin = wrapSide === "right" ? contentX + measure.width + (tb.distRight ?? 12) : 0;
+    const leftMargin =
+      wrapSide === "right"
+        ? contentX + measure.width + (tb.distRight ?? 12)
+        : 0;
     const rightMargin =
-      wrapSide === "left" ? blockContentWidth - contentX + (tb.distLeft ?? 12) : 0;
+      wrapSide === "left"
+        ? blockContentWidth - contentX + (tb.distLeft ?? 12)
+        : 0;
     zones.push({
       leftMargin: Math.max(0, leftMargin),
       rightMargin: Math.max(0, rightMargin),
@@ -925,14 +1083,26 @@ function extractFloatingZones(
     const height = measureTextBoxBlock(tb).height;
     const distTop = tb.distTop ?? 0;
     const distBottom = tb.distBottom ?? 0;
-    const blockMarginTop = perBlockNumberValue(marginTop, blockIndex, defaultMarginTop);
+    const blockMarginTop = perBlockNumberValue(
+      marginTop,
+      blockIndex,
+      defaultMarginTop,
+    );
     const pageFrameRelative = isPageFrameRelativeAnchor(v?.relativeTo);
     // Shared with layoutTextBox so the reserved band and the painted box agree.
     const rawTop = pageFrameRelative
       ? bandTopContentY(v, {
-          pageHeight: perBlockNumberValue(pageHeightInput, blockIndex, defaultPageHeight),
+          pageHeight: perBlockNumberValue(
+            pageHeightInput,
+            blockIndex,
+            defaultPageHeight,
+          ),
           marginTop: blockMarginTop,
-          marginBottom: perBlockNumberValue(marginBottomInput, blockIndex, defaultMarginBottom),
+          marginBottom: perBlockNumberValue(
+            marginBottomInput,
+            blockIndex,
+            defaultMarginBottom,
+          ),
           boxHeight: height,
         })
       : emuToPixels(v?.posOffset ?? 0);
@@ -1133,8 +1303,13 @@ export function measureTextBoxBlock(
     if (block.kind === "table") {
       return measureTableBlock(block, innerWidth, fieldValues);
     }
-    const measureWidth = tb.textWrap === "none" ? NO_WRAP_MEASURE_WIDTH : innerWidth;
-    return measureParagraph(block, measureWidth, fieldValues ? { fieldValues } : undefined);
+    const measureWidth =
+      tb.textWrap === "none" ? NO_WRAP_MEASURE_WIDTH : innerWidth;
+    return measureParagraph(
+      block,
+      measureWidth,
+      fieldValues ? { fieldValues } : undefined,
+    );
   });
   let naturalContentWidth = 0;
   for (let index = 0; index < innerMeasures.length; index++) {
@@ -1156,15 +1331,24 @@ export function measureTextBoxBlock(
         lineIndex === 0 ? (indent?.firstLine ?? 0) - (indent?.hanging ?? 0) : 0;
       const start = left + firstLineOffset;
       const end = start + line.width + right;
-      naturalContentWidth = Math.max(naturalContentWidth, Math.max(0, end) - Math.min(0, start));
+      naturalContentWidth = Math.max(
+        naturalContentWidth,
+        Math.max(0, end) - Math.min(0, start),
+      );
     }
   }
   const fittedWidth = naturalContentWidth + margins.left + margins.right;
   const totalWidth =
-    tb.autoFit === "shape" && tb.textWrap === "none" ? Math.max(tb.width, fittedWidth) : tb.width;
-  const contentHeight = layoutTextBoxContent(tb.content, innerMeasures).totalHeight;
+    tb.autoFit === "shape" && tb.textWrap === "none"
+      ? Math.max(tb.width, fittedWidth)
+      : tb.width;
+  const contentHeight = layoutTextBoxContent(
+    tb.content,
+    innerMeasures,
+  ).totalHeight;
   const contentBoxHeight = contentHeight + margins.top + margins.bottom;
-  const totalHeight = tb.autoFit === "shape" ? contentBoxHeight : (tb.height ?? contentBoxHeight);
+  const totalHeight =
+    tb.autoFit === "shape" ? contentBoxHeight : (tb.height ?? contentBoxHeight);
   return {
     kind: "textBox",
     width: totalWidth,
@@ -1188,9 +1372,16 @@ export function measureBlocks(
   fieldValues?: ReadonlyMap<number, string>,
   options?: MeasureBlocksOptions,
 ): Measure[] {
-  const defaultWidth = Array.isArray(contentWidth) ? (contentWidth[0] ?? 0) : contentWidth;
+  const defaultWidth = Array.isArray(contentWidth)
+    ? (contentWidth[0] ?? 0)
+    : contentWidth;
   // Pre-extract floating image exclusion zones with anchor block indices
-  const extractedZones = extractFloatingZones(blocks, contentWidth, marginTop, pageGeometry);
+  const extractedZones = extractFloatingZones(
+    blocks,
+    contentWidth,
+    marginTop,
+    pageGeometry,
+  );
   const floatingZonesWithAnchors: FloatingZoneWithAnchor[] = [];
   const tablePageRects: FloatingTablePageRectTemplateWithAnchor[] = [];
   for (const extracted of extractedZones) {
@@ -1245,19 +1436,29 @@ export function measureBlocks(
     // Strip the anchor-tracking fields; the rest IS a FloatingImageZone. Spread
     // (rather than copying each field) so fullWidthBlock/segments can't be
     // dropped here.
-    const { anchorBlockIndex: _anchorBlockIndex, isMarginRelative: _isMarginRelative, ...zone } = z;
+    const {
+      anchorBlockIndex: _anchorBlockIndex,
+      isMarginRelative: _isMarginRelative,
+      ...zone
+    } = z;
     existing.push(zone);
     zonesByAnchor.set(z.anchorBlockIndex, existing);
   }
 
-  const tableRectsByAnchor = new Map<number, FloatingTablePageRectTemplateWithAnchor[]>();
+  const tableRectsByAnchor = new Map<
+    number,
+    FloatingTablePageRectTemplateWithAnchor[]
+  >();
   for (const rect of tablePageRects) {
     const existing = tableRectsByAnchor.get(rect.anchorBlockIndex) ?? [];
     existing.push(rect);
     tableRectsByAnchor.set(rect.anchorBlockIndex, existing);
   }
 
-  const anchorIndices = new Set([...zonesByAnchor.keys(), ...tableRectsByAnchor.keys()]);
+  const anchorIndices = new Set([
+    ...zonesByAnchor.keys(),
+    ...tableRectsByAnchor.keys(),
+  ]);
 
   // Two running Y cursors for floating-zone overlap:
   //  - cumulativeY resets to 0 at content-local floating-image anchors.
@@ -1270,11 +1471,13 @@ export function measureBlocks(
   let columnRegionMaxBottom = 0;
   let activeZones: FloatingImageZone[] = [];
   let activeTablePageRects: FloatingTablePageRect[] = [];
-  const contentLeftInput = pageGeometry?.contentLeft ?? pageGeometry?.marginLeft ?? 0;
+  const contentLeftInput =
+    pageGeometry?.contentLeft ?? pageGeometry?.marginLeft ?? 0;
   const defaultContentLeft = Array.isArray(contentLeftInput)
     ? (contentLeftInput[0] ?? 0)
     : contentLeftInput;
-  const physicalMarginTopInput = pageGeometry?.physicalPage?.marginTop ?? marginTop;
+  const physicalMarginTopInput =
+    pageGeometry?.physicalPage?.marginTop ?? marginTop;
   const defaultPhysicalMarginTop = Array.isArray(physicalMarginTopInput)
     ? (physicalMarginTopInput[0] ?? 0)
     : physicalMarginTopInput;
@@ -1288,17 +1491,31 @@ export function measureBlocks(
     const blockWidth = Array.isArray(contentWidth)
       ? (contentWidth[blockIndex] ?? defaultWidth)
       : contentWidth;
-    const blockContentLeft = perBlockNumberValue(contentLeftInput, blockIndex, defaultContentLeft);
+    const blockContentLeft = perBlockNumberValue(
+      contentLeftInput,
+      blockIndex,
+      defaultContentLeft,
+    );
     const blockContentTop = perBlockNumberValue(
       physicalMarginTopInput,
       blockIndex,
       defaultPhysicalMarginTop,
     );
-    const blockColumnIndex = perBlockNumberValue(columnIndexInput, blockIndex, 0);
-    const blockColumnCount = perBlockNumberValue(columnCountInput, blockIndex, 1);
+    const blockColumnIndex = perBlockNumberValue(
+      columnIndexInput,
+      blockIndex,
+      0,
+    );
+    const blockColumnCount = perBlockNumberValue(
+      columnCountInput,
+      blockIndex,
+      1,
+    );
     const sectionAdvance =
       sectionAdvances?.[blockIndex] ??
-      (block.kind === "sectionBreak" ? sectionStartAdvanceOf(block.type) : undefined);
+      (block.kind === "sectionBreak"
+        ? sectionStartAdvanceOf(block.type)
+        : undefined);
 
     // A hard page/section break or pageBreakBefore starts a fresh page. Any active zone — including
     // a page-pinned topAndBottom band — belongs to the page it was anchored on,
@@ -1307,7 +1524,11 @@ export function measureBlocks(
     // this, the first block after the break would be measured against a stale
     // band (a phantom float-skip) while layout paints no band there, opening a
     // gap. eigenpal #694.
-    if (block.kind === "pageBreak" || sectionAdvance === "page" || hasPageBreakBefore(block)) {
+    if (
+      block.kind === "pageBreak" ||
+      sectionAdvance === "page" ||
+      hasPageBreakBefore(block)
+    ) {
       activeZones = [];
       activeTablePageRects = [];
       cumulativeY = 0;
@@ -1333,8 +1554,12 @@ export function measureBlocks(
     // after a Y reset since their topY/bottomY are in the old coordinate system).
     if (anchorIndices.has(blockIndex)) {
       activeZones = zonesByAnchor.get(blockIndex) ?? [];
-      activeTablePageRects = (tableRectsByAnchor.get(blockIndex) ?? []).map((template) =>
-        activateFloatingTablePageRect(template, blockContentTop + pageRelativeY),
+      activeTablePageRects = (tableRectsByAnchor.get(blockIndex) ?? []).map(
+        (template) =>
+          activateFloatingTablePageRect(
+            template,
+            blockContentTop + pageRelativeY,
+          ),
       );
       // Floating-image anchors open a fresh local frame (cumulativeY → 0). A
       // page/margin-pinned band instead reserves against the page, so it
@@ -1347,7 +1572,8 @@ export function measureBlocks(
         activeTablePageRects.length === 0 &&
         activeZones.length > 0 &&
         activeZones.every((z) => z.fullWidthBlock);
-      cumulativeY = bandOnlyAnchor || activeTablePageRects.length > 0 ? pageRelativeY : 0;
+      cumulativeY =
+        bandOnlyAnchor || activeTablePageRects.length > 0 ? pageRelativeY : 0;
     }
 
     const projectedTableZones = activeTablePageRects.map((rect) =>
@@ -1364,19 +1590,30 @@ export function measureBlocks(
         : undefined;
 
     try {
-      const measure = measureBlock(block, blockWidth, zones, cumulativeY, fieldValues, options);
+      const measure = measureBlock(
+        block,
+        blockWidth,
+        zones,
+        cumulativeY,
+        fieldValues,
+        options,
+      );
 
       // Paragraphs clear floating exclusions internally (findClearLineY inside
       // measureParagraph). An in-flow table cannot reflow its cells around a
       // side exclusion, so require room for the whole table. Block images keep
       // the existing full-width-band behavior.
       const clearingZones =
-        measure.kind === "table" ? zones : zones?.filter((zone) => zone.fullWidthBlock);
+        measure.kind === "table"
+          ? zones
+          : zones?.filter((zone) => zone.fullWidthBlock);
       if (
         clearingZones?.length &&
-        (measure.kind === "image" || (measure.kind === "table" && !(block as TableBlock).floating))
+        (measure.kind === "image" ||
+          (measure.kind === "table" && !(block as TableBlock).floating))
       ) {
-        const blockHeight = measure.kind === "image" ? measure.height : measure.totalHeight;
+        const blockHeight =
+          measure.kind === "image" ? measure.height : measure.totalHeight;
         const requiredWidth =
           measure.kind === "table"
             ? Math.min(blockWidth, measure.totalWidth)
@@ -1397,7 +1634,10 @@ export function measureBlocks(
       }
 
       // Advance both cursors for the next block.
-      if ("totalHeight" in measure && !(block.kind === "table" && (block as TableBlock).floating)) {
+      if (
+        "totalHeight" in measure &&
+        !(block.kind === "table" && (block as TableBlock).floating)
+      ) {
         cumulativeY += measure.totalHeight;
         pageRelativeY += measure.totalHeight;
       }

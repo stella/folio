@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
-import { CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
+import {
+  CONTRACT_PARAGRAPHS,
+  makeTempDir,
+  writeDocx,
+} from "./__tests__/fixtures";
 import { captureIo, envelopeOf } from "./__tests__/io";
 import { runFolioCli } from "./cli";
 
@@ -26,14 +30,21 @@ describe("runFolioCli", () => {
 
     expect([pipedExit, terminalExit]).toEqual([0, 0]);
     expect(envelopeOf(piped.stdout())["ok"]).toBe(true);
-    expect(terminal.stdout()).toContain("[10000002] The buyer pays $50 on signing.");
+    expect(terminal.stdout()).toContain(
+      "[10000002] The buyer pays $50 on signing.",
+    );
   });
 
   test("builds arguments from flags and --input, flags winning", async () => {
     const file = await writeDocx(dir, "contract.docx", CONTRACT_PARAGRAPHS);
-    const captured = captureIo({ stdin: '{"query":"terminate","matchCase":true}' });
+    const captured = captureIo({
+      stdin: '{"query":"terminate","matchCase":true}',
+    });
 
-    const exit = await runFolioCli(["find", file, "--input", "-", "--query", "Late"], captured.io);
+    const exit = await runFolioCli(
+      ["find", file, "--input", "-", "--query", "Late"],
+      captured.io,
+    );
 
     expect(exit).toBe(0);
     const data = envelopeOf(captured.stdout())["data"];
@@ -64,7 +75,10 @@ describe("runFolioCli", () => {
     const file = await writeDocx(dir, "contract.docx", CONTRACT_PARAGRAPHS);
     const captured = captureIo({ isTTY: true });
 
-    const exit = await runFolioCli(["read", file, "--expect-version", "0".repeat(64)], captured.io);
+    const exit = await runFolioCli(
+      ["read", file, "--expect-version", "0".repeat(64)],
+      captured.io,
+    );
 
     expect(exit).toBe(10);
     expect(captured.stdout()).toBe("");

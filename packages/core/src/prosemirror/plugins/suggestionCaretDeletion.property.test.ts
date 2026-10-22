@@ -1,22 +1,26 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { panic } from "better-result";
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import fc from "fast-check";
 import { DOMParser } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
-import fc from "fast-check";
-import { panic } from "better-result";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import { BROWSER_NOTES_SEED_197 } from "../../../../../tests/visual/browserInputRegressions";
 import { shapeArrayBuffer } from "../../__tests__/documentShapes";
 import {
-  createHarnessState,
   createHarnessPlugins,
+  createHarnessState,
   HARNESS_AUTHOR,
   HeadlessEditorView,
   parseShapeDocument,
   resolveAllChanges,
   summarizeState,
 } from "../../__tests__/editorHarness";
-import { BROWSER_NOTES_SEED_197 } from "../../../../../tests/visual/browserInputRegressions";
 
 beforeAll(() => GlobalRegistrator.register());
 afterAll(() => GlobalRegistrator.unregister());
@@ -31,7 +35,9 @@ test("browser notes seed 197 paste and caret deletion replay", async () => {
     const view = new HeadlessEditorView(createHarnessState(base, mode));
     const paste = (source: string) => {
       let html = source;
-      const pasteView = new EditorView(document.createElement("div"), { state: view.state });
+      const pasteView = new EditorView(document.createElement("div"), {
+        state: view.state,
+      });
       try {
         for (const plugin of pasteView.state.plugins) {
           const transform = plugin.props.transformPastedHTML;
@@ -75,13 +81,22 @@ test("browser notes seed 197 paste and caret deletion replay", async () => {
           // Reproduce the drag's semantic range; browser replay proves the gesture.
           let noteRange: { from: number; to: number } | undefined;
           view.state.doc.descendants((node, position) => {
-            if (noteRange || !node.marks.some((mark) => mark.type.name === "footnoteRef")) return;
+            if (
+              noteRange ||
+              !node.marks.some((mark) => mark.type.name === "footnoteRef")
+            )
+              return;
             noteRange = { from: position, to: position + node.nodeSize };
           });
-          if (!noteRange) panic("The standing trace lost its note drag target.");
+          if (!noteRange)
+            panic("The standing trace lost its note drag target.");
           view.dispatch(
             view.state.tr.setSelection(
-              TextSelection.create(view.state.doc, noteRange.from, noteRange.to),
+              TextSelection.create(
+                view.state.doc,
+                noteRange.from,
+                noteRange.to,
+              ),
             ),
           );
           break;
@@ -100,7 +115,9 @@ test("browser notes seed 197 paste and caret deletion replay", async () => {
 test(
   "caret direction reversal deletes the adjacent visible unit across retained revisions and markers",
   async () => {
-    const base = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer("notes")));
+    const base = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer("notes")),
+    );
     const { schema } = createHarnessState(base, "editing");
     const check = ({
       direction,
@@ -117,7 +134,11 @@ test(
       markers: boolean;
       deletedOwner: "own" | "other";
     }) => {
-      const revision = { revisionId: 100, author: HARNESS_AUTHOR, date: "2026-01-01T00:00:00Z" };
+      const revision = {
+        revisionId: 100,
+        author: HARNESS_AUTHOR,
+        date: "2026-01-01T00:00:00Z",
+      };
       const insertion =
         ownership === "existing"
           ? []
@@ -135,15 +156,29 @@ test(
       const hidden = schema.text("x".repeat(deletedLength), [priorDeletion]);
       const boundaries = markers
         ? [
-            schema.node("bookmarkBoundary", { type: "start", id: 1, name: "range" }),
+            schema.node("bookmarkBoundary", {
+              type: "start",
+              id: 1,
+              name: "range",
+            }),
             hidden,
             schema.node("bookmarkBoundary", { type: "end", id: 1 }),
           ]
         : [hidden];
       const content =
         direction === "forward"
-          ? [schema.text("A"), schema.text(character, insertion), ...boundaries, schema.text("RZ")]
-          : [schema.text("AL"), ...boundaries, schema.text(character, insertion), schema.text("Z")];
+          ? [
+              schema.text("A"),
+              schema.text(character, insertion),
+              ...boundaries,
+              schema.text("RZ"),
+            ]
+          : [
+              schema.text("AL"),
+              ...boundaries,
+              schema.text(character, insertion),
+              schema.text("Z"),
+            ];
       const doc = schema.node("doc", null, [
         schema.node("paragraph", { paraId: "12345678" }, content),
       ]);
@@ -154,10 +189,14 @@ test(
         plugins: createHarnessPlugins(base, "suggesting"),
       });
       const tracked = new HeadlessEditorView(state);
-      expect(tracked.state.doc.textContent).toContain("x".repeat(deletedLength));
+      expect(tracked.state.doc.textContent).toContain(
+        "x".repeat(deletedLength),
+      );
       const editedDoc = schema.node("doc", null, [
         schema.node("paragraph", { paraId: "12345678" }, [
-          schema.text(direction === "forward" ? `A${character}RZ` : `AL${character}Z`),
+          schema.text(
+            direction === "forward" ? `A${character}RZ` : `AL${character}Z`,
+          ),
         ]),
       ]);
       const edited = new HeadlessEditorView(
@@ -167,7 +206,10 @@ test(
           plugins: createHarnessPlugins(base, "editing"),
         }),
       );
-      const keys = direction === "forward" ? ["Delete", "Backspace"] : ["Backspace", "Delete"];
+      const keys =
+        direction === "forward"
+          ? ["Delete", "Backspace"]
+          : ["Backspace", "Delete"];
       for (const key of keys) {
         expect(tracked.pressKey(key)).toBe(true);
         expect(edited.pressKey(key)).toBe(true);
@@ -175,7 +217,14 @@ test(
       const accepted = resolveAllChanges(tracked.state, "accept");
       expect(
         accepted.doc.textContent,
-        JSON.stringify({ direction, ownership, deletedOwner, markers, deletedLength, character }),
+        JSON.stringify({
+          direction,
+          ownership,
+          deletedOwner,
+          markers,
+          deletedLength,
+          character,
+        }),
       ).toBe(edited.state.doc.textContent);
       expect(accepted.doc.textContent).toBe("AZ");
       const rejected = resolveAllChanges(tracked.state, "reject");
@@ -185,21 +234,31 @@ test(
           ? `A${originalCharacter}${"x".repeat(deletedLength)}RZ`
           : `AL${"x".repeat(deletedLength)}${originalCharacter}Z`,
       );
-      expect(tracked.state.doc.textContent.includes(character)).toBe(ownership !== "own");
+      expect(tracked.state.doc.textContent.includes(character)).toBe(
+        ownership !== "own",
+      );
       const retainedMarkers: string[] = [];
       let retainedDeletedText = "";
       let retainedForeignInsertion = "";
-      const foreignInsertion = ownership === "other" ? insertion.at(0) : undefined;
+      const foreignInsertion =
+        ownership === "other" ? insertion.at(0) : undefined;
       tracked.state.doc.descendants((node) => {
-        if (node.type.name === "bookmarkBoundary") retainedMarkers.push(node.attrs["type"]);
+        if (node.type.name === "bookmarkBoundary")
+          retainedMarkers.push(node.attrs["type"]);
         if (node.isText && node.marks.some((mark) => mark.eq(priorDeletion)))
           retainedDeletedText += node.text;
-        if (node.isText && foreignInsertion && node.marks.some((mark) => mark.eq(foreignInsertion)))
+        if (
+          node.isText &&
+          foreignInsertion &&
+          node.marks.some((mark) => mark.eq(foreignInsertion))
+        )
           retainedForeignInsertion += node.text;
       });
       expect(retainedMarkers).toEqual(markers ? ["start", "end"] : []);
       expect(retainedDeletedText).toContain("x".repeat(deletedLength));
-      expect(retainedForeignInsertion).toBe(ownership === "other" ? character : "");
+      expect(retainedForeignInsertion).toBe(
+        ownership === "other" ? character : "",
+      );
     };
     // Every direction and ownership gets the full marker/run-length boundary matrix.
     for (const direction of ["forward", "backward"] as const)
@@ -208,7 +267,14 @@ test(
           for (const markers of [false, true])
             for (let deletedLength = 1; deletedLength <= 8; deletedLength++)
               for (const character of ["\u00a0", "Q"])
-                check({ direction, ownership, deletedOwner, markers, deletedLength, character });
+                check({
+                  direction,
+                  ownership,
+                  deletedOwner,
+                  markers,
+                  deletedLength,
+                  character,
+                });
     assertProperty(
       fc.property(
         fc.record({

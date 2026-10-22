@@ -20,7 +20,9 @@ describe("HiddenTextExtension toDOM — eigenpal #424 gap 9", () => {
     // The mark argument is unused by this toDOM, but the PM type signature
     // requires one; passing a stub keeps the test independent of the
     // schema/mark plumbing.
-    const fakeMark = { type: { name: "hidden" }, attrs: {} } as Parameters<typeof spec.toDOM>[0];
+    const fakeMark = { type: { name: "hidden" }, attrs: {} } as Parameters<
+      typeof spec.toDOM
+    >[0];
     const output = spec.toDOM(fakeMark, true);
 
     if (!Array.isArray(output)) {

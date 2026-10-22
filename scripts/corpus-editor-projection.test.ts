@@ -12,10 +12,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
+
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
-import JSZip from "jszip";
 
 import {
   type CorpusInvariantInput,
@@ -30,9 +31,12 @@ import type { CorpusFailure } from "./lib/corpus-signature";
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
-const WORDPROCESSING = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const RELATIONSHIP_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships";
-const OFFICE_RELATIONSHIP = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const WORDPROCESSING =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const RELATIONSHIP_NAMESPACE =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
+const OFFICE_RELATIONSHIP =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const DOCUMENT_PART = "word/document.xml";
 
 const documentXml = (body: string): string =>
@@ -91,18 +95,23 @@ describe("the forced leg asks for the reuse it means", () => {
     const { parsed } = await invariantInput(RICH_BODY);
     const proseDoc = toProseDoc(parsed);
 
-    expect(projectedWithoutReuse(proseDoc, parsed).package.document.content).toHaveLength(
-      parsed.package.document.content.length,
-    );
+    expect(
+      projectedWithoutReuse(proseDoc, parsed).package.document.content,
+    ).toHaveLength(parsed.package.document.content.length);
     expect(() =>
-      fromProseDoc(proseDoc, parsed, { reuse: "matched", stylesheetSource: { type: "package" } }),
+      fromProseDoc(proseDoc, parsed, {
+        reuse: "matched",
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow(/not implemented/);
   });
 });
 
 describe("the forced projection preserves the package", () => {
   test("a minimal well-formed package survives it", async () => {
-    const outcome = await runEditorProjectionInvariant(await invariantInput(PLAIN_BODY));
+    const outcome = await runEditorProjectionInvariant(
+      await invariantInput(PLAIN_BODY),
+    );
 
     expect(outcome.failures).toEqual([]);
     expect(Object.keys(outcome.timings)).toEqual([
@@ -115,7 +124,9 @@ describe("the forced projection preserves the package", () => {
   });
 
   test("a heading, direct formatting and a table survive it too", async () => {
-    const outcome = await runEditorProjectionInvariant(await invariantInput(RICH_BODY));
+    const outcome = await runEditorProjectionInvariant(
+      await invariantInput(RICH_BODY),
+    );
 
     expect(outcome.failures).toEqual([]);
   });
@@ -136,7 +147,11 @@ describe("while no reuse is implemented the two legs measure the same thing", ()
       runEditorRoundTripInvariant(input),
     ]);
 
-    expect(withoutLegNames(projection.failures)).toEqual(withoutLegNames(roundTrip.failures));
-    expect(Object.keys(projection.timings)).toEqual(Object.keys(roundTrip.timings));
+    expect(withoutLegNames(projection.failures)).toEqual(
+      withoutLegNames(roundTrip.failures),
+    );
+    expect(Object.keys(projection.timings)).toEqual(
+      Object.keys(roundTrip.timings),
+    );
   });
 });

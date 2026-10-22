@@ -12,11 +12,13 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, NodeSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { acceptAllChanges, rejectAllChanges } from "../commands/comments";
-import { schema } from "../schema";
 import { canonicalFieldNode } from "../fieldRepresentation";
+import { schema } from "../schema";
 import { dispatchEditorTextInput } from "../textInput";
 import {
   canCarryTrackedRunMark,
@@ -25,7 +27,9 @@ import {
 import { createSuggestionModePlugin } from "./suggestionMode";
 
 /** Every node-selectable inline atom a tracked run can own, from the disposition map. */
-const SELECTABLE_ATOMS: readonly PMNode[] = Object.keys(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS)
+const SELECTABLE_ATOMS: readonly PMNode[] = Object.keys(
+  TRACKED_RUN_INLINE_ATOM_DISPOSITIONS,
+)
   .map((name) => {
     const node = schema.nodes[name]?.createAndFill();
     // Imported structured fields cache their native result text. Schema defaults
@@ -71,8 +75,9 @@ const headlessView = (state: EditorState): HeadlessView => {
 
 const paste = (view: HeadlessView, slice: Slice): void => {
   const event = { clipboardData: null, preventDefault: () => undefined };
-  const handled = view.someProp("handlePaste", (handler: (...args: unknown[]) => boolean) =>
-    handler(view, event, slice),
+  const handled = view.someProp(
+    "handlePaste",
+    (handler: (...args: unknown[]) => boolean) => handler(view, event, slice),
   );
   if (!handled) {
     view.dispatch(view.state.tr.replaceSelection(slice).setMeta("paste", true));
@@ -88,37 +93,57 @@ const letters = fc.string({
 });
 
 const replacementArb: fc.Arbitrary<Replacement> = fc.oneof(
-  fc.string({ unit: fc.constantFrom("x", "y", "z"), minLength: 1, maxLength: 4 }).map((text) => ({
-    kind: `type ${JSON.stringify(text)}`,
-    run: (view: HeadlessView) => {
-      for (const character of text) {
-        dispatchEditorTextInput(view, character);
-      }
-    },
-  })),
+  fc
+    .string({
+      unit: fc.constantFrom("x", "y", "z"),
+      minLength: 1,
+      maxLength: 4,
+    })
+    .map((text) => ({
+      kind: `type ${JSON.stringify(text)}`,
+      run: (view: HeadlessView) => {
+        for (const character of text) {
+          dispatchEditorTextInput(view, character);
+        }
+      },
+    })),
   fc.constantFrom<Replacement>(
     {
       kind: "paste inline text",
-      run: (view) => paste(view, new Slice(Fragment.from(schema.text("Pasted")), 0, 0)),
+      run: (view) =>
+        paste(view, new Slice(Fragment.from(schema.text("Pasted")), 0, 0)),
     },
     {
       kind: "insert an inline node",
-      run: (view) => view.dispatch(view.state.tr.replaceSelectionWith(schema.node("hardBreak"))),
+      run: (view) =>
+        view.dispatch(
+          view.state.tr.replaceSelectionWith(schema.node("hardBreak")),
+        ),
     },
   ),
 );
 
-const runIn = (doc: PMNode, atomPos: number, suggesting: boolean, replacement: Replacement) => {
+const runIn = (
+  doc: PMNode,
+  atomPos: number,
+  suggesting: boolean,
+  replacement: Replacement,
+) => {
   const state = EditorState.create({
     doc,
     plugins: [createSuggestionModePlugin(suggesting, "Author")],
   });
-  const view = headlessView(state.apply(state.tr.setSelection(NodeSelection.create(doc, atomPos))));
+  const view = headlessView(
+    state.apply(state.tr.setSelection(NodeSelection.create(doc, atomPos))),
+  );
   replacement.run(view);
   return view.state;
 };
 
-const resolveAll = (state: EditorState, command: typeof acceptAllChanges): PMNode => {
+const resolveAll = (
+  state: EditorState,
+  command: typeof acceptAllChanges,
+): PMNode => {
   let resolved = state;
   command()(state, (tr) => {
     resolved = state.apply(tr);
@@ -129,7 +154,9 @@ const resolveAll = (state: EditorState, command: typeof acceptAllChanges): PMNod
 describe("suggesting mode replaces a node-selected inline atom as a tracked change", () => {
   test("the atom kinds are derived, not empty", () => {
     if (!SELECTABLE_ATOMS.some((atom) => atom.type.name === "image")) {
-      throw new Error("Expected the image atom among the selectable inline atoms");
+      throw new Error(
+        "Expected the image atom among the selectable inline atoms",
+      );
     }
   });
 
@@ -148,7 +175,9 @@ describe("suggesting mode replaces a node-selected inline atom as a tracked chan
               atom,
               ...(after ? [schema.text(after)] : []),
             ];
-            const doc = schema.node("doc", null, [schema.node("paragraph", null, inline)]);
+            const doc = schema.node("doc", null, [
+              schema.node("paragraph", null, inline),
+            ]);
             const atomPos = 1 + before.length;
             const direct = runIn(doc, atomPos, false, replacement).doc;
             const suggested = runIn(doc, atomPos, true, replacement);

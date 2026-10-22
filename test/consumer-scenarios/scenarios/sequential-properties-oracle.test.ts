@@ -48,13 +48,20 @@ test("sequential replay orders every property-edit sibling before terminal break
           [property, ...deletions],
           [...deletions, property],
         ]) {
-          for (const mode of ["direct", "suggested", "tracked-changes"] as const) {
+          for (const mode of [
+            "direct",
+            "suggested",
+            "tracked-changes",
+          ] as const) {
             const ordered = sequentialGroups({ applied, preRows, mode }).flat();
             assert.deepEqual(
               ordered.map(({ id }) => id).toSorted(),
               applied.map(({ id }) => id).toSorted(),
             );
-            assert.equal(ordered.at(mode === "tracked-changes" ? 0 : -1)?.id, property.id);
+            assert.equal(
+              ordered.at(mode === "tracked-changes" ? 0 : -1)?.id,
+              property.id,
+            );
           }
         }
       }
@@ -72,7 +79,12 @@ test("appending after the old last paragraph leaves ordinary replay ordering", (
       properties: { alignment: "center" },
     },
     { id: "delete", type: "deleteBlock", blockId: "paragraph-2" },
-    { id: "append", type: "insertAfterBlock", blockId: "paragraph-2", text: "New last paragraph." },
+    {
+      id: "append",
+      type: "insertAfterBlock",
+      blockId: "paragraph-2",
+      text: "New last paragraph.",
+    },
   ];
   assert.deepEqual(
     sequentialGroups({ applied, preRows, mode: "tracked-changes" })
@@ -138,7 +150,10 @@ test("generated terminal deletions preserve property edits and rejection in real
     ] as const) {
       const fixture = await packDocument(
         fromMarkdown(
-          Array.from({ length: removed + 2 }, (_, index) => `Clause ${index}.`).join("\n\n"),
+          Array.from(
+            { length: removed + 2 },
+            (_, index) => `Clause ${index}.`,
+          ).join("\n\n"),
         ),
       );
       const batch = await openReviewer(fixture);
@@ -158,8 +173,9 @@ test("generated terminal deletions preserve property edits and rejection in real
         ],
       } as const satisfies Parameters<typeof batch.applyDocumentOperations>[0];
       assert.equal(
-        batch.applyDocumentOperations(initialization, { undefinedReferences: "refuse" }).applied
-          .length,
+        batch.applyDocumentOperations(initialization, {
+          undefinedReferences: "refuse",
+        }).applied.length,
         1,
       );
       const before = new Uint8Array(await batch.toBuffer());
@@ -167,10 +183,17 @@ test("generated terminal deletions preserve property edits and rejection in real
       const rejected = await openReviewer(before);
       const preRows = batch.getContent();
       const operations = [
-        { id: "properties", type: "setBlockParagraphProperties", blockId: carrier.id, properties },
-        ...originalRows
-          .slice(2)
-          .map(({ id }) => ({ id: `delete-${id}`, type: "deleteBlock" as const, blockId: id })),
+        {
+          id: "properties",
+          type: "setBlockParagraphProperties",
+          blockId: carrier.id,
+          properties,
+        },
+        ...originalRows.slice(2).map(({ id }) => ({
+          id: `delete-${id}`,
+          type: "deleteBlock" as const,
+          blockId: id,
+        })),
       ] satisfies FolioDocumentOperation[];
       const request = {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -178,17 +201,28 @@ test("generated terminal deletions preserve property edits and rejection in real
         operations,
       } as const satisfies Parameters<typeof batch.applyDocumentOperations>[0];
       assert.equal(
-        batch.applyDocumentOperations(request, { undefinedReferences: "refuse" }).applied.length,
+        batch.applyDocumentOperations(request, {
+          undefinedReferences: "refuse",
+        }).applied.length,
         operations.length,
       );
       assert.equal(
-        rejected.applyDocumentOperations(request, { undefinedReferences: "refuse" }).applied.length,
+        rejected.applyDocumentOperations(request, {
+          undefinedReferences: "refuse",
+        }).applied.length,
         operations.length,
       );
-      for (const group of sequentialGroups({ applied: operations, preRows, mode: request.mode })) {
+      for (const group of sequentialGroups({
+        applied: operations,
+        preRows,
+        mode: request.mode,
+      })) {
         const restated = group.map(({ id }) => {
           const operation = operations.find((candidate) => candidate.id === id);
-          assert.ok(operation, `sequential group operation ${id} belongs to the batch`);
+          assert.ok(
+            operation,
+            `sequential group operation ${id} belongs to the batch`,
+          );
           return operation;
         });
         const result = sequential.applyDocumentOperations(

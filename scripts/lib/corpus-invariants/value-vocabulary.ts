@@ -59,7 +59,9 @@ const schemaEnumValues = (): string[] => {
   // Read synchronously and once: the formatter is called from inside a
   // synchronous model walk, and the parse costs single-digit milliseconds per
   // worker process against a run measured in minutes.
-  const graph = JSON.parse(readFileSync(GRAPH_URL, "utf8")) as EnumeratedSymbols;
+  const graph = JSON.parse(
+    readFileSync(GRAPH_URL, "utf8"),
+  ) as EnumeratedSymbols;
   const values: string[] = [];
   for (const symbol of graph.symbols) {
     if (symbol.kind !== "simpleType" || symbol.enumValues === undefined) {
@@ -91,8 +93,11 @@ let vocabulary: ReadonlySet<string> | undefined;
 
 /** Every token a signature may name, derived once per process. */
 export const valueVocabulary = (): ReadonlySet<string> => {
-  vocabulary ??= new Set([...schemaEnumValues(), ...modelConstantValues()].filter(isToken));
+  vocabulary ??= new Set(
+    [...schemaEnumValues(), ...modelConstantValues()].filter(isToken),
+  );
   return vocabulary;
 };
 
-export const isVocabularyToken = (value: string): boolean => valueVocabulary().has(value);
+export const isVocabularyToken = (value: string): boolean =>
+  valueVocabulary().has(value);

@@ -24,16 +24,24 @@ function emptyHeader(): HeaderFooter {
 
 describe("isAllowedExternalWatermarkImageUrl", () => {
   test("allows http/https URLs", () => {
-    expect(isAllowedExternalWatermarkImageUrl("https://example.com/watermark.png")).toBe(true);
-    expect(isAllowedExternalWatermarkImageUrl("http://example.com/watermark.png")).toBe(true);
+    expect(
+      isAllowedExternalWatermarkImageUrl("https://example.com/watermark.png"),
+    ).toBe(true);
+    expect(
+      isAllowedExternalWatermarkImageUrl("http://example.com/watermark.png"),
+    ).toBe(true);
   });
 
   test("rejects a file: URL", () => {
-    expect(isAllowedExternalWatermarkImageUrl("file:///etc/passwd")).toBe(false);
+    expect(isAllowedExternalWatermarkImageUrl("file:///etc/passwd")).toBe(
+      false,
+    );
   });
 
   test("rejects a UNC path", () => {
-    expect(isAllowedExternalWatermarkImageUrl("\\\\attacker\\share\\payload.png")).toBe(false);
+    expect(
+      isAllowedExternalWatermarkImageUrl("\\\\attacker\\share\\payload.png"),
+    ).toBe(false);
   });
 
   test("rejects an unparseable string", () => {
@@ -42,9 +50,15 @@ describe("isAllowedExternalWatermarkImageUrl", () => {
   });
 
   test("rejects other schemes (javascript:, data:, ftp:)", () => {
-    expect(isAllowedExternalWatermarkImageUrl("javascript:alert(1)")).toBe(false);
-    expect(isAllowedExternalWatermarkImageUrl("data:text/plain;base64,aGk=")).toBe(false);
-    expect(isAllowedExternalWatermarkImageUrl("ftp://example.com/watermark.png")).toBe(false);
+    expect(isAllowedExternalWatermarkImageUrl("javascript:alert(1)")).toBe(
+      false,
+    );
+    expect(
+      isAllowedExternalWatermarkImageUrl("data:text/plain;base64,aGk="),
+    ).toBe(false);
+    expect(
+      isAllowedExternalWatermarkImageUrl("ftp://example.com/watermark.png"),
+    ).toBe(false);
   });
 });
 
@@ -95,34 +109,42 @@ describe("setDocumentWatermark", () => {
     });
     const next = setDocumentWatermark(doc, { kind: "text", text: "NEW" });
     const header = next.package.headers?.get("rId1");
-    expect(header?.watermark?.kind === "text" && header.watermark.text).toBe("NEW");
+    expect(header?.watermark?.kind === "text" && header.watermark.text).toBe(
+      "NEW",
+    );
     expect(header?.rawWatermarkXml).toBeUndefined();
   });
 
   test.each([
-    { label: "replaced", watermark: { kind: "text", text: "NEW" } satisfies Watermark },
+    {
+      label: "replaced",
+      watermark: { kind: "text", text: "NEW" } satisfies Watermark,
+    },
     { label: "cleared", watermark: undefined },
-  ])("removes a retained watermark host when the watermark is $label", ({ watermark }) => {
-    const retainedHost: HeaderFooter = {
-      ...emptyHeader(),
-      content: [
-        {
-          type: "paragraph",
-          content: [],
-          formatting: { styleId: "Header" },
-        },
-      ],
-      watermark: { kind: "text", text: "OLD" },
-      watermarkBlockIndex: 0,
-      rawWatermarkXml: "<w:p><w:r><w:pict>OLD VML</w:pict></w:r></w:p>",
-    };
-    const doc = makeDoc({ rId1: retainedHost });
+  ])(
+    "removes a retained watermark host when the watermark is $label",
+    ({ watermark }) => {
+      const retainedHost: HeaderFooter = {
+        ...emptyHeader(),
+        content: [
+          {
+            type: "paragraph",
+            content: [],
+            formatting: { styleId: "Header" },
+          },
+        ],
+        watermark: { kind: "text", text: "OLD" },
+        watermarkBlockIndex: 0,
+        rawWatermarkXml: "<w:p><w:r><w:pict>OLD VML</w:pict></w:r></w:p>",
+      };
+      const doc = makeDoc({ rId1: retainedHost });
 
-    const next = setDocumentWatermark(doc, watermark);
+      const next = setDocumentWatermark(doc, watermark);
 
-    expect(next.package.headers?.get("rId1")?.content).toEqual([]);
-    expect(retainedHost.content).toHaveLength(1);
-  });
+      expect(next.package.headers?.get("rId1")?.content).toEqual([]);
+      expect(retainedHost.content).toHaveLength(1);
+    },
+  );
 
   test("passing undefined removes the watermark from every header", () => {
     const doc = makeDoc({
@@ -141,7 +163,9 @@ describe("setDocumentWatermark", () => {
     expect(headers).toHaveLength(1);
     expect(headers[0]?.watermark?.kind).toBe("text");
     // The final section references the created default header.
-    expect(next.package.document.finalSectionProperties?.headerReferences).toContainEqual({
+    expect(
+      next.package.document.finalSectionProperties?.headerReferences,
+    ).toContainEqual({
       type: "default",
       rId: expect.any(String),
     });
@@ -201,9 +225,10 @@ describe("ensureWatermarkHeaderCoverage", () => {
     };
 
     const next = ensureWatermarkHeaderCoverage(doc, watermark);
-    const firstRef = next.package.document.finalSectionProperties?.headerReferences?.find(
-      (ref) => ref.type === "first",
-    );
+    const firstRef =
+      next.package.document.finalSectionProperties?.headerReferences?.find(
+        (ref) => ref.type === "first",
+      );
     expect(firstRef).toBeDefined();
     const firstHeader = firstRef && next.package.headers?.get(firstRef.rId);
     expect(firstHeader?.hdrFtrType).toBe("first");
@@ -225,11 +250,14 @@ describe("ensureWatermarkHeaderCoverage", () => {
     };
 
     const next = ensureWatermarkHeaderCoverage(doc, watermark);
-    const evenRef = next.package.document.finalSectionProperties?.headerReferences?.find(
-      (ref) => ref.type === "even",
-    );
+    const evenRef =
+      next.package.document.finalSectionProperties?.headerReferences?.find(
+        (ref) => ref.type === "even",
+      );
     expect(evenRef).toBeDefined();
-    expect(evenRef && next.package.headers?.get(evenRef.rId)?.watermark?.kind).toBe("text");
+    expect(
+      evenRef && next.package.headers?.get(evenRef.rId)?.watermark?.kind,
+    ).toBe("text");
   });
 
   test("preserves inheritance: does not create a type that already exists", () => {
@@ -284,7 +312,10 @@ describe("ensureWatermarkHeaderCoverage", () => {
         },
         headers: new Map([
           ["rId1", { ...emptyHeader(), watermark }],
-          ["rId2", { type: "header", hdrFtrType: "first", content: [], watermark }],
+          [
+            "rId2",
+            { type: "header", hdrFtrType: "first", content: [], watermark },
+          ],
         ]),
       },
     };
@@ -292,11 +323,16 @@ describe("ensureWatermarkHeaderCoverage", () => {
     const next = ensureWatermarkHeaderCoverage(doc, watermark);
     const block = next.package.document.content[0];
     const section1Refs =
-      block?.type === "paragraph" ? block.sectionProperties?.headerReferences : undefined;
+      block?.type === "paragraph"
+        ? block.sectionProperties?.headerReferences
+        : undefined;
     // Section 1 (the mid-body break) gains a coverage first header...
     const coverageRef = section1Refs?.find((ref) => ref.type === "first");
     expect(coverageRef).toBeDefined();
-    expect(coverageRef && next.package.headers?.get(coverageRef.rId)?.watermark?.kind).toBe("text");
+    expect(
+      coverageRef &&
+        next.package.headers?.get(coverageRef.rId)?.watermark?.kind,
+    ).toBe("text");
     // ...while the final section keeps its own first header unchanged.
     expect(
       next.package.document.finalSectionProperties?.headerReferences?.filter(
@@ -324,14 +360,18 @@ describe("ensureWatermarkHeaderCoverage", () => {
     const block = next.package.document.content[0];
     const defaultRef =
       block?.type === "paragraph"
-        ? block.sectionProperties?.headerReferences?.find((ref) => ref.type === "default")
+        ? block.sectionProperties?.headerReferences?.find(
+            (ref) => ref.type === "default",
+          )
         : undefined;
     expect(defaultRef).toBeDefined();
-    expect(defaultRef && next.package.headers?.get(defaultRef.rId)?.watermark?.kind).toBe("text");
+    expect(
+      defaultRef && next.package.headers?.get(defaultRef.rId)?.watermark?.kind,
+    ).toBe("text");
     // The later section keeps its own default header.
-    expect(next.package.document.finalSectionProperties?.headerReferences).toEqual([
-      { type: "default", rId: "rId1" },
-    ]);
+    expect(
+      next.package.document.finalSectionProperties?.headerReferences,
+    ).toEqual([{ type: "default", rId: "rId1" }]);
   });
 
   test("mints a coverage rId that does not collide with an existing relationship", () => {
@@ -368,9 +408,10 @@ describe("ensureWatermarkHeaderCoverage", () => {
     };
 
     const next = ensureWatermarkHeaderCoverage(doc, watermark);
-    const firstRef = next.package.document.finalSectionProperties?.headerReferences?.find(
-      (ref) => ref.type === "first",
-    );
+    const firstRef =
+      next.package.document.finalSectionProperties?.headerReferences?.find(
+        (ref) => ref.type === "first",
+      );
     expect(firstRef).toBeDefined();
     // Did not reuse the taken id, and the minted id resolves to a new header.
     expect(firstRef?.rId).not.toBe("rId_wm_first");

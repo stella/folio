@@ -1,4 +1,4 @@
-import { encodeBinaryString } from "../../utils/textEncoding";
+import { panic, Result, TaggedError } from "better-result";
 /**
  * TrueType (`glyf`) subsetting.
  *
@@ -14,8 +14,7 @@ import { encodeBinaryString } from "../../utils/textEncoding";
  * nothing depends on a Set's or Map's insertion order.
  */
 
-import { panic, Result, TaggedError } from "better-result";
-
+import { encodeBinaryString } from "../../utils/textEncoding";
 import type { SfntFont } from "./parse";
 import {
   fitsInView,
@@ -30,7 +29,9 @@ import {
   type SfntTableRecord,
 } from "./tables";
 
-export class SubsetError extends TaggedError("SubsetError")<{ message: string }> {}
+export class SubsetError extends TaggedError("SubsetError")<{
+  message: string;
+}> {}
 
 export type TrueTypeSubset = {
   /** Subset sfnt bytes. */
@@ -76,7 +77,11 @@ const CHECKSUM_ADJUSTMENT_MAGIC = 0xb1b0afba;
 const UINT32_MODULUS = 0x100000000;
 
 /** Tables copied byte for byte when the source font has them. */
-const VERBATIM_TABLES = [SFNT_TABLE.cvt, SFNT_TABLE.fpgm, SFNT_TABLE.prep] as const;
+const VERBATIM_TABLES = [
+  SFNT_TABLE.cvt,
+  SFNT_TABLE.fpgm,
+  SFNT_TABLE.prep,
+] as const;
 
 const alignUp = (value: number): number =>
   Math.ceil(value / SFNT_TABLE_ALIGNMENT) * SFNT_TABLE_ALIGNMENT;
@@ -140,7 +145,12 @@ const glyphRange = (
 ): { readonly start: number; readonly end: number } | undefined => {
   const start = offsets[glyphId];
   const end = offsets[glyphId + 1];
-  if (start === undefined || end === undefined || end <= start || end > glyf.length) {
+  if (
+    start === undefined ||
+    end === undefined ||
+    end <= start ||
+    end > glyf.length
+  ) {
     return undefined;
   }
   return { start: glyf.offset + start, end: glyf.offset + end };
@@ -157,7 +167,11 @@ const closeOverComponents = (
   const selected = new Set<number>([NOTDEF_GLYPH_ID]);
   const queue: number[] = [NOTDEF_GLYPH_ID];
   for (const glyphId of [...requested].sort((left, right) => left - right)) {
-    if (!Number.isInteger(glyphId) || glyphId < 0 || glyphId >= source.numGlyphs) {
+    if (
+      !Number.isInteger(glyphId) ||
+      glyphId < 0 ||
+      glyphId >= source.numGlyphs
+    ) {
       return fail(`glyph id ${glyphId} is outside 0..${source.numGlyphs - 1}`);
     }
     if (!selected.has(glyphId)) {
@@ -166,7 +180,11 @@ const closeOverComponents = (
     }
   }
 
-  for (let glyphId = queue.pop(); glyphId !== undefined; glyphId = queue.pop()) {
+  for (
+    let glyphId = queue.pop();
+    glyphId !== undefined;
+    glyphId = queue.pop()
+  ) {
     const range = glyphRange(source, glyphId);
     if (!range) {
       continue;
@@ -175,15 +193,23 @@ const closeOverComponents = (
       range.end - range.start < GLYPH_HEADER_SIZE ||
       !fitsInView(source.view, range.start, GLYPH_HEADER_SIZE)
     ) {
-      return fail(`glyph ${glyphId} is shorter than its ${GLYPH_HEADER_SIZE}-byte header`);
+      return fail(
+        `glyph ${glyphId} is shorter than its ${GLYPH_HEADER_SIZE}-byte header`,
+      );
     }
     if (source.view.getInt16(range.start) > COMPOSITE_CONTOUR_COUNT) {
       continue;
     }
 
-    const components = readCompositeComponents(source.view, range.start, range.end);
+    const components = readCompositeComponents(
+      source.view,
+      range.start,
+      range.end,
+    );
     if (!components) {
-      return fail(`composite glyph ${glyphId} has a truncated component record`);
+      return fail(
+        `composite glyph ${glyphId} has a truncated component record`,
+      );
     }
     for (const component of components.glyphIds) {
       if (component >= source.numGlyphs) {
@@ -231,12 +257,24 @@ const buildGlyf = (
 
     const length = range.end - range.start;
     const data = new Uint8Array(alignUp(length));
-    data.set(new Uint8Array(source.view.buffer, source.view.byteOffset + range.start, length));
+    data.set(
+      new Uint8Array(
+        source.view.buffer,
+        source.view.byteOffset + range.start,
+        length,
+      ),
+    );
 
     if (source.view.getInt16(range.start) <= COMPOSITE_CONTOUR_COUNT) {
-      const components = readCompositeComponents(source.view, range.start, range.end);
+      const components = readCompositeComponents(
+        source.view,
+        range.start,
+        range.end,
+      );
       if (!components) {
-        return fail(`composite glyph ${glyphId} has a truncated component record`);
+        return fail(
+          `composite glyph ${glyphId} has a truncated component record`,
+        );
       }
 
       const copied = new DataView(data.buffer);
@@ -264,7 +302,10 @@ const buildGlyf = (
   return Result.ok({ glyf, locaOffsets });
 };
 
-const buildLoca = (offsets: readonly number[], longFormat: boolean): Uint8Array => {
+const buildLoca = (
+  offsets: readonly number[],
+  longFormat: boolean,
+): Uint8Array => {
   const entrySize = longFormat ? 4 : 2;
   const loca = new Uint8Array(offsets.length * entrySize);
   const view = new DataView(loca.buffer);
@@ -296,7 +337,9 @@ const sourceLeftSideBearing = (
   const at =
     glyphId < numberOfHMetrics
       ? hmtx.offset + glyphId * HMTX_METRIC_SIZE + 2
-      : hmtx.offset + numberOfHMetrics * HMTX_METRIC_SIZE + (glyphId - numberOfHMetrics) * 2;
+      : hmtx.offset +
+        numberOfHMetrics * HMTX_METRIC_SIZE +
+        (glyphId - numberOfHMetrics) * 2;
   if (at + 2 > hmtx.offset + hmtx.length || !fitsInView(view, at, 2)) {
     return 0;
   }
@@ -338,13 +381,20 @@ type OutputTable = { readonly tag: string; readonly data: Uint8Array };
  * sum, so a validator summing the finished file lands on the magic.
  */
 const assembleSfnt = (tables: readonly OutputTable[]): Uint8Array => {
-  const sorted = [...tables].sort((left, right) => (left.tag < right.tag ? -1 : 1));
+  const sorted = [...tables].sort((left, right) =>
+    left.tag < right.tag ? -1 : 1,
+  );
   const directorySize = sorted.length * SFNT_DIRECTORY_ENTRY_SIZE;
-  const bodySize = sorted.reduce((total, table) => total + alignUp(table.data.byteLength), 0);
+  const bodySize = sorted.reduce(
+    (total, table) => total + alignUp(table.data.byteLength),
+    0,
+  );
   const output = new Uint8Array(SFNT_HEADER_SIZE + directorySize + bodySize);
   const view = new DataView(output.buffer);
 
-  const { searchRange, entrySelector, rangeShift } = searchParametersFor(sorted.length);
+  const { searchRange, entrySelector, rangeShift } = searchParametersFor(
+    sorted.length,
+  );
   view.setUint32(0, SFNT_VERSION.trueType);
   view.setUint16(4, sorted.length);
   view.setUint16(6, searchRange);
@@ -377,7 +427,10 @@ const assembleSfnt = (tables: readonly OutputTable[]): Uint8Array => {
 };
 
 /** A copy of a source table, so edits never touch the caller's buffer. */
-const copyTable = (directory: SfntDirectory, record: SfntTableRecord): Uint8Array =>
+const copyTable = (
+  directory: SfntDirectory,
+  record: SfntTableRecord,
+): Uint8Array =>
   new Uint8Array(
     directory.view.buffer.slice(
       directory.view.byteOffset + record.offset,
@@ -394,8 +447,13 @@ const requireTable = (
   if (!record) {
     return fail(`font has no '${tag}' table, which a TrueType subset needs`);
   }
-  if (record.length < size || !fitsInView(directory.view, record.offset, size)) {
-    return fail(`'${tag}' table is ${record.length} bytes, needs at least ${size}`);
+  if (
+    record.length < size ||
+    !fitsInView(directory.view, record.offset, size)
+  ) {
+    return fail(
+      `'${tag}' table is ${record.length} bytes, needs at least ${size}`,
+    );
   }
   return Result.ok(record);
 };
@@ -459,7 +517,12 @@ export const subsetTrueType = (
     return fail("'loca' is truncated or its offsets are not monotonic");
   }
 
-  const source = { view, glyf: glyfResult.value, offsets, numGlyphs: font.numGlyphs };
+  const source = {
+    view,
+    glyf: glyfResult.value,
+    offsets,
+    numGlyphs: font.numGlyphs,
+  };
   const selectedResult = closeOverComponents(source, glyphIds);
   if (selectedResult.isErr()) {
     return Result.err(selectedResult.error);
@@ -486,7 +549,10 @@ export const subsetTrueType = (
   headView.setUint32(HEAD.checkSumAdjustment, 0);
 
   const newHhea = copyTable(directory, hheaResult.value);
-  new DataView(newHhea.buffer).setUint16(HHEA.numberOfHMetrics, selected.length);
+  new DataView(newHhea.buffer).setUint16(
+    HHEA.numberOfHMetrics,
+    selected.length,
+  );
 
   const newMaxp = copyTable(directory, maxpResult.value);
   new DataView(newMaxp.buffer).setUint16(MAXP.numGlyphs, selected.length);
@@ -494,13 +560,18 @@ export const subsetTrueType = (
   const sourceMetrics = {
     view,
     hmtx: hmtxResult.value,
-    numberOfHMetrics: view.getUint16(hheaResult.value.offset + HHEA.numberOfHMetrics),
+    numberOfHMetrics: view.getUint16(
+      hheaResult.value.offset + HHEA.numberOfHMetrics,
+    ),
   };
   const newHmtx = new Uint8Array(selected.length * HMTX_METRIC_SIZE);
   const hmtxView = new DataView(newHmtx.buffer);
   for (const [newId, oldId] of selected.entries()) {
     hmtxView.setUint16(newId * HMTX_METRIC_SIZE, font.advanceWidthFor(oldId));
-    hmtxView.setInt16(newId * HMTX_METRIC_SIZE + 2, sourceLeftSideBearing(sourceMetrics, oldId));
+    hmtxView.setInt16(
+      newId * HMTX_METRIC_SIZE + 2,
+      sourceLeftSideBearing(sourceMetrics, oldId),
+    );
   }
 
   const tables: OutputTable[] = [

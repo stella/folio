@@ -32,8 +32,9 @@ export const NO_NUMBERING_NUM_ID = 0;
  * A paragraph's numbering no longer goes through it: after
  * {@link paragraphNumberingFromSlots} the sentinel has no representation.
  */
-export const isNumberingReference = (numId: number | undefined): numId is number =>
-  numId !== undefined && numId !== NO_NUMBERING_NUM_ID;
+export const isNumberingReference = (
+  numId: number | undefined,
+): numId is number => numId !== undefined && numId !== NO_NUMBERING_NUM_ID;
 
 declare const PARAGRAPH_NUMBERING_REFERENCE: unique symbol;
 
@@ -77,13 +78,17 @@ export type ParagraphNumberingSlots = {
   ilvl?: number;
 };
 
-type ParagraphNumberingReferenceOptions<NumId extends number, Level extends number | undefined> = {
+type ParagraphNumberingReferenceOptions<
+  NumId extends number,
+  Level extends number | undefined,
+> = {
   numId: Exclude<NumId, typeof NO_NUMBERING_NUM_ID>;
   ilvl?: Level | undefined;
 };
 
 type ParagraphNumberingReferenceResult<Level extends number | undefined> =
-  ParagraphNumberingReference & (Level extends number ? { readonly ilvl: Level } : unknown);
+  ParagraphNumberingReference &
+    (Level extends number ? { readonly ilvl: Level } : unknown);
 
 /** Mint a reference after excluding the reserved id from the model. */
 export const paragraphNumberingReference = <
@@ -92,12 +97,19 @@ export const paragraphNumberingReference = <
 >({
   numId,
   ilvl,
-}: ParagraphNumberingReferenceOptions<NumId, Level>): ParagraphNumberingReferenceResult<Level> => {
+}: ParagraphNumberingReferenceOptions<
+  NumId,
+  Level
+>): ParagraphNumberingReferenceResult<Level> => {
   if (!isNumberingReference(numId)) {
-    return panic(`Paragraph numbering reference cannot use reserved numId ${numId}`);
+    return panic(
+      `Paragraph numbering reference cannot use reserved numId ${numId}`,
+    );
   }
   const reference =
-    ilvl === undefined ? { kind: "reference", numId } : { kind: "reference", numId, ilvl };
+    ilvl === undefined
+      ? { kind: "reference", numId }
+      : { kind: "reference", numId, ilvl };
   // SAFETY: this constructor rejects the only id excluded by the reference
   // arm. The symbol is a phantom brand; the serialized model stays plain.
   return reference as ParagraphNumberingReferenceResult<Level>;
@@ -145,7 +157,9 @@ export const paragraphNumberingSlots = (
       return { ilvl: numbering.ilvl };
     default: {
       const unhandled: never = numbering;
-      return panic(`Unhandled paragraph numbering ${JSON.stringify(unhandled)}`);
+      return panic(
+        `Unhandled paragraph numbering ${JSON.stringify(unhandled)}`,
+      );
     }
   }
 };
@@ -168,13 +182,20 @@ export const mergeParagraphNumbering = (
     case "none":
       return stated;
     case "reference": {
-      if (stated.ilvl !== undefined || inherited === undefined || inherited.kind === "none") {
+      if (
+        stated.ilvl !== undefined ||
+        inherited === undefined ||
+        inherited.kind === "none"
+      ) {
         return stated;
       }
       const inheritedLevel = inherited.ilvl;
       return inheritedLevel === undefined
         ? stated
-        : paragraphNumberingReference({ numId: stated.numId, ilvl: inheritedLevel });
+        : paragraphNumberingReference({
+            numId: stated.numId,
+            ilvl: inheritedLevel,
+          });
     }
     case "levelOnly": {
       if (inherited === undefined) {
@@ -187,10 +208,15 @@ export const mergeParagraphNumbering = (
         case "levelOnly":
           return stated;
         case "reference":
-          return paragraphNumberingReference({ numId: inherited.numId, ilvl: stated.ilvl });
+          return paragraphNumberingReference({
+            numId: inherited.numId,
+            ilvl: stated.ilvl,
+          });
         default: {
           const unhandled: never = inherited;
-          return panic(`Unhandled inherited numbering ${JSON.stringify(unhandled)}`);
+          return panic(
+            `Unhandled inherited numbering ${JSON.stringify(unhandled)}`,
+          );
         }
       }
     }
@@ -224,7 +250,9 @@ export const resolveParagraphNumbering = (
       });
     default: {
       const unhandled: never = numbering;
-      return panic(`Unhandled paragraph numbering ${JSON.stringify(unhandled)}`);
+      return panic(
+        `Unhandled paragraph numbering ${JSON.stringify(unhandled)}`,
+      );
     }
   }
 };
@@ -245,7 +273,9 @@ export const paragraphNumberingLevel = (
       return numbering.ilvl ?? IMPLICIT_NUMBERING_LEVEL;
     default: {
       const unhandled: never = numbering;
-      return panic(`Unhandled paragraph numbering ${JSON.stringify(unhandled)}`);
+      return panic(
+        `Unhandled paragraph numbering ${JSON.stringify(unhandled)}`,
+      );
     }
   }
 };
@@ -253,7 +283,8 @@ export const paragraphNumberingLevel = (
 /** The numbering definition a stated override names, or undefined for none. */
 export const paragraphNumberingReferenceId = (
   numbering: ParagraphNumberingOverride | undefined,
-): number | undefined => (numbering?.kind === "reference" ? numbering.numId : undefined);
+): number | undefined =>
+  numbering?.kind === "reference" ? numbering.numId : undefined;
 
 /**
  * Whether two stated overrides say the same thing, byte for byte: an absent
@@ -271,12 +302,18 @@ export const sameStatedParagraphNumbering = (
     case "none":
       return right.kind === "none";
     case "reference":
-      return right.kind === "reference" && left.numId === right.numId && left.ilvl === right.ilvl;
+      return (
+        right.kind === "reference" &&
+        left.numId === right.numId &&
+        left.ilvl === right.ilvl
+      );
     case "levelOnly":
       return right.kind === "levelOnly" && left.ilvl === right.ilvl;
     default: {
       const unhandled: never = left;
-      return panic(`Unhandled paragraph numbering ${JSON.stringify(unhandled)}`);
+      return panic(
+        `Unhandled paragraph numbering ${JSON.stringify(unhandled)}`,
+      );
     }
   }
 };
@@ -294,5 +331,8 @@ export const sameEffectiveParagraphNumbering = (
   if (resolvedLeft.kind === "none" || resolvedRight.kind === "none") {
     return resolvedLeft.kind === resolvedRight.kind;
   }
-  return resolvedLeft.numId === resolvedRight.numId && resolvedLeft.ilvl === resolvedRight.ilvl;
+  return (
+    resolvedLeft.numId === resolvedRight.numId &&
+    resolvedLeft.ilvl === resolvedRight.ilvl
+  );
 };

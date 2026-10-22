@@ -14,7 +14,11 @@ const mark = (name: string, attrs?: Record<string, unknown>): Mark => {
 };
 
 /** Marks of the first text node inside [from, to). */
-const marksInRange = (state: EditorState, from: number, to: number): readonly Mark[] => {
+const marksInRange = (
+  state: EditorState,
+  from: number,
+  to: number,
+): readonly Mark[] => {
   let found: readonly Mark[] | null = null;
   state.doc.nodesBetween(from, to, (node) => {
     if (found) {
@@ -29,12 +33,16 @@ const marksInRange = (state: EditorState, from: number, to: number): readonly Ma
   return found ?? [];
 };
 
-const markNames = (marks: readonly Mark[]): string[] => marks.map((m) => m.type.name).toSorted();
+const markNames = (marks: readonly Mark[]): string[] =>
+  marks.map((m) => m.type.name).toSorted();
 
 const findMark = (marks: readonly Mark[], name: string): Mark | undefined =>
   marks.find((m) => m.type.name === name);
 
-const textRange = (state: EditorState, text: string): { from: number; to: number } => {
+const textRange = (
+  state: EditorState,
+  text: string,
+): { from: number; to: number } => {
   let range: { from: number; to: number } | null = null;
   state.doc.descendants((node, position) => {
     if (!range && node.isText && node.text === text) {
@@ -78,15 +86,23 @@ describe("captureFormatMarks", () => {
     const captured = captureFormatMarks(state);
 
     expect(captured.type).toBe("capturedTextFormatting");
-    expect(markNames(captured.marks)).toEqual(["bold", "fontFamily", "fontSize"]);
-    expect(findMark(captured.marks, "fontFamily")?.attrs["ascii"]).toBe("Georgia");
+    expect(markNames(captured.marks)).toEqual([
+      "bold",
+      "fontFamily",
+      "fontSize",
+    ]);
+    expect(findMark(captured.marks, "fontFamily")?.attrs["ascii"]).toBe(
+      "Georgia",
+    );
     expect(findMark(captured.marks, "fontSize")?.attrs["size"]).toBe(24);
   });
 
   test("represents an effectively plain selection as a valid capture", () => {
     const plain = EditorState.create({
       schema,
-      doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("plain")])]),
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("plain")]),
+      ]),
     });
     expect(captureFormatMarks(select(plain, 1, 6))).toEqual({
       effectiveFormatting: {},
@@ -100,7 +116,9 @@ describe("captureFormatMarks", () => {
       schema,
       doc: schema.node("doc", null, [
         schema.node("paragraph", null, [
-          schema.text("x", [mark("runFormattingOverride", { hidden: false, rtl: false })]),
+          schema.text("x", [
+            mark("runFormattingOverride", { hidden: false, rtl: false }),
+          ]),
         ]),
       ]),
     });
@@ -116,7 +134,9 @@ describe("captureFormatMarks", () => {
       schema,
       doc: schema.node("doc", null, [
         schema.node("paragraph", null, [
-          schema.text("x", [mark("runFormattingOverride", { bold: false, rtl: false })]),
+          schema.text("x", [
+            mark("runFormattingOverride", { bold: false, rtl: false }),
+          ]),
         ]),
       ]),
     });
@@ -132,14 +152,18 @@ describe("captureFormatMarks", () => {
       schema,
       doc: schema.node("doc", null, [
         schema.node("paragraph", { defaultTextFormatting: { boldCs: true } }, [
-          schema.node("sdt", { sdtType: "richText" }, [schema.text("source", [characterStyle])]),
+          schema.node("sdt", { sdtType: "richText" }, [
+            schema.text("source", [characterStyle]),
+          ]),
         ]),
       ]),
     });
 
     const captured = captureFormatMarks(select(state, 2, 8));
 
-    expect(findMark(captured.marks, "characterStyle")?.attrs["styleId"]).toBe("ComplexToggle");
+    expect(findMark(captured.marks, "characterStyle")?.attrs["styleId"]).toBe(
+      "ComplexToggle",
+    );
     expect(findMark(captured.marks, "runFormattingOverride")).toBeUndefined();
     expect(captured.effectiveFormatting.boldCs).toBeUndefined();
   });
@@ -157,7 +181,12 @@ describe("applyFormatMarks", () => {
 
     expect(handled).toBe(true);
     const target = marksInRange(state, 8, 13);
-    expect(markNames(target)).toEqual(["bold", "fontFamily", "fontSize", "runFormattingOverride"]);
+    expect(markNames(target)).toEqual([
+      "bold",
+      "fontFamily",
+      "fontSize",
+      "runFormattingOverride",
+    ]);
     expect(findMark(target, "fontFamily")?.attrs["ascii"]).toBe("Georgia");
     expect(findMark(target, "fontSize")?.attrs["size"]).toBe(24);
     expect(findMark(target, "runFormattingOverride")?.attrs).toMatchObject({
@@ -211,7 +240,12 @@ describe("applyFormatMarks", () => {
             mark("superscript"),
             mark("allCaps"),
             mark("smallCaps"),
-            mark("characterSpacing", { spacing: 20, position: 4, scale: 120, kerning: 8 }),
+            mark("characterSpacing", {
+              spacing: 20,
+              position: 4,
+              scale: 120,
+              kerning: 8,
+            }),
             mark("runShading", { rgb: "00AA00" }),
             mark("emboss"),
             mark("imprint"),
@@ -238,7 +272,10 @@ describe("applyFormatMarks", () => {
 
     expect(handled).toBe(true);
     const painted = marksInRange(state, target.from, target.to);
-    expect(markNames(painted)).toEqual(["characterSpacing", "runFormattingOverride"]);
+    expect(markNames(painted)).toEqual([
+      "characterSpacing",
+      "runFormattingOverride",
+    ]);
     expect(findMark(painted, "runFormattingOverride")?.attrs).toMatchObject({
       allCaps: false,
       bold: false,
@@ -281,9 +318,11 @@ describe("applyFormatMarks", () => {
         schema.node("paragraph", { defaultTextFormatting: { bold: true } }, [
           schema.text("first", [mark("bold")]),
         ]),
-        schema.node("paragraph", { defaultTextFormatting: { underline: { style: "single" } } }, [
-          schema.text("second", [mark("underline", { style: "single" })]),
-        ]),
+        schema.node(
+          "paragraph",
+          { defaultTextFormatting: { underline: { style: "single" } } },
+          [schema.text("second", [mark("underline", { style: "single" })])],
+        ),
       ]),
     });
     const source = textRange(state, "source");
@@ -301,7 +340,9 @@ describe("applyFormatMarks", () => {
     expect(findMark(firstMarks, "runFormattingOverride")).toBeUndefined();
     expect(findMark(firstMarks, "bold")).toBeDefined();
     expect(findMark(secondMarks, "bold")).toBeDefined();
-    expect(findMark(secondMarks, "runFormattingOverride")?.attrs["underline"]).toBe("none");
+    expect(
+      findMark(secondMarks, "runFormattingOverride")?.attrs["underline"],
+    ).toBe("none");
   });
 
   test("refuses atomically when an absent source font cannot cancel the target context", () => {
@@ -309,9 +350,11 @@ describe("applyFormatMarks", () => {
       schema,
       doc: schema.node("doc", null, [
         schema.node("paragraph", null, [schema.text("source")]),
-        schema.node("paragraph", { defaultTextFormatting: { fontFamily: { ascii: "Arial" } } }, [
-          schema.text("target", [mark("fontFamily", { ascii: "Arial" })]),
-        ]),
+        schema.node(
+          "paragraph",
+          { defaultTextFormatting: { fontFamily: { ascii: "Arial" } } },
+          [schema.text("target", [mark("fontFamily", { ascii: "Arial" })])],
+        ),
       ]),
     });
     const source = textRange(state, "source");
@@ -337,10 +380,14 @@ describe("applyFormatMarks", () => {
       state = state.apply(tr);
     });
 
-    const fontFamilies = marksInRange(state, 8, 13).filter((m) => m.type.name === "fontFamily");
+    const fontFamilies = marksInRange(state, 8, 13).filter(
+      (m) => m.type.name === "fontFamily",
+    );
     expect(fontFamilies).toHaveLength(1);
     expect(fontFamilies[0]?.attrs["ascii"]).toBe("Georgia");
-    const fontSizes = marksInRange(state, 8, 13).filter((m) => m.type.name === "fontSize");
+    const fontSizes = marksInRange(state, 8, 13).filter(
+      (m) => m.type.name === "fontSize",
+    );
     expect(fontSizes).toHaveLength(1);
     expect(fontSizes[0]?.attrs["size"]).toBe(24);
   });

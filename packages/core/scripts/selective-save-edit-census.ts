@@ -1,3 +1,5 @@
+import { TaggedError } from "better-result";
+import JSZip from "jszip";
 /**
  * Live transaction save census. Run with:
  * bun packages/core/scripts/selective-save-edit-census.ts [--limit-per-source=10]
@@ -10,43 +12,46 @@
  * This is a preservation measurement, not XML schema validation.
  */
 import path from "node:path";
-import JSZip from "jszip";
-import { TaggedError } from "better-result";
-import { EditorState, TextSelection } from "prosemirror-state";
 import type { Node as PMNode } from "prosemirror-model";
-import { parseDocx } from "@stll/folio-core/docx/parser";
+import { EditorState, TextSelection } from "prosemirror-state";
+
 import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
+import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
 import { attemptSelectiveSave } from "@stll/folio-core/docx/selectiveSave";
+import { serializeDocument } from "@stll/folio-core/docx/serializer/documentSerializer";
 import {
-  parseXmlDocument,
   getLocalName,
   getNamespaceUri,
+  parseXmlDocument,
   type XmlElement,
 } from "@stll/folio-core/docx/xmlParser";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import { splitBlockClearBorders } from "@stll/folio-core/prosemirror/extensions/features/BaseKeymapExtension";
 import {
-  ParaIdAllocatorExtension,
-  ensureParaIdsInState,
-} from "@stll/folio-core/prosemirror/extensions/features/ParaIdAllocatorExtension";
-import {
   ParagraphChangeTrackerExtension,
   paragraphChangeTrackerKey,
 } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import { loadCorpusLock, sourceCheckoutPath } from "../../../scripts/lib/corpus-manifest";
+import {
+  ensureParaIdsInState,
+  ParaIdAllocatorExtension,
+} from "@stll/folio-core/prosemirror/extensions/features/ParaIdAllocatorExtension";
+
 import { allSubjects } from "../../../scripts/container-survival-census";
 import { buildFixture } from "../../../scripts/lib/container-survival/fixture";
+import { subjectKey } from "../../../scripts/lib/container-survival/laws";
 import {
-  loadContainerSpace,
   childSlots,
+  loadContainerSpace,
   qualify,
   WML_NAMESPACE,
 } from "../../../scripts/lib/container-survival/schemaSpace";
-import { serializeDocument } from "@stll/folio-core/docx/serializer/documentSerializer";
+import {
+  loadCorpusLock,
+  sourceCheckoutPath,
+} from "../../../scripts/lib/corpus-manifest";
 import { censusParagraphOrdinals } from "./selective-save-census-identity";
-import { subjectKey } from "../../../scripts/lib/container-survival/laws";
 
 class EditCensusError extends TaggedError("EditCensusError")<{
   message: string;
@@ -59,7 +64,9 @@ const EDITS = [
   "paste-three-paragraphs",
 ] as const;
 type Edit = (typeof EDITS)[number];
-const argument = process.argv.find((value) => value.startsWith("--limit-per-source="));
+const argument = process.argv.find((value) =>
+  value.startsWith("--limit-per-source="),
+);
 const limit = argument === undefined ? 10 : Number(argument.split("=").at(1));
 if (!Number.isSafeInteger(limit) || limit < 0)
   throw new EditCensusError({ message: "Invalid corpus sample limit" });
@@ -70,11 +77,17 @@ const declaredPairs = new Set(
   ),
 );
 const qualified = (node: XmlElement): string =>
-  qualify({ namespace: getNamespaceUri(node) ?? "", name: getLocalName(node.name ?? "") });
+  qualify({
+    namespace: getNamespaceUri(node) ?? "",
+    name: getLocalName(node.name ?? ""),
+  });
 
 // Scope is unchanged body content. Keep the body itself so its untouched
 // container children are counted, but omit the deliberately edited paragraphs.
-const inventory = (xml: string, skipped: ReadonlySet<number>): Map<string, number> => {
+const inventory = (
+  xml: string,
+  skipped: ReadonlySet<number>,
+): Map<string, number> => {
   const counts = new Map<string, number>();
   const visit = (node: XmlElement): void => {
     let bodyParagraph = 0;
@@ -140,18 +153,30 @@ const totalFor = (group: string, edit: Edit): Total => {
   return total;
 };
 
-type MeasureOptions = { source: string; group: string; buffer: ArrayBuffer | Uint8Array };
+type MeasureOptions = {
+  source: string;
+  group: string;
+  buffer: ArrayBuffer | Uint8Array;
+};
 
-const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void> => {
+const measure = async ({
+  source,
+  group,
+  buffer,
+}: MeasureOptions): Promise<void> => {
   considered += 1;
   try {
-    const sourceBuffer = buffer instanceof Uint8Array ? buffer.slice().buffer : buffer;
+    const sourceBuffer =
+      buffer instanceof Uint8Array ? buffer.slice().buffer : buffer;
     const parsed = await parseDocx(sourceBuffer);
     const pm = toProseDoc(parsed);
     const allocator =
-      ParaIdAllocatorExtension().onSchemaReady({ schema: pm.type.schema }).plugins ?? [];
+      ParaIdAllocatorExtension().onSchemaReady({ schema: pm.type.schema })
+        .plugins ?? [];
     const tracker =
-      ParagraphChangeTrackerExtension().onSchemaReady({ schema: pm.type.schema }).plugins ?? [];
+      ParagraphChangeTrackerExtension().onSchemaReady({
+        schema: pm.type.schema,
+      }).plugins ?? [];
     const initial = ensureParaIdsInState(
       EditorState.create({ doc: pm, plugins: [...allocator, ...tracker] }),
     );
@@ -169,7 +194,9 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
     const sourceOrdinal = censusParagraphOrdinals(
       originalXml,
       serializeDocument(
-        fromProseDoc(initial.doc, parsed, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(initial.doc, parsed, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     ).get(target.paraId);
     if (sourceOrdinal === undefined) {
@@ -180,7 +207,8 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
     for (const edit of EDITS) {
       const total = totalFor(group, edit);
       try {
-        const middle = target.pos + 1 + Math.floor(target.node.content.size / 2);
+        const middle =
+          target.pos + 1 + Math.floor(target.node.content.size / 2);
         let tr = initial.tr;
         let editedParagraphCount = 1;
         switch (edit) {
@@ -189,14 +217,18 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
             break;
           case "enter-mid-paragraph": {
             const selected = initial.apply(
-              initial.tr.setSelection(TextSelection.create(initial.doc, middle)),
+              initial.tr.setSelection(
+                TextSelection.create(initial.doc, middle),
+              ),
             );
             if (
               !splitBlockClearBorders(selected, (transaction) => {
                 tr = transaction;
               })
             ) {
-              throw new EditCensusError({ message: "Enter command declined the target selection" });
+              throw new EditCensusError({
+                message: "Enter command declined the target selection",
+              });
             }
             if (tr.doc.childCount !== initial.doc.childCount + 1) {
               throw new EditCensusError({
@@ -214,7 +246,10 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
             tr.insert(
               target.pos + target.node.nodeSize,
               [0, 1, 2].map((index) =>
-                target.node.type.create(null, pm.type.schema.text(`Pasted paragraph ${index + 1}`)),
+                target.node.type.create(
+                  null,
+                  pm.type.schema.text(`Pasted paragraph ${index + 1}`),
+                ),
               ),
             );
             editedParagraphCount = 4;
@@ -223,14 +258,28 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
         const state = initial.apply(tr);
         const tracked = paragraphChangeTrackerKey.getState(state);
         if (tracked === undefined)
-          throw new EditCensusError({ message: "Missing paragraph change tracker" });
-        const document = fromProseDoc(state.doc, parsed, { stylesheetSource: { type: "package" } });
-        const selective = await attemptSelectiveSave(document, sourceBuffer, tracked);
-        const saved = selective ?? (await repackDocx(document, { updateModifiedDate: false }));
+          throw new EditCensusError({
+            message: "Missing paragraph change tracker",
+          });
+        const document = fromProseDoc(state.doc, parsed, {
+          stylesheetSource: { type: "package" },
+        });
+        const selective = await attemptSelectiveSave(
+          document,
+          sourceBuffer,
+          tracked,
+        );
+        const saved =
+          selective ??
+          (await repackDocx(document, { updateModifiedDate: false }));
         const savedZip = await JSZip.loadAsync(saved);
         const xml = await savedZip.file("word/document.xml")?.async("text");
-        if (xml === undefined) throw new EditCensusError({ message: "Saved main part missing" });
-        const savedOrdinals = censusParagraphOrdinals(xml, serializeDocument(document));
+        if (xml === undefined)
+          throw new EditCensusError({ message: "Saved main part missing" });
+        const savedOrdinals = censusParagraphOrdinals(
+          xml,
+          serializeDocument(document),
+        );
         const skipped = new Set<number>();
         state.doc.forEach((node, pos) => {
           if (
@@ -240,13 +289,18 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
           )
             return;
           const paraId = node.attrs["paraId"];
-          const ordinal = typeof paraId === "string" ? savedOrdinals.get(paraId) : undefined;
+          const ordinal =
+            typeof paraId === "string" ? savedOrdinals.get(paraId) : undefined;
           if (ordinal === undefined)
-            throw new EditCensusError({ message: "Cannot locate edited paragraph in saved XML" });
+            throw new EditCensusError({
+              message: "Cannot locate edited paragraph in saved XML",
+            });
           skipped.add(ordinal);
         });
         if (skipped.size !== editedParagraphCount)
-          throw new EditCensusError({ message: "Missing edited paragraphs in saved XML" });
+          throw new EditCensusError({
+            message: "Missing edited paragraphs in saved XML",
+          });
         const after = inventory(xml, skipped);
         let losses = 0;
         for (const [pair, count] of before) {
@@ -282,13 +336,24 @@ for (const subject of allSubjects(space)) {
   )
     continue;
   const built = buildFixture(space, subject);
-  if (built.status !== "built" || built.fixture.part.path !== "word/document.xml") continue;
+  if (
+    built.status !== "built" ||
+    built.fixture.part.path !== "word/document.xml"
+  )
+    continue;
   const zip = await JSZip.loadAsync(base);
   const seed =
     "<w:p><w:r><w:t>Editable paragraph one</w:t></w:r></w:p><w:p><w:r><w:t>Untouched paragraph two</w:t></w:r></w:p>";
-  zip.file("word/document.xml", built.fixture.documentXml.replace("<w:body>", `<w:body>${seed}`));
+  zip.file(
+    "word/document.xml",
+    built.fixture.documentXml.replace("<w:body>", `<w:body>${seed}`),
+  );
   const buffer = await zip.generateAsync({ type: "arraybuffer" });
-  await measure({ source: `fixture:${subjectKey(subject)}`, group: "fixtures-raw", buffer });
+  await measure({
+    source: `fixture:${subjectKey(subject)}`,
+    group: "fixtures-raw",
+    buffer,
+  });
   await measure({
     source: `fixture:${subjectKey(subject)}`,
     group: "fixtures-normalized",
@@ -307,7 +372,11 @@ for (const source of lock.sources) {
       continue;
     }
     const buffer = await input.arrayBuffer();
-    await measure({ source: `${source.id}/${file.path}`, group: "corpus-raw", buffer });
+    await measure({
+      source: `${source.id}/${file.path}`,
+      group: "corpus-raw",
+      buffer,
+    });
     try {
       await measure({
         source: `${source.id}/${file.path}`,
@@ -315,7 +384,10 @@ for (const source of lock.sources) {
         buffer: (await ensureParaIds(buffer)).docx,
       });
     } catch (error) {
-      failures.push({ source: `${source.id}/${file.path}`, error: `normalize: ${String(error)}` });
+      failures.push({
+        source: `${source.id}/${file.path}`,
+        error: `normalize: ${String(error)}`,
+      });
     }
   }
 }

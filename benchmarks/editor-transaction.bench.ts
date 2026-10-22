@@ -10,10 +10,14 @@
  * the transaction are built once during setup; only applying it is measured.
  */
 import { withCodSpeed } from "@codspeed/tinybench-plugin";
-import { schema, singletonManager, type DocxNode } from "@stll/folio-core/prosemirror/schema";
-
 import { EditorState, type Transaction } from "prosemirror-state";
 import { Bench } from "tinybench";
+
+import {
+  type DocxNode,
+  schema,
+  singletonManager,
+} from "@stll/folio-core/prosemirror/schema";
 
 import { MICRO_BENCH_OPTIONS } from "./config";
 
@@ -27,7 +31,11 @@ const largeDocument = (): DocxNode =>
       schema.node(
         "paragraph",
         { paraId: (index + 1).toString(16).padStart(8, "0").toUpperCase() },
-        [schema.text(`Clause ${String(index + 1)}. The supplier shall deliver the goods on time.`)],
+        [
+          schema.text(
+            `Clause ${String(index + 1)}. The supplier shall deliver the goods on time.`,
+          ),
+        ],
       ),
     ),
   );

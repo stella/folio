@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildFontString, getResolvedData } from "../layout-engine/measure/measureHelpers";
+import {
+  buildFontString,
+  getResolvedData,
+} from "../layout-engine/measure/measureHelpers";
 import {
   CJK_FALLBACK_FONT_FAMILY,
   getGoogleFontEquivalent,
@@ -57,7 +60,10 @@ describe("fontResolver — single-line ratios are derived from real hhea metrics
 
   for (const [font, expectedRatio] of verifiedRatios) {
     test(`${font} → ${expectedRatio}`, () => {
-      expect(resolveFontFamily(font).singleLineRatio).toBeCloseTo(expectedRatio, 4);
+      expect(resolveFontFamily(font).singleLineRatio).toBeCloseTo(
+        expectedRatio,
+        4,
+      );
     });
   }
 });
@@ -77,13 +83,16 @@ describe("fontResolver — Hebrew document faces", () => {
 });
 
 describe("fontResolver — Aptos falls back to bundled Lato", () => {
-  test.each(["Aptos", "Aptos Display"])("%s keeps an Office-compatible fallback", (font) => {
-    const resolved = resolveFontFamily(font);
+  test.each(["Aptos", "Aptos Display"])(
+    "%s keeps an Office-compatible fallback",
+    (font) => {
+      const resolved = resolveFontFamily(font);
 
-    expect(resolved.googleFont).toBe("Lato");
-    expect(resolved.cssFallback).toContain("Lato");
-    expect(resolved.hasGoogleEquivalent).toBe(true);
-  });
+      expect(resolved.googleFont).toBe("Lato");
+      expect(resolved.cssFallback).toContain("Lato");
+      expect(resolved.hasGoogleEquivalent).toBe(true);
+    },
+  );
 });
 
 describe("fontResolver — David uses a Hebrew serif fallback", () => {
@@ -100,7 +109,9 @@ describe("fontResolver — David uses a Hebrew serif fallback", () => {
 
 describe("fontResolver — alternate families", () => {
   test("tries an alternate immediately after a mapped primary", () => {
-    const resolved = resolveFontFamily("Calibri", { alternateFontName: "Times New Roman" });
+    const resolved = resolveFontFamily("Calibri", {
+      alternateFontName: "Times New Roman",
+    });
     const families = parseFontFamilyList(resolved.cssFallback);
 
     expect(families.slice(0, 2)).toEqual(["Calibri", "Times New Roman"]);
@@ -108,7 +119,9 @@ describe("fontResolver — alternate families", () => {
   });
 
   test("uses alternate metrics when the primary is unknown", () => {
-    const resolved = resolveFontFamily("Unknown Brand Face", { alternateFontName: "Cambria" });
+    const resolved = resolveFontFamily("Unknown Brand Face", {
+      alternateFontName: "Cambria",
+    });
 
     expect(parseFontFamilyList(resolved.cssFallback).slice(0, 2)).toEqual([
       "Unknown Brand Face",
@@ -120,21 +133,31 @@ describe("fontResolver — alternate families", () => {
 
   test("treats a comma-containing alternate as one font name", () => {
     const families = parseFontFamilyList(
-      resolveFontFamily("Unknown Brand Face", { alternateFontName: "Name A, Name B" }).cssFallback,
+      resolveFontFamily("Unknown Brand Face", {
+        alternateFontName: "Name A, Name B",
+      }).cssFallback,
     );
 
-    expect(families.slice(0, 2)).toEqual(["Unknown Brand Face", "Name A, Name B"]);
+    expect(families.slice(0, 2)).toEqual([
+      "Unknown Brand Face",
+      "Name A, Name B",
+    ]);
   });
 
   test("keeps an embedded primary ahead of its alternate", () => {
-    const embeddedFontFamilyMap = new Map([["Brand Face", "folio-embedded-doc1-brand"]]);
+    const embeddedFontFamilyMap = new Map([
+      ["Brand Face", "folio-embedded-doc1-brand"],
+    ]);
     const families = parseFontFamilyList(
       resolveFontFamily("Brand Face", {
         alternateFontName: "Calibri",
         embeddedFontFamilyMap,
       }).cssFallback,
     );
-    expect(families.slice(0, 2)).toEqual(["folio-embedded-doc1-brand", "Calibri"]);
+    expect(families.slice(0, 2)).toEqual([
+      "folio-embedded-doc1-brand",
+      "Calibri",
+    ]);
     expect(families).not.toContain("Brand Face");
   });
 
@@ -152,8 +175,12 @@ describe("fontResolver — alternate families", () => {
 
   test("keeps resolved metric cache entries distinct by alternate", () => {
     const withoutAlternate = getResolvedData("Unknown Cache Face");
-    const withArial = getResolvedData("Unknown Cache Face", { alternateFontFamily: "Arial" });
-    const withCambria = getResolvedData("Unknown Cache Face", { alternateFontFamily: "Cambria" });
+    const withArial = getResolvedData("Unknown Cache Face", {
+      alternateFontFamily: "Arial",
+    });
+    const withCambria = getResolvedData("Unknown Cache Face", {
+      alternateFontFamily: "Cambria",
+    });
 
     expect(withoutAlternate.singleLineRatio).toBeCloseTo(1.15, 4);
     expect(withArial.singleLineRatio).toBeCloseTo(1.1499, 4);
@@ -168,7 +195,9 @@ describe("fontResolver — legacy Times-compatible faces", () => {
 
     expect(resolved.originalFont).toBe("CG Times");
     expect(resolved.googleFont).toBe("Tinos");
-    expect(resolved.cssFallback.startsWith('"Times New Roman", Tinos')).toBe(true);
+    expect(resolved.cssFallback.startsWith('"Times New Roman", Tinos')).toBe(
+      true,
+    );
     expect(getResolvedData("CG Times").singleLineRatio).toBeCloseTo(1.1499, 4);
   });
 });
@@ -193,7 +222,10 @@ describe("fontResolver — previously wrong ratios are corrected and reach consu
 
   for (const [font, correctedRatio] of correctedCases) {
     test(`${font} resolves to the corrected ratio via getResolvedData`, () => {
-      expect(getResolvedData(font).singleLineRatio).toBeCloseTo(correctedRatio, 4);
+      expect(getResolvedData(font).singleLineRatio).toBeCloseTo(
+        correctedRatio,
+        4,
+      );
     });
   }
 });
@@ -218,11 +250,16 @@ describe("fontResolver — faces without a readable font file carry a measured r
 describe("fontResolver — unverified legacy fonts are left unchanged", () => {
   // The original face is not available here to read hhea metrics from, so its
   // hand-transcribed ratio stays unchanged until a verified source is available.
-  const legacyCases: [font: string, unchangedRatio: number][] = [["lucida sans", 1.1655]];
+  const legacyCases: [font: string, unchangedRatio: number][] = [
+    ["lucida sans", 1.1655],
+  ];
 
   for (const [font, unchangedRatio] of legacyCases) {
     test(`${font} keeps its legacy ratio`, () => {
-      expect(resolveFontFamily(font).singleLineRatio).toBeCloseTo(unchangedRatio, 4);
+      expect(resolveFontFamily(font).singleLineRatio).toBeCloseTo(
+        unchangedRatio,
+        4,
+      );
     });
   }
 });
@@ -257,7 +294,9 @@ describe("fontResolver — Japanese Mincho/Gothic carry the measured East-Asian 
   test("the CJK line-height fallback family resolves to the measured ratio via getResolvedData", () => {
     // measureParagraph resolves the fallback through getResolvedData, so the
     // constant must land on the measured 1.303 entry through that path too.
-    expect(getResolvedData(CJK_FALLBACK_FONT_FAMILY).singleLineRatio).toBeCloseTo(1.303, 4);
+    expect(
+      getResolvedData(CJK_FALLBACK_FONT_FAMILY).singleLineRatio,
+    ).toBeCloseTo(1.303, 4);
   });
 
   test("the CJK long tail keeps the default ratio until measured", () => {
@@ -369,32 +408,48 @@ describe("fontResolver — Google Fonts compatibility toggle", () => {
 describe("fontResolver — embedded-font family scoping", () => {
   test("owned maps keep interleaved editor measurement and resolution independent", () => {
     const fonts = ["Calibri", "My Brand Sans"];
-    const first = new Map(fonts.map((font) => [font, `folio-embedded-doc1-${font}`]));
-    const second = new Map(fonts.map((font) => [font, `folio-embedded-doc2-${font}`]));
+    const first = new Map(
+      fonts.map((font) => [font, `folio-embedded-doc1-${font}`]),
+    );
+    const second = new Map(
+      fonts.map((font) => [font, `folio-embedded-doc2-${font}`]),
+    );
     // The old fixture exercised one active singleton at a time. Interleave
     // both owned maps and the host to catch cross-editor cache contamination.
-    for (const embeddedFontFamilyMap of [first, second, first, undefined, second]) {
+    for (const embeddedFontFamilyMap of [
+      first,
+      second,
+      first,
+      undefined,
+      second,
+    ]) {
       for (const font of fonts) {
         const expected = embeddedFontFamilyMap?.get(font) ?? font;
         const options = { embeddedFontFamilyMap };
         const resolved = resolveFontFamily(font, options);
         expect(parseFontFamilyList(resolved.cssFallback).at(0)).toBe(expected);
-        expect(getResolvedData(font, options).cssFallback).toBe(resolved.cssFallback);
+        expect(getResolvedData(font, options).cssFallback).toBe(
+          resolved.cssFallback,
+        );
       }
     }
   });
 
   test("an absent font resolves with the authored family", () => {
-    const embeddedFontFamilyMap = new Map([["My Brand Sans", "folio-embedded-doc1-brand"]]);
+    const embeddedFontFamilyMap = new Map([
+      ["My Brand Sans", "folio-embedded-doc1-brand"],
+    ]);
     expect(
-      parseFontFamilyList(resolveFontFamily("Calibri", { embeddedFontFamilyMap }).cssFallback).at(
-        0,
-      ),
+      parseFontFamilyList(
+        resolveFontFamily("Calibri", { embeddedFontFamilyMap }).cssFallback,
+      ).at(0),
     ).toBe("Calibri");
   });
 
   test("an embedded alternate uses the same editor's map", () => {
-    const embeddedFontFamilyMap = new Map([["Cambria", "folio-embedded-doc1-Cambria"]]);
+    const embeddedFontFamilyMap = new Map([
+      ["Cambria", "folio-embedded-doc1-Cambria"],
+    ]);
     expect(
       parseFontFamilyList(
         resolveFontFamily("Brand", {
@@ -493,12 +548,24 @@ describe("fontResolver — parseFontFamilyList inverts the emitted quoting", () 
   // resolved stack as one family, so a comma inside a quoted name never splits
   // the list (which would leave the gate waiting on faces that do not exist and
   // never on the one that does).
-  const authored = ["Foo, Bar", 'Say "Hi"', "Back\\slash", "a\nb\rc\fd", " Foo ", "Plain Sans"];
+  const authored = [
+    "Foo, Bar",
+    'Say "Hi"',
+    "Back\\slash",
+    "a\nb\rc\fd",
+    " Foo ",
+    "Plain Sans",
+  ];
 
-  test.each(authored)("%j survives resolve -> parse as the first stack entry", (name) => {
-    expect(name).not.toBe(resolveFontFamily(name).cssFallback);
-    expect(parseFontFamilyList(resolveFontFamily(name).cssFallback).at(0)).toBe(name);
-  });
+  test.each(authored)(
+    "%j survives resolve -> parse as the first stack entry",
+    (name) => {
+      expect(name).not.toBe(resolveFontFamily(name).cssFallback);
+      expect(
+        parseFontFamilyList(resolveFontFamily(name).cssFallback).at(0),
+      ).toBe(name);
+    },
+  );
 
   test("keeps every stack entry and drops nothing but whitespace", () => {
     const { cssFallback } = resolveFontFamily("Foo, Bar");

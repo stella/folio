@@ -21,7 +21,8 @@ const REFERENCE_DISPOSITIONS = {
 } as const;
 
 // A named result keeps declaration emission stable across parallel builds.
-type ReferenceDisposition = (typeof REFERENCE_DISPOSITIONS)[keyof typeof REFERENCE_DISPOSITIONS];
+type ReferenceDisposition =
+  (typeof REFERENCE_DISPOSITIONS)[keyof typeof REFERENCE_DISPOSITIONS];
 
 type ReferenceSpaceOptions<Id> = {
   id: Id;
@@ -51,7 +52,9 @@ export const classifyResourceReference = (
       return classifyReferenceSpace(reference);
     default: {
       const unhandled: never = reference;
-      return panic("Unhandled resource reference kind", { reference: unhandled });
+      return panic("Unhandled resource reference kind", {
+        reference: unhandled,
+      });
     }
   }
 };

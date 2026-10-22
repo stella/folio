@@ -30,18 +30,26 @@
  *   bun scripts/generate-identity-attributes.ts check
  */
 
+import { TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { TaggedError } from "better-result";
-
-import { loadSchemaGraph, localName, type SchemaGraph } from "./lib/ooxml-schema-graph";
+import {
+  loadSchemaGraph,
+  localName,
+  type SchemaGraph,
+} from "./lib/ooxml-schema-graph";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const OUTPUT_PATH = path.join(REPO_ROOT, "specifications/generated/identity-attributes.gen.ts");
+const OUTPUT_PATH = path.join(
+  REPO_ROOT,
+  "specifications/generated/identity-attributes.gen.ts",
+);
 
-class GenerateIdentityAttributesError extends TaggedError("GenerateIdentityAttributesError")<{
+class GenerateIdentityAttributesError extends TaggedError(
+  "GenerateIdentityAttributesError",
+)<{
   message: string;
 }> {}
 
@@ -62,8 +70,17 @@ const REFERENCE_TYPES = new Set([
  * nothing; `w:id` on an annotation and `w14:paraId` on a paragraph are the
  * identities, and both are named for what they are.
  */
-const ID_SHAPED_NAMES = new Set(["durableId", "id", "paraId", "paraIdParent", "textId"]);
-const ID_SHAPED_NUMERIC_TYPES = new Set(["ST_DecimalNumber", "ST_LongHexNumber"]);
+const ID_SHAPED_NAMES = new Set([
+  "durableId",
+  "id",
+  "paraId",
+  "paraIdParent",
+  "textId",
+]);
+const ID_SHAPED_NUMERIC_TYPES = new Set([
+  "ST_DecimalNumber",
+  "ST_LongHexNumber",
+]);
 
 /**
  * The prefix each namespace is conventionally read through, or `null` when its
@@ -193,7 +210,10 @@ const schemaDeclarations = (graph: SchemaGraph): Declaration[] => {
   for (const attribute of graph.attributes) {
     if (attribute.ref !== undefined) {
       const global = globals.get(attribute.ref);
-      if (global?.type !== undefined && isIdentityType(global.name, global.type)) {
+      if (
+        global?.type !== undefined &&
+        isIdentityType(global.name, global.type)
+      ) {
         declarations.push({ name: global.name, namespace: global.namespace });
       }
       continue;
@@ -236,12 +256,14 @@ const collectIdentityAttributes = (graph: SchemaGraph): IdentityAttribute[] => {
     prefixes.add(prefix);
   }
 
-  const identities: IdentityAttribute[] = [...prefixesByName].map(([attribute, prefixes]) => ({
-    attribute,
-    prefixes: [...prefixes].toSorted(),
-    reason: "reference or id-shaped type in the Transitional schema graph",
-    source: "schema",
-  }));
+  const identities: IdentityAttribute[] = [...prefixesByName].map(
+    ([attribute, prefixes]) => ({
+      attribute,
+      prefixes: [...prefixes].toSorted(),
+      reason: "reference or id-shaped type in the Transitional schema graph",
+      source: "schema",
+    }),
+  );
 
   const declared = declaredLocalNames(graph);
   for (const entry of EXTENSION_IDENTITY_ATTRIBUTES) {
@@ -269,7 +291,9 @@ const collectIdentityAttributes = (graph: SchemaGraph): IdentityAttribute[] => {
     });
   }
 
-  return identities.toSorted((left, right) => left.attribute.localeCompare(right.attribute));
+  return identities.toSorted((left, right) =>
+    left.attribute.localeCompare(right.attribute),
+  );
 };
 
 const renderModule = (identities: readonly IdentityAttribute[]): string => {
@@ -328,13 +352,15 @@ export const IDENTITY_ATTRIBUTES: ReadonlyMap<string, IdentityAttribute> = readI
 `;
 };
 
-const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
+const digest = (value: string): string =>
+  createHash("sha256").update(value).digest("hex");
 
 const main = async (): Promise<void> => {
   const mode = process.argv.at(2) ?? "write";
   if (mode !== "check" && mode !== "write") {
     throw new GenerateIdentityAttributesError({
-      message: "Usage: bun scripts/generate-identity-attributes.ts [check|write]",
+      message:
+        "Usage: bun scripts/generate-identity-attributes.ts [check|write]",
     });
   }
 
@@ -344,7 +370,8 @@ const main = async (): Promise<void> => {
   const relationshipId = identities.find(({ attribute }) => attribute === "id");
   if (relationshipId?.prefixes?.includes("r") !== true) {
     throw new GenerateIdentityAttributesError({
-      message: "r:id must be an identity attribute; the schema graph or the derivation drifted.",
+      message:
+        "r:id must be an identity attribute; the schema graph or the derivation drifted.",
     });
   }
 
@@ -362,7 +389,8 @@ const main = async (): Promise<void> => {
   const existing = await readFile(OUTPUT_PATH, "utf8").catch(() => null);
   if (existing === null || digest(existing) !== digest(rendered)) {
     throw new GenerateIdentityAttributesError({
-      message: "identity-attributes.gen.ts is stale. Run `bun run generate:identity-attributes`.",
+      message:
+        "identity-attributes.gen.ts is stale. Run `bun run generate:identity-attributes`.",
     });
   }
   process.stdout.write("identity-attributes.gen.ts is up to date\n");

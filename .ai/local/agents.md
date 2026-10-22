@@ -27,7 +27,6 @@ editing. Its published packages have explicit ownership boundaries:
 - `bun run test`
 - `bun run test:property`
 - `bun run lint`
-- `bun run format:check`
 - `bun run validate-dist`
 - `bun run test:interactions`
 - `bun run test:e2e:vue`

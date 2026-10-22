@@ -18,23 +18,27 @@
  * trusting it.
  */
 
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import { panic } from "better-result";
 
-import { getCachedNumberingMap } from "../docx/numberingParser";
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import {
   mintDefaultParagraphStyle,
   resolveDefaultParagraphStyle,
 } from "../docx/defaultParagraphStyle";
+import { getCachedNumberingMap } from "../docx/numberingParser";
 import { normalizeStyleNumberingReferences } from "../docx/numberingReferenceNormalization";
 import type { ParseContext } from "../docx/parseContext";
 import type { Style } from "../types/document";
 import { DOCUMENT_STYLE_SET_VERSION, type DocumentStyleSet } from "./types";
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
-export const DUPLICATE_STYLE_ID_WARNING = PARSE_WARNING_CODES.styleSetDuplicateStyleId;
-export const INITIAL_PARAGRAPH_STYLE_WARNING = PARSE_WARNING_CODES.styleSetInitialStyleMissing;
-export const UNNUMBERED_STYLE_SET_STYLE_WARNING = PARSE_WARNING_CODES.unnumberedStyle;
+export const DUPLICATE_STYLE_ID_WARNING =
+  PARSE_WARNING_CODES.styleSetDuplicateStyleId;
+export const INITIAL_PARAGRAPH_STYLE_WARNING =
+  PARSE_WARNING_CODES.styleSetInitialStyleMissing;
+export const UNNUMBERED_STYLE_SET_STYLE_WARNING =
+  PARSE_WARNING_CODES.unnumberedStyle;
 
 /** The part a style-set normalisation names: the set itself, not a package. */
 export const STYLE_SET_PART = "style-set";
@@ -51,7 +55,9 @@ export const normalizeDocumentStyleSet = (
   context?: ParseContext,
 ): DocumentStyleSet => {
   if (styleSet.version !== DOCUMENT_STYLE_SET_VERSION) {
-    return panic(`Unsupported document style set version: ${String(styleSet.version)}`);
+    return panic(
+      `Unsupported document style set version: ${String(styleSet.version)}`,
+    );
   }
   if (styleSet.name.trim().length === 0) {
     return panic("Document style set name cannot be empty");
@@ -67,7 +73,9 @@ export const normalizeDocumentStyleSet = (
   // reference nothing resolves, which is what used to reach a panic.
   const unnumbered = normalizeStyleNumberingReferences({
     styles,
-    numbering: normalized.numbering ? getCachedNumberingMap(normalized.numbering) : undefined,
+    numbering: normalized.numbering
+      ? getCachedNumberingMap(normalized.numbering)
+      : undefined,
   });
   for (const styleId of unnumbered.unnumberedStyleIds) {
     scoped?.warn({
@@ -86,7 +94,10 @@ export const normalizeDocumentStyleSet = (
   return normalized;
 };
 
-const dropDuplicateStyleIds = (styles: Style[], context: ParseContext | undefined): Style[] => {
+const dropDuplicateStyleIds = (
+  styles: Style[],
+  context: ParseContext | undefined,
+): Style[] => {
   const seen = new Set<string>();
   const kept: Style[] = [];
   for (const style of styles) {
@@ -120,7 +131,9 @@ const resolveInitialParagraphStyleId = ({
   hasDocDefaults,
   context,
 }: ResolveInitialParagraphStyleIdOptions): string => {
-  const named = styles.find((style) => style.styleId === requested && style.type === "paragraph");
+  const named = styles.find(
+    (style) => style.styleId === requested && style.type === "paragraph",
+  );
   if (named) {
     return requested;
   }

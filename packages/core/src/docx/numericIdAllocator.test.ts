@@ -1,13 +1,17 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
-import { createNumericIdAllocator } from "./numericIdAllocator";
-import { createNumberingIdAllocator, mintNumberingId } from "./numberingIds";
-import { reserveBookmarkIds, mintBookmarkId } from "./bookmarkIds";
-import { endnote } from "./server/build";
+
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createEmptyDocument } from "../utils/createDocument";
+import { mintBookmarkId, reserveBookmarkIds } from "./bookmarkIds";
+import { createNumberingIdAllocator, mintNumberingId } from "./numberingIds";
+import { createNumericIdAllocator } from "./numericIdAllocator";
+import { endnote } from "./server/build";
 
 setDefaultTimeout(propertyTestTimeout(10_000));
 
@@ -67,25 +71,37 @@ test("numbering allocation depends only on the document's reserved ids", () => {
     const first = mintNumberingId({ kind, existingIds });
     mintNumberingId({ kind, existingIds: [0, 1, 2, 3, 4] });
     expect(mintNumberingId({ kind, existingIds })).toBe(first);
-    expect(mintNumberingId({ kind, existingIds: [...existingIds, first] })).not.toBe(first);
+    expect(
+      mintNumberingId({ kind, existingIds: [...existingIds, first] }),
+    ).not.toBe(first);
   }
 });
 
 test("endnote allocation depends only on the document's endnotes", () => {
   const withEndnotes = (ids: readonly number[]) => {
     const doc = createEmptyDocument();
-    doc.package.endnotes = ids.map((id) => ({ type: "endnote", id, content: [] }));
+    doc.package.endnotes = ids.map((id) => ({
+      type: "endnote",
+      id,
+      content: [],
+    }));
     return doc;
   };
   fc.assert(
     fc.property(
       fc.array(fc.integer({ min: 1, max: MAX_REVISION_ID }), { maxLength: 8 }),
-      fc.array(fc.array(fc.integer({ min: 1, max: MAX_REVISION_ID }), { maxLength: 4 }), {
-        maxLength: 4,
-      }),
+      fc.array(
+        fc.array(fc.integer({ min: 1, max: MAX_REVISION_ID }), {
+          maxLength: 4,
+        }),
+        {
+          maxLength: 4,
+        },
+      ),
       (ids, otherDocuments) => {
         const fresh = endnote(withEndnotes(ids), "Note");
-        for (const otherIds of otherDocuments) endnote(withEndnotes(otherIds), "Other");
+        for (const otherIds of otherDocuments)
+          endnote(withEndnotes(otherIds), "Other");
         expect(endnote(withEndnotes(ids), "Note")).toEqual(fresh);
       },
     ),

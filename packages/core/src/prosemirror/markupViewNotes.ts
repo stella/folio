@@ -11,18 +11,21 @@
 
 import type { EditorState } from "prosemirror-state";
 
-import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
 import type { RevisionResolutionMode } from "../internal/revisionResolutionInline";
+import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
 import type { DisplayMode } from "../managers/EditorModeManager";
+import type { Document, Endnote, Footnote } from "../types/document";
 import { proseDocToBlocks } from "./conversion/fromProseDoc";
 import { footnoteToProseDoc } from "./conversion/toProseDoc";
 import { markupViewResolutionMode } from "./markupViewProjection";
 import { getDocumentNumbering } from "./plugins/documentNumbering";
 import { getDocumentStyleResolver } from "./plugins/documentStyles";
-import type { Document, Endnote, Footnote } from "../types/document";
 
 type ResolvedNote = { styleResolver: unknown; note: Footnote | Endnote };
-const resolvedNotes = new WeakMap<object, Map<RevisionResolutionMode, ResolvedNote>>();
+const resolvedNotes = new WeakMap<
+  object,
+  Map<RevisionResolutionMode, ResolvedNote>
+>();
 
 const resolvedNote = <TNote extends Footnote | Endnote>(
   note: TNote,
@@ -48,8 +51,12 @@ const resolvedNote = <TNote extends Footnote | Endnote>(
   const resolved =
     result.failed || result.resolved.eq(doc)
       ? note
-      : { ...note, content: proseDocToBlocks(result.resolved, note.content, styles) };
-  const byMode = resolvedNotes.get(note) ?? new Map<RevisionResolutionMode, ResolvedNote>();
+      : {
+          ...note,
+          content: proseDocToBlocks(result.resolved, note.content, styles),
+        };
+  const byMode =
+    resolvedNotes.get(note) ?? new Map<RevisionResolutionMode, ResolvedNote>();
   byMode.set(mode, { styleResolver, note: resolved });
   resolvedNotes.set(note, byMode);
   return resolved;

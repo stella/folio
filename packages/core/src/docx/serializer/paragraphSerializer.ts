@@ -10,84 +10,97 @@
  * - Runs, hyperlinks, bookmarks, fields as child elements
  */
 
-import {
-  serializeResolutionJoins,
-  serializeParagraphMarkResolutionJoin,
-  paragraphMarkResolutionJoinAttributes,
-  ReviewResolutionProvenanceError,
-} from "../reviewResolutionProvenance";
-import { serializeEmptyMarkProperties } from "../paragraphMarkPropertyPresence";
+import { panic, TaggedError } from "better-result";
 
+import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
+import {
+  finalizeParagraphFormatting,
+  PARAGRAPH_MARK_CHANGE_KINDS,
+} from "@stll/docx-core/model";
+import { SEQUENCE_CHILDREN } from "@stll/docx-core/schema";
+
+import {
+  type ModeledParagraphFormattingEmission,
+  modelParagraphFormattingEmission,
+  serializeParagraphPropertySet,
+} from "../../internal/paragraphFormattingSerialization";
 import type {
-  Paragraph,
-  PreservedInline,
-  ParagraphContent,
-  TrackedRunChange,
-  ParagraphFormatting,
-  ParagraphMarkChange,
-  Run,
-  Hyperlink,
-  SimpleField,
   ComplexField,
+  Deletion,
+  Hyperlink,
   InlineSdt,
   InlineWrapper,
   Insertion,
-  Deletion,
   MoveFrom,
-  MoveTo,
   MoveFromRangeStart,
+  MoveTo,
   MoveToRangeStart,
+  Paragraph,
+  ParagraphContent,
+  ParagraphFormatting,
+  ParagraphMarkChange,
   ParagraphPropertyChange,
+  PreservedInline,
+  Run,
   SectionProperties,
+  SimpleField,
   TextFormatting,
+  TrackedRunChange,
 } from "../../types/document";
-import { finalizeParagraphFormatting, PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
-import { SEQUENCE_CHILDREN } from "@stll/docx-core/schema";
-import { panic, TaggedError } from "better-result";
-import {
-  modelParagraphFormattingEmission,
-  type ModeledParagraphFormattingEmission,
-  serializeParagraphPropertySet,
-} from "../../internal/paragraphFormattingSerialization";
 import { serializePreservedAttributes } from "../attributeRemainder";
-import { CONTAINER_CHILDREN, TRACKED_RUN_WORDPROCESSING_CHILDREN } from "../containerChildren.gen";
+import {
+  CONTAINER_CHILDREN,
+  TRACKED_RUN_WORDPROCESSING_CHILDREN,
+} from "../containerChildren.gen";
+import { fieldStateAttributes } from "../fieldState";
+import { serializeEmptyMarkProperties } from "../paragraphMarkPropertyPresence";
 import {
   getParagraphPropertySource,
-  paragraphPropertySourceMatchesEmission,
   paragraphFormattingWithAuthoredIndentation,
   paragraphPropertySourceMatchesAuthoredIndentation,
+  paragraphPropertySourceMatchesEmission,
 } from "../paragraphPropertySource";
-import { fieldStateAttributes } from "../fieldState";
-import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
+import {
+  paragraphMarkResolutionJoinAttributes,
+  ReviewResolutionProvenanceError,
+  serializeParagraphMarkResolutionJoin,
+  serializeResolutionJoins,
+} from "../reviewResolutionProvenance";
+import {
+  DATE_UTC_ATTRIBUTE,
+  DATE_UTC_NAMESPACE_URI,
+} from "../trackedChangeInfo";
 import { toTransitionalNamespaceUri } from "../transitionalSpelling";
-import { captureVerbatimXml, createCapturedXmlSanitizer } from "../verbatimCapture";
+import {
+  captureVerbatimXml,
+  createCapturedXmlSanitizer,
+} from "../verbatimCapture";
 import {
   cloneElement,
   getChildElements,
   getLocalName,
   NAMESPACES,
   OOXML_NAMESPACE_SCOPE,
-  WORDPROCESSINGML_NAMESPACE_URIS,
   parseXml,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
   type XmlNamespaceScope,
 } from "../xmlParser";
+import { writeGroupTextBoxesBack } from "./groupTextBoxWriteBack";
 import {
   markupRangeAttributes,
   moveBookmarkAttributes,
   serializeBookmarkMarker,
 } from "./markupRangeAttributes";
-import { writeGroupTextBoxesBack } from "./groupTextBoxWriteBack";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: paragraphs hold runs, shape-textbox runs hold paragraphs
 import { serializeRun, serializeShapeTextBody } from "./runSerializer";
+import { serializeSdtWrapper } from "./sdtPropertiesSerializer";
 import { serializeSectionProperties } from "./sectionPropertiesSerializer";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import {
   serializeTrackedChangeAttributes,
   trackedChangeAttributeRecord,
 } from "./trackedChangeAttributes";
-import { serializeSdtWrapper } from "./sdtPropertiesSerializer";
-import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 
 // ============================================================================
 // PARAGRAPH PROPERTIES SERIALIZATION
@@ -109,7 +122,9 @@ type SerializeParagraphFormattingOptions = {
   sectionProperties?: SectionProperties | undefined;
 };
 
-type ParagraphPropertySource = NonNullable<ReturnType<typeof getParagraphPropertySource>>;
+type ParagraphPropertySource = NonNullable<
+  ReturnType<typeof getParagraphPropertySource>
+>;
 
 const RESERVED_PARAGRAPH_PROPERTY_CHILDREN = new Set(["pPrChange", "sectPr"]);
 /**
@@ -165,7 +180,10 @@ const PARAGRAPH_MARK_BASE_CHILDREN: ReadonlySet<string> = new Set(
     (name) => !RESERVED_PARAGRAPH_CAPTURE_CHILDREN.has(name),
   ),
 );
-const PARAGRAPH_NESTED_PROPERTY_CHILDREN: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+const PARAGRAPH_NESTED_PROPERTY_CHILDREN: ReadonlyMap<
+  string,
+  ReadonlySet<string>
+> = new Map([
   ["numPr", new Set(["ilvl", "numId", "numberingChange"])],
   ["pBdr", new Set(["top", "left", "bottom", "right", "between", "bar"])],
   ["tabs", new Set(["tab"])],
@@ -216,7 +234,9 @@ const hasInvalidParagraphPropertyRevision = (root: XmlElement): boolean => {
     if (!element) {
       continue;
     }
-    if (toTransitionalNamespaceUri(element.namespaceUri ?? "") === NAMESPACES.w) {
+    if (
+      toTransitionalNamespaceUri(element.namespaceUri ?? "") === NAMESPACES.w
+    ) {
       const localName = getLocalName(element.name);
       if (RESERVED_PARAGRAPH_CAPTURE_CHILDREN.has(localName)) {
         return true;
@@ -230,10 +250,14 @@ const hasInvalidParagraphPropertyRevision = (root: XmlElement): boolean => {
 };
 
 const hasInvalidParagraphPropertyShape = (root: XmlElement): boolean => {
-  const pending = getChildElements(root).map((element) => ({ element, parent: root }));
+  const pending = getChildElements(root).map((element) => ({
+    element,
+    parent: root,
+  }));
   if (
     (root.elements ?? []).some(
-      (child) => child.type === "text" && String(child.text ?? "").trim() !== "",
+      (child) =>
+        child.type === "text" && String(child.text ?? "").trim() !== "",
     )
   ) {
     return true;
@@ -246,7 +270,8 @@ const hasInvalidParagraphPropertyShape = (root: XmlElement): boolean => {
     const { element, parent } = entry;
     if (
       (element.elements ?? []).some(
-        (child) => child.type === "text" && String(child.text ?? "").trim() !== "",
+        (child) =>
+          child.type === "text" && String(child.text ?? "").trim() !== "",
       )
     ) {
       return true;
@@ -254,10 +279,14 @@ const hasInvalidParagraphPropertyShape = (root: XmlElement): boolean => {
     const isWordprocessingElement =
       toTransitionalNamespaceUri(element.namespaceUri ?? "") === NAMESPACES.w;
     if (isWordprocessingElement && parent !== root) {
-      if (toTransitionalNamespaceUri(parent.namespaceUri ?? "") !== NAMESPACES.w) {
+      if (
+        toTransitionalNamespaceUri(parent.namespaceUri ?? "") !== NAMESPACES.w
+      ) {
         return true;
       }
-      const allowedChildren = PARAGRAPH_NESTED_PROPERTY_CHILDREN.get(getLocalName(parent.name));
+      const allowedChildren = PARAGRAPH_NESTED_PROPERTY_CHILDREN.get(
+        getLocalName(parent.name),
+      );
       if (!allowedChildren?.has(getLocalName(element.name))) {
         return true;
       }
@@ -340,15 +369,17 @@ const replayableParagraphPropertySourceXml = createCapturedXmlSanitizer({
       }
       if (
         paragraphMarkProperties !== null ||
-        toTransitionalNamespaceUri(resolveNamespaceBinding(child.namespaceScope, "w") ?? "") !==
-          NAMESPACES.w
+        toTransitionalNamespaceUri(
+          resolveNamespaceBinding(child.namespaceScope, "w") ?? "",
+        ) !== NAMESPACES.w
       ) {
         return false;
       }
       paragraphMarkProperties = child;
     }
     return !(
-      (paragraphMarkProperties && hasInvalidParagraphMarkProperties(paragraphMarkProperties)) ||
+      (paragraphMarkProperties &&
+        hasInvalidParagraphMarkProperties(paragraphMarkProperties)) ||
       hasInvalidParagraphPropertyShape(root) ||
       hasInvalidParagraphPropertyRevision(root)
     );
@@ -366,7 +397,9 @@ const verifiedParagraphPropertySource = (
   if (replayableSource === null) {
     return null;
   }
-  return paragraphPropertySourceMatchesEmission(source, formatting) ? replayableSource : null;
+  return paragraphPropertySourceMatchesEmission(source, formatting)
+    ? replayableSource
+    : null;
 };
 
 const withTrailingParagraphPropertyChildren = (
@@ -377,7 +410,9 @@ const withTrailingParagraphPropertyChildren = (
   if (written.length === 0) {
     return sourceXml;
   }
-  const selfClosing = /^<((?:[A-Za-z_][\w.-]*:)?pPr)\b([^>]*)\/>$/u.exec(sourceXml);
+  const selfClosing = /^<((?:[A-Za-z_][\w.-]*:)?pPr)\b([^>]*)\/>$/u.exec(
+    sourceXml,
+  );
   if (selfClosing) {
     const [, name, attrs] = selfClosing;
     return `<${name}${attrs}>${written}</${name}>`;
@@ -388,10 +423,15 @@ const withTrailingParagraphPropertyChildren = (
     : `${sourceXml.slice(0, close)}${written}${sourceXml.slice(close)}`;
 };
 
-const withParagraphMarkChange = (sourceXml: string, mark: ParagraphMarkChange): string => {
+const withParagraphMarkChange = (
+  sourceXml: string,
+  mark: ParagraphMarkChange,
+): string => {
   const root = parseXml(sourceXml, OOXML_NAMESPACE_SCOPE).elements?.at(0);
   if (!root || root.type !== "element") {
-    panic("A validated paragraph-property capture could not be parsed for composition");
+    panic(
+      "A validated paragraph-property capture could not be parsed for composition",
+    );
   }
   const attributes = {
     ...trackedChangeAttributeRecord(mark.info),
@@ -419,8 +459,13 @@ const withParagraphMarkChange = (sourceXml: string, mark: ParagraphMarkChange): 
     );
   } else {
     const paragraphMarkProperties = elements[paragraphMarkIndex];
-    if (!paragraphMarkProperties || paragraphMarkProperties.type !== "element") {
-      panic("A validated paragraph-mark property node disappeared during composition");
+    if (
+      !paragraphMarkProperties ||
+      paragraphMarkProperties.type !== "element"
+    ) {
+      panic(
+        "A validated paragraph-mark property node disappeared during composition",
+      );
     }
     elements[paragraphMarkIndex] = cloneElement(paragraphMarkProperties, {
       elements: [markElement, ...(paragraphMarkProperties.elements ?? [])],
@@ -461,7 +506,8 @@ const serializeParagraphFormattingWithOptions = (
     ...propertyChangesXml,
   ].some((xml) => xml.includes(`${DATE_UTC_ATTRIBUTE}=`));
   const verifiedSource =
-    sourceParagraph && !paragraphPropertySourceMatchesAuthoredIndentation(sourceParagraph)
+    sourceParagraph &&
+    !paragraphPropertySourceMatchesAuthoredIndentation(sourceParagraph)
       ? null
       : verifiedParagraphPropertySource(modeledFormatting, propertySource);
   if (
@@ -505,11 +551,16 @@ function extractPPrInner(pPrXml: string): string {
   return pPrXml.slice("<w:pPr>".length, -"</w:pPr>".length);
 }
 
-function serializeParagraphPropertyChange(change: ParagraphPropertyChange): string {
-  const previousPPrXml = serializeParagraphFormatting(change.previousFormatting) || "<w:pPr/>";
+function serializeParagraphPropertyChange(
+  change: ParagraphPropertyChange,
+): string {
+  const previousPPrXml =
+    serializeParagraphFormatting(change.previousFormatting) || "<w:pPr/>";
   const previousPPrInner = extractPPrInner(previousPPrXml);
   const normalizedPreviousPPr =
-    previousPPrInner.length > 0 ? `<w:pPr>${previousPPrInner}</w:pPr>` : "<w:pPr/>";
+    previousPPrInner.length > 0
+      ? `<w:pPr>${previousPPrInner}</w:pPr>`
+      : "<w:pPr/>";
   return `<w:pPrChange ${serializeTrackedChangeAttributes(change.info)}>${normalizedPreviousPPr}</w:pPrChange>`;
 }
 
@@ -600,7 +651,9 @@ function serializeSimpleField(field: SimpleField): string {
     ...fieldStateAttributes(field),
   ];
 
-  const contentXml = field.content.map((item) => serializeParagraphContent(item)).join("");
+  const contentXml = field.content
+    .map((item) => serializeParagraphContent(item))
+    .join("");
 
   return `<w:fldSimple ${attrs.join(" ")}>${contentXml}</w:fldSimple>`;
 }
@@ -627,13 +680,20 @@ function serializeComplexField(field: ComplexField): string {
   // would leak a `w:rPr` the source never authored right alongside it.
   const structuralFormatting =
     field.formatting ??
-    (field.fieldResultIsFallback ? undefined : field.fieldResult[0]?.formatting);
-  const rPrXml = structuralFormatting ? serializeTextFormatting(structuralFormatting) : "";
+    (field.fieldResultIsFallback
+      ? undefined
+      : field.fieldResult[0]?.formatting);
+  const rPrXml = structuralFormatting
+    ? serializeTextFormatting(structuralFormatting)
+    : "";
 
   // Begin field character. `dirty` is emitted only when the model asks for it:
   // it makes consumers recompute the field on open (and may discard result
   // run formatting), which is what a generated TOC wants and nothing else.
-  const beginAttrs: string[] = ['w:fldCharType="begin"', ...fieldStateAttributes(field)];
+  const beginAttrs: string[] = [
+    'w:fldCharType="begin"',
+    ...fieldStateAttributes(field),
+  ];
   const formFieldDataXml = replayableFormFieldDataXml(field.formFieldDataXml);
   const begin = formFieldDataXml
     ? `<w:fldChar ${beginAttrs.join(" ")}>${formFieldDataXml}</w:fldChar>`
@@ -670,7 +730,9 @@ function serializeComplexField(field: ComplexField): string {
   return parts.join("");
 }
 
-class UnrepresentableTrackedCaptureError extends TaggedError("UnrepresentableTrackedCaptureError")<{
+class UnrepresentableTrackedCaptureError extends TaggedError(
+  "UnrepresentableTrackedCaptureError",
+)<{
   message: string;
 }> {}
 
@@ -693,7 +755,8 @@ function serializeRemovedPreservedInline(item: PreservedInline): string {
   }
   if (item.foldedListNumber) {
     throw new UnrepresentableTrackedCaptureError({
-      message: "A folded list-number field holds markup that cannot be written as deleted content.",
+      message:
+        "A folded list-number field holds markup that cannot be written as deleted content.",
     });
   }
   return item.xml;
@@ -715,8 +778,12 @@ const replayableFieldDataXml = createCapturedXmlSanitizer({
 });
 
 /** Lower a tracked field into run-level structure before revision/link segmentation. */
-const trackedSimpleFieldContent = (field: SimpleField): TrackedRunChange["content"] => {
-  const formatting = field.content.find((item) => item.type === "run")?.formatting;
+const trackedSimpleFieldContent = (
+  field: SimpleField,
+): TrackedRunChange["content"] => {
+  const formatting = field.content.find(
+    (item) => item.type === "run",
+  )?.formatting;
   const structuralRun = (content: Run["content"]): Run => ({
     type: "run",
     content,
@@ -737,7 +804,8 @@ const trackedSimpleFieldContent = (field: SimpleField): TrackedRunChange["conten
       !WORDPROCESSINGML_NAMESPACE_URIS.has(root.namespaceUri ?? "")
     ) {
       throw new UnrepresentableTrackedFieldChildError({
-        message: "A tracked field capture has no representable revision-level home.",
+        message:
+          "A tracked field capture has no representable revision-level home.",
       });
     }
     const name = getLocalName(root.name);
@@ -798,7 +866,10 @@ const trackedSimpleFieldContent = (field: SimpleField): TrackedRunChange["conten
  * the properties block was re-synthesized from the modeled projection alone,
  * silently dropping every unmodeled feature (and `w:sdtEndPr`) on save.
  */
-function serializeInlineSdt(sdt: InlineSdt, disposition: InlineTextDisposition = "kept"): string {
+function serializeInlineSdt(
+  sdt: InlineSdt,
+  disposition: InlineTextDisposition = "kept",
+): string {
   const props = sdt.properties;
 
   const contentXml = sdt.content
@@ -891,12 +962,16 @@ type InlineTextDisposition = "kept" | "removed";
 
 function serializeDeletedRun(run: Run): string {
   const xml = serializeRun(run);
-  const hasDrawingContent = run.content.some((c) => c.type === "drawing" || c.type === "shape");
+  const hasDrawingContent = run.content.some(
+    (c) => c.type === "drawing" || c.type === "shape",
+  );
   if (!hasDrawingContent) {
     return rewriteRunTextAsDeleted(xml);
   }
 
-  const hasTextualContent = run.content.some((c) => c.type !== "drawing" && c.type !== "shape");
+  const hasTextualContent = run.content.some(
+    (c) => c.type !== "drawing" && c.type !== "shape",
+  );
   if (!hasTextualContent) {
     return xml;
   }
@@ -916,8 +991,13 @@ function serializeDeletedRun(run: Run): string {
 // `<w:t>`, and a shape's nested textbox text (`<w:txbxContent><w:t>`) must NOT
 // be rewritten to `<w:delText>` — that markup belongs only to a run's own
 // deleted text, not to a nested textbox document. eigenpal #641.
-function serializeInlineRun(run: Run, disposition: InlineTextDisposition): string {
-  return disposition === "removed" ? serializeDeletedRun(run) : serializeRun(run);
+function serializeInlineRun(
+  run: Run,
+  disposition: InlineTextDisposition,
+): string {
+  return disposition === "removed"
+    ? serializeDeletedRun(run)
+    : serializeRun(run);
 }
 
 function trackedChangeTag(
@@ -946,7 +1026,9 @@ type TrackedInlineSegment =
   | { type: "plain"; xml: string }
   | { type: "hyperlink"; hyperlink: Hyperlink; xml: string };
 
-const emitTrackedInlineSegments = (segments: readonly TrackedInlineSegment[]): string =>
+const emitTrackedInlineSegments = (
+  segments: readonly TrackedInlineSegment[],
+): string =>
   segments
     .map((segment) => {
       switch (segment.type) {
@@ -1026,7 +1108,10 @@ const trackedChangeSegments = ({
   const attrs =
     serializeTrackedChangeAttributes(change.info) +
     serializeResolutionJoins(change.resolutionJoins);
-  return wrapTrackedInlineSegments(segments, (xml) => `<w:${tag} ${attrs}>${xml}</w:${tag}>`);
+  return wrapTrackedInlineSegments(
+    segments,
+    (xml) => `<w:${tag} ${attrs}>${xml}</w:${tag}>`,
+  );
 };
 
 class UnrepresentableNestedHyperlinkError extends TaggedError(
@@ -1058,18 +1143,29 @@ const walkTrackedInlineContent = (
         break;
       }
       case "simpleField":
-        segments.push(...walkTrackedInlineContent(trackedSimpleFieldContent(item), disposition));
+        segments.push(
+          ...walkTrackedInlineContent(
+            trackedSimpleFieldContent(item),
+            disposition,
+          ),
+        );
         break;
       case "insertion":
       case "deletion":
       case "moveFrom":
       case "moveTo":
-        segments.push(...trackedChangeSegments({ tag: trackedChangeTag(item), change: item }));
+        segments.push(
+          ...trackedChangeSegments({
+            tag: trackedChangeTag(item),
+            change: item,
+          }),
+        );
         break;
       case "inlineWrapper":
         segments.push(
-          ...wrapTrackedInlineSegments(walkTrackedInlineContent(item.content, disposition), (xml) =>
-            serializeInlineWrapperMarkup(item, xml),
+          ...wrapTrackedInlineSegments(
+            walkTrackedInlineContent(item.content, disposition),
+            (xml) => serializeInlineWrapperMarkup(item, xml),
           ),
         );
         break;
@@ -1080,7 +1176,9 @@ const walkTrackedInlineContent = (
           type: "plain",
           xml: serializeSdtWrapper(
             item.properties,
-            emitTrackedInlineSegments(walkTrackedInlineContent(item.content, disposition)),
+            emitTrackedInlineSegments(
+              walkTrackedInlineContent(item.content, disposition),
+            ),
           ),
         });
         break;
@@ -1098,11 +1196,15 @@ const walkTrackedInlineContent = (
       case "preservedInline": {
         // Opaque captures cannot enter the typed lifting walk. Refuse hyperlinks
         // in this inline scope; a nested paragraph owns a separate revision scope.
-        const pending = getChildElements(parseXml(item.xml, OOXML_NAMESPACE_SCOPE));
+        const pending = getChildElements(
+          parseXml(item.xml, OOXML_NAMESPACE_SCOPE),
+        );
         while (pending.length > 0) {
           const captured = pending.pop();
           if (!captured) continue;
-          const wordprocessing = WORDPROCESSINGML_NAMESPACE_URIS.has(captured.namespaceUri ?? "");
+          const wordprocessing = WORDPROCESSINGML_NAMESPACE_URIS.has(
+            captured.namespaceUri ?? "",
+          );
           const name = getLocalName(captured.name);
           if (wordprocessing && (name === "p" || name === "sdt")) continue;
           if (wordprocessing && name === "hyperlink") {
@@ -1115,7 +1217,10 @@ const walkTrackedInlineContent = (
         }
         segments.push({
           type: "plain",
-          xml: disposition === "removed" ? serializeRemovedPreservedInline(item) : item.xml,
+          xml:
+            disposition === "removed"
+              ? serializeRemovedPreservedInline(item)
+              : item.xml,
         });
         break;
       }
@@ -1130,7 +1235,10 @@ const walkTrackedInlineContent = (
       case "commentRangeStart":
       case "commentRangeEnd":
       case "commentReference":
-        segments.push({ type: "plain", xml: serializeParagraphContent(item, disposition) });
+        segments.push({
+          type: "plain",
+          xml: serializeParagraphContent(item, disposition),
+        });
         break;
       default: {
         const unwritten: never = item;
@@ -1142,7 +1250,10 @@ const walkTrackedInlineContent = (
 };
 
 /** The properties element each tagged wrapper declares ahead of its content. */
-const TAGGED_WRAPPER_PROPERTIES = { smartTag: "smartTagPr", customXml: "customXmlPr" } as const;
+const TAGGED_WRAPPER_PROPERTIES = {
+  smartTag: "smartTagPr",
+  customXml: "customXmlPr",
+} as const;
 const taggedWrapperPropertiesSanitizer = (propertiesName: string) =>
   createCapturedXmlSanitizer({
     allowedLocalNames: new Set([propertiesName]),
@@ -1150,8 +1261,12 @@ const taggedWrapperPropertiesSanitizer = (propertiesName: string) =>
     inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
   });
 const TAGGED_WRAPPER_PROPERTIES_SANITIZERS = {
-  smartTag: taggedWrapperPropertiesSanitizer(TAGGED_WRAPPER_PROPERTIES.smartTag),
-  customXml: taggedWrapperPropertiesSanitizer(TAGGED_WRAPPER_PROPERTIES.customXml),
+  smartTag: taggedWrapperPropertiesSanitizer(
+    TAGGED_WRAPPER_PROPERTIES.smartTag,
+  ),
+  customXml: taggedWrapperPropertiesSanitizer(
+    TAGGED_WRAPPER_PROPERTIES.customXml,
+  ),
 } as const satisfies Record<
   keyof typeof TAGGED_WRAPPER_PROPERTIES,
   (xml: string | undefined) => string | null
@@ -1175,8 +1290,12 @@ function serializeTaggedWrapper(
   wrapper: { element: string; uri?: string; propertiesXml?: string },
   inner: string,
 ): string {
-  const uri = wrapper.uri === undefined ? "" : ` w:uri="${escapeXmlAttribute(wrapper.uri)}"`;
-  const properties = TAGGED_WRAPPER_PROPERTIES_SANITIZERS[kind](wrapper.propertiesXml) ?? "";
+  const uri =
+    wrapper.uri === undefined
+      ? ""
+      : ` w:uri="${escapeXmlAttribute(wrapper.uri)}"`;
+  const properties =
+    TAGGED_WRAPPER_PROPERTIES_SANITIZERS[kind](wrapper.propertiesXml) ?? "";
   return (
     `<w:${kind}${uri} w:element="${escapeXmlAttribute(wrapper.element)}">` +
     `${properties}${inner}</w:${kind}>`
@@ -1188,7 +1307,10 @@ function serializeCommentReferenceRun(id: number): string {
   return `<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="${id}"/></w:r>`;
 }
 
-function serializeInlineWrapperMarkup(content: InlineWrapper, inner: string): string {
+function serializeInlineWrapperMarkup(
+  content: InlineWrapper,
+  inner: string,
+): string {
   switch (content.kind) {
     case "bidi": {
       // `w:dir` is the embedding and `w:bdo` the override; the schema
@@ -1196,7 +1318,9 @@ function serializeInlineWrapperMarkup(content: InlineWrapper, inner: string): st
       // the children went back through this function above.
       const tag = content.control === "override" ? "bdo" : "dir";
       const value =
-        content.direction === undefined ? "" : ` w:val="${escapeXmlAttribute(content.direction)}"`;
+        content.direction === undefined
+          ? ""
+          : ` w:val="${escapeXmlAttribute(content.direction)}"`;
       return `<w:${tag}${value}>${inner}</w:${tag}>`;
     }
     // `CT_SmartTagRun` and `CT_CustomXmlRun` declare the properties child
@@ -1254,11 +1378,17 @@ function serializeParagraphContent(
     case "moveTo":
       return serializeTrackedChange("moveTo", content);
     case "moveFromRangeStart":
-      return serializeMoveRangeStart("moveFromRangeStart", content as MoveFromRangeStart);
+      return serializeMoveRangeStart(
+        "moveFromRangeStart",
+        content as MoveFromRangeStart,
+      );
     case "moveFromRangeEnd":
       return `<w:moveFromRangeEnd ${markupRangeAttributes(content).join(" ")}/>`;
     case "moveToRangeStart":
-      return serializeMoveRangeStart("moveToRangeStart", content as MoveToRangeStart);
+      return serializeMoveRangeStart(
+        "moveToRangeStart",
+        content as MoveToRangeStart,
+      );
     case "moveToRangeEnd":
       return `<w:moveToRangeEnd ${markupRangeAttributes(content).join(" ")}/>`;
     case "inlineWrapper": {
@@ -1304,7 +1434,10 @@ export function serializeParagraph(paragraph: Paragraph): string {
   }
   const emptyMarkProperties = serializeEmptyMarkProperties(paragraph);
   if (emptyMarkProperties !== undefined) attrs.push(emptyMarkProperties);
-  const written = serializePreservedAttributes(attrs, paragraph.preservedAttributes);
+  const written = serializePreservedAttributes(
+    attrs,
+    paragraph.preservedAttributes,
+  );
   const attrsStr = written.length > 0 ? ` ${written.join(" ")}` : "";
 
   // Add paragraph properties if present
@@ -1320,7 +1453,10 @@ export function serializeParagraph(paragraph: Paragraph): string {
 
   // Add paragraph content
   let pendingRenderedPageBreak = paragraph.renderedPageBreakBefore === true;
-  for (const content of writeGroupTextBoxesBack(paragraph, serializeShapeTextBody)) {
+  for (const content of writeGroupTextBoxesBack(
+    paragraph,
+    serializeShapeTextBody,
+  )) {
     let contentXml = serializeParagraphContent(content);
     if (contentXml) {
       if (pendingRenderedPageBreak) {
@@ -1401,17 +1537,24 @@ export function hasParagraphContent(paragraph: Paragraph): boolean {
  * Check if a paragraph has formatting
  */
 export function hasParagraphFormatting(paragraph: Paragraph): boolean {
-  return paragraph.formatting !== undefined && Object.keys(paragraph.formatting).length > 0;
+  return (
+    paragraph.formatting !== undefined &&
+    Object.keys(paragraph.formatting).length > 0
+  );
 }
 
 /**
  * Create an empty paragraph
  */
-export function createEmptyParagraph(formatting?: ParagraphFormatting): Paragraph {
+export function createEmptyParagraph(
+  formatting?: ParagraphFormatting,
+): Paragraph {
   const finalizedFormatting = finalizeParagraphFormatting(formatting);
   return {
     type: "paragraph",
-    ...(finalizedFormatting !== undefined ? { formatting: finalizedFormatting } : {}),
+    ...(finalizedFormatting !== undefined
+      ? { formatting: finalizedFormatting }
+      : {}),
     content: [],
   };
 }
@@ -1427,7 +1570,9 @@ export function createTextParagraph(
   const finalizedFormatting = finalizeParagraphFormatting(paragraphFormatting);
   return {
     type: "paragraph",
-    ...(finalizedFormatting !== undefined ? { formatting: finalizedFormatting } : {}),
+    ...(finalizedFormatting !== undefined
+      ? { formatting: finalizedFormatting }
+      : {}),
     content: [
       {
         type: "run",

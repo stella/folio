@@ -7,17 +7,17 @@
  * `FolioDocxReviewer`.
  */
 
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import {
   FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE,
   FOLIO_DOCUMENT_OPERATION_TYPES,
+  type FolioDocumentOperationType,
   FolioDocxReviewer,
   getFolioDocumentOperationReceipts,
-  type FolioDocumentOperationType,
 } from "@stll/folio-core/server";
 
 import type { FolioAgentBridge } from "./bridge";
@@ -27,9 +27,9 @@ import { parseSuggestChangesInput } from "./parse";
 import {
   DEFAULT_MAX_OPERATIONS_PER_CALL,
   DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES,
+  type FolioSuggestChangesOptions,
   InvalidFolioSuggestChangesOptionsError,
   resolveSuggestChangesOptions,
-  type FolioSuggestChangesOptions,
 } from "./suggest-changes-options";
 import {
   describeSuggestChangesCapabilities,
@@ -79,7 +79,9 @@ const suggestChangesDefinitionFor = (
   return definition;
 };
 
-const operationItemSchemaOf = (definition: FolioAgentToolDefinition): Record<string, unknown> =>
+const operationItemSchemaOf = (
+  definition: FolioAgentToolDefinition,
+): Record<string, unknown> =>
   asSchemaObject(propertyOf(definition.inputSchema, "operations")["items"]);
 
 /** Ids the parser mints for unnamed operations: a per-call nonce plus the 1-based index. */
@@ -92,7 +94,9 @@ const MINTED_ID_PATTERN = /^op-[0-9a-f-]{36}-1$/;
 describe("resolveSuggestChangesOptions", () => {
   test("defaults to every contract type except commentOnBlock and insertSignatureTable", () => {
     const resolved = resolveSuggestChangesOptions();
-    expect(resolved.operationTypes).toEqual(DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES);
+    expect(resolved.operationTypes).toEqual(
+      DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES,
+    );
     expect(resolved.operationTypes).toHaveLength(19);
     expect(resolved.operationTypes).not.toContain("commentOnBlock");
     expect(resolved.operationTypes).not.toContain("insertSignatureTable");
@@ -111,19 +115,27 @@ describe("resolveSuggestChangesOptions", () => {
     expect(resolved.operationTypes).toEqual(["replaceInBlock", "deleteBlock"]);
   });
 
-  const INVALID_OPTIONS_CASES: { label: string; options: FolioSuggestChangesOptions }[] = [
+  const INVALID_OPTIONS_CASES: {
+    label: string;
+    options: FolioSuggestChangesOptions;
+  }[] = [
     { label: "an empty operationTypes array", options: { operationTypes: [] } },
     {
       label: "an unknown operation type",
       // SAFETY: the runtime guard exists for callers outside TypeScript (a
       // JSON config, a JS host); the cast is the only way to hand it an
       // off-contract string from typed test code.
-      options: { operationTypes: ["notAContractType" as FolioDocumentOperationType] },
+      options: {
+        operationTypes: ["notAContractType" as FolioDocumentOperationType],
+      },
     },
     { label: "maxOperations 0", options: { maxOperations: 0 } },
     { label: "maxOperations 201", options: { maxOperations: 201 } },
     { label: "maxOperations 2.5", options: { maxOperations: 2.5 } },
-    { label: "an empty documentVersion.current", options: { documentVersion: { current: "" } } },
+    {
+      label: "an empty documentVersion.current",
+      options: { documentVersion: { current: "" } },
+    },
   ];
 
   test.each(INVALID_OPTIONS_CASES)(
@@ -149,7 +161,9 @@ const createLcg = (seed: number): (() => number) => {
   };
 };
 
-const randomOperationTypeSubset = (rng: () => number): FolioDocumentOperationType[] => {
+const randomOperationTypeSubset = (
+  rng: () => number,
+): FolioDocumentOperationType[] => {
   const chosen = ALL_TYPES.filter(() => rng() < 0.5);
   if (chosen.length > 0) {
     return chosen;
@@ -165,14 +179,24 @@ const randomOperationTypeSubset = (rng: () => number): FolioDocumentOperationTyp
 };
 
 const RANDOM_SUBSET_RNG = createLcg(1337);
-const RANDOM_SUBSETS: FolioDocumentOperationType[][] = Array.from({ length: 20 }, () =>
-  randomOperationTypeSubset(RANDOM_SUBSET_RNG),
+const RANDOM_SUBSETS: FolioDocumentOperationType[][] = Array.from(
+  { length: 20 },
+  () => randomOperationTypeSubset(RANDOM_SUBSET_RNG),
 );
 
-const SCHEMA_SUBSETS: { label: string; types: readonly FolioDocumentOperationType[] }[] = [
-  ...ALL_TYPES.map((type) => ({ label: `single type: ${type}`, types: [type] })),
+const SCHEMA_SUBSETS: {
+  label: string;
+  types: readonly FolioDocumentOperationType[];
+}[] = [
+  ...ALL_TYPES.map((type) => ({
+    label: `single type: ${type}`,
+    types: [type],
+  })),
   { label: "the full 16-type set", types: ALL_TYPES },
-  { label: "the default type set", types: DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES },
+  {
+    label: "the default type set",
+    types: DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES,
+  },
   ...RANDOM_SUBSETS.map((types, index) => ({
     label: `random subset #${index + 1} of ${types.length} types`,
     types,
@@ -197,10 +221,14 @@ describe("suggest_changes schema + capability description follow operationTypes"
       }
     }
     const itemProperties = asSchemaObject(itemSchema["properties"]);
-    const actualKeys = new Set(Object.keys(itemProperties).filter((key) => key !== "type"));
+    const actualKeys = new Set(
+      Object.keys(itemProperties).filter((key) => key !== "type"),
+    );
     expect([...actualKeys].sort()).toEqual([...expectedKeys].sort());
 
-    const description = describeSuggestChangesCapabilities({ operationTypes: types });
+    const description = describeSuggestChangesCapabilities({
+      operationTypes: types,
+    });
     for (const type of resolved.operationTypes) {
       expect(
         new RegExp(`\\b${type}\\b`).test(description),
@@ -222,10 +250,14 @@ describe("suggest_changes schema + capability description follow operationTypes"
     const definition = suggestChangesDefinitionFor({
       operationTypes: [...FOLIO_DOCUMENT_OPERATION_TYPES],
     });
-    const properties = asSchemaObject(operationItemSchemaOf(definition)["properties"]);
+    const properties = asSchemaObject(
+      operationItemSchemaOf(definition)["properties"],
+    );
     const missing = FOLIO_DOCUMENT_OPERATION_TYPES.flatMap((type) =>
       FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE[type]
-        .filter((key) => key !== "suggestionId" && properties[key] === undefined)
+        .filter(
+          (key) => key !== "suggestionId" && properties[key] === undefined,
+        )
         .map((key) => `${type}.${key}`),
     );
     expect(missing).toEqual([]);
@@ -262,16 +294,26 @@ describe("suggest_changes schema + capability description follow operationTypes"
 
     expect(propertyOf(itemSchema, "styleId")["oneOf"]).toEqual(clearableStyle);
     for (const paragraphProperties of paragraphPropertyShapes) {
-      expect(propertyOf(paragraphProperties, "styleId")["oneOf"]).toEqual(clearableStyle);
+      expect(propertyOf(paragraphProperties, "styleId")["oneOf"]).toEqual(
+        clearableStyle,
+      );
       expect(propertyOf(paragraphProperties, "numbering")).toEqual(numbering);
     }
   });
 
   test("documentVersion pins a top-level enum and marks documentVersion required", () => {
-    const definition = suggestChangesDefinitionFor({ documentVersion: { current: "v7" } });
-    const documentVersionSchema = propertyOf(definition.inputSchema, "documentVersion");
+    const definition = suggestChangesDefinitionFor({
+      documentVersion: { current: "v7" },
+    });
+    const documentVersionSchema = propertyOf(
+      definition.inputSchema,
+      "documentVersion",
+    );
     expect(documentVersionSchema["enum"]).toEqual(["v7"]);
-    expect(definition.inputSchema["required"]).toEqual(["documentVersion", "operations"]);
+    expect(definition.inputSchema["required"]).toEqual([
+      "documentVersion",
+      "operations",
+    ]);
   });
 
   test("maxOperations sets the operations array's maxItems", () => {
@@ -332,7 +374,11 @@ describe("parseSuggestChangesInput follows suggestChanges options", () => {
     const options: FolioSuggestChangesOptions = { reviewMeta: "required" };
 
     const missingSeverity = parseSuggestChangesInput(
-      { operations: [{ type: "deleteBlock", blockId: "b1", area: "Payment terms" }] },
+      {
+        operations: [
+          { type: "deleteBlock", blockId: "b1", area: "Payment terms" },
+        ],
+      },
       options,
     );
     expect(missingSeverity.ok).toBe(false);
@@ -352,7 +398,11 @@ describe("parseSuggestChangesInput follows suggestChanges options", () => {
     expect(missingArea.error).toContain("area");
 
     const emptyArea = parseSuggestChangesInput(
-      { operations: [{ type: "deleteBlock", blockId: "b1", severity: "low", area: "" }] },
+      {
+        operations: [
+          { type: "deleteBlock", blockId: "b1", severity: "low", area: "" },
+        ],
+      },
       options,
     );
     expect(emptyArea.ok).toBe(false);
@@ -371,7 +421,12 @@ describe("parseSuggestChangesInput follows suggestChanges options", () => {
       const result = parseSuggestChangesInput(
         {
           operations: [
-            { type: "deleteBlock", blockId: "b1", severity: "high", area: "Payment terms" },
+            {
+              type: "deleteBlock",
+              blockId: "b1",
+              severity: "high",
+              area: "Payment terms",
+            },
           ],
         },
         options,
@@ -380,7 +435,10 @@ describe("parseSuggestChangesInput follows suggestChanges options", () => {
       if (!result.ok) {
         throw new Error("expected ok:true");
       }
-      expect(result.operations[0]).toMatchObject({ severity: "high", area: "Payment terms" });
+      expect(result.operations[0]).toMatchObject({
+        severity: "high",
+        area: "Payment terms",
+      });
     }
   });
 
@@ -389,7 +447,10 @@ describe("parseSuggestChangesInput follows suggestChanges options", () => {
       type: "deleteBlock",
       blockId: `b${index}`,
     }));
-    const result = parseSuggestChangesInput({ operations }, { maxOperations: 2 });
+    const result = parseSuggestChangesInput(
+      { operations },
+      { maxOperations: 2 },
+    );
     expect(result.ok).toBe(false);
     if (result.ok) {
       throw new Error("expected ok:false");
@@ -398,7 +459,9 @@ describe("parseSuggestChangesInput follows suggestChanges options", () => {
   });
 
   test("the documentVersion option makes documentVersion required and lands as result.precondition", () => {
-    const options: FolioSuggestChangesOptions = { documentVersion: { current: "v3" } };
+    const options: FolioSuggestChangesOptions = {
+      documentVersion: { current: "v3" },
+    };
 
     const missing = parseSuggestChangesInput(
       { operations: [{ type: "deleteBlock", blockId: "b1" }] },
@@ -411,7 +474,10 @@ describe("parseSuggestChangesInput follows suggestChanges options", () => {
     expect(missing.error).toContain("documentVersion");
 
     const provided = parseSuggestChangesInput(
-      { operations: [{ type: "deleteBlock", blockId: "b1" }], documentVersion: "v3" },
+      {
+        operations: [{ type: "deleteBlock", blockId: "b1" }],
+        documentVersion: "v3",
+      },
       options,
     );
     expect(provided.ok).toBe(true);
@@ -443,7 +509,9 @@ describe("parseSuggestChangesInput follows suggestChanges options", () => {
 
 describe("parseSuggestChangesInput lenient decode", () => {
   test("arguments given as a JSON string decode with one normalization at $", () => {
-    const args = JSON.stringify({ operations: [{ type: "deleteBlock", blockId: "b1" }] });
+    const args = JSON.stringify({
+      operations: [{ type: "deleteBlock", blockId: "b1" }],
+    });
     const result = parseSuggestChangesInput(args);
     expect(result.ok).toBe(true);
     if (!result.ok) {
@@ -476,7 +544,10 @@ describe("parseSuggestChangesInput lenient decode", () => {
       throw new Error("expected ok:true");
     }
     expect(result.normalizations).toEqual([
-      { path: "operations[0]", message: expect.stringContaining("JSON string") },
+      {
+        path: "operations[0]",
+        message: expect.stringContaining("JSON string"),
+      },
     ]);
   });
 
@@ -489,7 +560,10 @@ describe("parseSuggestChangesInput lenient decode", () => {
       throw new Error("expected ok:true");
     }
     expect(result.normalizations).toEqual([
-      { path: "operations[0].kind", message: expect.stringContaining("`kind`") },
+      {
+        path: "operations[0].kind",
+        message: expect.stringContaining("`kind`"),
+      },
     ]);
     expect(result.operations[0]).toMatchObject({ type: "deleteBlock" });
   });
@@ -517,7 +591,10 @@ describe("parseSuggestChangesInput lenient decode", () => {
       throw new Error("expected ok:true");
     }
     expect(findOnDeleteBlock.normalizations).toEqual([
-      { path: "operations[0].find", message: expect.stringContaining("does not apply") },
+      {
+        path: "operations[0].find",
+        message: expect.stringContaining("does not apply"),
+      },
     ]);
 
     const junkKey = parseSuggestChangesInput({
@@ -528,7 +605,10 @@ describe("parseSuggestChangesInput lenient decode", () => {
       throw new Error("expected ok:true");
     }
     expect(junkKey.normalizations).toEqual([
-      { path: "operations[0].foo", message: expect.stringContaining("does not apply") },
+      {
+        path: "operations[0].foo",
+        message: expect.stringContaining("does not apply"),
+      },
     ]);
   });
 
@@ -596,7 +676,10 @@ const FIXTURE = path.join(
 
 const readFixture = (): ArrayBuffer => {
   const bytes = readFileSync(FIXTURE);
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 };
 
 describe("executeFolioToolCall: suggest_changes document-version pinning and queue bridges", () => {
@@ -610,7 +693,10 @@ describe("executeFolioToolCall: suggest_changes document-version pinning and que
 
     const result = executeFolioToolCall(
       FOLIO_AGENT_TOOL_NAMES.suggestChanges,
-      { documentVersion: "v1", operations: [{ type: "deleteBlock", blockId: block.id }] },
+      {
+        documentVersion: "v1",
+        operations: [{ type: "deleteBlock", blockId: block.id }],
+      },
       bridge,
       { suggestChanges: { documentVersion: { current: "v1" } } },
     );
@@ -628,11 +714,17 @@ describe("executeFolioToolCall: suggest_changes document-version pinning and que
     if (block === undefined) {
       throw new Error("expected at least one block in the fixture");
     }
-    const bridge: FolioAgentBridge = { ...reviewerBridge, getDocumentVersion: () => "v2" };
+    const bridge: FolioAgentBridge = {
+      ...reviewerBridge,
+      getDocumentVersion: () => "v2",
+    };
 
     const result = executeFolioToolCall(
       FOLIO_AGENT_TOOL_NAMES.suggestChanges,
-      { documentVersion: "v1", operations: [{ type: "deleteBlock", blockId: block.id }] },
+      {
+        documentVersion: "v1",
+        operations: [{ type: "deleteBlock", blockId: block.id }],
+      },
       bridge,
       { suggestChanges: { documentVersion: { current: "v1" } } },
     );
@@ -655,11 +747,17 @@ describe("executeFolioToolCall: suggest_changes document-version pinning and que
     if (block === undefined) {
       throw new Error("expected at least one block in the fixture");
     }
-    const bridge: FolioAgentBridge = { ...reviewerBridge, getDocumentVersion: () => "v1" };
+    const bridge: FolioAgentBridge = {
+      ...reviewerBridge,
+      getDocumentVersion: () => "v1",
+    };
 
     const result = executeFolioToolCall(
       FOLIO_AGENT_TOOL_NAMES.suggestChanges,
-      { documentVersion: "v1", operations: [{ type: "deleteBlock", blockId: block.id }] },
+      {
+        documentVersion: "v1",
+        operations: [{ type: "deleteBlock", blockId: block.id }],
+      },
       bridge,
       { suggestChanges: { documentVersion: { current: "v1" } } },
     );
@@ -701,7 +799,16 @@ describe("executeFolioToolCall: suggest_changes document-version pinning and que
 
     const result = executeFolioToolCall(
       FOLIO_AGENT_TOOL_NAMES.suggestChanges,
-      { operations: [{ type: "replaceInBlock", blockId: block.id, find: "x", replace: "y" }] },
+      {
+        operations: [
+          {
+            type: "replaceInBlock",
+            blockId: block.id,
+            find: "x",
+            replace: "y",
+          },
+        ],
+      },
       queueBridge,
     );
     expect(result.ok).toBe(true);
@@ -737,7 +844,10 @@ describe("executeFolioToolCall: suggest_changes document-version pinning and que
       throw new Error("expected ok:true");
     }
     expect(result.result.normalizations).toEqual([
-      { path: "operations[0].kind", message: expect.stringContaining("`kind`") },
+      {
+        path: "operations[0].kind",
+        message: expect.stringContaining("`kind`"),
+      },
     ]);
   });
 });

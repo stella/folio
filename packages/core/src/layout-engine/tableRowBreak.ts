@@ -13,14 +13,17 @@
  * here yet (a separate follow-up); each row uses its own cells' content.
  */
 
-import { measureParagraph } from "./measure";
 import { measuredLineAdvance } from "./lineFlow";
+import { measureParagraph } from "./measure";
 import {
   buildTableCellFloatingZones,
   getTableCellContentWidth,
   getTableCellFloatingImages,
 } from "./measure/tableCellFloating";
-import { createTableCellFlowState, placeTableCellBlock } from "./measure/tableCellFlow";
+import {
+  createTableCellFlowState,
+  placeTableCellBlock,
+} from "./measure/tableCellFlow";
 import { getTableCellSpacingInsetsY } from "./measure/tableCellGrid";
 import { isEmptyParagraph } from "./paragraphSpacing";
 import {
@@ -69,7 +72,10 @@ function getVerticalAlignmentOffset(
   return 0;
 }
 
-function shiftCellGeometry(geometry: CellBreakGeometry, offset: number): CellBreakGeometry {
+function shiftCellGeometry(
+  geometry: CellBreakGeometry,
+  offset: number,
+): CellBreakGeometry {
   if (offset <= 0) {
     return geometry;
   }
@@ -83,10 +89,12 @@ function shiftCellGeometry(geometry: CellBreakGeometry, offset: number): CellBre
       top: range.top + offset,
       bottom: range.bottom + offset,
     })),
-    suppressibleLeadingRanges: geometry.suppressibleLeadingRanges.map((range) => ({
-      top: range.top + offset,
-      bottom: range.bottom + offset,
-    })),
+    suppressibleLeadingRanges: geometry.suppressibleLeadingRanges.map(
+      (range) => ({
+        top: range.top + offset,
+        bottom: range.bottom + offset,
+      }),
+    ),
   };
 }
 
@@ -106,8 +114,13 @@ function cellBreakGeometry(
   const { top: padTop } = resolveTableCellPadding(cell);
   const contentWidth = getTableCellContentWidth(cell, measure);
   const floatingImages =
-    cell !== undefined ? getTableCellFloatingImages(cell, measure, contentWidth) : [];
-  const floatingZones = buildTableCellFloatingZones(floatingImages, contentWidth);
+    cell !== undefined
+      ? getTableCellFloatingImages(cell, measure, contentWidth)
+      : [];
+  const floatingZones = buildTableCellFloatingZones(
+    floatingImages,
+    contentWidth,
+  );
   const flowState = createTableCellFlowState();
   for (let i = 0; i < blockMeasures.length; i++) {
     let blockMeasure = blockMeasures[i];
@@ -138,7 +151,10 @@ function cellBreakGeometry(
         y += line.floatSkipBefore ?? 0;
         const top = y;
         if (line.renderedPageBreakBefore === true) {
-          renderedBreakHints.push({ offset: top, lineAdvance: measuredLineAdvance(line) });
+          renderedBreakHints.push({
+            offset: top,
+            lineAdvance: measuredLineAdvance(line),
+          });
         }
         y += line.lineHeight;
         unsafeRanges.push({ top, bottom: y });
@@ -163,14 +179,24 @@ function cellBreakGeometry(
       }
     }
   }
-  return { bottoms, renderedBreakHints, unsafeRanges, suppressibleLeadingRanges };
+  return {
+    bottoms,
+    renderedBreakHints,
+    unsafeRanges,
+    suppressibleLeadingRanges,
+  };
 }
 
-const mergeRenderedBreakHints = (hints: RenderedRowBreakHint[]): RenderedRowBreakHint[] => {
+const mergeRenderedBreakHints = (
+  hints: RenderedRowBreakHint[],
+): RenderedRowBreakHint[] => {
   const merged: RenderedRowBreakHint[] = [];
   for (const hint of hints.sort((a, b) => a.offset - b.offset)) {
     const previous = merged.at(-1);
-    if (previous && Math.abs(previous.offset - hint.offset) <= BREAK_OFFSET_EPSILON) {
+    if (
+      previous &&
+      Math.abs(previous.offset - hint.offset) <= BREAK_OFFSET_EPSILON
+    ) {
       previous.lineAdvance = Math.max(previous.lineAdvance, hint.lineAdvance);
       continue;
     }
@@ -192,7 +218,8 @@ const continuationSkipForCell = (
 
   const leadingRange = geometry.suppressibleLeadingRanges.find(
     ({ top, bottom }) =>
-      top <= offset + BREAK_OFFSET_EPSILON && bottom > offset + BREAK_OFFSET_EPSILON,
+      top <= offset + BREAK_OFFSET_EPSILON &&
+      bottom > offset + BREAK_OFFSET_EPSILON,
   );
   return leadingRange ? leadingRange.bottom - offset : 0;
 };
@@ -203,11 +230,17 @@ const continuationSkipForCell = (
  * every cell with remaining content is suppressible; non-empty paragraphs,
  * line boxes, cell padding, and explicit row height retain authored space.
  */
-const continuationSkipAfter = (geometries: CellBreakGeometry[], offset: number): number => {
+const continuationSkipAfter = (
+  geometries: CellBreakGeometry[],
+  offset: number,
+): number => {
   const skips = geometries
     .map((geometry) => continuationSkipForCell(geometry, offset))
     .filter((skip): skip is number => skip !== undefined);
-  if (skips.length === 0 || skips.some((skip) => skip <= BREAK_OFFSET_EPSILON)) {
+  if (
+    skips.length === 0 ||
+    skips.some((skip) => skip <= BREAK_OFFSET_EPSILON)
+  ) {
     return 0;
   }
   return Math.min(...skips);
@@ -235,10 +268,16 @@ export type TableRowBreakInfo = {
  * the first body row. A row that may break across pages (no `w:cantSplit`,
  * §17.4.6) needs only its first line there; an unbreakable row needs all of it.
  */
-export function tableKeepNextOpeningHeight(block: TableBlock, measure: TableMeasure): number {
+export function tableKeepNextOpeningHeight(
+  block: TableBlock,
+  measure: TableMeasure,
+): number {
   let height = 0;
   let rowIndex = 0;
-  while (rowIndex < measure.rows.length && block.rows[rowIndex]?.isHeader === true) {
+  while (
+    rowIndex < measure.rows.length &&
+    block.rows[rowIndex]?.isHeader === true
+  ) {
     height += measure.rows[rowIndex]?.height ?? 0;
     rowIndex += 1;
   }
@@ -247,10 +286,13 @@ export function tableKeepNextOpeningHeight(block: TableBlock, measure: TableMeas
   if (!row || !sourceRow) {
     return height;
   }
-  const breakOffsets = buildTableRowBreakInfo(block, measure).breakOffsets[rowIndex] ?? [];
+  const breakOffsets =
+    buildTableRowBreakInfo(block, measure).breakOffsets[rowIndex] ?? [];
   const firstBreak = breakOffsets.at(0);
   const rowMayBreak = sourceRow.cantSplit !== true && breakOffsets.length > 1;
-  return height + (rowMayBreak && firstBreak !== undefined ? firstBreak : row.height);
+  return (
+    height + (rowMayBreak && firstBreak !== undefined ? firstBreak : row.height)
+  );
 }
 
 /** Build break geometry for a table from its block + measure. */
@@ -323,13 +365,17 @@ export function buildTableRowBreakInfo(
               offset > BREAK_OFFSET_EPSILON &&
               offset < rowHeight - BREAK_OFFSET_EPSILON &&
               cellGeometries.every((geometry) =>
-                geometry.unsafeRanges.every((range) => !isInsideRange(offset, range)),
+                geometry.unsafeRanges.every(
+                  (range) => !isInsideRange(offset, range),
+                ),
               ),
           ),
       ),
     );
     continuationSkips.push(
-      sortedOffsets.map((offset) => continuationSkipAfter(cellGeometries, offset)),
+      sortedOffsets.map((offset) =>
+        continuationSkipAfter(cellGeometries, offset),
+      ),
     );
   }
 

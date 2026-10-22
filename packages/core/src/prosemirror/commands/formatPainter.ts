@@ -12,6 +12,8 @@
 import type { Mark, Node as PMNode, ResolvedPos } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 
+import type { TextFormatting } from "../../types/document";
+import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { expectCharacterStyleMarkAttrs } from "../attrs";
 import { getDocumentStyleResolver } from "../plugins/documentStyleState";
 import {
@@ -20,15 +22,13 @@ import {
 } from "../runFormattingReconciliation";
 import {
   paragraphFormattingForRun,
+  type ParagraphRunStyleContext,
   paragraphRunStyleContext,
   paragraphRunStyleContextAt,
   resolveEffectiveRunStyleFormatting,
-  type ParagraphRunStyleContext,
   type RunStyleResolver,
 } from "../runStyleFormatting";
 import type { RunFormattingOverrideAttrs } from "../schema/marks";
-import type { TextFormatting } from "../../types/document";
-import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 /**
  * Character-formatting marks the painter copies. Structural marks — comments,
  * hyperlinks, tracked changes (insertion/deletion), footnote references — are
@@ -103,7 +103,8 @@ function sanitizeOverrideMark(mark: Mark): Mark | null {
       continue;
     }
     const paintableProperties = properties.filter(
-      (property) => typeof property === "string" && !NON_PAINTABLE_FORMATS.has(property),
+      (property) =>
+        typeof property === "string" && !NON_PAINTABLE_FORMATS.has(property),
     );
     if (paintableProperties.length !== properties.length) {
       kept[provenanceKey] = paintableProperties;
@@ -223,7 +224,12 @@ const TARGET_RELATIVE_FORMATTING_POLICIES = {
   },
   cs: { type: "boolean", override: "cs" },
   doubleStrike: { type: "boolean", override: "doubleStrike" },
-  effect: { type: "sentinel", override: "effect", inactive: "none", cancellation: "none" },
+  effect: {
+    type: "sentinel",
+    override: "effect",
+    inactive: "none",
+    cancellation: "none",
+  },
   emboss: { type: "boolean", override: "emboss" },
   emphasisMark: {
     type: "sentinel",
@@ -247,10 +253,25 @@ const TARGET_RELATIVE_FORMATTING_POLICIES = {
     override: "italicCs",
     fallback: "italic",
   },
-  kerning: { type: "sentinel", override: "kerning", inactive: 0, cancellation: 0 },
+  kerning: {
+    type: "sentinel",
+    override: "kerning",
+    inactive: 0,
+    cancellation: 0,
+  },
   outline: { type: "boolean", override: "outline" },
-  position: { type: "sentinel", override: "position", inactive: 0, cancellation: 0 },
-  scale: { type: "sentinel", override: "scale", inactive: 100, cancellation: 100 },
+  position: {
+    type: "sentinel",
+    override: "position",
+    inactive: 0,
+    cancellation: 0,
+  },
+  scale: {
+    type: "sentinel",
+    override: "scale",
+    inactive: 100,
+    cancellation: 100,
+  },
   shading: {
     type: "sentinel",
     override: "shading",
@@ -260,7 +281,12 @@ const TARGET_RELATIVE_FORMATTING_POLICIES = {
   },
   shadow: { type: "boolean", override: "shadow" },
   smallCaps: { type: "boolean", override: "smallCaps" },
-  spacing: { type: "sentinel", override: "spacing", inactive: 0, cancellation: 0 },
+  spacing: {
+    type: "sentinel",
+    override: "spacing",
+    inactive: 0,
+    cancellation: 0,
+  },
   strike: { type: "boolean", override: "strike" },
   underline: {
     type: "sentinel",
@@ -275,7 +301,10 @@ const TARGET_RELATIVE_FORMATTING_POLICIES = {
     inactive: "baseline",
     cancellation: "baseline",
   },
-} as const satisfies Record<keyof PaintableFormatting, TargetRelativeFormattingPolicy>;
+} as const satisfies Record<
+  keyof PaintableFormatting,
+  TargetRelativeFormattingPolicy
+>;
 
 type PaintableFormattingKey = keyof typeof TARGET_RELATIVE_FORMATTING_POLICIES;
 
@@ -294,7 +323,9 @@ export type CapturedTextFormatting = Readonly<{
   type: "capturedTextFormatting";
 }>;
 
-function pickPaintableFormatting(formatting: TextFormatting | undefined): PaintableFormatting {
+function pickPaintableFormatting(
+  formatting: TextFormatting | undefined,
+): PaintableFormatting {
   const result: PaintableFormatting = {};
   if (!formatting) {
     return result;
@@ -319,7 +350,11 @@ function resolveEffectiveFormatting({
   marks,
   styleResolver,
 }: ResolveEffectiveFormattingOptions): PaintableFormatting {
-  const authoredFormatting = readAuthoredRunFormatting({ context, marks, styleResolver });
+  const authoredFormatting = readAuthoredRunFormatting({
+    context,
+    marks,
+    styleResolver,
+  });
   const paragraphFormatting = paragraphFormattingForRun({
     context,
     directFormatting: authoredFormatting,
@@ -330,7 +365,8 @@ function resolveEffectiveFormatting({
     paragraphFormatting,
     styleResolver,
   });
-  const effectiveFormatting = mergeTextFormatting(inheritedFormatting, authoredFormatting) ?? {};
+  const effectiveFormatting =
+    mergeTextFormatting(inheritedFormatting, authoredFormatting) ?? {};
   // These authored sentinels disable the inherited property as a whole. Generic
   // object merging would otherwise retain inactive decoration metadata from the
   // source style (for example, a fill beside w:shd w:val="nil").
@@ -348,13 +384,19 @@ function resolveCopiedStyleFormatting({
   marks,
   styleResolver,
 }: ResolveEffectiveFormattingOptions): PaintableFormatting | null {
-  const hasCharacterStyle = marks.some((mark) => mark.type.name === "characterStyle");
+  const hasCharacterStyle = marks.some(
+    (mark) => mark.type.name === "characterStyle",
+  );
   if (hasCharacterStyle && !styleResolver) {
     return null;
   }
   const paragraphFormatting = paragraphFormattingForRun({ context, marks });
   return pickPaintableFormatting(
-    resolveEffectiveRunStyleFormatting({ marks, paragraphFormatting, styleResolver }),
+    resolveEffectiveRunStyleFormatting({
+      marks,
+      paragraphFormatting,
+      styleResolver,
+    }),
   );
 }
 
@@ -362,7 +404,12 @@ function sameFormattingValue(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) {
     return true;
   }
-  if (left === null || right === null || typeof left !== "object" || typeof right !== "object") {
+  if (
+    left === null ||
+    right === null ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  ) {
     return false;
   }
   if (Array.isArray(left) || Array.isArray(right)) {
@@ -379,7 +426,8 @@ function sameFormattingValue(left: unknown, right: unknown): boolean {
     leftEntries.length === rightKeys.length &&
     leftEntries.every(
       ([property, value]) =>
-        Object.hasOwn(right, property) && sameFormattingValue(value, Reflect.get(right, property)),
+        Object.hasOwn(right, property) &&
+        sameFormattingValue(value, Reflect.get(right, property)),
     )
   );
 }
@@ -390,12 +438,16 @@ function policyValue(
   policy: TargetRelativeFormattingPolicy,
 ): unknown {
   const own = formatting[key];
-  const value = own ?? (policy.type !== "sentinel" ? formatting[policy.fallback ?? key] : own);
+  const value =
+    own ??
+    (policy.type !== "sentinel" ? formatting[policy.fallback ?? key] : own);
   if (policy.type !== "sentinel") {
     return value;
   }
   if (policy.projection === "style") {
-    return typeof value === "object" && value !== null ? Reflect.get(value, "style") : undefined;
+    return typeof value === "object" && value !== null
+      ? Reflect.get(value, "style")
+      : undefined;
   }
   if (policy.projection === "shading") {
     if (typeof value !== "object" || value === null) {
@@ -404,7 +456,9 @@ function policyValue(
     return Reflect.get(value, "pattern") === "nil" ? "nil" : value;
   }
   if (key === "color") {
-    return typeof value === "object" && value !== null && Reflect.get(value, "auto") === true
+    return typeof value === "object" &&
+      value !== null &&
+      Reflect.get(value, "auto") === true
       ? "auto"
       : value;
   }
@@ -454,7 +508,10 @@ function materializeTargetRelativeMarks({
       if (sourceValue === undefined && targetValue !== undefined) {
         return null;
       }
-      if (sourceValue !== undefined && !sameFormattingValue(sourceValue, targetValue)) {
+      if (
+        sourceValue !== undefined &&
+        !sameFormattingValue(sourceValue, targetValue)
+      ) {
         Reflect.set(targetRelativeFormatting, key, sourceValue);
       }
       continue;
@@ -467,8 +524,10 @@ function materializeTargetRelativeMarks({
       continue;
     }
 
-    const sourceIsInactive = sourceValue === undefined || sourceValue === policy.inactive;
-    const targetIsInactive = targetValue === undefined || targetValue === policy.inactive;
+    const sourceIsInactive =
+      sourceValue === undefined || sourceValue === policy.inactive;
+    const targetIsInactive =
+      targetValue === undefined || targetValue === policy.inactive;
     if (sourceIsInactive) {
       if (!targetIsInactive) {
         Reflect.set(
@@ -488,7 +547,9 @@ function materializeTargetRelativeMarks({
     }
   }
 
-  const characterStyle = captured.marks.find((mark) => mark.type.name === "characterStyle");
+  const characterStyle = captured.marks.find(
+    (mark) => mark.type.name === "characterStyle",
+  );
   const characterStyleId = characterStyle
     ? expectCharacterStyleMarkAttrs(characterStyle).styleId
     : undefined;
@@ -544,7 +605,9 @@ function firstTextFormatting(
 export function captureFormatMarks(state: EditorState): CapturedTextFormatting {
   const { empty, $from, from, to } = state.selection;
   const firstText = empty ? null : firstTextFormatting(state, from, to);
-  const source = empty ? (state.storedMarks ?? $from.marks()) : (firstText?.marks ?? []);
+  const source = empty
+    ? (state.storedMarks ?? $from.marks())
+    : (firstText?.marks ?? []);
 
   const captured: Mark[] = [];
   for (const mark of source) {
@@ -567,7 +630,11 @@ export function captureFormatMarks(state: EditorState): CapturedTextFormatting {
     styleResolver,
   });
   return {
-    effectiveFormatting: resolveEffectiveFormatting({ context, marks: captured, styleResolver }),
+    effectiveFormatting: resolveEffectiveFormatting({
+      context,
+      marks: captured,
+      styleResolver,
+    }),
     marks: captured,
     type: "capturedTextFormatting",
   };
@@ -614,7 +681,9 @@ function targetParagraphSegments(
  * that cannot be represented without guessing document defaults is a no-op.
  * Returns false so a keymap binding stays unclaimed; never partially mutates.
  */
-export function applyFormatMarks(captured: CapturedTextFormatting | null): Command {
+export function applyFormatMarks(
+  captured: CapturedTextFormatting | null,
+): Command {
   return (state, dispatch) => {
     const { from, to, empty } = state.selection;
     if (empty || captured?.type !== "capturedTextFormatting") {

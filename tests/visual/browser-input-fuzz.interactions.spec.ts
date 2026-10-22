@@ -1,55 +1,60 @@
-import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
-import type {} from "./browserTestBridge";
-import type { BrowserDragTarget } from "./browserDragTarget";
-import { driveBrowserIme } from "./browserImeDriver";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import fc from "fast-check";
-import { BROWSER_FUZZ_BUDGET, checkWithBoundedShrink } from "../../test/bounded-async-fuzz";
-import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
+
+import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
+import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
+import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
+import {
+  createFreshRenderRig,
+  docFromParagraphs,
+} from "../../packages/core/src/controller/__tests__/freshRenderHarness";
 import { parseDocx } from "../../packages/core/src/docx/parser";
+import { withFakeTextMeasure } from "../../packages/core/src/layout-engine/measure/__tests__/fakeTextMeasure";
+import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
+import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
+import {
+  BROWSER_FUZZ_BUDGET,
+  checkWithBoundedShrink,
+} from "../../test/bounded-async-fuzz";
+import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import {
   canonicalActivationRefusalRow,
   canonicalBrowserRefusalRows,
   matchCanonicalRefusalRow,
   validateHarnessRefusalRows,
 } from "../../test/canonical-refusal-rows";
-import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
-import type {} from "../parity/canonicalFuzzErrors";
-
-import knownFailures from "../../test/known-failure-fingerprints.json" with { type: "json" };
-
-import { classifyFuzzRun } from "../../test/fuzz-health";
-import { reportFuzzHealth } from "../../test/consumer-scenarios/support/fuzz-health";
-
-import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
-import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
-import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
-import { withFakeTextMeasure } from "../../packages/core/src/layout-engine/measure/__tests__/fakeTextMeasure";
-import {
-  createFreshRenderRig,
-  docFromParagraphs,
-} from "../../packages/core/src/controller/__tests__/freshRenderHarness";
-import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
-import {
-  BROWSER_SHAPE_TARGETS,
-  browserInputTraceArbitrary,
-  BROWSER_PASTE_PAYLOADS,
-  browserSuggestionActionKinds,
-  parseBrowserInputTraceConfig,
-  type BrowserInputAction,
-  type BrowserInputTrace,
-} from "./browserInputTrace";
 import {
   failureMarker,
   failureRecord,
   logFailureMarker,
   writeFailureRecord,
 } from "../../test/consumer-scenarios/support/failure-fingerprints";
+import { reportFuzzHealth } from "../../test/consumer-scenarios/support/fuzz-health";
+import { classifyFuzzRun } from "../../test/fuzz-health";
+import knownFailures from "../../test/known-failure-fingerprints.json" with { type: "json" };
+import type {} from "../parity/canonicalFuzzErrors";
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import type { BrowserDragTarget } from "./browserDragTarget";
+import { driveBrowserIme } from "./browserImeDriver";
+import {
+  BROWSER_INPUT_REGRESSIONS,
+  PINNED_BROWSER_INPUT_TAG,
+} from "./browserInputRegressions";
+import {
+  BROWSER_PASTE_PAYLOADS,
+  BROWSER_SHAPE_TARGETS,
+  type BrowserInputAction,
+  type BrowserInputTrace,
+  browserInputTraceArbitrary,
+  browserSuggestionActionKinds,
+  parseBrowserInputTraceConfig,
+} from "./browserInputTrace";
+import type {} from "./browserTestBridge";
 import { clipboardHtmlProjection } from "./clipboardHtmlProjection";
-import { BROWSER_INPUT_REGRESSIONS, PINNED_BROWSER_INPUT_TAG } from "./browserInputRegressions";
 
 declare global {
-  var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
+  var __folioPlayground:
+    { getEditorRef: () => DocxEditorRef | null } | undefined;
 }
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
@@ -77,8 +82,10 @@ const project = (reviewer: FolioDocxReviewer): Block[] =>
     const projection: Block = { kind: block.kind, text: block.text };
     if (block.table !== undefined) projection.table = block.table;
     if (block.kind === "diagnostic") return projection;
-    if (block.displayLabel !== undefined) projection.displayLabel = block.displayLabel;
-    if (block.listReference !== undefined) projection.effectiveLevel = block.listReference.level;
+    if (block.displayLabel !== undefined)
+      projection.displayLabel = block.displayLabel;
+    if (block.listReference !== undefined)
+      projection.effectiveLevel = block.listReference.level;
     return projection;
   });
 const projectLive = (blocks: readonly Block[]): LiveBlock[] =>
@@ -86,7 +93,9 @@ const projectLive = (blocks: readonly Block[]): LiveBlock[] =>
 
 const liveBlocks = (page: Page) =>
   page.evaluate(() => {
-    const snapshot = globalThis.__folioPlayground?.getEditorRef()?.createAIEditSnapshot();
+    const snapshot = globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.createAIEditSnapshot();
     if (!snapshot) throw new Error("live reader unavailable");
     return snapshot.blocks.map(({ kind, text, table }) => ({
       kind,
@@ -98,7 +107,8 @@ const liveBlocks = (page: Page) =>
 const editor = (page: Page) =>
   page.evaluate(() => {
     const ref = globalThis.__folioPlayground?.getEditorRef();
-    if (!ref?.getEditorRef()?.getView()) throw new Error("browser editor unavailable");
+    if (!ref?.getEditorRef()?.getView())
+      throw new Error("browser editor unavailable");
     return true;
   });
 
@@ -110,19 +120,31 @@ type LoadFuzzOptions = {
   suggesting: boolean;
   authority: FuzzAuthority;
 };
-const load = async ({ page, bytes, baseline, suggesting, authority }: LoadFuzzOptions) => {
+const load = async ({
+  page,
+  bytes,
+  baseline,
+  suggesting,
+  authority,
+}: LoadFuzzOptions) => {
   const activationRow =
     authority === "canonical"
       ? canonicalActivationRefusalRow(
-          await parseDocx(bytes, { preloadFonts: false, detectVariables: false }),
+          await parseDocx(bytes, {
+            preloadFonts: false,
+            detectVariables: false,
+          }),
         )
       : undefined;
   if (activationRow) validateHarnessRefusalRows([activationRow]);
   await page.goto(authority === "canonical" ? "/?session=canonical" : "/");
   await page.waitForSelector(".layout-page");
-  await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView());
+  await page.evaluate(() =>
+    globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView(),
+  );
   await page.waitForFunction(
-    () => !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
+    () =>
+      !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
   );
   if (authority === "canonical")
     await page.evaluate(() => {
@@ -142,15 +164,17 @@ const load = async ({ page, bytes, baseline, suggesting, authority }: LoadFuzzOp
     );
   }
   if (activationRow) {
-    await page.waitForFunction(() => (globalThis.__folioCanonicalFuzzErrors?.length ?? 0) > 0);
+    await page.waitForFunction(
+      () => (globalThis.__folioCanonicalFuzzErrors?.length ?? 0) > 0,
+    );
     const errors = await drainCanonicalErrors(page);
     expect(errors).toHaveLength(1);
     for (const error of errors) {
       expect(error.status).toBe("refusal");
       if (error.status !== "refusal") throw new TypeError(error.message);
-      expect(matchCanonicalRefusalRow({ rows: [activationRow], refusal: error })).toEqual(
-        activationRow,
-      );
+      expect(
+        matchCanonicalRefusalRow({ rows: [activationRow], refusal: error }),
+      ).toEqual(activationRow);
     }
     expect(
       await page.evaluate(() => {
@@ -176,16 +200,25 @@ const load = async ({ page, bytes, baseline, suggesting, authority }: LoadFuzzOp
         if (!core?.getCanonicalDocument())
           throw new TypeError("Canonical fuzz authority unavailable.");
         return core.setCanonicalMode(
-          tracked ? { type: "suggesting", author: "Browser conformance" } : { type: "editing" },
+          tracked
+            ? { type: "suggesting", author: "Browser conformance" }
+            : { type: "editing" },
         );
       }, suggesting),
     ).toBe(true);
   } else if (suggesting)
-    await page.getByRole("button", { name: "Track Changes", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Track Changes", exact: true })
+      .click();
   await page.evaluate(() =>
-    globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.focus(),
+    globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView()
+      ?.focus(),
   );
-  if (authority === "canonical") expect(await drainCanonicalErrors(page)).toEqual([]);
+  if (authority === "canonical")
+    expect(await drainCanonicalErrors(page)).toEqual([]);
   return { type: "ready" } as const;
 };
 
@@ -193,7 +226,8 @@ const selectTableTarget = async (page: Page) => {
   const target = await page.evaluate(() => {
     const bridge = globalThis.__folioBrowserTestBridge;
     const ref = globalThis.__folioPlayground?.getEditorRef();
-    if (!bridge || !ref) throw new Error("bundled browser editor bridge unavailable");
+    if (!bridge || !ref)
+      throw new Error("bundled browser editor bridge unavailable");
     return bridge.resolvePaintedTableTarget(ref);
   });
   if (target.type === "absent") return false;
@@ -205,9 +239,16 @@ const selectTableTarget = async (page: Page) => {
   // A missed drag must fail at the input boundary, before paste/delete can edit
   // whichever caret the previous action happened to leave in each mode.
   const selected = await page.evaluate(() => {
-    const selection = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()
-      ?.state.selection;
-    if (!selection || !("$anchorCell" in selection) || !("$headCell" in selection)) return null;
+    const selection = globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView()?.state.selection;
+    if (
+      !selection ||
+      !("$anchorCell" in selection) ||
+      !("$headCell" in selection)
+    )
+      return null;
     const selectedAnchor = selection.$anchorCell;
     const selectedHead = selection.$headCell;
     if (
@@ -230,7 +271,8 @@ const selectTarget = async (page: Page, target: BrowserDragTarget) => {
   const painted = await page.evaluate((wanted) => {
     const bridge = globalThis.__folioBrowserTestBridge;
     const ref = globalThis.__folioPlayground?.getEditorRef();
-    if (!bridge || !ref) throw new Error("bundled browser editor bridge unavailable");
+    if (!bridge || !ref)
+      throw new Error("bundled browser editor bridge unavailable");
     return bridge.resolvePaintedDragTarget(ref, wanted);
   }, target);
   if (painted.type === "absent") return false;
@@ -241,8 +283,10 @@ const selectTarget = async (page: Page, target: BrowserDragTarget) => {
   await page.mouse.move(painted.to.x, painted.to.y, { steps: 4 });
   await page.mouse.up();
   const selected = await page.evaluate(() => {
-    const selection = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()
-      ?.state.selection;
+    const selection = globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView()?.state.selection;
     return selection ? { from: selection.from, to: selection.to } : null;
   });
   expect(selected).toEqual({ from: positions.from, to: positions.to });
@@ -253,11 +297,19 @@ const selectTarget = async (page: Page, target: BrowserDragTarget) => {
   return true;
 };
 
-const paste = async (page: Page, action: Extract<BrowserInputAction, { html: string }>) => {
-  const expectedHtml = await page.evaluate(clipboardHtmlProjection, action.html);
+const paste = async (
+  page: Page,
+  action: Extract<BrowserInputAction, { html: string }>,
+) => {
+  const expectedHtml = await page.evaluate(
+    clipboardHtmlProjection,
+    action.html,
+  );
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.evaluate(async ({ html, plain }) => {
-    const parts: Record<string, Blob> = { "text/plain": new Blob([plain], { type: "text/plain" }) };
+    const parts: Record<string, Blob> = {
+      "text/plain": new Blob([plain], { type: "text/plain" }),
+    };
     if (html) parts["text/html"] = new Blob([html], { type: "text/html" });
     await navigator.clipboard.write([new ClipboardItem(parts)]);
     document.documentElement.dataset["fuzzPasteReceived"] = "unseen";
@@ -285,7 +337,10 @@ const paste = async (page: Page, action: Extract<BrowserInputAction, { html: str
       ),
     )
     .toBe(expectedHtml);
-  await expect(page.locator("html")).toHaveAttribute("data-fuzz-paste-plain", action.plain);
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-fuzz-paste-plain",
+    action.plain,
+  );
 };
 
 const drive = async (page: Page, action: BrowserInputAction) => {
@@ -329,7 +384,9 @@ const drive = async (page: Page, action: BrowserInputAction) => {
       return;
     case "historyBurst":
       for (const key of action.keys) {
-        await page.keyboard.press(key === "undo" ? `${MODIFIER}+z` : `${MODIFIER}+Shift+z`);
+        await page.keyboard.press(
+          key === "undo" ? `${MODIFIER}+z` : `${MODIFIER}+Shift+z`,
+        );
       }
       return;
     case "selectionDrag":
@@ -346,7 +403,9 @@ const drive = async (page: Page, action: BrowserInputAction) => {
 
 const save = async (page: Page) => {
   const bytes = await page.evaluate(async () => {
-    const saved = await globalThis.__folioPlayground?.getEditorRef()?.save({ selective: false });
+    const saved = await globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.save({ selective: false });
     return saved ? [...new Uint8Array(saved)] : null;
   });
   if (!bytes) throw new Error("browser editor did not save");
@@ -366,7 +425,8 @@ const canonicalSnapshot = async (page: Page) => {
     const core = ref?.getEditor();
     const view = ref?.getEditorRef()?.getView();
     const document = core?.getCanonicalDocument();
-    if (!document || !view || !core) throw new TypeError("Canonical action owner unavailable.");
+    if (!document || !view || !core)
+      throw new TypeError("Canonical action owner unavailable.");
     return {
       document,
       projection: view.state.doc.toJSON(),
@@ -377,8 +437,16 @@ const canonicalSnapshot = async (page: Page) => {
   });
 };
 
-type DriveFuzzOptions = { page: Page; action: BrowserInputAction; authority: FuzzAuthority };
-const driveWithAuthority = async ({ page, action, authority }: DriveFuzzOptions) => {
+type DriveFuzzOptions = {
+  page: Page;
+  action: BrowserInputAction;
+  authority: FuzzAuthority;
+};
+const driveWithAuthority = async ({
+  page,
+  action,
+  authority,
+}: DriveFuzzOptions) => {
   if (authority === "prosemirror") return drive(page, action);
   const rows = canonicalBrowserRefusalRows(action);
   validateHarnessRefusalRows(rows);
@@ -391,7 +459,10 @@ const driveWithAuthority = async ({ page, action, authority }: DriveFuzzOptions)
   for (const error of errors) {
     if (error.status !== "refusal") throw new TypeError(error.message);
     const row = matchCanonicalRefusalRow({ rows, refusal: error });
-    expect(row, `Unregistered canonical refusal: ${error.gap}: ${error.message}`).toBeDefined();
+    expect(
+      row,
+      `Unregistered canonical refusal: ${error.gap}: ${error.message}`,
+    ).toBeDefined();
     if (!row) throw new TypeError("Unregistered canonical refusal.");
     missingCanonical.record(row.gap);
   }
@@ -414,10 +485,17 @@ const runMode = async ({
   suggesting,
   authority,
 }: RunFuzzOptions) => {
-  const loaded = await load({ page, bytes: source, baseline, suggesting, authority });
+  const loaded = await load({
+    page,
+    bytes: source,
+    baseline,
+    suggesting,
+    authority,
+  });
   if (loaded.type === "activationRefused")
     return { type: "activationRefused", row: loaded.row } as const;
-  for (const action of trace.actions) await driveWithAuthority({ page, action, authority });
+  for (const action of trace.actions)
+    await driveWithAuthority({ page, action, authority });
   await page.waitForTimeout(350);
   const live = await liveBlocks(page);
   const painted = await page.locator(".layout-page-content").allTextContents();
@@ -437,7 +515,9 @@ const runMode = async ({
       [...new Uint8Array(buffer)],
     );
   }
-  await expect.poll(() => page.locator(".layout-page-content").allTextContents()).toEqual(painted);
+  await expect
+    .poll(() => page.locator(".layout-page-content").allTextContents())
+    .toEqual(painted);
   return {
     type: "ready",
     buffer,
@@ -483,7 +563,9 @@ for (const [index, trace] of paintedTargetReplays.entries()) {
   });
 }
 
-const isBrowserShape = (shape: string): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
+const isBrowserShape = (
+  shape: string,
+): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
   Object.hasOwn(BROWSER_SHAPE_TARGETS, shape);
 
 test.describe("pinned browser input", () => {
@@ -515,38 +597,46 @@ test.describe("pinned browser input", () => {
           throw new TypeError("Legacy replay unexpectedly refused activation.");
         const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
         accepting.acceptAll();
-        expect(project(await reopenSaved(await accepting.toBuffer()))).toEqual(edited.blocks);
+        expect(project(await reopenSaved(await accepting.toBuffer()))).toEqual(
+          edited.blocks,
+        );
         const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
         rejecting.rejectAll();
-        expect(project(await reopenSaved(await rejecting.toBuffer()))).toEqual(baseline);
+        expect(project(await reopenSaved(await rejecting.toBuffer()))).toEqual(
+          baseline,
+        );
       },
     );
   }
 });
 
-const browserAcceptances = knownFailures.known.flatMap(({ fingerprint, acceptance }) => {
-  if (acceptance?.type !== "browser") return [];
-  const trace = acceptance.trace;
-  if (!trace || !isBrowserShape(trace.shape)) throw new Error("Invalid browser acceptance shape");
-  const actions = trace.actions.map((action) => {
-    switch (action.kind) {
-      case "dragCellDelete":
-        return { kind: "dragCellDelete" } as const;
-      case "typing":
-        if (typeof action.text !== "string") throw new Error("Invalid acceptance typing action");
-        return { kind: "typing", text: action.text } as const;
-      default:
-        throw new Error(`Unsupported acceptance action ${action.kind}`);
-    }
-  });
-  return [
-    {
-      ...acceptance,
-      fingerprint,
-      trace: { shape: trace.shape, actions } satisfies BrowserInputTrace,
-    },
-  ];
-});
+const browserAcceptances = knownFailures.known.flatMap(
+  ({ fingerprint, acceptance }) => {
+    if (acceptance?.type !== "browser") return [];
+    const trace = acceptance.trace;
+    if (!trace || !isBrowserShape(trace.shape))
+      throw new Error("Invalid browser acceptance shape");
+    const actions = trace.actions.map((action) => {
+      switch (action.kind) {
+        case "dragCellDelete":
+          return { kind: "dragCellDelete" } as const;
+        case "typing":
+          if (typeof action.text !== "string")
+            throw new Error("Invalid acceptance typing action");
+          return { kind: "typing", text: action.text } as const;
+        default:
+          throw new Error(`Unsupported acceptance action ${action.kind}`);
+      }
+    });
+    return [
+      {
+        ...acceptance,
+        fingerprint,
+        trace: { shape: trace.shape, actions } satisfies BrowserInputTrace,
+      },
+    ];
+  },
+);
 
 // A changed symptom or a passing replay requires reviewing and removing its acceptance entry.
 for (const acceptance of browserAcceptances) {
@@ -576,17 +666,22 @@ for (const acceptance of browserAcceptances) {
       throw new TypeError("Legacy replay unexpectedly refused activation.");
     const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
     accepting.acceptAll();
-    const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+    const accepted = await FolioDocxReviewer.fromBuffer(
+      await accepting.toBuffer(),
+    );
     const editedCellIndex = edited.blocks.findIndex(
       ({ text, table }) => text === "alpha" && table !== undefined,
     );
-    if (editedCellIndex < 0) throw new Error("#1341 trace did not edit a table cell to alpha");
+    if (editedCellIndex < 0)
+      throw new Error("#1341 trace did not edit a table cell to alpha");
     const editedCell = edited.blocks[editedCellIndex];
     const acceptedCell = project(accepted).at(editedCellIndex);
     if (editedCell === undefined || acceptedCell === undefined) {
       throw new Error("#1341 trace lost its edited table cell while accepting");
     }
-    if (JSON.stringify(acceptedCell.table) !== JSON.stringify(editedCell.table)) {
+    if (
+      JSON.stringify(acceptedCell.table) !== JSON.stringify(editedCell.table)
+    ) {
       throw new Error("#1341 trace accepted a different table cell");
     }
     if (editedCell.text !== "alpha" || acceptedCell.text !== "a") {
@@ -597,7 +692,10 @@ for (const acceptance of browserAcceptances) {
 
     // Mark the test expected-to-fail only after setup and the exact symptom pass.
     // A setup regression fails normally; a fix fails at the final equality.
-    test.fail(true, "#1341: accepting tracked table input truncates alpha to a");
+    test.fail(
+      true,
+      "#1341: accepting tracked table input truncates alpha to a",
+    );
     expect(acceptedCell.text).toBe(editedCell.text);
   });
 }
@@ -615,7 +713,9 @@ const checkFreshRender = (trace: BrowserInputTrace) => {
         rig.edit((state) => state.tr.insertText(action.text, 2));
       } else if (action.kind === "backspace" || action.kind === "delete") {
         rig.edit((state) =>
-          state.doc.firstChild?.textContent.length ? state.tr.delete(1, 2) : null,
+          state.doc.firstChild?.textContent.length
+            ? state.tr.delete(1, 2)
+            : null,
         );
       } else {
         rig.tick(16);
@@ -635,7 +735,8 @@ const browserDragShapes = Object.keys(BROWSER_SHAPE_TARGETS).filter(
 );
 for (const shape of browserDragShapes) {
   const target = BROWSER_SHAPE_TARGETS[shape];
-  if (target === null) throw new Error(`browser drag shape ${shape} has no target`);
+  if (target === null)
+    throw new Error(`browser drag shape ${shape} has no target`);
   for (const suggesting of [false, true]) {
     test(`painted ${target} drag in ${shape} after paste selects its planned range (${suggesting ? "suggesting" : "editing"})`, async ({
       page,
@@ -672,7 +773,9 @@ const replayPath = process.env["PROPERTY_TEST_PATH"];
 test.setTimeout(BROWSER_FUZZ_BUDGET.testMs);
 
 test("browser generator covers every declared suggestion input kind", () => {
-  expect(new Set(browserSuggestionActionKinds)).toEqual(new Set(SUGGESTION_INPUT_KINDS));
+  expect(new Set(browserSuggestionActionKinds)).toEqual(
+    new Set(SUGGESTION_INPUT_KINDS),
+  );
 });
 
 test("clipboard oracle accepts HTML serialization and detects text, attribute and markup changes", async ({
@@ -683,21 +786,35 @@ test("clipboard oracle accepts HTML serialization and detects text, attribute an
     const expected = await page.evaluate(clipboardHtmlProjection, html);
     // Clipboard writers parse document wrappers before delivering a paste.
     // Chromium adds the omitted head in the full-document fixture (seed 11).
-    expect(await page.evaluate(clipboardHtmlProjection, expected)).toBe(expected);
+    expect(await page.evaluate(clipboardHtmlProjection, expected)).toBe(
+      expected,
+    );
     expect(await page.evaluate(clipboardHtmlProjection, "")).not.toBe(expected);
     const mutations = await page.evaluate((source) => {
       const textDocument = new DOMParser().parseFromString(source, "text/html");
-      const walker = textDocument.createTreeWalker(textDocument.body, NodeFilter.SHOW_TEXT);
+      const walker = textDocument.createTreeWalker(
+        textDocument.body,
+        NodeFilter.SHOW_TEXT,
+      );
       const firstText = walker.nextNode();
-      if (!firstText) throw new Error("clipboard fixture has no text to mutate");
+      if (!firstText)
+        throw new Error("clipboard fixture has no text to mutate");
       firstText.textContent = "lost clipboard text";
-      const attributeDocument = new DOMParser().parseFromString(source, "text/html");
+      const attributeDocument = new DOMParser().parseFromString(
+        source,
+        "text/html",
+      );
       const element = attributeDocument.body.firstElementChild;
-      if (!element) throw new Error("clipboard fixture has no element to mutate");
+      if (!element)
+        throw new Error("clipboard fixture has no element to mutate");
       element.setAttribute("data-fuzz-mutated", "true");
-      const markupDocument = new DOMParser().parseFromString(source, "text/html");
+      const markupDocument = new DOMParser().parseFromString(
+        source,
+        "text/html",
+      );
       const wrapper = markupDocument.body.firstElementChild;
-      if (!wrapper) throw new Error("clipboard fixture has no markup to mutate");
+      if (!wrapper)
+        throw new Error("clipboard fixture has no markup to mutate");
       wrapper.replaceWith(...wrapper.childNodes);
       return [
         textDocument.documentElement.outerHTML,
@@ -706,7 +823,9 @@ test("clipboard oracle accepts HTML serialization and detects text, attribute an
       ];
     }, html);
     for (const mutation of mutations) {
-      expect(await page.evaluate(clipboardHtmlProjection, mutation)).not.toBe(expected);
+      expect(await page.evaluate(clipboardHtmlProjection, mutation)).not.toBe(
+        expected,
+      );
     }
   }
   const source = BROWSER_PASTE_PAYLOADS.pasteWordHtml.html;
@@ -738,7 +857,9 @@ const resolveCanonicalSaved = async ({
       if (!core?.getCanonicalDocument())
         throw new TypeError("Canonical review authority unavailable.");
       if (ids.length > 0 && !core.resolveCanonicalRevisions(ids, resolution))
-        throw new TypeError("Canonical fuzz review refused existing revisions.");
+        throw new TypeError(
+          "Canonical fuzz review refused existing revisions.",
+        );
     },
     { ids: revisionIds, resolution: decision },
   );
@@ -772,10 +893,16 @@ for (const seed of config.seeds) {
           suggesting: true,
           authority: "canonical",
         });
-        if (edited.type === "activationRefused" || suggested.type === "activationRefused") {
+        if (
+          edited.type === "activationRefused" ||
+          suggested.type === "activationRefused"
+        ) {
           expect(edited.type).toBe("activationRefused");
           expect(suggested.type).toBe("activationRefused");
-          if (edited.type !== "activationRefused" || suggested.type !== "activationRefused")
+          if (
+            edited.type !== "activationRefused" ||
+            suggested.type !== "activationRefused"
+          )
             throw new TypeError("Canonical activation differs between modes.");
           expect(edited.row).toEqual(suggested.row);
           return;
@@ -803,7 +930,12 @@ for (const seed of config.seeds) {
       discoveryMs: BROWSER_FUZZ_BUDGET.discoveryMs,
       shrinkMs: BROWSER_FUZZ_BUDGET.shrinkMs,
       ...(replayPath ? { path: replayPath } : {}),
-      onFirstFailure: async ({ seed: originalSeed, path, value: trace, error: failure }) => {
+      onFirstFailure: async ({
+        seed: originalSeed,
+        path,
+        value: trace,
+        error: failure,
+      }) => {
         const marker = failureMarker({
           test: "browser input preserves readers, fresh render, and suggesting equivalence",
           seed: originalSeed,
@@ -842,12 +974,15 @@ for (const seed of config.seeds) {
         });
         logFailureMarker(marker);
         writeFailureRecord(
-          process.env["FOLIO_FUZZ_FAILURES_DIR"] ?? "fuzz-artifacts/browser/findings",
+          process.env["FOLIO_FUZZ_FAILURES_DIR"] ??
+            "fuzz-artifacts/browser/findings",
           failureRecord(marker, failure, { flow: trace }),
         );
       }
       const detail =
-        failure instanceof Error ? (failure.stack ?? failure.message) : fc.stringify(failure);
+        failure instanceof Error
+          ? (failure.stack ?? failure.message)
+          : fc.stringify(failure);
       logFailureMarker(
         failureMarker({
           test: "browser input preserves readers, fresh render, and suggesting equivalence",

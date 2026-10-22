@@ -3,8 +3,8 @@ import type { EditorView } from "prosemirror-view";
 
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
-import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 import type { BlockRect } from "@stll/folio-core/paged-layout/blockGeometry";
+import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 import type { Document } from "@stll/folio-core/types/document";
 
 /**
@@ -91,7 +91,9 @@ export type PagedEditorRef = {
   /** Painted geometry for one AI-snapshot block. */
   getBlockRect: (blockId: string) => BlockRect | null;
   /** Painted geometry for many AI-snapshot blocks in one layout read. */
-  getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
+  getBlockRects: (
+    blockIds: readonly string[],
+  ) => ReadonlyMap<string, BlockRect>;
   /** The scroll root that owns the painted pages. */
   getScrollRoot: () => HTMLElement | null;
   /** Subscribe to changes in the set or contents of painted pages. */

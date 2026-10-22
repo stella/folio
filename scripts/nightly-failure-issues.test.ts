@@ -1,8 +1,8 @@
-import { seedFileFor } from "../test/seed-registry";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { seedFileFor } from "../test/seed-registry";
 import {
   groupConformanceFailures,
   issueBody,
@@ -16,7 +16,10 @@ import {
 } from "./nightly-failure-issues";
 
 const fixture = (name: string): string =>
-  readFileSync(path.join(import.meta.dir, "fixtures", "nightly-failure-issues", name), "utf8");
+  readFileSync(
+    path.join(import.meta.dir, "fixtures", "nightly-failure-issues", name),
+    "utf8",
+  );
 
 const packageOf = (file: string): string | null =>
   file.startsWith("src/") ? "packages/core" : null;
@@ -31,7 +34,10 @@ const context = {
 
 describe("nightly failure issues", () => {
   test("read fast-check's own report from a `gh run view --log` capture (run 36297187033)", () => {
-    const failures = parseFailures(fixture("property-run-36297187033.log"), packageOf);
+    const failures = parseFailures(
+      fixture("property-run-36297187033.log"),
+      packageOf,
+    );
     expect(failures).toHaveLength(1);
     const [failure] = failures;
     expect(failure).toMatchObject({
@@ -65,7 +71,8 @@ describe("nightly failure issues", () => {
     const [property, example] = failures;
     expect(property).toMatchObject({
       file: "packages/core/src/ai-edits/batchOverlap.test.ts",
-      title: "refuses each conflict and applies the rest as one at a time would",
+      title:
+        "refuses each conflict and applies the rest as one at a time would",
       seed: -440111207,
       path: "136:9:8:8",
       pinned: true,
@@ -81,18 +88,25 @@ describe("nightly failure issues", () => {
   });
 
   test("an issue carries the replay line, the counterexample and the entry to pin", () => {
-    const [failure] = parseFailures(fixture("property-run-36297187033.log"), packageOf);
+    const [failure] = parseFailures(
+      fixture("property-run-36297187033.log"),
+      packageOf,
+    );
     const body = issueBody(failure!, context, false);
     expect(issueTitle("property", failure!)).toBe(
       "Nightly property failure: packages/core/src/ai-edits/minimalDirectReplacement.property.test.ts::a tracked or suggested replacement redlines only the characters it changes > over generated paragraphs and edits, accepted and rejected",
     );
     expect(body).toContain("commit `2bf761d01ae4`, factor 10");
-    expect(body).toContain("### Replay\n```sh\ncd packages/core && PROPERTY_TEST_SEED=-449189980");
+    expect(body).toContain(
+      "### Replay\n```sh\ncd packages/core && PROPERTY_TEST_SEED=-449189980",
+    );
     expect(body).toContain("### Counterexample");
     expect(body).toContain("### Pin it");
     if (!failure?.file) throw new TypeError("Missing property source file");
     expect(body).toContain(seedFileFor(failure.file));
-    expect(issueBody(failure!, context, true)).toStartWith("Failed again in [the nightly run]");
+    expect(issueBody(failure!, context, true)).toStartWith(
+      "Failed again in [the nightly run]",
+    );
   });
 
   test("a pinned seed failing again is not offered for pinning", () => {
@@ -105,11 +119,17 @@ describe("nightly failure issues", () => {
   test("a conformance failure replays its case alone", () => {
     const failures = parseFailures(fixture("conformance.log"), packageOf);
     expect(failures).toHaveLength(1);
-    expect(failures[0]?.file).toBe("packages/core/src/__tests__/editorCommandConformance.test.ts");
+    expect(failures[0]?.file).toBe(
+      "packages/core/src/__tests__/editorCommandConformance.test.ts",
+    );
     expect(replayFor("conformance", failures[0]!, null)).toBe(
       "cd packages/core && FOLIO_CONFORMANCE=full FOLIO_CONFORMANCE_FILTER='^table-merged-cells › deleteRow @ across-cells$' bun test src/__tests__/editorCommandConformance.test.ts -t 'table-merged-cells › deleteRow @ across-cells'",
     );
-    const body = issueBody(failures[0]!, { ...context, kind: "conformance", factor: null }, false);
+    const body = issueBody(
+      failures[0]!,
+      { ...context, kind: "conformance", factor: null },
+      false,
+    );
     expect(body).toStartWith("A test failed in");
     expect(body).not.toContain("### Pin it");
   });
@@ -119,7 +139,9 @@ describe("nightly failure issues", () => {
     expect(issueTitle("property", unparsedFailure("property"))).toBe(
       "Nightly property failure: property sweep failed without a failing test in the log",
     );
-    expect(replayFor("property", unparsedFailure("property"), 10)).toBe("bun run test:property");
+    expect(replayFor("property", unparsedFailure("property"), 10)).toBe(
+      "bun run test:property",
+    );
   });
 
   test("same test name in different files produces separate issues", () => {
@@ -135,14 +157,20 @@ describe("nightly failure issues", () => {
       "scripts/first.test.ts",
       "scripts/second.test.ts",
     ]);
-    expect(new Set(failures.map((failure) => issueTitle("property", failure))).size).toBe(2);
+    expect(
+      new Set(failures.map((failure) => issueTitle("property", failure))).size,
+    ).toBe(2);
   });
 
   describe("conformance failures group by operation, placement and violation kind", () => {
     const groups = groupConformanceFailures(
       parseFailures(fixture("conformance-grouped.log"), packageOf),
     );
-    const conformance = { ...context, kind: "conformance" as const, factor: null };
+    const conformance = {
+      ...context,
+      kind: "conformance" as const,
+      factor: null,
+    };
 
     /** The FOLIO_CONFORMANCE_FILTER a replay line sets, as the test file compiles it. */
     const filterOf = (replay: string): RegExp | null => {
@@ -170,7 +198,9 @@ describe("nightly failure issues", () => {
       );
       const body = issueBody(groups[0]!, conformance, false);
       expect(body).toContain("**Shapes:** `plain-markdown`, `bare-package`");
-      expect(body).toContain("**Violation:** `readback-painted` (editing, suggesting)");
+      expect(body).toContain(
+        "**Violation:** `readback-painted` (editing, suggesting)",
+      );
     });
 
     test("every group replays exactly its cases", () => {
@@ -182,26 +212,39 @@ describe("nightly failure issues", () => {
       ];
       const selected = groups.slice(0, 3).map((group) => {
         const replay = replayFor("conformance", group, null);
-        expect(replay).toStartWith("cd packages/core && FOLIO_CONFORMANCE=full ");
+        expect(replay).toStartWith(
+          "cd packages/core && FOLIO_CONFORMANCE=full ",
+        );
         expect(replay).not.toContain(" -t ");
         const filter = filterOf(replay);
         return cases.filter((id) => filter?.test(id) === true);
       });
       expect(selected).toEqual([
-        ["plain-markdown › paste:plain @ document", "bare-package › paste:plain @ document"],
+        [
+          "plain-markdown › paste:plain @ document",
+          "bare-package › paste:plain @ document",
+        ],
         ["plain-markdown › paste:plain @ document"],
         ["bare-package › host:cut @ document"],
       ]);
-      expect(replayFor("conformance", groups[3]!, null)).toEndWith(" -t 'no known gap is stale'");
+      expect(replayFor("conformance", groups[3]!, null)).toEndWith(
+        " -t 'no known gap is stale'",
+      );
     });
 
     test("failures past the cap file one issue whose replay runs the tier", () => {
       const overflow = overflowFailure("conformance", groups.slice(1), null);
       const title = issueTitle("conformance", overflow);
-      expect(title).toBe("Nightly conformance failure: more failing groups than one run files");
+      expect(title).toBe(
+        "Nightly conformance failure: more failing groups than one run files",
+      );
       expect(title).not.toContain("<unknown file>");
-      expect(replayFor("conformance", overflow, null)).toBe(suiteReplay("conformance"));
-      expect(overflow.error).toContain("host:cut @ document: undo\n  cd packages/core && ");
+      expect(replayFor("conformance", overflow, null)).toBe(
+        suiteReplay("conformance"),
+      );
+      expect(overflow.error).toContain(
+        "host:cut @ document: undo\n  cd packages/core && ",
+      );
     });
   });
 });

@@ -38,7 +38,9 @@ export const usePanelLayout = ({
 }: UsePanelLayoutOptions): PanelLayoutState => {
   const [row, setRow] = useState<HTMLDivElement | null>(null);
   // Unmeasured, every panel fits; the layout effect measures before paint.
-  const [availableWidth, setAvailableWidth] = useState(Number.POSITIVE_INFINITY);
+  const [availableWidth, setAvailableWidth] = useState(
+    Number.POSITIVE_INFINITY,
+  );
   const [overlay, setOverlay] = useState<PanelOverlay>("none");
 
   useLayoutEffect(() => {
@@ -60,7 +62,8 @@ export const usePanelLayout = ({
     return () => observer.disconnect();
   }, [row, scrollContainer]);
 
-  const requestedOutline = overlay === "outline" && outline !== "absent" ? "expanded" : outline;
+  const requestedOutline =
+    overlay === "outline" && outline !== "absent" ? "expanded" : outline;
   const layout = computePanelLayout({
     availableWidth,
     pageWidth,
@@ -71,7 +74,10 @@ export const usePanelLayout = ({
   // An overlay closes if its panel is no longer available.
   const outlineDrawn = layout.outline !== "none" && layout.outline !== "column";
   const commentsDrawn = layout.comments === "drawer";
-  if ((overlay === "outline" && !outlineDrawn) || (overlay === "comments" && !commentsDrawn)) {
+  if (
+    (overlay === "outline" && !outlineDrawn) ||
+    (overlay === "comments" && !commentsDrawn)
+  ) {
     setOverlay("none");
   }
 
@@ -86,5 +92,11 @@ export const usePanelLayout = ({
     [availableWidth, pageWidth, requestedOutline],
   );
 
-  return { rowRef: setRow, layout, overlay, setOverlay, layoutWithCommentsOpen };
+  return {
+    rowRef: setRow,
+    layout,
+    overlay,
+    setOverlay,
+    layoutWithCommentsOpen,
+  };
 };

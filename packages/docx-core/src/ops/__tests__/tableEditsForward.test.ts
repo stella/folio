@@ -1,7 +1,11 @@
 /** Forward effects are checked against logical slots and content, independently of inverse snapshots. */
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type {
   BlockContent,
   Document,
@@ -13,14 +17,21 @@ import type {
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
-import { DOCUMENT_OP_TYPES, OP_STORIES, toOpEnvelope, type DocumentOp } from "../types";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+  toOpEnvelope,
+} from "../types";
 
 const NUM_RUNS = 120;
 const id = (value: number) => value.toString(16).toUpperCase().padStart(8, "0");
 const paragraph = (value: number): Paragraph => ({
   type: "paragraph",
   paraId: id(value),
-  content: [{ type: "run", content: [{ type: "text", text: `cell-${value}` }] }],
+  content: [
+    { type: "run", content: [{ type: "text", text: `cell-${value}` }] },
+  ],
 });
 const cell = (value: number, span = 1): TableCell => ({
   type: "tableCell",
@@ -42,7 +53,8 @@ const tableOf = (document: Document): Table => {
 };
 const targetOf = (table: Table) => {
   const first = table.rows.at(0)?.cells.at(0)?.content.at(0);
-  if (first?.type !== "paragraph" || !first.paraId) throw new Error("Fixture target missing.");
+  if (first?.type !== "paragraph" || !first.paraId)
+    throw new Error("Fixture target missing.");
   return first.paraId;
 };
 
@@ -72,7 +84,8 @@ const independentSlots = (table: Table) => {
       current.set(start, { end: start + span, cell: value });
       for (let column = 0; column < span; column++) result.push(value);
     }
-    for (let column = 0; column < (row.formatting?.gridAfter ?? 0); column++) result.push(null);
+    for (let column = 0; column < (row.formatting?.gridAfter ?? 0); column++)
+      result.push(null);
     width ??= result.length;
     expect(result.length).toBe(width);
     previous = current;
@@ -89,8 +102,10 @@ const check = (document: Document) => {
       if (block.type === "paragraph" && block.paraId) ids.push(block.paraId);
       else if (block.type === "table") {
         independentSlots(block);
-        for (const row of block.rows) for (const value of row.cells) walk(value.content);
-      } else if (block.type === "blockSdt" || block.type === "blockCustomXml") walk(block.content);
+        for (const row of block.rows)
+          for (const value of row.cells) walk(value.content);
+      } else if (block.type === "blockSdt" || block.type === "blockCustomXml")
+        walk(block.content);
     }
   };
   walk(document.package.document.content);
@@ -130,15 +145,25 @@ type Geometry = ReturnType<typeof geometry.generate>["value"];
 const fixture = ({ rows, before, after, span, nested, vertical }: Geometry) => {
   const table: Table = {
     type: "table",
-    columnWidths: Array.from({ length: 3 + Number(before) + Number(after) }, () => 900),
+    columnWidths: Array.from(
+      { length: 3 + Number(before) + Number(after) },
+      () => 900,
+    ),
     rows: Array.from({ length: rows }, (_, rowIndex): TableRow => {
       const cells = span
         ? [cell(0x100 + rowIndex * 16, 2), cell(0x102 + rowIndex * 16)]
-        : [cell(0x100 + rowIndex * 16), cell(0x101 + rowIndex * 16), cell(0x102 + rowIndex * 16)];
+        : [
+            cell(0x100 + rowIndex * 16),
+            cell(0x101 + rowIndex * 16),
+            cell(0x102 + rowIndex * 16),
+          ];
       const first = cells.at(0);
       if (!first) throw new Error("Fixture first cell missing.");
       if (vertical)
-        first.formatting = { ...first.formatting, vMerge: rowIndex === 0 ? "restart" : "continue" };
+        first.formatting = {
+          ...first.formatting,
+          vMerge: rowIndex === 0 ? "restart" : "continue",
+        };
       if (nested)
         first.content.push(
           {
@@ -163,7 +188,8 @@ const insertionOracle = (table: Table, column: number, firstId: number) => {
   const newBlockIds: string[] = [];
   for (const [rowIndex, row] of expected.entries()) {
     const before = table.rows.at(rowIndex)?.formatting?.gridBefore ?? 0;
-    const end = row.length - (table.rows.at(rowIndex)?.formatting?.gridAfter ?? 0);
+    const end =
+      row.length - (table.rows.at(rowIndex)?.formatting?.gridAfter ?? 0);
     const left = row.at(column - 1);
     const right = row.at(column);
     let added: TableCell | null;
@@ -179,7 +205,10 @@ const insertionOracle = (table: Table, column: number, firstId: number) => {
     else {
       const paraId = id(firstId + newBlockIds.length);
       newBlockIds.push(paraId);
-      added = { type: "tableCell", content: [{ type: "paragraph", paraId, content: [] }] };
+      added = {
+        type: "tableCell",
+        content: [{ type: "paragraph", paraId, content: [] }],
+      };
     }
     row.splice(column, 0, added);
   }
@@ -204,9 +233,9 @@ describe("independent table forward oracles", () => {
             type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
             column,
           });
-          expect(payloads(independentSlots(tableOf(deletion.document)))).toStrictEqual(
-            payloads(expected),
-          );
+          expect(
+            payloads(independentSlots(tableOf(deletion.document))),
+          ).toStrictEqual(payloads(expected));
           expect(tableOf(deletion.document).columnWidths).toEqual(
             Array.from({ length: width - 1 }, () => 900),
           );
@@ -218,9 +247,9 @@ describe("independent table forward oracles", () => {
             width: 1200,
             newBlockIds: insertion.newBlockIds,
           });
-          expect(payloads(independentSlots(tableOf(inserted.document)))).toStrictEqual(
-            insertion.expected,
-          );
+          expect(
+            payloads(independentSlots(tableOf(inserted.document))),
+          ).toStrictEqual(insertion.expected);
           expect(tableOf(inserted.document).columnWidths).toEqual([
             ...Array.from({ length: column }, () => 900),
             1200,
@@ -243,7 +272,10 @@ describe("independent table forward oracles", () => {
       assertProperty(
         fc.property(
           geometry,
-          fc.array(fc.integer({ min: 0, max: 5 }), { minLength: 3, maxLength: 10 }),
+          fc.array(fc.integer({ min: 0, max: 5 }), {
+            minLength: 3,
+            maxLength: 10,
+          }),
           (shape, steps) => {
             let document = fixture(shape);
             const original = structuredClone(document);
@@ -257,7 +289,11 @@ describe("independent table forward oracles", () => {
               switch (kind) {
                 case 0: {
                   const column = step % (width + 1);
-                  const insertion = insertionOracle(table, column, 0x4000 + step * 16);
+                  const insertion = insertionOracle(
+                    table,
+                    column,
+                    0x4000 + step * 16,
+                  );
                   expected = insertion.expected;
                   op = {
                     ...target,
@@ -272,7 +308,10 @@ describe("independent table forward oracles", () => {
                   op = {
                     ...target,
                     type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
-                    columnWidths: Array.from({ length: width }, () => 800 + step),
+                    columnWidths: Array.from(
+                      { length: width },
+                      () => 800 + step,
+                    ),
                   };
                   break;
                 case 2:
@@ -306,24 +345,35 @@ describe("independent table forward oracles", () => {
                   );
                   if (rowCanDelete && width > 2) {
                     for (const row of expected) row.splice(column, 1);
-                    op = { ...target, type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column };
+                    op = {
+                      ...target,
+                      type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+                      column,
+                    };
                   } else
                     op = {
                       ...target,
                       type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
-                      columnWidths: Array.from({ length: width }, () => 1300 + step),
+                      columnWidths: Array.from(
+                        { length: width },
+                        () => 1300 + step,
+                      ),
                     };
                 }
               }
               const result = applied(document, op);
-              expect(payloads(independentSlots(tableOf(result.document)))).toStrictEqual(expected);
+              expect(
+                payloads(independentSlots(tableOf(result.document))),
+              ).toStrictEqual(expected);
               const after = tableOf(result.document);
               switch (op.type) {
                 case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
                   expect(after.columnWidths).toStrictEqual(op.columnWidths);
                   break;
                 case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
-                  expect(after.rows.at(0)?.cells.at(0)?.formatting?.fitText).toBe(true);
+                  expect(
+                    after.rows.at(0)?.cells.at(0)?.formatting?.fitText,
+                  ).toBe(true);
                   break;
                 case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
                   expect(after.rows.at(0)?.formatting?.hidden).toBe(true);
@@ -335,7 +385,10 @@ describe("independent table forward oracles", () => {
               inverses.push(result.inverse);
               document = result.document;
             }
-            const undone = applyDocumentOps(document, inverses.reverse().flat());
+            const undone = applyDocumentOps(
+              document,
+              inverses.reverse().flat(),
+            );
             if (undone.isErr()) throw undone.error;
             expect(undone.value.document).toStrictEqual(original);
           },
@@ -358,7 +411,9 @@ describe("independent table forward oracles", () => {
           const document = fixture({ ...shape, vertical: true });
           const table = tableOf(document);
           const left = Number(shape.before);
-          const content = table.rows.flatMap((row) => row.cells.flatMap((value) => value.content));
+          const content = table.rows.flatMap((row) =>
+            row.cells.flatMap((value) => value.content),
+          );
           const merged = applied(document, {
             ...address(targetOf(table)),
             type: DOCUMENT_OP_TYPES.MERGE_CELLS,
@@ -366,14 +421,22 @@ describe("independent table forward oracles", () => {
             bottom: shape.rows,
             left,
             right: left + 3,
-            newBlockIds: Array.from({ length: shape.rows - 1 }, (_, index) => id(0x5000 + index)),
+            newBlockIds: Array.from({ length: shape.rows - 1 }, (_, index) =>
+              id(0x5000 + index),
+            ),
           });
           const mergedTable = tableOf(merged.document);
           const mergeExpected = table.rows.map((_, rowIndex) => {
             const blocks =
               rowIndex === 0
                 ? content
-                : [{ type: "paragraph", paraId: id(0x5000 + rowIndex - 1), content: [] }];
+                : [
+                    {
+                      type: "paragraph",
+                      paraId: id(0x5000 + rowIndex - 1),
+                      content: [],
+                    },
+                  ];
             return [
               ...Array.from({ length: left }, () => null),
               blocks,
@@ -382,7 +445,9 @@ describe("independent table forward oracles", () => {
               ...Array.from({ length: Number(shape.after) }, () => null),
             ];
           });
-          expect(payloads(independentSlots(mergedTable))).toStrictEqual(mergeExpected);
+          expect(payloads(independentSlots(mergedTable))).toStrictEqual(
+            mergeExpected,
+          );
           for (const [rowIndex, row] of mergedTable.rows.entries()) {
             expect(row.cells.length).toBe(1);
             expect(row.cells.at(0)?.formatting?.gridSpan).toBe(3);
@@ -396,7 +461,11 @@ describe("independent table forward oracles", () => {
               throw new Error("Merged owner paragraph missing.");
             refused(
               merged.document,
-              { ...address(first.paraId), type: DOCUMENT_OP_TYPES.SPLIT_CELL, newBlockIds: [] },
+              {
+                ...address(first.paraId),
+                type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+                newBlockIds: [],
+              },
               DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
             );
           }
@@ -426,7 +495,9 @@ describe("independent table forward oracles", () => {
             ...Array.from({ length: Number(shape.after) }, () => null),
           ]);
           const after = tableOf(split.document);
-          expect(payloads(independentSlots(after))).toStrictEqual(splitExpected);
+          expect(payloads(independentSlots(after))).toStrictEqual(
+            splitExpected,
+          );
           for (const value of after.rows.at(0)?.cells ?? []) {
             expect(value.formatting?.gridSpan ?? 1).toBe(1);
             expect(value.formatting?.vMerge).toBeUndefined();
@@ -492,7 +563,11 @@ describe("independent table forward oracles", () => {
             },
           ] as const satisfies readonly DocumentOp[];
           for (const op of ops)
-            refused(document, op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
+            refused(
+              document,
+              op,
+              DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+            );
           const sparse: Table = {
             type: "table",
             columnWidths: [900, 900, 900],
@@ -506,7 +581,11 @@ describe("independent table forward oracles", () => {
           };
           refused(
             documentOf(sparse),
-            { ...address(id(0x100)), type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 1 },
+            {
+              ...address(id(0x100)),
+              type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+              column: 1,
+            },
             DOCUMENT_OP_REFUSAL_REASONS.TABLE_ROW_EMPTY,
           );
         }),
@@ -539,7 +618,10 @@ describe("independent table forward oracles", () => {
           : DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT;
       if (cause === "markup")
         table.bookmarks = [
-          { index: 0, marker: { type: "bookmarkStart", id: 42, name: "_RefWholeTable" } },
+          {
+            index: 0,
+            marker: { type: "bookmarkStart", id: 42, name: "_RefWholeTable" },
+          },
           { index: table.rows.length, marker: { type: "bookmarkEnd", id: 42 } },
         ];
       else
@@ -568,7 +650,11 @@ describe("independent table forward oracles", () => {
           right: 3,
           newBlockIds: [],
         },
-        { ...target, type: DOCUMENT_OP_TYPES.SPLIT_CELL, newBlockIds: [id(0xa000)] },
+        {
+          ...target,
+          type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+          newBlockIds: [id(0xa000)],
+        },
       ] as const satisfies readonly DocumentOp[];
       for (const op of operations) {
         refused(document, op, reason);
@@ -605,12 +691,20 @@ describe("independent table forward oracles", () => {
         width: 900,
         newBlockIds: sparseIds,
       },
-      { ...target, type: DOCUMENT_OP_TYPES.SET_TABLE_GRID, columnWidths: sparseWidths },
+      {
+        ...target,
+        type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
+        columnWidths: sparseWidths,
+      },
       {
         ...target,
         type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
         columnWidths: [900, 950, 1000],
-        revision: { id: 0xb000, author: "Reviewer", date: "2026-10-02T10:00:00Z" },
+        revision: {
+          id: 0xb000,
+          author: "Reviewer",
+          date: "2026-10-02T10:00:00Z",
+        },
         newIds: { revision: sparseRevisions },
       },
     ] as const satisfies readonly DocumentOp[];
@@ -640,7 +734,10 @@ describe("independent table forward oracles", () => {
         },
         fields: ["newBlockIds", "column", "width"],
       },
-      { op: { ...target, type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 0 }, fields: ["column"] },
+      {
+        op: { ...target, type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 0 },
+        fields: ["column"],
+      },
       {
         op: {
           ...target,
@@ -662,34 +759,63 @@ describe("independent table forward oracles", () => {
         fields: ["newBlockIds"],
       },
       {
-        op: { ...target, type: DOCUMENT_OP_TYPES.SET_TABLE_GRID, columnWidths: [900, 900, 900] },
+        op: {
+          ...target,
+          type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
+          columnWidths: [900, 900, 900],
+        },
         fields: ["columnWidths"],
       },
       {
-        op: { ...target, type: DOCUMENT_OP_TYPES.SET_CELL_PROPS, patch: { fitText: true } },
+        op: {
+          ...target,
+          type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
+          patch: { fitText: true },
+        },
         fields: ["patch"],
       },
       {
-        op: { ...target, type: DOCUMENT_OP_TYPES.SET_ROW_PROPS, patch: { hidden: true } },
+        op: {
+          ...target,
+          type: DOCUMENT_OP_TYPES.SET_ROW_PROPS,
+          patch: { hidden: true },
+        },
         fields: ["patch"],
       },
       {
-        op: { ...target, type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS, patch: { bidi: true } },
+        op: {
+          ...target,
+          type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
+          patch: { bidi: true },
+        },
         fields: ["patch"],
       },
-    ] as const satisfies readonly { op: DocumentOp; fields: readonly string[] }[];
+    ] as const satisfies readonly {
+      op: DocumentOp;
+      fields: readonly string[];
+    }[];
     let refusals = 0;
     for (const { op, fields } of cases)
       for (const field of ["story", "blockId", ...fields]) {
         const missing = structuredClone(op);
         Reflect.deleteProperty(missing, field);
-        refused(document, missing, DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION);
+        refused(
+          document,
+          missing,
+          DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
+        );
         const nullField = structuredClone(op);
         Reflect.set(nullField, field, null);
-        refused(document, nullField, DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION);
+        refused(
+          document,
+          nullField,
+          DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
+        );
         refusals += 2;
       }
-    expect(refusals).toBe(cases.reduce((count, entry) => count + 2 * (entry.fields.length + 2), 0));
+    expect(refusals).toBe(
+      cases.reduce((count, entry) => count + 2 * (entry.fields.length + 2), 0),
+    );
   });
 
   test("revision id collisions refuse locally and identical tracked patches create no records", () => {
@@ -703,7 +829,11 @@ describe("independent table forward oracles", () => {
       vertical: false,
     });
     const target = address(targetOf(tableOf(document)));
-    const revision = { id: 0x8000, author: "Reviewer", date: "2026-10-02T10:00:00Z" };
+    const revision = {
+      id: 0x8000,
+      author: "Reviewer",
+      date: "2026-10-02T10:00:00Z",
+    };
     for (const ids of [
       [0x8001, 0x8001, 0x8002],
       [0x8000, 0x8001, 0x8002],
@@ -730,16 +860,35 @@ describe("independent table forward oracles", () => {
     row.formatting = { cantSplit: true };
     table.formatting = { bidi: true };
     const ops = [
-      { ...target, type: DOCUMENT_OP_TYPES.SET_CELL_PROPS, patch: { fitText: true }, revision },
-      { ...target, type: DOCUMENT_OP_TYPES.SET_ROW_PROPS, patch: { cantSplit: true }, revision },
-      { ...target, type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS, patch: { bidi: true }, revision },
+      {
+        ...target,
+        type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
+        patch: { fitText: true },
+        revision,
+      },
+      {
+        ...target,
+        type: DOCUMENT_OP_TYPES.SET_ROW_PROPS,
+        patch: { cantSplit: true },
+        revision,
+      },
+      {
+        ...target,
+        type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
+        patch: { bidi: true },
+        revision,
+      },
     ] as const satisfies readonly DocumentOp[];
     for (const op of ops) {
       const result = applied(document, op);
       expect(result.document).toStrictEqual(document);
       expect(result.inverse).toEqual([]);
       expect(result.revisions ?? []).toEqual([]);
-      expect(result.touched).toEqual({ modified: [], inserted: [], removed: [] });
+      expect(result.touched).toEqual({
+        modified: [],
+        inserted: [],
+        removed: [],
+      });
     }
   });
 
@@ -756,10 +905,16 @@ describe("independent table forward oracles", () => {
     const table = tableOf(document);
     const first = table.rows.at(0)?.cells.at(0);
     if (!first) throw new Error("Fixture cell missing.");
-    first.formatting = { sourceXml: '<w:tcPr><w:tcW w:w="900" w:type="dxa"/></w:tcPr>' };
+    first.formatting = {
+      sourceXml: '<w:tcPr><w:tcW w:w="900" w:type="dxa"/></w:tcPr>',
+    };
     refused(
       document,
-      { ...address(targetOf(table)), type: DOCUMENT_OP_TYPES.SPLIT_CELL, newBlockIds: [] },
+      {
+        ...address(targetOf(table)),
+        type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+        newBlockIds: [],
+      },
       DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
     );
   });
@@ -775,7 +930,11 @@ describe("independent table forward oracles", () => {
         throw new Error("Fixture paragraph missing.");
       switch (kind) {
         case "bookmark":
-          first.content.unshift({ type: "bookmarkStart", id: 42, name: "_RefCrossCell" });
+          first.content.unshift({
+            type: "bookmarkStart",
+            id: 42,
+            name: "_RefCrossCell",
+          });
           second.content.push({ type: "bookmarkEnd", id: 42 });
           break;
         case "comment":
@@ -786,7 +945,11 @@ describe("independent table forward oracles", () => {
           first.content = [
             {
               type: "insertion",
-              info: { id: 42, author: "Reviewer", date: "2026-10-02T10:00:00Z" },
+              info: {
+                id: 42,
+                author: "Reviewer",
+                date: "2026-10-02T10:00:00Z",
+              },
               content: first.content,
             },
           ];
@@ -800,7 +963,11 @@ describe("independent table forward oracles", () => {
       const document = documentOf(table);
       refused(
         document,
-        { ...address(id(0x100)), type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 0 },
+        {
+          ...address(id(0x100)),
+          type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+          column: 0,
+        },
         DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
       );
       const sole: Table = {
@@ -812,7 +979,11 @@ describe("independent table forward oracles", () => {
       soleDocument.package.document.content.push(second);
       refused(
         soleDocument,
-        { ...address(id(0x100)), type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 0 },
+        {
+          ...address(id(0x100)),
+          type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+          column: 0,
+        },
         DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
       );
       removed.formatting = { gridSpan: 2 };
@@ -822,10 +993,13 @@ describe("independent table forward oracles", () => {
         type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
         column: 1,
       });
-      expect(tableOf(narrowed.document).rows.at(0)?.cells.at(0)?.content).toStrictEqual(
-        removed.content,
-      );
-      expect(tableOf(narrowed.document).rows.at(0)?.cells.at(0)?.formatting?.gridSpan ?? 1).toBe(1);
+      expect(
+        tableOf(narrowed.document).rows.at(0)?.cells.at(0)?.content,
+      ).toStrictEqual(removed.content);
+      expect(
+        tableOf(narrowed.document).rows.at(0)?.cells.at(0)?.formatting
+          ?.gridSpan ?? 1,
+      ).toBe(1);
     }
   });
 });

@@ -10,11 +10,23 @@
  * Similar to a word processor's vertical ruler.
  */
 
-import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties } from "react";
-import type { SectionProperties } from "@stll/folio-core/types/document";
-import { twipsToPixels, pixelsToTwips, formatPx } from "@stll/folio-core/utils/units";
+
 import { useTranslations } from "use-intl";
+
+import type { SectionProperties } from "@stll/folio-core/types/document";
+import {
+  formatPx,
+  pixelsToTwips,
+  twipsToPixels,
+} from "@stll/folio-core/utils/units";
 
 // ============================================================================
 // TYPES
@@ -250,7 +262,11 @@ type VerticalTickData = {
   label?: string | undefined;
 };
 
-function VerticalTick({ tick }: { tick: VerticalTickData }): React.ReactElement {
+function VerticalTick({
+  tick,
+}: {
+  tick: VerticalTickData;
+}): React.ReactElement {
   const tickStyle: CSSProperties = {
     position: "absolute",
     top: formatPx(tick.position),
@@ -300,8 +316,14 @@ function VerticalMarginMarker({
 }: VerticalMarginMarkerProps): React.ReactElement {
   const t = useTranslations("folio");
   const color = resolveMarkerColor(isDragging, isHovered);
-  const handleMouseEnter = useCallback(() => onHoverChange(type), [onHoverChange, type]);
-  const handleMouseLeave = useCallback(() => onHoverChange(null), [onHoverChange]);
+  const handleMouseEnter = useCallback(
+    () => onHoverChange(type),
+    [onHoverChange, type],
+  );
+  const handleMouseLeave = useCallback(
+    () => onHoverChange(null),
+    [onHoverChange],
+  );
   const handleMouseDown = useCallback(
     (event: React.MouseEvent) => onDragStart(event, type),
     [onDragStart, type],
@@ -338,7 +360,9 @@ function VerticalMarginMarker({
       onMouseLeave={handleMouseLeave}
       onMouseDown={handleMouseDown}
       role="slider"
-      aria-label={type === "topMargin" ? t("ruler.topMargin") : t("ruler.bottomMargin")}
+      aria-label={
+        type === "topMargin" ? t("ruler.topMargin") : t("ruler.bottomMargin")
+      }
       aria-orientation="vertical"
       tabIndex={editable ? 0 : -1}
     >

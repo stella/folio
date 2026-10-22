@@ -18,7 +18,11 @@ import { getFontMetrics } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
 import type { Page } from "../../layout-engine/types";
 import type { Watermark } from "../../types/document";
-import type { DisplayImagePrimitive, DisplayPrimitive, DisplayRect } from "../types";
+import type {
+  DisplayImagePrimitive,
+  DisplayPrimitive,
+  DisplayRect,
+} from "../types";
 import type { BuildContext } from "./buildContext";
 import { parseDisplayColor } from "./colors";
 import { buildGlyphs, glyphRunText } from "./glyphs";
@@ -86,7 +90,9 @@ const paintTextWatermark = ({
   const centerYPx = page.size.h / 2;
   const metrics = getFontMetrics(style);
   const baselineYPx =
-    centerYPx - (metrics.fontBoxAscent + metrics.fontBoxDescent) / 2 + metrics.fontBoxAscent;
+    centerYPx -
+    (metrics.fontBoxAscent + metrics.fontBoxDescent) / 2 +
+    metrics.fontBoxAscent;
 
   return [
     {
@@ -179,7 +185,8 @@ const paintPictureWatermark = (
 
   const ref = context.images.intern(imageSrc);
   if (ref === undefined) {
-    const reason = context.images.failureFor(imageSrc) ?? "image could not be decoded";
+    const reason =
+      context.images.failureFor(imageSrc) ?? "image could not be decoded";
     context.unsupported.report(
       reason.includes("not PNG or JPEG")
         ? UNSUPPORTED_CONSTRUCT.imageFormat
@@ -225,7 +232,12 @@ export const paintWatermark = ({
 }: WatermarkPaintOptions): readonly DisplayPrimitive[] => {
   switch (watermark.kind) {
     case "text":
-      return paintTextWatermark({ watermark, page, context, embeddedFontFamilyMap });
+      return paintTextWatermark({
+        watermark,
+        page,
+        context,
+        embeddedFontFamilyMap,
+      });
     case "picture":
       return paintPictureWatermark(watermark, page, imageSrc, context);
     default:

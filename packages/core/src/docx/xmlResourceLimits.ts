@@ -72,7 +72,9 @@ type XmlResourceLimitKind =
   | "syntax";
 
 /** XML input exceeded a parser resource bound or could not be scanned safely. */
-export class XmlResourceLimitError extends TaggedError("XmlResourceLimitError")<{
+export class XmlResourceLimitError extends TaggedError(
+  "XmlResourceLimitError",
+)<{
   message: string;
   limit: XmlResourceLimitKind;
   /** The package part being scanned, when the caller named one. */
@@ -94,12 +96,18 @@ export type XmlPackageBudget = {
   attributes: number;
 };
 
-export const createXmlPackageBudget = (): XmlPackageBudget => ({ elements: 0, attributes: 0 });
+export const createXmlPackageBudget = (): XmlPackageBudget => ({
+  elements: 0,
+  attributes: 0,
+});
 
 /** No UTF-16 code unit encodes to more than three UTF-8 bytes; a pair encodes to four. */
 const MAX_UTF8_BYTES_PER_CODE_UNIT = 3;
 
-export const exceedsUtf8ByteLimit = (value: string, maxBytes: number): boolean => {
+export const exceedsUtf8ByteLimit = (
+  value: string,
+  maxBytes: number,
+): boolean => {
   // A string this short cannot reach the limit whatever it holds, so the
   // per-code-unit count below is paid only by a part near the bound.
   if (value.length * MAX_UTF8_BYTES_PER_CODE_UNIT <= maxBytes) {
@@ -214,7 +222,8 @@ export const assertXmlResourceLimits = ({
     allowed: number,
   ): never => {
     throw new XmlResourceLimitError({
-      message: partPath === undefined ? message : `${message} (part ${partPath})`,
+      message:
+        partPath === undefined ? message : `${message} (part ${partPath})`,
       limit,
       ...(partPath === undefined ? {} : { partPath }),
       observed,

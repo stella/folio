@@ -1,6 +1,6 @@
-import { encodeUtf8, decodeText } from "@stll/utf8-boundaries";
-import { writeZipPart } from "../zip/writeZipPart";
 import JSZip from "jszip";
+
+import { decodeText, encodeUtf8 } from "@stll/utf8-boundaries";
 
 import { borderStyleToken, statesNoBorder } from "../model/borderStyle";
 import type { BorderSpec } from "../model/colors";
@@ -20,8 +20,9 @@ import type { ListLevel, NumberingDefinitions } from "../model/lists";
 import { paragraphNumberingSlots } from "../model/paragraphNumbering";
 import type { StyleDefinitions } from "../model/styles";
 import { serializeSequenceChildren } from "../schema/sequenceChildren";
-import { requiresXmlSpacePreserve } from "./textWhitespace";
+import { writeZipPart } from "../zip/writeZipPart";
 import { assertValidOoxmlNumericIds } from "./numericIds";
+import { requiresXmlSpacePreserve } from "./textWhitespace";
 import { attr, pushOnOffElement, serializeOnOffElement } from "./xml";
 import { escapeXmlAttribute, escapeXmlText } from "./xmlEscape";
 
@@ -198,7 +199,9 @@ export const serializeDocumentToDocx = async (
     if (file.dir || !path.endsWith(".xml")) continue;
     // oxlint-disable-next-line no-await-in-loop -- validate each part before the shared ZIP writer emits any output
     assertValidOoxmlNumericIds(
-      await file.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+      await file
+        .async("uint8array")
+        .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
       path,
     );
   }
@@ -213,12 +216,15 @@ export const serializeDocumentToDocx = async (
 const hasNumberingDefinitions = (
   numbering: NumberingDefinitions | undefined,
 ): numbering is NumberingDefinitions =>
-  (numbering?.abstractNums.length ?? 0) > 0 || (numbering?.nums.length ?? 0) > 0;
+  (numbering?.abstractNums.length ?? 0) > 0 ||
+  (numbering?.nums.length ?? 0) > 0;
 
 const serializeDocumentXml = (document: Document): string => {
   const body = document.package.document;
   const blocks = body.content.map(serializeBlock).join("");
-  const sectionProperties = serializeSectionProperties(body.finalSectionProperties ?? {});
+  const sectionProperties = serializeSectionProperties(
+    body.finalSectionProperties ?? {},
+  );
 
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -373,7 +379,9 @@ const serializeRun = (run: Run): string => {
  * and a size came out in a different order from the same run written by
  * folio-core's serializer.
  */
-const serializeRunProperties = (formatting: TextFormatting | undefined): string => {
+const serializeRunProperties = (
+  formatting: TextFormatting | undefined,
+): string => {
   if (!formatting) {
     return "";
   }
@@ -384,7 +392,9 @@ const serializeRunProperties = (formatting: TextFormatting | undefined): string 
     modelled: [
       [
         "rStyle",
-        formatting.styleId ? `<w:rStyle w:val="${escapeXmlAttribute(formatting.styleId)}"/>` : "",
+        formatting.styleId
+          ? `<w:rStyle w:val="${escapeXmlAttribute(formatting.styleId)}"/>`
+          : "",
       ],
       [
         "rFonts",
@@ -398,12 +408,24 @@ const serializeRunProperties = (formatting: TextFormatting | undefined): string 
       ["iCs", serializeOnOffElement(formatting.italicCs, "iCs")],
       ["caps", serializeOnOffElement(formatting.allCaps, "caps")],
       ["smallCaps", serializeOnOffElement(formatting.smallCaps, "smallCaps")],
-      ["sz", formatting.fontSize === undefined ? "" : `<w:sz w:val="${formatting.fontSize}"/>`],
+      [
+        "sz",
+        formatting.fontSize === undefined
+          ? ""
+          : `<w:sz w:val="${formatting.fontSize}"/>`,
+      ],
       [
         "szCs",
-        formatting.fontSizeCs === undefined ? "" : `<w:szCs w:val="${formatting.fontSizeCs}"/>`,
+        formatting.fontSizeCs === undefined
+          ? ""
+          : `<w:szCs w:val="${formatting.fontSizeCs}"/>`,
       ],
-      ["highlight", formatting.highlight ? `<w:highlight w:val="${formatting.highlight}"/>` : ""],
+      [
+        "highlight",
+        formatting.highlight
+          ? `<w:highlight w:val="${formatting.highlight}"/>`
+          : "",
+      ],
       ["cs", serializeOnOffElement(formatting.cs, "cs")],
     ],
   });
@@ -434,7 +456,9 @@ const serializeRunContent = (content: RunContent): string => {
     case "symbol":
       return `<w:sym w:font="${escapeXmlAttribute(content.font)}" w:char="${escapeXmlAttribute(content.char)}"/>`;
     case "noteMarker":
-      return content.kind === "footnote" ? "<w:footnoteRef/>" : "<w:endnoteRef/>";
+      return content.kind === "footnote"
+        ? "<w:footnoteRef/>"
+        : "<w:endnoteRef/>";
     case "footnoteRef":
       return `<w:footnoteReference w:id="${content.id}"/>`;
     case "endnoteRef":
@@ -459,7 +483,8 @@ const serializeRunContent = (content: RunContent): string => {
 
 const serializeTable = (table: Table): string => {
   const columnCount = Math.max(0, ...table.rows.map((row) => row.cells.length));
-  const gridWidth = columnCount > 0 ? Math.max(1, Math.floor(9000 / columnCount)) : 9000;
+  const gridWidth =
+    columnCount > 0 ? Math.max(1, Math.floor(9000 / columnCount)) : 9000;
   const grid =
     columnCount > 0
       ? `<w:tblGrid>${Array.from(
@@ -575,7 +600,9 @@ const AUTHORED_TABLE_GRID_EDGES = [
 ] as const;
 
 const authoredTableGridXml = (): string =>
-  AUTHORED_TABLE_GRID_EDGES.map((tag) => borderEdgeXml(tag, AUTHORED_TABLE_GRID_EDGE)).join("");
+  AUTHORED_TABLE_GRID_EDGES.map((tag) =>
+    borderEdgeXml(tag, AUTHORED_TABLE_GRID_EDGE),
+  ).join("");
 
 const serializeSectionProperties = (properties: SectionProperties): string =>
   "<w:sectPr>" +
@@ -635,7 +662,9 @@ const serializeStyle = (style: Style): string => {
       style.default ? ' w:default="1"' : ""
     }>`,
     `<w:name w:val="${escapeXmlAttribute(style.name ?? style.styleId)}"/>`,
-    style.basedOn ? `<w:basedOn w:val="${escapeXmlAttribute(style.basedOn)}"/>` : "",
+    style.basedOn
+      ? `<w:basedOn w:val="${escapeXmlAttribute(style.basedOn)}"/>`
+      : "",
     style.next ? `<w:next w:val="${escapeXmlAttribute(style.next)}"/>` : "",
     serializeOnOffElement(style.qFormat, "qFormat"),
     pPr ? `<w:pPr>${pPr}</w:pPr>` : "",
@@ -644,7 +673,9 @@ const serializeStyle = (style: Style): string => {
   ].join("");
 };
 
-const serializeNumbering = (numbering: NumberingDefinitions | undefined): string =>
+const serializeNumbering = (
+  numbering: NumberingDefinitions | undefined,
+): string =>
   [
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
     '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',

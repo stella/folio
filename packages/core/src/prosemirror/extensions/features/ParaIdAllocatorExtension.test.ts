@@ -14,14 +14,14 @@
 
 import { describe, expect, spyOn, test } from "bun:test";
 import { history, redo, undo } from "prosemirror-history";
-import { Schema, Slice, Fragment } from "prosemirror-model";
+import { Fragment, Schema, Slice } from "prosemirror-model";
 import { EditorState, Plugin } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
 
 import {
+  joinProseParagraphsWithRightPropertySource,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
-  joinProseParagraphsWithRightPropertySource,
 } from "../../../docx/paragraphPropertySource";
 import {
   getChangedParagraphIds,
@@ -71,12 +71,18 @@ if (!changeTrackerPlugin) {
 }
 
 const para = (text: string, paraId: string | null = null) =>
-  schema.node("paragraph", { paraId }, text.length > 0 ? [schema.text(text)] : []);
+  schema.node(
+    "paragraph",
+    { paraId },
+    text.length > 0 ? [schema.text(text)] : [],
+  );
 
 const SOURCE_DIGEST = "a".repeat(64);
 const SOURCE_CONTRACT = `folio-ppr-v1:${SOURCE_DIGEST}`;
-const sourceToken = (ordinal: number, fingerprint = SOURCE_DIGEST.slice(0, 32)) =>
-  `p1d:${fingerprint}:${ordinal.toString(36)}`;
+const sourceToken = (
+  ordinal: number,
+  fingerprint = SOURCE_DIGEST.slice(0, 32),
+) => `p1d:${fingerprint}:${ordinal.toString(36)}`;
 const sourcedPara = (text: string, paraId: string, ordinal: number) =>
   schema.node(
     "paragraph",
@@ -92,7 +98,11 @@ const createState = (...paras: ReturnType<typeof para>[]) =>
 
 const createSourcedState = (...paras: ReturnType<typeof sourcedPara>[]) =>
   EditorState.create({
-    doc: schema.node("doc", { [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: SOURCE_CONTRACT }, paras),
+    doc: schema.node(
+      "doc",
+      { [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: SOURCE_CONTRACT },
+      paras,
+    ),
     plugins: [plugin],
   });
 
@@ -156,7 +166,12 @@ describe("ParaIdAllocatorExtension", () => {
       plugins: [plugin, appendFiller],
     });
     const resolve = () =>
-      initial.apply(requestDeterministicParaIds(initial.tr.insertText("!", 1), "projection"));
+      initial.apply(
+        requestDeterministicParaIds(
+          initial.tr.insertText("!", 1),
+          "projection",
+        ),
+      );
     const first = resolve();
     const second = resolve();
 
@@ -180,8 +195,12 @@ describe("ParaIdAllocatorExtension", () => {
     expect(normalized).not.toBe(original);
     expect(normalized.child(0)).toBe(first);
     expect(normalized.child(1)).not.toBe(nested);
-    expect(normalized.child(1).child(0).attrs["paraId"]).toMatch(/^[0-9A-F]{8}$/u);
-    expect(normalized.child(1).child(1).attrs["paraId"]).toMatch(/^[0-9A-F]{8}$/u);
+    expect(normalized.child(1).child(0).attrs["paraId"]).toMatch(
+      /^[0-9A-F]{8}$/u,
+    );
+    expect(normalized.child(1).child(1).attrs["paraId"]).toMatch(
+      /^[0-9A-F]{8}$/u,
+    );
     expect(normalized.child(1).child(0).attrs["paraId"]).not.toBe(
       normalized.child(1).child(1).attrs["paraId"],
     );
@@ -233,7 +252,10 @@ describe("ParaIdAllocatorExtension", () => {
   });
 
   test("initial allocation is idempotent when all paraIds are unique", () => {
-    const initial = createState(para("First", "11111111"), para("Second", "22222222"));
+    const initial = createState(
+      para("First", "11111111"),
+      para("Second", "22222222"),
+    );
 
     expect(ensureParaIdsInState(initial)).toBe(initial);
   });
@@ -307,7 +329,10 @@ describe("ParaIdAllocatorExtension", () => {
   });
 
   test("preserves existing distinct ids untouched", () => {
-    const initial = createState(para("First", "11111111"), para("Second", "22222222"));
+    const initial = createState(
+      para("First", "11111111"),
+      para("Second", "22222222"),
+    );
     // Trigger any doc-changed transaction.
     const next = initial.apply(initial.tr.insertText("!", 6));
     expect(collectParaIds(next)).toEqual(["11111111", "22222222"]);
@@ -325,7 +350,10 @@ describe("ParaIdAllocatorExtension", () => {
   });
 
   test("merge: the surviving paragraph keeps its id; the absorbed id dangles", () => {
-    const initial = createState(para("First", "AAAA1111"), para("Second", "BBBB2222"));
+    const initial = createState(
+      para("First", "AAAA1111"),
+      para("Second", "BBBB2222"),
+    );
     // Boundary between the two paragraphs: nodeSize of the first = 7.
     const next = initial.apply(initial.tr.join(7));
     expect(collectParaIds(next)).toEqual(["AAAA1111"]);
@@ -337,7 +365,9 @@ describe("ParaIdAllocatorExtension", () => {
     // Insert the duplicate BEFORE the source. Naive first-occurrence
     // dedupe would hand the pasted copy the source's id; the keeper
     // mapping must keep it on the original.
-    const next = initial.apply(initial.tr.replace(0, 0, new Slice(Fragment.from(dupe), 0, 0)));
+    const next = initial.apply(
+      initial.tr.replace(0, 0, new Slice(Fragment.from(dupe), 0, 0)),
+    );
     const ids = collectParaIds(next);
     expect(ids).toHaveLength(2);
     // ids[0] is the pasted copy, ids[1] the original.
@@ -418,7 +448,11 @@ describe("ParaIdAllocatorExtension", () => {
     const initial = createSourcedState(sourcedPara("Hello", "AAAA1111", 0));
     const inserted = initial.apply(initial.tr.insertText("!", 3));
     const marked = inserted.apply(
-      inserted.tr.addMark(1, inserted.doc.content.size - 1, schema.mark("strong")),
+      inserted.tr.addMark(
+        1,
+        inserted.doc.content.size - 1,
+        schema.mark("strong"),
+      ),
     );
     const unmarked = marked.apply(
       marked.tr.removeMark(1, marked.doc.content.size - 1, schema.marks.strong),
@@ -446,9 +480,15 @@ describe("ParaIdAllocatorExtension", () => {
 
   test("a nested paragraph recreation restores an omitted seeded source token", () => {
     const initial = EditorState.create({
-      doc: schema.node("doc", { [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: SOURCE_CONTRACT }, [
-        schema.node("blockquote", null, [sourcedPara("Nested", "AAAA1111", 0)]),
-      ]),
+      doc: schema.node(
+        "doc",
+        { [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: SOURCE_CONTRACT },
+        [
+          schema.node("blockquote", null, [
+            sourcedPara("Nested", "AAAA1111", 0),
+          ]),
+        ],
+      ),
       plugins: [plugin],
     });
     const next = initial.apply(
@@ -478,7 +518,9 @@ describe("ParaIdAllocatorExtension", () => {
       { ...original.attrs, paraId: "BBBB2222" },
       schema.text("Copy"),
     );
-    const next = initial.apply(initial.tr.replace(0, 0, new Slice(Fragment.from(copy), 0, 0)));
+    const next = initial.apply(
+      initial.tr.replace(0, 0, new Slice(Fragment.from(copy), 0, 0)),
+    );
 
     expect(collectSourceTokens(next)).toEqual([null, sourceToken(0)]);
   });
@@ -518,7 +560,10 @@ describe("ParaIdAllocatorExtension", () => {
     );
 
     expect(collectSourceTokens(deleted)).toEqual([sourceToken(1)]);
-    expect(collectSourceTokens(restored)).toEqual([sourceToken(1), sourceToken(0)]);
+    expect(collectSourceTokens(restored)).toEqual([
+      sourceToken(1),
+      sourceToken(0),
+    ]);
   });
 
   test("the explicit revision join can select the right paragraph owner", () => {

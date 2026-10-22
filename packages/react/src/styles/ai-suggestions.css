@@ -42,17 +42,29 @@
    paged-canvas projection (see editor.css) can reuse it as a border
    color (text-decoration cannot paint on the overlay's empty rects). */
 .folio-ai-suggestion--typo {
-  --folio-ai-underline-color: color-mix(in oklch, var(--doc-text-muted) 65%, transparent);
+  --folio-ai-underline-color: color-mix(
+    in oklch,
+    var(--doc-text-muted) 65%,
+    transparent
+  );
   text-decoration-color: var(--folio-ai-underline-color);
 }
 
 .folio-ai-suggestion--style {
-  --folio-ai-underline-color: color-mix(in oklch, var(--doc-text) 35%, transparent);
+  --folio-ai-underline-color: color-mix(
+    in oklch,
+    var(--doc-text) 35%,
+    transparent
+  );
   text-decoration-color: var(--folio-ai-underline-color);
 }
 
 .folio-ai-suggestion--substantive {
-  --folio-ai-underline-color: color-mix(in oklch, var(--doc-error, currentColor) 60%, transparent);
+  --folio-ai-underline-color: color-mix(
+    in oklch,
+    var(--doc-error, currentColor) 60%,
+    transparent
+  );
   text-decoration-color: var(--folio-ai-underline-color);
   text-decoration-thickness: 1.5px;
 }
@@ -70,7 +82,11 @@
  * injected right after it as a tinted insertion widget, so stepping
  * through suggestions previews each change in the document itself. */
 .folio-ai-suggestion--focused-original {
-  --folio-ai-strike-color: color-mix(in oklch, var(--doc-text-muted) 75%, transparent);
+  --folio-ai-strike-color: color-mix(
+    in oklch,
+    var(--doc-text-muted) 75%,
+    transparent
+  );
   text-decoration-line: line-through;
   text-decoration-style: solid;
   text-decoration-thickness: 1px;
@@ -107,7 +123,8 @@
   align-items: center;
   gap: 4px;
   width: min(560px, calc(100% - 32px));
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
   color: var(--doc-text);
   background-color: color-mix(in oklch, var(--doc-page) 78%, transparent);
@@ -236,7 +253,8 @@
   padding: 2px 6px 2px 8px;
   height: 22px;
   border-radius: 6px;
-  border: 1px solid color-mix(in oklch, var(--folio-ai-mention) 35%, transparent);
+  border: 1px solid
+    color-mix(in oklch, var(--folio-ai-mention) 35%, transparent);
   background-color: var(--folio-ai-mention-soft);
   color: var(--folio-ai-mention);
   font: inherit;
@@ -255,7 +273,11 @@
 }
 
 .folio-ai-bar__paste-chip:hover {
-  background-color: color-mix(in oklch, var(--folio-ai-mention) 18%, transparent);
+  background-color: color-mix(
+    in oklch,
+    var(--folio-ai-mention) 18%,
+    transparent
+  );
   border-color: color-mix(in oklch, var(--folio-ai-mention) 50%, transparent);
 }
 
@@ -492,7 +514,8 @@
     0 12px 40px rgb(0 0 0 / 0.08);
   overflow: hidden;
   animation: folio-ai-panel-in 180ms ease;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
   color: var(--doc-text);
 }
@@ -778,7 +801,11 @@
 .folio-ai-panel__diff--original .folio-ai-panel__diff-text {
   color: var(--doc-text-muted);
   text-decoration: line-through;
-  text-decoration-color: color-mix(in oklch, var(--doc-text-muted) 70%, transparent);
+  text-decoration-color: color-mix(
+    in oklch,
+    var(--doc-text-muted) 70%,
+    transparent
+  );
 }
 
 .folio-ai-panel__diff--suggested .folio-ai-panel__diff-text {
@@ -846,7 +873,11 @@
   gap: 4px;
   padding: 1px 6px;
   border-radius: 9999px;
-  background-color: color-mix(in oklch, var(--doc-error, currentColor) 12%, transparent);
+  background-color: color-mix(
+    in oklch,
+    var(--doc-error, currentColor) 12%,
+    transparent
+  );
   color: var(--doc-error, var(--doc-text));
   font-size: 10px;
   font-weight: 500;

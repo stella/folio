@@ -21,14 +21,28 @@ describe("resolveSidebarItemPositions", () => {
       lastKnown: new Map(),
     });
 
-    expect(result).toEqual([{ item: { id: "comment-1", anchorPos: 5 }, y: 210 }]);
+    expect(result).toEqual([
+      { item: { id: "comment-1", anchorPos: 5 }, y: 210 },
+    ]);
   });
 
   test("resolves collisions deterministically by priority", () => {
     const result = resolveSidebarItemPositions({
       items: [
-        { id: "later", anchorPos: 2, fixedY: 10, priority: 2, estimatedHeight: 20 },
-        { id: "first", anchorPos: 1, fixedY: 10, priority: 1, estimatedHeight: 20 },
+        {
+          id: "later",
+          anchorPos: 2,
+          fixedY: 10,
+          priority: 2,
+          estimatedHeight: 20,
+        },
+        {
+          id: "first",
+          anchorPos: 1,
+          fixedY: 10,
+          priority: 1,
+          estimatedHeight: 20,
+        },
       ],
       anchorPositions: new Map(),
       renderedDomContext: null,

@@ -1,40 +1,21 @@
-import { base64ToBytes } from "../utils/textEncoding";
 import { Result } from "better-result";
 import { Fragment, Slice } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
-import { packageResourcesOpOf, type DocumentOp } from "@stll/docx-core/ops";
-import {
-  relationshipIdOf,
-  paragraphNumberingReference,
-  NUMBER_FORMATS,
-} from "@stll/docx-core/model";
-import { createNumberingIdAllocator } from "../docx/numberingIds";
-import { visitInlineContentSlots, visitParagraphRuns } from "../docx/paragraphTraversal";
-import { copyParagraphIndentationProjection } from "../docx/paragraphPropertySource";
-import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
-import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
-import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
-import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
 import { CellSelection } from "prosemirror-tables";
-import type {
-  Paragraph,
-  Run,
-  Document,
-  NumberingDefinitions,
-  CounterFormat,
-  NumberFormat,
-} from "../types/document";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+
 import {
-  CanonicalSessionError,
-  type CanonicalCommit,
-  type CanonicalSession,
-} from "./canonicalSession";
+  NUMBER_FORMATS,
+  paragraphNumberingReference,
+  relationshipIdOf,
+} from "@stll/docx-core/model";
+import { type DocumentOp, packageResourcesOpOf } from "@stll/docx-core/ops";
+
+import { createNumberingIdAllocator } from "../docx/numberingIds";
+import { copyParagraphIndentationProjection } from "../docx/paragraphPropertySource";
 import {
-  flattenClipboardStyleReferences,
-  importClipboardStyles,
-} from "./canonicalClipboardResources";
-import { bytesToDataUrl } from "../utils/base64";
+  visitInlineContentSlots,
+  visitParagraphRuns,
+} from "../docx/paragraphTraversal";
 import { captureVerbatimXml } from "../docx/verbatimCapture";
 import {
   findAttributeByNamespaceUri,
@@ -44,10 +25,38 @@ import {
   parseXml,
   type XmlElement,
 } from "../docx/xmlParser";
+import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
+import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
+import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
+import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import type {
+  CounterFormat,
+  Document,
+  NumberFormat,
+  NumberingDefinitions,
+  Paragraph,
+  Run,
+} from "../types/document";
+import { bytesToDataUrl } from "../utils/base64";
+import { base64ToBytes } from "../utils/textEncoding";
+import {
+  flattenClipboardStyleReferences,
+  importClipboardStyles,
+} from "./canonicalClipboardResources";
+import {
+  type CanonicalCommit,
+  type CanonicalSession,
+  CanonicalSessionError,
+} from "./canonicalSession";
 
 const refuse = (message: string) =>
   Result.err(
-    new CanonicalSessionError({ gap: CANONICAL_GAP.dispatch, message, reason: "refused" }),
+    new CanonicalSessionError({
+      gap: CANONICAL_GAP.dispatch,
+      message,
+      reason: "refused",
+    }),
   );
 const IMAGE_RELATIONSHIP =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
@@ -95,11 +104,16 @@ const importNumbering = ({
   styleIds,
 }: ImportNumberingOptions) => {
   if (mode === "move")
-    return Result.ok({ numbering: destination, numIds: new Map<number, number>() });
+    return Result.ok({
+      numbering: destination,
+      numIds: new Map<number, number>(),
+    });
   const references = paragraphs.flatMap((paragraph) => {
     const formats = [
       paragraph.formatting,
-      ...(paragraph.propertyChanges ?? []).map((change) => change.previousFormatting),
+      ...(paragraph.propertyChanges ?? []).map(
+        (change) => change.previousFormatting,
+      ),
     ];
     return formats.flatMap((formatting) =>
       formatting?.numPr?.kind === "reference" ? [formatting.numPr.numId] : [],
@@ -107,49 +121,84 @@ const importNumbering = ({
   });
   references.push(...(extraIds ?? []));
   if (references.length === 0)
-    return Result.ok({ numbering: destination, numIds: new Map<number, number>() });
-  if (source === undefined) return refuse("The clipboard list has no numbering definition.");
+    return Result.ok({
+      numbering: destination,
+      numIds: new Map<number, number>(),
+    });
+  if (source === undefined)
+    return refuse("The clipboard list has no numbering definition.");
   const sourceDefinitions = source;
-  if (references.some((id) => !sourceDefinitions.nums.some(({ numId }) => numId === id)))
+  if (
+    references.some(
+      (id) => !sourceDefinitions.nums.some(({ numId }) => numId === id),
+    )
+  )
     return refuse("The clipboard list has no numbering definition.");
   const used = new Set(references);
   const sourceNums = source.nums.filter(({ numId }) => used.has(numId));
-  const usedAbstracts = new Set(sourceNums.map(({ abstractNumId }) => abstractNumId));
+  const usedAbstracts = new Set(
+    sourceNums.map(({ abstractNumId }) => abstractNumId),
+  );
   source = {
     ...source,
     nums: structuredClone(sourceNums),
     abstractNums: structuredClone(
-      source.abstractNums.filter(({ abstractNumId }) => usedAbstracts.has(abstractNumId)),
+      source.abstractNums.filter(({ abstractNumId }) =>
+        usedAbstracts.has(abstractNumId),
+      ),
     ),
   };
   if (sourceKind === "normalizedSlice") {
     for (const paragraph of paragraphs) {
       const rendering = paragraph.listRendering;
       if (rendering === undefined) continue;
-      const instance = source.nums.find(({ numId }) => numId === rendering.numId);
+      const instance = source.nums.find(
+        ({ numId }) => numId === rendering.numId,
+      );
       const definition = source.abstractNums.find(
         ({ abstractNumId }) => abstractNumId === instance?.abstractNumId,
       );
-      if (definition === undefined) return refuse("The clipboard list has no abstract definition.");
-      const level = definition.levels.find(({ ilvl }) => ilvl === rendering.level);
-      if (level === undefined) return refuse("The clipboard list level could not be imported.");
+      if (definition === undefined)
+        return refuse("The clipboard list has no abstract definition.");
+      const level = definition.levels.find(
+        ({ ilvl }) => ilvl === rendering.level,
+      );
+      if (level === undefined)
+        return refuse("The clipboard list level could not be imported.");
       Object.assign(level, {
-        ...numberFormatFields(rendering.numFmt ?? (rendering.isBullet ? "bullet" : "decimal")),
+        ...numberFormatFields(
+          rendering.numFmt ?? (rendering.isBullet ? "bullet" : "decimal"),
+        ),
         lvlText: rendering.markerTemplate ?? rendering.marker,
         start: rendering.levelStarts?.at(rendering.level) ?? level.start ?? 1,
-        ...(rendering.isLegal === undefined ? {} : { isLgl: rendering.isLegal }),
-        ...(rendering.markerAlignment === undefined ? {} : { lvlJc: rendering.markerAlignment }),
-        ...(rendering.markerSuffix === undefined ? {} : { suffix: rendering.markerSuffix }),
+        ...(rendering.isLegal === undefined
+          ? {}
+          : { isLgl: rendering.isLegal }),
+        ...(rendering.markerAlignment === undefined
+          ? {}
+          : { lvlJc: rendering.markerAlignment }),
+        ...(rendering.markerSuffix === undefined
+          ? {}
+          : { suffix: rendering.markerSuffix }),
         ...(rendering.levelTabs === undefined
           ? {}
           : { pPr: { ...level.pPr, tabs: rendering.levelTabs } }),
-        ...(rendering.markerFormatting === undefined ? {} : { rPr: rendering.markerFormatting }),
+        ...(rendering.markerFormatting === undefined
+          ? {}
+          : { rPr: rendering.markerFormatting }),
       });
-      if (rendering.markerAllCaps !== undefined || rendering.markerHidden !== undefined) {
+      if (
+        rendering.markerAllCaps !== undefined ||
+        rendering.markerHidden !== undefined
+      ) {
         level.rPr = {
           ...level.rPr,
-          ...(rendering.markerAllCaps === undefined ? {} : { allCaps: rendering.markerAllCaps }),
-          ...(rendering.markerHidden === undefined ? {} : { hidden: rendering.markerHidden }),
+          ...(rendering.markerAllCaps === undefined
+            ? {}
+            : { allCaps: rendering.markerAllCaps }),
+          ...(rendering.markerHidden === undefined
+            ? {}
+            : { hidden: rendering.markerHidden }),
         };
       }
     }
@@ -162,22 +211,32 @@ const importNumbering = ({
     "abstract",
     (destination?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
   );
-  const nums = new Map(source.nums.map(({ numId }) => [numId, numAllocator.next()]));
+  const nums = new Map(
+    source.nums.map(({ numId }) => [numId, numAllocator.next()]),
+  );
   const abstracts = new Map(
-    source.abstractNums.map(({ abstractNumId }) => [abstractNumId, abstractAllocator.next()]),
+    source.abstractNums.map(({ abstractNumId }) => [
+      abstractNumId,
+      abstractAllocator.next(),
+    ]),
   );
   for (const paragraph of paragraphs) {
     const formats = [
       paragraph.formatting,
-      ...(paragraph.propertyChanges ?? []).map((change) => change.previousFormatting),
+      ...(paragraph.propertyChanges ?? []).map(
+        (change) => change.previousFormatting,
+      ),
     ];
     for (const formatting of formats) {
       if (formatting?.numPr?.kind !== "reference") continue;
       const numId = nums.get(formatting.numPr.numId);
-      if (numId === undefined) return refuse("The clipboard list instance could not be imported.");
+      if (numId === undefined)
+        return refuse("The clipboard list instance could not be imported.");
       formatting.numPr = paragraphNumberingReference({
         numId,
-        ...(formatting.numPr.ilvl === undefined ? {} : { ilvl: formatting.numPr.ilvl }),
+        ...(formatting.numPr.ilvl === undefined
+          ? {}
+          : { ilvl: formatting.numPr.ilvl }),
       });
     }
     if (paragraph.listRendering !== undefined) {
@@ -186,7 +245,8 @@ const importNumbering = ({
       const abstractId = paragraph.listRendering.abstractNumId;
       if (abstractId !== undefined) {
         const abstractNumId = abstracts.get(abstractId);
-        if (abstractNumId !== undefined) paragraph.listRendering.abstractNumId = abstractNumId;
+        if (abstractNumId !== undefined)
+          paragraph.listRendering.abstractNumId = abstractNumId;
       }
     }
   }
@@ -195,13 +255,18 @@ const importNumbering = ({
     const numId = nums.get(instance.numId);
     const abstractNumId = abstracts.get(instance.abstractNumId);
     if (numId === undefined || abstractNumId === undefined)
-      return refuse("The clipboard numbering definition could not be imported.");
+      return refuse(
+        "The clipboard numbering definition could not be imported.",
+      );
     const imported = { ...instance, numId, abstractNumId };
     for (const override of imported.levelOverrides ?? []) {
-      if (override.lvl?.pStyle === undefined || styleIds === undefined) continue;
+      if (override.lvl?.pStyle === undefined || styleIds === undefined)
+        continue;
       const mapped = styleIds.get(override.lvl.pStyle);
       if (mapped === undefined)
-        return refuse("A clipboard numbering style dependency could not be imported.");
+        return refuse(
+          "A clipboard numbering style dependency could not be imported.",
+        );
       override.lvl.pStyle = mapped;
     }
     importedNums.push(imported);
@@ -210,26 +275,34 @@ const importNumbering = ({
   for (const definition of source.abstractNums) {
     const abstractNumId = abstracts.get(definition.abstractNumId);
     if (abstractNumId === undefined)
-      return refuse("The clipboard numbering definition could not be imported.");
+      return refuse(
+        "The clipboard numbering definition could not be imported.",
+      );
     const imported = { ...definition, abstractNumId };
     if (styleIds !== undefined) {
       if (imported.numStyleLink !== undefined) {
         const mapped = styleIds.get(imported.numStyleLink);
         if (mapped === undefined)
-          return refuse("A clipboard numbering style dependency could not be imported.");
+          return refuse(
+            "A clipboard numbering style dependency could not be imported.",
+          );
         imported.numStyleLink = mapped;
       }
       if (imported.styleLink !== undefined) {
         const mapped = styleIds.get(imported.styleLink);
         if (mapped === undefined)
-          return refuse("A clipboard numbering style dependency could not be imported.");
+          return refuse(
+            "A clipboard numbering style dependency could not be imported.",
+          );
         imported.styleLink = mapped;
       }
       for (const level of imported.levels) {
         if (level.pStyle === undefined) continue;
         const mapped = styleIds.get(level.pStyle);
         if (mapped === undefined)
-          return refuse("A clipboard numbering style dependency could not be imported.");
+          return refuse(
+            "A clipboard numbering style dependency could not be imported.",
+          );
         level.pStyle = mapped;
       }
     }
@@ -239,7 +312,10 @@ const importNumbering = ({
     numbering: {
       ...destination,
       nums: [...(destination?.nums ?? []), ...importedNums],
-      abstractNums: [...(destination?.abstractNums ?? []), ...importedAbstracts],
+      abstractNums: [
+        ...(destination?.abstractNums ?? []),
+        ...importedAbstracts,
+      ],
     },
     numIds: nums,
   });
@@ -259,14 +335,19 @@ export const canonicalClipboardStoryPartRefusal = (
       requiresStory = true;
   });
   visitParagraphRuns(paragraph, (run) => {
-    if (run.content.some((item) => item.type === "footnoteRef" || item.type === "endnoteRef"))
+    if (
+      run.content.some(
+        (item) => item.type === "footnoteRef" || item.type === "endnoteRef",
+      )
+    )
       requiresStory = true;
   });
   if (!requiresStory) return undefined;
   return new CanonicalSessionError({
     gap: CANONICAL_GAP.dispatch,
     reason: "refused",
-    message: "Clipboard comments and note references require importing their source story parts.",
+    message:
+      "Clipboard comments and note references require importing their source story parts.",
   });
 };
 
@@ -291,9 +372,13 @@ export const prepareCanonicalPaste = ({
   pasteTarget,
   sourceDocument,
   moveSource,
-}: PrepareCanonicalPasteOptions): Result<CanonicalCommit, CanonicalSessionError> => {
+}: PrepareCanonicalPasteOptions): Result<
+  CanonicalCommit,
+  CanonicalSessionError
+> => {
   // Declared: the inferred union of Ok/Err branches is emitted in a nondeterministic order.
-  if (session.isComposing) return refuse("Composition must finish before using the clipboard.");
+  if (session.isComposing)
+    return refuse("Composition must finish before using the clipboard.");
   if (slice.content.size === 0)
     return Result.err(
       new CanonicalSessionError({
@@ -303,9 +388,12 @@ export const prepareCanonicalPaste = ({
       }),
     );
   if (slice.openStart > 1 || slice.openEnd > 1)
-    return refuse("Clipboard tables and nested block containers require canonical table editing.");
+    return refuse(
+      "Clipboard tables and nested block containers require canonical table editing.",
+    );
   const paragraphType = state.schema.nodes["paragraph"];
-  if (paragraphType === undefined) return refuse("Clipboard input requires a paragraph schema.");
+  if (paragraphType === undefined)
+    return refuse("Clipboard input requires a paragraph schema.");
   let inline = true;
   let paragraphsOnly = true;
   slice.content.forEach((node) => {
@@ -313,7 +401,9 @@ export const prepareCanonicalPaste = ({
     paragraphsOnly &&= node.type === paragraphType;
   });
   if (!inline && !paragraphsOnly)
-    return refuse("Clipboard tables and embedded blocks require canonical table editing.");
+    return refuse(
+      "Clipboard tables and embedded blocks require canonical table editing.",
+    );
   // A same-parent document slice omits its paragraph; it still represents open inline edges.
   const importedSlice = inline
     ? new Slice(Fragment.from(paragraphType.create(null, slice.content)), 1, 1)
@@ -321,7 +411,11 @@ export const prepareCanonicalPaste = ({
   const converted = Result.try({
     // Imported fragments mint new paragraph identities; matching source ids
     // must not attach a durable paragraph owner from either document.
-    try: () => proseDocToBlocks(state.schema.topNodeType.create(null, importedSlice.content), []),
+    try: () =>
+      proseDocToBlocks(
+        state.schema.topNodeType.create(null, importedSlice.content),
+        [],
+      ),
     catch: (cause) =>
       new CanonicalSessionError({
         gap: CANONICAL_GAP.dispatch,
@@ -332,7 +426,8 @@ export const prepareCanonicalPaste = ({
   if (converted.isErr()) return converted;
   const paragraphs: Paragraph[] = [];
   for (const block of converted.value) {
-    if (block.type !== "paragraph") return refuse("The clipboard contains an unsupported block.");
+    if (block.type !== "paragraph")
+      return refuse("The clipboard contains an unsupported block.");
     const paragraph = structuredClone(block);
     copyParagraphIndentationProjection({ target: paragraph, source: block });
     paragraphs.push(paragraph);
@@ -340,11 +435,17 @@ export const prepareCanonicalPaste = ({
   if (moveTarget === undefined && (plain || sourceDocument === undefined))
     flattenClipboardStyleReferences(paragraphs);
   if (state.selection instanceof CellSelection)
-    return refuse("Pasting over selected cells requires a per-cell paste operation.");
+    return refuse(
+      "Pasting over selected cells requires a per-cell paste operation.",
+    );
   const selectionRange = canonicalSelectionRange(state);
-  const from = session.projection.addressAt(pasteTarget ?? moveSource?.from ?? selectionRange.from);
+  const from = session.projection.addressAt(
+    pasteTarget ?? moveSource?.from ?? selectionRange.from,
+  );
   if (from.isErr()) return from;
-  const to = session.projection.addressAt(pasteTarget ?? moveSource?.to ?? selectionRange.to);
+  const to = session.projection.addressAt(
+    pasteTarget ?? moveSource?.to ?? selectionRange.to,
+  );
   if (to.isErr()) return to;
   let styles = session.document.package.styles;
   let styleIds: ReadonlyMap<string, string> | undefined;
@@ -381,13 +482,21 @@ export const prepareCanonicalPaste = ({
   if (styles !== undefined && styleIds !== undefined) {
     const importedStyleIds = new Set(styleIds.values());
     for (const style of styles.styles) {
-      if (!importedStyleIds.has(style.styleId) || style.pPr?.numPr?.kind !== "reference") continue;
+      if (
+        !importedStyleIds.has(style.styleId) ||
+        style.pPr?.numPr?.kind !== "reference"
+      )
+        continue;
       const numId = importedNumbering.value.numIds.get(style.pPr.numPr.numId);
       if (numId === undefined)
-        return refuse("A clipboard style numbering dependency could not be imported.");
+        return refuse(
+          "A clipboard style numbering dependency could not be imported.",
+        );
       style.pPr.numPr = paragraphNumberingReference({
         numId,
-        ...(style.pPr.numPr.ilvl === undefined ? {} : { ilvl: style.pPr.numPr.ilvl }),
+        ...(style.pPr.numPr.ilvl === undefined
+          ? {}
+          : { ilvl: style.pPr.numPr.ilvl }),
       });
     }
   }
@@ -396,9 +505,14 @@ export const prepareCanonicalPaste = ({
   let importedResource = false;
   let imageIndex = 1;
   let relationshipIndex = 1;
-  const importExternalLink = (href: string | undefined, previousId: string | undefined) => {
+  const importExternalLink = (
+    href: string | undefined,
+    previousId: string | undefined,
+  ) => {
     const source =
-      previousId === undefined ? undefined : sourceDocument?.package.relationships?.get(previousId);
+      previousId === undefined
+        ? undefined
+        : sourceDocument?.package.relationships?.get(previousId);
     let target = href;
     if (target === undefined || target.length === 0)
       target = source?.targetMode === "External" ? source.target : undefined;
@@ -406,7 +520,12 @@ export const prepareCanonicalPaste = ({
       return refuse("The clipboard hyperlink has no resolved target.");
     while (relationships.has(`rId${relationshipIndex}`)) relationshipIndex += 1;
     const id = `rId${relationshipIndex++}`;
-    relationships.set(id, { id, type: HYPERLINK_RELATIONSHIP, target, targetMode: "External" });
+    relationships.set(id, {
+      id,
+      type: HYPERLINK_RELATIONSHIP,
+      target,
+      targetMode: "External",
+    });
     importedResource = true;
     return Result.ok({ id, href: target });
   };
@@ -421,7 +540,9 @@ export const prepareCanonicalPaste = ({
         }),
     });
     if (parsed.isErr()) return parsed;
-    const visit = (element: XmlElement): Result<void, CanonicalSessionError> => {
+    const visit = (
+      element: XmlElement,
+    ): Result<void, CanonicalSessionError> => {
       for (const name of Object.keys(element.attributes ?? {})) {
         const attribute = findAttributeByNamespaceUri(
           element,
@@ -430,7 +551,9 @@ export const prepareCanonicalPaste = ({
         );
         if (attribute === null || attribute.name !== name) continue;
         if (getLocalName(name) !== "id")
-          return refuse("Clipboard hyperlink metadata references an unsupported package part.");
+          return refuse(
+            "Clipboard hyperlink metadata references an unsupported package part.",
+          );
         let id = remapped.get(attribute.value);
         if (id === undefined) {
           const imported = importExternalLink(undefined, attribute.value);
@@ -448,7 +571,9 @@ export const prepareCanonicalPaste = ({
     };
     const imported = visit(parsed.value);
     if (imported.isErr()) return imported;
-    return Result.ok((parsed.value.elements ?? []).map(captureVerbatimXml).join(""));
+    return Result.ok(
+      (parsed.value.elements ?? []).map(captureVerbatimXml).join(""),
+    );
   };
   // New inline images have no opaque XML dependencies. Existing package images
   // retain their relationship only when its resolved source belongs to this package.
@@ -456,7 +581,10 @@ export const prepareCanonicalPaste = ({
     if (moveTarget === undefined) {
       const storyPartRefusal = canonicalClipboardStoryPartRefusal(paragraph);
       if (storyPartRefusal !== undefined) return Result.err(storyPartRefusal);
-      const links: Extract<Paragraph["content"][number], { type: "hyperlink" }>[] = [];
+      const links: Extract<
+        Paragraph["content"][number],
+        { type: "hyperlink" }
+      >[] = [];
       visitInlineContentSlots(paragraph, ({ item }) => {
         if (item.type === "hyperlink") links.push(item);
       });
@@ -477,12 +605,16 @@ export const prepareCanonicalPaste = ({
       if (plain)
         item.formatting = marksToTextFormatting(
           state.storedMarks ??
-            state.doc.resolve(pasteTarget ?? moveSource?.from ?? selectionRange.from).marks(),
+            state.doc
+              .resolve(pasteTarget ?? moveSource?.from ?? selectionRange.from)
+              .marks(),
         );
       for (const child of item.content) {
         if (child.type !== "drawing") continue;
         if (child.rawXmlMode !== undefined)
-          return refuse("Opaque drawings and embedded objects require their source package parts.");
+          return refuse(
+            "Opaque drawings and embedded objects require their source package parts.",
+          );
         delete child.rawXml;
         delete child.rawImageFingerprint;
         const image = child.image;
@@ -497,27 +629,39 @@ export const prepareCanonicalPaste = ({
           image.hlinkHref = imported.value.href;
           image.hlinkRId = imported.value.id;
           const remapped = new Map<string, string>();
-          if (previousId !== undefined) remapped.set(previousId, imported.value.id);
+          if (previousId !== undefined)
+            remapped.set(previousId, imported.value.id);
           if (image.hlinkClickSource !== undefined) {
-            const rebound = importCapturedLinks(image.hlinkClickSource.xml, remapped);
+            const rebound = importCapturedLinks(
+              image.hlinkClickSource.xml,
+              remapped,
+            );
             if (rebound.isErr()) return rebound;
-            image.hlinkClickSource = { xml: rebound.value, rId: imported.value.id };
+            image.hlinkClickSource = {
+              xml: rebound.value,
+              rId: imported.value.id,
+            };
           }
           if (image.hlinkHoverXml !== undefined) {
             const rebound = importCapturedLinks(image.hlinkHoverXml, remapped);
             if (rebound.isErr()) return rebound;
             image.hlinkHoverXml = rebound.value;
           }
-        } else if (moveTarget === undefined && image.hlinkHoverXml !== undefined) {
+        } else if (
+          moveTarget === undefined &&
+          image.hlinkHoverXml !== undefined
+        ) {
           const rebound = importCapturedLinks(image.hlinkHoverXml, new Map());
           if (rebound.isErr()) return rebound;
           image.hlinkHoverXml = rebound.value;
         }
-        const relationship = image.rId === undefined ? undefined : relationships.get(image.rId);
+        const relationship =
+          image.rId === undefined ? undefined : relationships.get(image.rId);
         const ownedPath = relationship?.target.startsWith("/")
           ? relationship.target.slice(1)
           : `word/${relationship?.target ?? ""}`;
-        const ownedMedia = relationship === undefined ? undefined : media.get(ownedPath);
+        const ownedMedia =
+          relationship === undefined ? undefined : media.get(ownedPath);
         if (
           ownedMedia !== undefined &&
           (moveTarget !== undefined ||
@@ -532,19 +676,32 @@ export const prepareCanonicalPaste = ({
           ? sourceRelationship.target.slice(1)
           : `word/${sourceRelationship?.target ?? ""}`;
         const sourceMedia = sourceDocument?.package.media?.get(sourcePath);
-        if (sourceMedia !== undefined && sourceMedia.data.byteLength > MAX_CLIPBOARD_IMAGE_BYTES)
+        if (
+          sourceMedia !== undefined &&
+          sourceMedia.data.byteLength > MAX_CLIPBOARD_IMAGE_BYTES
+        )
           return refuse("The clipboard image exceeds the import size limit.");
         const src =
           image.src ??
           (sourceMedia === undefined
             ? undefined
-            : bytesToDataUrl(new Uint8Array(sourceMedia.data), sourceMedia.mimeType)) ??
-          (sourceRelationship?.targetMode === "External" ? sourceRelationship.target : undefined);
-        if (src === undefined) return refuse("The clipboard image has no source bytes or URL.");
+            : bytesToDataUrl(
+                new Uint8Array(sourceMedia.data),
+                sourceMedia.mimeType,
+              )) ??
+          (sourceRelationship?.targetMode === "External"
+            ? sourceRelationship.target
+            : undefined);
+        if (src === undefined)
+          return refuse("The clipboard image has no source bytes or URL.");
         image.src = src;
-        while (relationships.has(`rId${relationshipIndex}`)) relationshipIndex += 1;
+        while (relationships.has(`rId${relationshipIndex}`))
+          relationshipIndex += 1;
         const id = `rId${relationshipIndex++}`;
-        const data = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/u.exec(src);
+        const data =
+          /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/u.exec(
+            src,
+          );
         if (data !== null) {
           const mimeType = data.at(1);
           const payload = data.at(2);
@@ -562,11 +719,22 @@ export const prepareCanonicalPaste = ({
               }),
           });
           if (decoded.isErr()) return decoded;
-          const extension = mimeType === "image/jpeg" ? "jpg" : mimeType.slice(6);
-          while (media.has(`word/media/clipboard${imageIndex}.${extension}`)) imageIndex += 1;
+          const extension =
+            mimeType === "image/jpeg" ? "jpg" : mimeType.slice(6);
+          while (media.has(`word/media/clipboard${imageIndex}.${extension}`))
+            imageIndex += 1;
           const path = `word/media/clipboard${imageIndex++}.${extension}`;
-          media.set(path, { path, mimeType, data: decoded.value.buffer, dataUrl: src });
-          relationships.set(id, { id, type: IMAGE_RELATIONSHIP, target: path.slice(5) });
+          media.set(path, {
+            path,
+            mimeType,
+            data: decoded.value.buffer,
+            dataUrl: src,
+          });
+          relationships.set(id, {
+            id,
+            type: IMAGE_RELATIONSHIP,
+            target: path.slice(5),
+          });
         } else if (/^https?:\/\//u.test(src)) {
           relationships.set(id, {
             id,
@@ -574,7 +742,10 @@ export const prepareCanonicalPaste = ({
             target: src,
             targetMode: "External",
           });
-        } else return refuse("Clipboard images require image bytes or an HTTP image URL.");
+        } else
+          return refuse(
+            "Clipboard images require image bytes or an HTTP image URL.",
+          );
         const relationshipId = relationshipIdOf(id);
         if (relationshipId === undefined)
           return refuse("The clipboard image relationship id is invalid.");
@@ -600,7 +771,9 @@ export const prepareCanonicalPaste = ({
         ...(importedResource ? { relationships, media } : {}),
       },
     };
-    resourceOps.push(packageResourcesOpOf({ before: session.document, after: imported }));
+    resourceOps.push(
+      packageResourcesOpOf({ before: session.document, after: imported }),
+    );
   }
   const fragment = {
     from: from.value,

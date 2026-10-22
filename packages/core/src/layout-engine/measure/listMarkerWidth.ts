@@ -1,3 +1,4 @@
+import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
 /**
  * List marker inline-width resolution.
  *
@@ -21,7 +22,6 @@ import {
 import { DEFAULT_FONT_FAMILY, ptToPx } from "./measureHelpers";
 import { measureTextWidth } from "./measureProvider";
 import type { FontStyle } from "./measureTypes";
-import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
 
 const DEFAULT_FONT_SIZE = 11;
 
@@ -59,14 +59,25 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
     alternateFontFamily = markerFormatting.alternateFontFamily;
   }
   const base = {
-    ...(attrs?.embeddedFontFamilyMap ? { embeddedFontFamilyMap: attrs.embeddedFontFamilyMap } : {}),
+    ...(attrs?.embeddedFontFamilyMap
+      ? { embeddedFontFamilyMap: attrs.embeddedFontFamilyMap }
+      : {}),
     fontFamily,
     ...(alternateFontFamily !== undefined ? { alternateFontFamily } : {}),
-    fontSize: markerFormatting?.fontSize ?? attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE,
-    ...(markerFormatting?.bold !== undefined ? { bold: markerFormatting.bold } : {}),
-    ...(markerFormatting?.italic !== undefined ? { italic: markerFormatting.italic } : {}),
-    ...(markerFormatting?.rtl !== undefined ? { rtl: markerFormatting.rtl } : {}),
-    ...(markerFormatting?.color !== undefined ? { color: markerFormatting.color } : {}),
+    fontSize:
+      markerFormatting?.fontSize ?? attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE,
+    ...(markerFormatting?.bold !== undefined
+      ? { bold: markerFormatting.bold }
+      : {}),
+    ...(markerFormatting?.italic !== undefined
+      ? { italic: markerFormatting.italic }
+      : {}),
+    ...(markerFormatting?.rtl !== undefined
+      ? { rtl: markerFormatting.rtl }
+      : {}),
+    ...(markerFormatting?.color !== undefined
+      ? { color: markerFormatting.color }
+      : {}),
   };
   const marker = attrs?.listMarker ?? "";
   if (
@@ -117,7 +128,10 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
 
   const style: FontStyle = resolveListMarkerFont(block);
   const naturalWidth = measureTextWidth(attrs.listMarker, style);
-  const markerEndOffset = getMarkerEndOffset(naturalWidth, attrs.listMarkerAlignment);
+  const markerEndOffset = getMarkerEndOffset(
+    naturalWidth,
+    attrs.listMarkerAlignment,
+  );
 
   // §17.9.25 — `w:suff` controls what follows the marker before body text.
   const suffix = attrs.listMarkerSuffix ?? "tab";
@@ -136,7 +150,8 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
   const indent = attrs.indent;
   const indentLeft = indent?.left ?? 0;
   const firstLine = indent?.firstLine ?? 0;
-  const markerStartPx = hanging > 0 ? indentLeft - hanging : indentLeft + firstLine;
+  const markerStartPx =
+    hanging > 0 ? indentLeft - hanging : indentLeft + firstLine;
   const minBodyStart = markerStartPx + markerEndOffset;
 
   const customTabs = (attrs.tabs ?? [])
@@ -155,7 +170,8 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
     const firstCustomStop = customTabs.find((px) => px >= minBodyStart);
     const useCustomStop =
       firstCustomStop !== undefined &&
-      (firstCustomStop < indentLeft || attrs.listNumberingTabIgnoresIndent === true);
+      (firstCustomStop < indentLeft ||
+        attrs.listNumberingTabIgnoresIndent === true);
     return (useCustomStop ? firstCustomStop : indentLeft) - markerStartPx;
   }
 
@@ -163,19 +179,23 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
   // the body goes to the closest custom or default-grid stop past the marker.
   // A hanging list's body never lands inside the slot, so the search starts
   // at `indentLeft`.
-  const searchStart = hanging > 0 ? Math.max(minBodyStart, indentLeft) : minBodyStart;
+  const searchStart =
+    hanging > 0 ? Math.max(minBodyStart, indentLeft) : minBodyStart;
 
   const firstCustomPast = customTabs.find((px) => px >= searchStart);
 
   // Honor the document's `w:defaultTabStop` (§17.6.13) when stamped onto
   // the block by `toFlowBlocks`; fall back to the OOXML default otherwise.
-  const defaultTabStopTwips = attrs.defaultTabStopTwips ?? DEFAULT_TAB_STOP_TWIPS;
+  const defaultTabStopTwips =
+    attrs.defaultTabStopTwips ?? DEFAULT_TAB_STOP_TWIPS;
   const defaultTabStopPx = defaultTabStopTwips * TWIPS_TO_PX;
   // `Math.ceil` preserves equality (§17.9.27): a tab landing exactly on
   // `searchStart` IS valid; only advance to the next interval when
   // `searchStart` is strictly between two stops.
   const firstGridPast =
-    defaultTabStopPx > 0 ? Math.ceil(searchStart / defaultTabStopPx) * defaultTabStopPx : undefined;
+    defaultTabStopPx > 0
+      ? Math.ceil(searchStart / defaultTabStopPx) * defaultTabStopPx
+      : undefined;
 
   // Closest wins — Word doesn't let a far custom tab override a closer
   // default-grid stop (default grid resumes between custom tabs).
@@ -201,7 +221,10 @@ export function getListMarkerVisualOffset(block: ParagraphBlock): number {
     return 0;
   }
 
-  const naturalWidth = measureTextWidth(attrs.listMarker, resolveListMarkerFont(block));
+  const naturalWidth = measureTextWidth(
+    attrs.listMarker,
+    resolveListMarkerFont(block),
+  );
   if (attrs.listMarkerAlignment === "right") {
     return -naturalWidth;
   }

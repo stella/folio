@@ -10,7 +10,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
-export const CLI_PACKAGE_JSON = path.join(repoRoot, "packages", "cli", "package.json");
+export const CLI_PACKAGE_JSON = path.join(
+  repoRoot,
+  "packages",
+  "cli",
+  "package.json",
+);
 
 const CLI_SPEC = /@stll\/folio-cli@[0-9A-Za-z.+-]+/gu;
 
@@ -23,7 +28,13 @@ type VersionedFile = {
 
 export const PLUGIN_VERSION_FILES: readonly VersionedFile[] = [
   {
-    file: path.join(repoRoot, "plugins", "claude-code", ".claude-plugin", "plugin.json"),
+    file: path.join(
+      repoRoot,
+      "plugins",
+      "claude-code",
+      ".claude-plugin",
+      "plugin.json",
+    ),
     manifestVersion: /("version":\s*")([^"]*)(")/u,
   },
   { file: path.join(repoRoot, "plugins", "claude-code", ".mcp.json") },
@@ -45,11 +56,15 @@ export const cliVersion = async (): Promise<string> => {
     typeof parsed === "object" && parsed !== null && "version" in parsed
       ? parsed.version
       : undefined;
-  return typeof version === "string" ? version : panic("@stll/folio-cli has no string version");
+  return typeof version === "string"
+    ? version
+    : panic("@stll/folio-cli has no string version");
 };
 
 /** Every version a plugin file names: its manifest version and each CLI spec. */
-export const pluginVersions = async (): Promise<{ file: string; versions: string[] }[]> => {
+export const pluginVersions = async (): Promise<
+  { file: string; versions: string[] }[]
+> => {
   const found: { file: string; versions: string[] }[] = [];
   for (const { file, manifestVersion } of PLUGIN_VERSION_FILES) {
     const text = await readFile(file, "utf8");
@@ -57,9 +72,13 @@ export const pluginVersions = async (): Promise<{ file: string; versions: string
       spec.slice("@stll/folio-cli@".length),
     );
     if (manifestVersion !== undefined) {
-      versions.push(manifestVersion.exec(text)?.[2] ?? panic(`${file} has no version field`));
+      versions.push(
+        manifestVersion.exec(text)?.[2] ??
+          panic(`${file} has no version field`),
+      );
     }
-    if (versions.length === 0) panic(`${file} names no @stll/folio-cli version`);
+    if (versions.length === 0)
+      panic(`${file} names no @stll/folio-cli version`);
     found.push({ file: path.relative(repoRoot, file), versions });
   }
   return found;
@@ -67,8 +86,12 @@ export const pluginVersions = async (): Promise<{ file: string; versions: string
 
 const writeVersions = async (version: string): Promise<void> => {
   for (const { file, manifestVersion } of PLUGIN_VERSION_FILES) {
-    let text = (await readFile(file, "utf8")).replace(CLI_SPEC, `@stll/folio-cli@${version}`);
-    if (manifestVersion !== undefined) text = text.replace(manifestVersion, `$1${version}$3`);
+    let text = (await readFile(file, "utf8")).replace(
+      CLI_SPEC,
+      `@stll/folio-cli@${version}`,
+    );
+    if (manifestVersion !== undefined)
+      text = text.replace(manifestVersion, `$1${version}$3`);
     await writeFile(file, text);
   }
 };

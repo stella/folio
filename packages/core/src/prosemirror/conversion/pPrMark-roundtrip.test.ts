@@ -12,7 +12,9 @@ function paragraphWithMark(mark: NonNullable<Paragraph["pPrMark"]>): Document {
           {
             type: "paragraph",
             pPrMark: mark,
-            content: [{ type: "run", content: [{ type: "text", text: "hello" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "hello" }] },
+            ],
           },
         ],
       },
@@ -35,7 +37,9 @@ describe("pPrMark — toProseDoc / fromProseDoc round-trip", () => {
       info: { id: 1, author: "Alice", date: "2026-05-01T10:00:00Z" },
     });
 
-    const rebuilt = fromProseDoc(pmDoc, doc, { stylesheetSource: { type: "package" } });
+    const rebuilt = fromProseDoc(pmDoc, doc, {
+      stylesheetSource: { type: "package" },
+    });
     const para = rebuilt.package.document.content.at(0);
     expect(para?.type).toBe("paragraph");
     if (para?.type !== "paragraph") {
@@ -54,7 +58,9 @@ describe("pPrMark — toProseDoc / fromProseDoc round-trip", () => {
     });
 
     const pmDoc = toProseDoc(doc);
-    const rebuilt = fromProseDoc(pmDoc, doc, { stylesheetSource: { type: "package" } });
+    const rebuilt = fromProseDoc(pmDoc, doc, {
+      stylesheetSource: { type: "package" },
+    });
     const para = rebuilt.package.document.content.at(0);
     expect(para?.type).toBe("paragraph");
     if (para?.type !== "paragraph") {
@@ -73,7 +79,9 @@ describe("pPrMark — toProseDoc / fromProseDoc round-trip", () => {
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "hello" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "hello" }] },
+              ],
             },
           ],
         },
@@ -81,7 +89,9 @@ describe("pPrMark — toProseDoc / fromProseDoc round-trip", () => {
     };
 
     const pmDoc = toProseDoc(doc);
-    const rebuilt = fromProseDoc(pmDoc, doc, { stylesheetSource: { type: "package" } });
+    const rebuilt = fromProseDoc(pmDoc, doc, {
+      stylesheetSource: { type: "package" },
+    });
     const para = rebuilt.package.document.content.at(0);
     expect(para?.type).toBe("paragraph");
     if (para?.type !== "paragraph") {

@@ -13,17 +13,22 @@
  * forces the writer to rebuild the element from the model.
  */
 
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
-import { CONTAINER_CHILDREN, type DeclaredChild } from "./containerChildren.gen";
+import {
+  CONTAINER_CHILDREN,
+  type DeclaredChild,
+} from "./containerChildren.gen";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
@@ -47,7 +52,8 @@ const DECLARED_CHILD_SAMPLES = {
   pageBreakBefore: '<w:pageBreakBefore w:val="0"/>',
   // Attributes in the order the writer emits them: a modelled child comes
   // back rebuilt from the model, so the sample is what the model spells.
-  framePr: '<w:framePr w:dropCap="drop" w:lines="3" w:vAnchor="text" w:wrap="around"/>',
+  framePr:
+    '<w:framePr w:dropCap="drop" w:lines="3" w:vAnchor="text" w:wrap="around"/>',
   widowControl: "<w:widowControl/>",
   numPr: '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="4"/></w:numPr>',
   suppressLineNumbers: "<w:suppressLineNumbers/>",
@@ -117,7 +123,9 @@ const CHILDREN_OUTSIDE_THE_GENERAL_SET: ReadonlySet<string> = new Set([
   "pPrChange",
 ]);
 
-const packageWithParagraphProperties = async (propertiesXml: string): Promise<ArrayBuffer> => {
+const packageWithParagraphProperties = async (
+  propertiesXml: string,
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   const documentXml = await zip.file("word/document.xml")?.async("text");
   if (!documentXml) {
@@ -140,7 +148,9 @@ const NUMBERING_RELATIONSHIP =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering";
 
 /** The generated package carries no numbering part, so the fixture declares one. */
-const packageWithLevelProperties = async (propertiesXml: string): Promise<ArrayBuffer> => {
+const packageWithLevelProperties = async (
+  propertiesXml: string,
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   const types = await zip.file("[Content_Types].xml")?.async("text");
   const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
@@ -200,31 +210,44 @@ const savedDocumentXml = async (buffer: ArrayBuffer): Promise<string> => {
   return documentXml;
 };
 
-const packageSavedAfterEdit = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
+const packageSavedAfterEdit = async (
+  buffer: ArrayBuffer,
+): Promise<ArrayBuffer> => {
   const parsed = await parseDocx(buffer, { preloadFonts: false });
-  return await repackDocx(withEditedFormatting(parsed), { updateModifiedDate: false });
+  return await repackDocx(withEditedFormatting(parsed), {
+    updateModifiedDate: false,
+  });
 };
 
 const savedAfterEdit = async (propertiesXml: string): Promise<string> =>
   await savedDocumentXml(
-    await packageSavedAfterEdit(await packageWithParagraphProperties(propertiesXml)),
+    await packageSavedAfterEdit(
+      await packageWithParagraphProperties(propertiesXml),
+    ),
   );
 
 const savedThroughEditor = async (propertiesXml: string): Promise<string> => {
-  const parsed = await parseDocx(await packageWithParagraphProperties(propertiesXml), {
-    preloadFonts: false,
-  });
+  const parsed = await parseDocx(
+    await packageWithParagraphProperties(propertiesXml),
+    {
+      preloadFonts: false,
+    },
+  );
   const projected = fromProseDoc(toProseDoc(parsed), parsed, {
     stylesheetSource: { type: "package" },
   });
   return await savedDocumentXml(
-    await repackDocx(withEditedFormatting(projected), { updateModifiedDate: false }),
+    await repackDocx(withEditedFormatting(projected), {
+      updateModifiedDate: false,
+    }),
   );
 };
 
 describe("a paragraph property set keeps every declared child", () => {
   test("the sample table is total over the generated declared-child set", () => {
-    expect(Object.keys(DECLARED_CHILD_SAMPLES).toSorted()).toEqual([...CHILD_NAMES].toSorted());
+    expect(Object.keys(DECLARED_CHILD_SAMPLES).toSorted()).toEqual(
+      [...CHILD_NAMES].toSorted(),
+    );
   });
 
   test(
@@ -233,7 +256,9 @@ describe("a paragraph property set keeps every declared child", () => {
       for (const child of CHILD_NAMES) {
         const saved = await savedAfterEdit(DECLARED_CHILD_SAMPLES[child]);
         expect(saved).toContain(FORCING_EDIT_EVIDENCE);
-        expect(saved, `w:${child} was lost by a capture-free save`).toContain(evidenceOf(child));
+        expect(saved, `w:${child} was lost by a capture-free save`).toContain(
+          evidenceOf(child),
+        );
       }
     },
     ONE_PACKAGE_PER_DECLARED_CHILD_MS,
@@ -247,7 +272,9 @@ describe("a paragraph property set keeps every declared child", () => {
           await packageWithParagraphProperties(DECLARED_CHILD_SAMPLES[child]),
         );
         const twice = await savedDocumentXml(await packageSavedAfterEdit(once));
-        expect(twice, `w:${child} is not a fixed point`).toContain(evidenceOf(child));
+        expect(twice, `w:${child} is not a fixed point`).toContain(
+          evidenceOf(child),
+        );
       }
     },
     ONE_PACKAGE_PER_DECLARED_CHILD_MS,
@@ -258,7 +285,9 @@ describe("a paragraph property set keeps every declared child", () => {
     async () => {
       for (const child of CHILD_NAMES) {
         const saved = await savedThroughEditor(DECLARED_CHILD_SAMPLES[child]);
-        expect(saved, `w:${child} was lost by the editor projection`).toContain(evidenceOf(child));
+        expect(saved, `w:${child} was lost by the editor projection`).toContain(
+          evidenceOf(child),
+        );
       }
     },
     ONE_PACKAGE_PER_DECLARED_CHILD_MS,
@@ -272,18 +301,23 @@ describe("a paragraph property set keeps every declared child", () => {
     const saved = await savedAfterEdit(
       `${DECLARED_CHILD_SAMPLES.cnfStyle}${DECLARED_CHILD_SAMPLES.jc}`,
     );
-    expect(saved.indexOf("<w:cnfStyle ")).toBeGreaterThan(saved.indexOf("<w:jc "));
+    expect(saved.indexOf("<w:cnfStyle ")).toBeGreaterThan(
+      saved.indexOf("<w:jc "),
+    );
   });
 
   test("an undeclared child comes back beside the neighbour it was authored after", async () => {
-    const vendor = '<x:note xmlns:x="urn:example:vendor" x:kind="aside">kept</x:note>';
+    const vendor =
+      '<x:note xmlns:x="urn:example:vendor" x:kind="aside">kept</x:note>';
     const saved = await savedAfterEdit(`${DECLARED_CHILD_SAMPLES.jc}${vendor}`);
     expect(saved).toContain("x:kind=");
     expect(saved.indexOf("x:kind=")).toBeGreaterThan(saved.indexOf("<w:jc "));
   });
 
   test("a property stated twice keeps the value it stated first and the bytes of the repeat", async () => {
-    const saved = await savedAfterEdit('<w:jc w:val="center"/><w:jc w:val="both"/>');
+    const saved = await savedAfterEdit(
+      '<w:jc w:val="center"/><w:jc w:val="both"/>',
+    );
     expect(saved).toContain('<w:jc w:val="center"/>');
     expect(saved).toContain('<w:jc w:val="both"/>');
   });
@@ -303,7 +337,9 @@ describe("a paragraph property set keeps every declared child", () => {
 
   test("the reserved negative outline and numbering levels remain deliberate losses", async () => {
     const outline = await savedAfterEdit('<w:outlineLvl w:val="-1"/>');
-    const numbering = await savedAfterEdit('<w:numPr><w:ilvl w:val="-1"/></w:numPr>');
+    const numbering = await savedAfterEdit(
+      '<w:numPr><w:ilvl w:val="-1"/></w:numPr>',
+    );
 
     expect(outline).not.toContain('<w:outlineLvl w:val="-1"/>');
     expect(numbering).not.toContain('<w:ilvl w:val="-1"/>');
@@ -314,7 +350,9 @@ describe("a paragraph property set keeps every declared child", () => {
       '<w:pPrChange w:id="5" w:author="Reviewer"><w:pPr/></w:pPrChange>',
     );
 
-    expect(saved).toContain('<w:pPrChange w:id="5" w:author="Reviewer"><w:pPr/></w:pPrChange>');
+    expect(saved).toContain(
+      '<w:pPrChange w:id="5" w:author="Reviewer"><w:pPr/></w:pPrChange>',
+    );
   });
 
   /**
@@ -343,11 +381,19 @@ describe("a paragraph property set keeps every declared child", () => {
               `<w:pPr>${DECLARED_CHILD_SAMPLES[child]}</w:pPr></w:style></w:styles>`,
           ),
         );
-        const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-          preloadFonts: false,
-        });
-        const style = parsed.package.styles?.styles.find(({ styleId }) => styleId === "Sample");
-        expect(style, `the Sample style carrying w:${child} did not parse`).toBeDefined();
+        const parsed = await parseDocx(
+          await zip.generateAsync({ type: "arraybuffer" }),
+          {
+            preloadFonts: false,
+          },
+        );
+        const style = parsed.package.styles?.styles.find(
+          ({ styleId }) => styleId === "Sample",
+        );
+        expect(
+          style,
+          `the Sample style carrying w:${child} did not parse`,
+        ).toBeDefined();
         expect(
           serializeParagraphFormatting(style?.pPr),
           `w:${child} was lost by the style tier`,
@@ -379,8 +425,13 @@ describe("a paragraph property set keeps every declared child", () => {
             preloadFonts: false,
           },
         );
-        const level = parsed.package.numbering?.abstractNums.at(0)?.levels.at(0);
-        expect(level, `the level carrying w:${child} did not parse`).toBeDefined();
+        const level = parsed.package.numbering?.abstractNums
+          .at(0)
+          ?.levels.at(0);
+        expect(
+          level,
+          `the level carrying w:${child} did not parse`,
+        ).toBeDefined();
         expect(
           serializeParagraphFormatting(level?.pPr),
           `w:${child} was lost by the numbering tier`,

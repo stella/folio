@@ -10,25 +10,31 @@
 
 import { describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { EditorState, type Plugin } from "prosemirror-state";
 import type { Node as PMNode } from "prosemirror-model";
+import { EditorState, type Plugin } from "prosemirror-state";
 
-import { schema } from "../../schema";
+import { COMMENT_RANGE_INLINE_ATOM_PARTICIPATION } from "../../commentRangeInlineAtoms";
 import { readCommentReferenceAttrs } from "../../commentReferenceAttrs";
 import { planCommentReferenceRepairs } from "../../commentReferenceIntegrity";
-import { COMMENT_RANGE_INLINE_ATOM_PARTICIPATION } from "../../commentRangeInlineAtoms";
+import { schema } from "../../schema";
 import { CommentReferenceExtension } from "./CommentReferenceExtension";
 
 const integrityPlugin = (): Plugin => {
-  const plugin = CommentReferenceExtension().onSchemaReady({ schema }).plugins?.at(0);
+  const plugin = CommentReferenceExtension()
+    .onSchemaReady({ schema })
+    .plugins?.at(0);
   if (!plugin) {
-    throw new Error("CommentReferenceExtension must enforce reference integrity");
+    throw new Error(
+      "CommentReferenceExtension must enforce reference integrity",
+    );
   }
   return plugin;
 };
 
-const commentMark = (commentId: number) => schema.mark("comment", { commentId });
-const reference = (commentId: number) => schema.node("commentReference", { commentId });
+const commentMark = (commentId: number) =>
+  schema.mark("comment", { commentId });
+const reference = (commentId: number) =>
+  schema.node("commentReference", { commentId });
 
 const referenceIds = (doc: PMNode): number[] => {
   const ids: number[] = [];
@@ -43,7 +49,9 @@ const referenceIds = (doc: PMNode): number[] => {
 
 const stateWith = (paragraph: readonly PMNode[]): EditorState =>
   EditorState.create({
-    doc: schema.node("doc", null, [schema.node("paragraph", null, [...paragraph])]),
+    doc: schema.node("doc", null, [
+      schema.node("paragraph", null, [...paragraph]),
+    ]),
     plugins: [integrityPlugin()],
   });
 
@@ -65,9 +73,12 @@ describe("CommentReferenceExtension editing integrity", () => {
   });
 
   test("reads a signed comment identity from editor DOM", () => {
-    const getAttrs = schema.nodes.commentReference?.spec.parseDOM?.at(0)?.getAttrs;
+    const getAttrs =
+      schema.nodes.commentReference?.spec.parseDOM?.at(0)?.getAttrs;
     if (!getAttrs) {
-      throw new Error("CommentReferenceExtension must read its editor DOM identity");
+      throw new Error(
+        "CommentReferenceExtension must read its editor DOM identity",
+      );
     }
     const element = new Window().document.createElement("span");
     element.setAttribute("data-docx-comment-reference", "-7");
@@ -87,14 +98,20 @@ describe("CommentReferenceExtension editing integrity", () => {
   });
 
   test("drops a duplicate reference a paste left behind", () => {
-    const state = stateWith([schema.text("alpha", [commentMark(3)]), reference(3)]);
+    const state = stateWith([
+      schema.text("alpha", [commentMark(3)]),
+      reference(3),
+    ]);
     const applied = state.applyTransaction(state.tr.insert(6, reference(3)));
 
     expect(referenceIds(applied.state.doc)).toEqual([3]);
   });
 
   test("drops a reference whose comment no longer marks anything", () => {
-    const state = stateWith([schema.text("alpha", [commentMark(4)]), reference(4)]);
+    const state = stateWith([
+      schema.text("alpha", [commentMark(4)]),
+      reference(4),
+    ]);
     const applied = state.applyTransaction(state.tr.delete(1, 6));
 
     expect(referenceIds(applied.state.doc)).toEqual([]);
@@ -102,8 +119,12 @@ describe("CommentReferenceExtension editing integrity", () => {
 
   test("settles after one repair", () => {
     const state = stateWith([schema.text("alpha")]);
-    const applied = state.applyTransaction(state.tr.addMark(1, 6, commentMark(9)));
-    const again = applied.state.applyTransaction(applied.state.tr.insertText("!", 6));
+    const applied = state.applyTransaction(
+      state.tr.addMark(1, 6, commentMark(9)),
+    );
+    const again = applied.state.applyTransaction(
+      applied.state.tr.insertText("!", 6),
+    );
 
     expect(referenceIds(again.state.doc)).toEqual([9]);
   });
@@ -112,7 +133,9 @@ describe("CommentReferenceExtension editing integrity", () => {
 type CommentRangeInertAtom = {
   [
     Name in keyof typeof COMMENT_RANGE_INLINE_ATOM_PARTICIPATION
-  ]: (typeof COMMENT_RANGE_INLINE_ATOM_PARTICIPATION)[Name] extends "inert" ? Name : never;
+  ]: (typeof COMMENT_RANGE_INLINE_ATOM_PARTICIPATION)[Name] extends "inert"
+    ? Name
+    : never;
 }[keyof typeof COMMENT_RANGE_INLINE_ATOM_PARTICIPATION];
 const inertAtoms = {
   commentReference: () => reference(7),
@@ -132,10 +155,14 @@ for (const [name, create] of Object.entries(inertAtoms)) {
       create(),
       schema.text("tail"),
     ]);
-    const edited = state.applyTransaction(state.tr.addMark(1, 7, commentMark(23))).state;
+    const edited = state.applyTransaction(
+      state.tr.addMark(1, 7, commentMark(23)),
+    ).state;
     edited.doc.descendants((node) => {
       if (node.type.name === name)
-        expect(node.marks.some(({ type }) => type.name === "comment")).toBe(false);
+        expect(node.marks.some(({ type }) => type.name === "comment")).toBe(
+          false,
+        );
     });
     const deleted = edited.applyTransaction(edited.tr.delete(1, 6)).state;
     expect(referenceIds(deleted.doc)).not.toContain(23);
@@ -155,7 +182,9 @@ test("a revision-owned rendered page break loses only its comment mark", () => {
     schema.node("renderedPageBreak", null, null, [insertion]),
     schema.text("tail", [insertion]),
   ]);
-  const edited = state.applyTransaction(state.tr.addMark(1, 7, commentMark(23))).state;
+  const edited = state.applyTransaction(
+    state.tr.addMark(1, 7, commentMark(23)),
+  ).state;
   const pageBreakMarks: string[][] = [];
   edited.doc.descendants((node) => {
     if (node.type.name === "renderedPageBreak")

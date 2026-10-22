@@ -5,9 +5,9 @@ import { test } from "node:test";
 
 import { writeFailureRecord } from "../support/failure-fingerprints.ts";
 import { recordFailure, relationInputs } from "../support/fuzz-loop.ts";
-import { consumerScenarioReplay } from "../support/replay-inputs.ts";
 import { FlowError, runFlow } from "../support/fuzz.ts";
 import { LARGE_DOCUMENT_FIXTURE } from "../support/large-document.ts";
+import { consumerScenarioReplay } from "../support/replay-inputs.ts";
 
 const ENABLED = process.env["FOLIO_SCENARIO_LONG_FUZZ"] === "1";
 
@@ -50,12 +50,24 @@ if (!ENABLED) {
       const result = await runFlow(seed, steps, "collisions", {
         fixture: LARGE_DOCUMENT_FIXTURE,
       });
-      await writeFile(path.join(output, "completed-flow.json"), `${JSON.stringify(result.flow)}\n`);
-      console.log(`Completed ${result.flow.steps.length} steps; recorded completed-flow.json`);
+      await writeFile(
+        path.join(output, "completed-flow.json"),
+        `${JSON.stringify(result.flow)}\n`,
+      );
+      console.log(
+        `Completed ${result.flow.steps.length} steps; recorded completed-flow.json`,
+      );
     } catch (error) {
       if (!(error instanceof FlowError)) throw error;
-      await writeFile(path.join(output, "original-flow.json"), `${JSON.stringify(error.flow)}\n`);
-      const record = await recordFailure(error, { seed, repro }, { maxAttempts: 40, seconds: 240 });
+      await writeFile(
+        path.join(output, "original-flow.json"),
+        `${JSON.stringify(error.flow)}\n`,
+      );
+      const record = await recordFailure(
+        error,
+        { seed, repro },
+        { maxAttempts: 40, seconds: 240 },
+      );
       writeFailureRecord(output, record);
       throw error;
     }

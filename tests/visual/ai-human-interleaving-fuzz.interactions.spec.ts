@@ -1,18 +1,21 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import fc from "fast-check";
 import { createHash } from "node:crypto";
+
+import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
+import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
 import {
   failureMarker,
   failureRecord,
   logFailureMarker,
   writeFailureRecord,
 } from "../../test/consumer-scenarios/support/failure-fingerprints";
-
-import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
-import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
 import { parseBrowserInputTraceConfig } from "./browserInputTrace";
-import { interleavingTraceArbitrary, type InterleavingAction } from "./interleavingTrace";
 import type {} from "./browserTestBridge";
+import {
+  type InterleavingAction,
+  interleavingTraceArbitrary,
+} from "./interleavingTrace";
 
 const replayPath = process.env["PROPERTY_TEST_PATH"];
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
@@ -22,20 +25,30 @@ const config = parseBrowserInputTraceConfig(
 );
 
 const project = (reviewer: FolioDocxReviewer) =>
-  reviewer.snapshot().blocks.map(({ kind, text, table }) => ({ kind, text, table }));
+  reviewer
+    .snapshot()
+    .blocks.map(({ kind, text, table }) => ({ kind, text, table }));
 const live = (page: Page) =>
   page.evaluate(() => {
     const ref = globalThis.__folioPlayground?.getEditorRef();
     const snapshot = ref?.createAIEditSnapshot();
     if (!ref || !snapshot) throw new Error("interleaving reader unavailable");
     return {
-      blocks: snapshot.blocks.map(({ kind, text, table }) => ({ kind, text, table })),
-      changes: ref.getTrackedChanges().map(({ id, type, text }) => ({ id, type, text })),
+      blocks: snapshot.blocks.map(({ kind, text, table }) => ({
+        kind,
+        text,
+        table,
+      })),
+      changes: ref
+        .getTrackedChanges()
+        .map(({ id, type, text }) => ({ id, type, text })),
     };
   });
 const save = async (page: Page) => {
   const bytes = await page.evaluate(async () => {
-    const saved = await globalThis.__folioPlayground?.getEditorRef()?.save({ selective: false });
+    const saved = await globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.save({ selective: false });
     if (!saved) throw new Error("interleaving save unavailable");
     return [...new Uint8Array(saved)];
   });
@@ -48,9 +61,9 @@ const checkpoint = async (page: Page) => {
   const bytes = await save(page);
   const reopened = await FolioDocxReviewer.fromBuffer(bytes);
   expect(project(reopened)).toEqual(current.blocks);
-  expect(reopened.getChanges().map(({ id, type, text }) => ({ id, type, text }))).toEqual(
-    current.changes,
-  );
+  expect(
+    reopened.getChanges().map(({ id, type, text }) => ({ id, type, text })),
+  ).toEqual(current.changes);
   return { bytes, current, reopened };
 };
 
@@ -59,7 +72,8 @@ const drive = async (page: Page, action: InterleavingAction) => {
     case "suggest": {
       const pending = await page.evaluate((text) => {
         const suggest = globalThis.__folioInterleavingSuggest;
-        if (!suggest) throw new Error("interleaving document-operation bridge unavailable");
+        if (!suggest)
+          throw new Error("interleaving document-operation bridge unavailable");
         return suggest(text);
       }, action.text);
       expect(pending).toBeGreaterThan(0);
@@ -67,7 +81,11 @@ const drive = async (page: Page, action: InterleavingAction) => {
     }
     case "typing":
       await page.evaluate(() =>
-        globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.focus(),
+        globalThis.__folioPlayground
+          ?.getEditorRef()
+          ?.getEditorRef()
+          ?.getView()
+          ?.focus(),
       );
       await page.keyboard.type(action.text);
       return;
@@ -93,16 +111,22 @@ const drive = async (page: Page, action: InterleavingAction) => {
         ({ kind, id }) => {
           const ref = globalThis.__folioPlayground?.getEditorRef();
           if (!ref) throw new Error("interleaving resolution unavailable");
-          return kind === "accept" ? ref.acceptAIEditOperation(id) : ref.rejectAIEditOperation(id);
+          return kind === "accept"
+            ? ref.acceptAIEditOperation(id)
+            : ref.rejectAIEditOperation(id);
         },
         { kind: action.kind, id: change.id },
       );
       expect(resolved).toBe(true);
       const after = await checkpoint(page);
-      const expectedReopened = await FolioDocxReviewer.fromBuffer(await before.reopened.toBuffer());
+      const expectedReopened = await FolioDocxReviewer.fromBuffer(
+        await before.reopened.toBuffer(),
+      );
       expect(after.current.blocks).toEqual(project(expectedReopened));
       expect(after.current.changes).toEqual(
-        expectedReopened.getChanges().map(({ id, type, text }) => ({ id, type, text })),
+        expectedReopened
+          .getChanges()
+          .map(({ id, type, text }) => ({ id, type, text })),
       );
       return;
     }
@@ -133,7 +157,11 @@ for (const seed of config.seeds) {
             globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView(),
           );
           await page.waitForFunction(
-            () => !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
+            () =>
+              !!globalThis.__folioPlayground
+                ?.getEditorRef()
+                ?.getEditorRef()
+                ?.getView(),
           );
           await page.evaluate(
             async (bytes) => {
@@ -146,7 +174,8 @@ for (const seed of config.seeds) {
           stage = "install-document-operation-bridge";
           await page.evaluate(() => {
             const bridge = globalThis.__folioBrowserTestBridge;
-            if (!bridge) throw new Error("bundled browser test bridge unavailable");
+            if (!bridge)
+              throw new Error("bundled browser test bridge unavailable");
             bridge.installInterleavingBridge();
           });
           await checkpoint(page);
@@ -159,7 +188,9 @@ for (const seed of config.seeds) {
           // package: reload also rebuilds the editor state and page layout from scratch.
           stage = "fresh-render";
           await page.waitForTimeout(350);
-          const painted = await page.locator(".layout-page-content").allTextContents();
+          const painted = await page
+            .locator(".layout-page-content")
+            .allTextContents();
           const final = await checkpoint(page);
           await page.evaluate(
             async (bytes) => {
@@ -179,7 +210,8 @@ for (const seed of config.seeds) {
           // different boundary. This is a test-runner boundary, not product flow.
           if (!firstFailureRecorded) {
             firstFailureRecorded = true;
-            const message = error instanceof Error ? error.message : String(error);
+            const message =
+              error instanceof Error ? error.message : String(error);
             const failure = {
               seed,
               stage,

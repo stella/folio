@@ -20,7 +20,9 @@ type ResolveListTemplateOptions = {
   forceDecimal?: boolean | undefined;
 };
 
-export function resolveListTemplate(options: ResolveListTemplateOptions): string {
+export function resolveListTemplate(
+  options: ResolveListTemplateOptions,
+): string {
   return resolveListTemplateWithComponents(options).value;
 }
 
@@ -45,7 +47,10 @@ export function resolveListTemplateWithComponents({
       value += match.groups?.["punct"] ?? "";
       continue;
     }
-    const formatted = formatOoxmlCounter(counter, forceDecimal ? "decimal" : levelFormats?.[index]);
+    const formatted = formatOoxmlCounter(
+      counter,
+      forceDecimal ? "decimal" : levelFormats?.[index],
+    );
     if (!formatted) {
       continue;
     }

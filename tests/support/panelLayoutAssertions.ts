@@ -9,11 +9,12 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
 import {
-  PANEL_METRICS,
   type CommentsPresentation,
   type OutlinePresentation,
+  PANEL_METRICS,
   type PanelLayoutTier,
 } from "@stll/folio-core/panel-layout";
+
 import type { PanelLayoutReview } from "./panelLayoutDocument";
 
 export type PanelState = {
@@ -95,7 +96,9 @@ const PANELS_ROW = "[data-folio-panel-tier]";
 /** The presentation the editor reports on its panels row, as written there. */
 export type ReportedPanelState = Record<keyof PanelState, string | undefined>;
 
-export const readPanelState = (page: Page): Promise<ReportedPanelState | null> =>
+export const readPanelState = (
+  page: Page,
+): Promise<ReportedPanelState | null> =>
   page.evaluate((selector) => {
     const row = document.querySelector<HTMLElement>(selector);
     if (!row) return null;
@@ -111,7 +114,10 @@ export const readPanelState = (page: Page): Promise<ReportedPanelState | null> =
  * the host's loaded signal can precede the initial font-ready layout.
  * Reviewed documents also wait for their comments to auto-open.
  */
-export const waitForPanels = async (page: Page, review: PanelLayoutReview): Promise<void> => {
+export const waitForPanels = async (
+  page: Page,
+  review: PanelLayoutReview,
+): Promise<void> => {
   await expect(page.locator(".layout-page").first()).toBeVisible();
   await expect
     .poll(async () => {
@@ -149,13 +155,21 @@ const readPanelBoxes = (page: Page): Promise<PanelBoxes> =>
     const scroll = document.querySelector<HTMLElement>("[data-folio-scroll]");
     const scrollBox = scroll?.getBoundingClientRect();
     return {
-      pages: [...document.querySelectorAll(".layout-page")].map(interval).filter(present),
-      outline: panelBox(document.querySelector<HTMLElement>('[data-testid="folio-outline"]')),
+      pages: [...document.querySelectorAll(".layout-page")]
+        .map(interval)
+        .filter(present),
+      outline: panelBox(
+        document.querySelector<HTMLElement>('[data-testid="folio-outline"]'),
+      ),
       comments: panelBox(
-        document.querySelector<HTMLElement>('[data-folio-comments-surface="column"]'),
+        document.querySelector<HTMLElement>(
+          '[data-folio-comments-surface="column"]',
+        ),
       ),
       cards: [
-        ...document.querySelectorAll('[data-folio-comments-surface="column"] .docx-comment-card'),
+        ...document.querySelectorAll(
+          '[data-folio-comments-surface="column"] .docx-comment-card',
+        ),
       ]
         .map(interval)
         .filter(present),
@@ -178,7 +192,10 @@ const overlaps = (a: Interval, b: Interval) =>
  * and its cards) shares no horizontal span with a page or with each other,
  * and when no panel is a drawer the page fits without horizontal scrolling.
  */
-export const expectPanelsDoNotOverlap = async (page: Page, state: PanelState): Promise<void> => {
+export const expectPanelsDoNotOverlap = async (
+  page: Page,
+  state: PanelState,
+): Promise<void> => {
   const boxes = await readPanelBoxes(page);
   expect(boxes.pages.length).toBeGreaterThan(0);
   const ruler = page.getByTestId("folio-horizontal-ruler");
@@ -189,13 +206,19 @@ export const expectPanelsDoNotOverlap = async (page: Page, state: PanelState): P
   for (const card of boxes.cards) panels.push(["comment card", card]);
 
   expect(boxes.outline !== null).toBe(
-    state.outline === "column" || state.outline === "rail" || state.outline === "expanded",
+    state.outline === "column" ||
+      state.outline === "rail" ||
+      state.outline === "expanded",
   );
   expect(boxes.comments !== null).toBe(state.comments === "column");
   if (boxes.outline) {
     if (state.outline === "expanded") {
-      expect(boxes.outline.layoutWidth).toBeGreaterThanOrEqual(PANEL_METRICS.controlMinimumSize);
-      expect(boxes.outline.layoutWidth).toBeLessThanOrEqual(PANEL_METRICS.outlineColumnWidth);
+      expect(boxes.outline.layoutWidth).toBeGreaterThanOrEqual(
+        PANEL_METRICS.controlMinimumSize,
+      );
+      expect(boxes.outline.layoutWidth).toBeLessThanOrEqual(
+        PANEL_METRICS.outlineColumnWidth,
+      );
     } else {
       const width =
         state.outline === "rail"
@@ -205,7 +228,10 @@ export const expectPanelsDoNotOverlap = async (page: Page, state: PanelState): P
     }
   }
   if (boxes.comments) {
-    expect(boxes.comments.layoutWidth).toBeCloseTo(PANEL_METRICS.commentsWidth, 0);
+    expect(boxes.comments.layoutWidth).toBeCloseTo(
+      PANEL_METRICS.commentsWidth,
+      0,
+    );
   }
 
   for (const [name, panel] of panels) {
@@ -214,12 +240,20 @@ export const expectPanelsDoNotOverlap = async (page: Page, state: PanelState): P
     }
   }
   if (boxes.outline && boxes.comments) {
-    expect(overlaps(boxes.outline, boxes.comments), "outline overlaps comments").toBe(false);
+    expect(
+      overlaps(boxes.outline, boxes.comments),
+      "outline overlaps comments",
+    ).toBe(false);
   }
   if (state.tier !== "narrow") {
-    expect(boxes.horizontalOverflow, "the page scrolls sideways").toBeLessThanOrEqual(1);
+    expect(
+      boxes.horizontalOverflow,
+      "the page scrolls sideways",
+    ).toBeLessThanOrEqual(1);
     for (const pageBox of boxes.pages) {
-      expect(pageBox.left).toBeGreaterThanOrEqual(boxes.viewport.left - EPSILON);
+      expect(pageBox.left).toBeGreaterThanOrEqual(
+        boxes.viewport.left - EPSILON,
+      );
       expect(pageBox.right).toBeLessThanOrEqual(boxes.viewport.right + EPSILON);
     }
   }
@@ -230,7 +264,10 @@ export const expectPanelsDoNotOverlap = async (page: Page, state: PanelState): P
  * opaque, or page text shows through it: its background colour, under any
  * image layers, has full alpha.
  */
-export const expectOpaque = async (locator: Locator, name: string): Promise<void> => {
+export const expectOpaque = async (
+  locator: Locator,
+  name: string,
+): Promise<void> => {
   const alpha = await locator.evaluate((element) => {
     const probe = document.createElement("canvas").getContext("2d");
     if (!probe) return 0;
@@ -276,10 +313,13 @@ export const expectDrawerCycle = async (
     element instanceof HTMLElement ? element.offsetWidth : null,
   );
   if (drawerLayoutWidth === null) throw new Error("drawer has no layout width");
-  expect(drawerLayoutWidth).toBeLessThanOrEqual(PANEL_METRICS.drawerWidth + EPSILON);
+  expect(drawerLayoutWidth).toBeLessThanOrEqual(
+    PANEL_METRICS.drawerWidth + EPSILON,
+  );
   // Press the scrim on the side the drawer does not cover.
   const drawerOnLeft =
-    drawerBox.x - scrimBox.x < scrimBox.x + scrimBox.width - (drawerBox.x + drawerBox.width);
+    drawerBox.x - scrimBox.x <
+    scrimBox.x + scrimBox.width - (drawerBox.x + drawerBox.width);
   await page.mouse.click(
     drawerOnLeft ? scrimBox.x + scrimBox.width - 8 : scrimBox.x + 8,
     scrimBox.y + scrimBox.height / 2,
@@ -292,8 +332,13 @@ export const expectDrawerCycle = async (
  * The outline opens and closes in its own track; comments retain their drawer
  * cycle when the available width requires one.
  */
-export const expectPanelDrawers = async (page: Page, state: PanelState): Promise<void> => {
-  const expandedOutline = page.locator('[data-folio-outline-surface="expanded"]');
+export const expectPanelDrawers = async (
+  page: Page,
+  state: PanelState,
+): Promise<void> => {
+  const expandedOutline = page.locator(
+    '[data-folio-outline-surface="expanded"]',
+  );
   if (state.outline === "drawer") {
     await expectExpandedOutline(page, {
       opener: page.getByTestId("toolbar-outline-toggle"),
@@ -307,13 +352,18 @@ export const expectPanelDrawers = async (page: Page, state: PanelState): Promise
     const ticks = await rail.locator(".folio-outline-tick").all();
     if (!expandBox) throw new Error("outline rail trigger has no box");
     expect(ticks.length).toBeGreaterThan(0);
-    expect(expandBox.width).toBeGreaterThanOrEqual(PANEL_METRICS.controlMinimumSize);
-    expect(expandBox.height).toBeGreaterThanOrEqual(PANEL_METRICS.controlMinimumSize);
+    expect(expandBox.width).toBeGreaterThanOrEqual(
+      PANEL_METRICS.controlMinimumSize,
+    );
+    expect(expandBox.height).toBeGreaterThanOrEqual(
+      PANEL_METRICS.controlMinimumSize,
+    );
     for (const tick of ticks) {
       const tickBox = await tick.boundingBox();
       if (!tickBox) throw new Error("outline tick has no box");
       expect(
-        expandBox.y + expandBox.height <= tickBox.y || tickBox.y + tickBox.height <= expandBox.y,
+        expandBox.y + expandBox.height <= tickBox.y ||
+          tickBox.y + tickBox.height <= expandBox.y,
         "outline trigger overlaps a heading tick",
       ).toBe(true);
     }
@@ -345,14 +395,20 @@ const expectExpandedOutline = async (
     element.style.setProperty("--document-panel-bottom-inset", "48px");
   });
   await expect(panel).toHaveCSS("padding-block-end", "48px");
-  await expect.poll(() => readPanelState(page)).toMatchObject({ outline: "expanded" });
+  await expect
+    .poll(() => readPanelState(page))
+    .toMatchObject({ outline: "expanded" });
   await expect.poll(() => focusIsWithin(panel)).toBe(true);
   const state = await readPanelState(page);
   let comments: CommentsPresentation = "hidden";
   if (state?.comments === "column" || state?.comments === "drawer") {
     comments = state.comments;
   }
-  await expectPanelsDoNotOverlap(page, { tier: "narrow", outline: "expanded", comments });
+  await expectPanelsDoNotOverlap(page, {
+    tier: "narrow",
+    outline: "expanded",
+    comments,
+  });
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
 };

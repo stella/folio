@@ -18,20 +18,25 @@
  *    assertions no round trip touches.
  */
 
-import type { CorpusDeclaredRefusal } from "./corpus-invariants/contract";
+import { Result } from "better-result";
+
 import { parseDocx } from "@stll/folio-core/docx/parser";
-import { createDocx, repackDocx, validateDocx } from "@stll/folio-core/docx/rezip";
+import {
+  createDocx,
+  repackDocx,
+  validateDocx,
+} from "@stll/folio-core/docx/rezip";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import { extractDocumentStyleSet } from "@stll/folio-core/style-sets/extract";
 import type { Document } from "@stll/folio-core/types/document";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
-import { Result } from "better-result";
 
 import { classifyCorpusFile, type NotADocxReason } from "./corpus-classify";
 import { runExtendedChecks } from "./corpus-extended";
-import { measureReferenceMs } from "./corpus-reference";
+import type { CorpusDeclaredRefusal } from "./corpus-invariants/contract";
 import { PRODUCER_FAMILIES } from "./corpus-producer";
+import { measureReferenceMs } from "./corpus-reference";
 import {
   CORPUS_INVARIANTS,
   type CorpusFailure,
@@ -82,24 +87,33 @@ const countTextBlocks = (doc: ProseDocument): number => {
 };
 
 const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
-  bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 
 type FixedPointOutcome =
   | { kind: "failed"; failures: CorpusFailure[] }
   | { kind: "repacked"; repacked: ArrayBuffer; failures: CorpusFailure[] };
 
-const checkFixedPoint = async (parsed: Document): Promise<FixedPointOutcome> => {
+const checkFixedPoint = async (
+  parsed: Document,
+): Promise<FixedPointOutcome> => {
   const original = Result.try(() => toProseDoc(parsed));
   if (original.isErr()) {
     return {
       kind: "failed",
-      failures: [failureFromError(CORPUS_INVARIANTS.fixedPoint, original.error)],
+      failures: [
+        failureFromError(CORPUS_INVARIANTS.fixedPoint, original.error),
+      ],
     };
   }
 
   const repacked = await Result.tryPromise({
     try: async () => {
-      const back = fromProseDoc(original.value, parsed, { stylesheetSource: { type: "package" } });
+      const back = fromProseDoc(original.value, parsed, {
+        stylesheetSource: { type: "package" },
+      });
       return await repackDocx(back, { updateModifiedDate: false });
     },
     catch: (cause: unknown) => cause,
@@ -107,19 +121,24 @@ const checkFixedPoint = async (parsed: Document): Promise<FixedPointOutcome> => 
   if (repacked.isErr()) {
     return {
       kind: "failed",
-      failures: [failureFromError(CORPUS_INVARIANTS.fixedPoint, repacked.error)],
+      failures: [
+        failureFromError(CORPUS_INVARIANTS.fixedPoint, repacked.error),
+      ],
     };
   }
 
   const reparsed = await Result.tryPromise({
-    try: async () => toProseDoc(await parseDocx(repacked.value, { preloadFonts: false })),
+    try: async () =>
+      toProseDoc(await parseDocx(repacked.value, { preloadFonts: false })),
     catch: (cause: unknown) => cause,
   });
   if (reparsed.isErr()) {
     return {
       kind: "repacked",
       repacked: repacked.value,
-      failures: [failureFromError(CORPUS_INVARIANTS.fixedPoint, reparsed.error)],
+      failures: [
+        failureFromError(CORPUS_INVARIANTS.fixedPoint, reparsed.error),
+      ],
     };
   }
 
@@ -145,13 +164,17 @@ const checkFixedPoint = async (parsed: Document): Promise<FixedPointOutcome> => 
   return { kind: "repacked", repacked: repacked.value, failures };
 };
 
-const checkRepackValidates = async (repacked: ArrayBuffer): Promise<CorpusFailure[]> => {
+const checkRepackValidates = async (
+  repacked: ArrayBuffer,
+): Promise<CorpusFailure[]> => {
   const validated = await Result.tryPromise({
     try: () => validateDocx(repacked),
     catch: (cause: unknown) => cause,
   });
   if (validated.isErr()) {
-    return [failureFromError(CORPUS_INVARIANTS.repackValidates, validated.error)];
+    return [
+      failureFromError(CORPUS_INVARIANTS.repackValidates, validated.error),
+    ];
   }
   if (validated.value.valid) {
     return [];
@@ -164,10 +187,14 @@ const checkRepackValidates = async (repacked: ArrayBuffer): Promise<CorpusFailur
   ];
 };
 
-const checkStyleSetRebuild = async (parsed: Document): Promise<CorpusFailure[]> => {
+const checkStyleSetRebuild = async (
+  parsed: Document,
+): Promise<CorpusFailure[]> => {
   const rebuilt = await Result.tryPromise({
     try: async () => {
-      const styleSet = extractDocumentStyleSet(parsed, { name: STYLE_SET_NAME });
+      const styleSet = extractDocumentStyleSet(parsed, {
+        name: STYLE_SET_NAME,
+      });
       return await createDocx(createEmptyDocument({ styleSet }));
     },
     catch: (cause: unknown) => cause,
@@ -226,9 +253,11 @@ export const runCorpusChecks = async (
     };
   }
 
-  const wanted = (invariant: CorpusInvariant): boolean => only === undefined || only.has(invariant);
+  const wanted = (invariant: CorpusInvariant): boolean =>
+    only === undefined || only.has(invariant);
   const fixedPoint =
-    wanted(CORPUS_INVARIANTS.fixedPoint) || wanted(CORPUS_INVARIANTS.repackValidates)
+    wanted(CORPUS_INVARIANTS.fixedPoint) ||
+    wanted(CORPUS_INVARIANTS.repackValidates)
       ? await checkFixedPoint(parsed.value)
       : { kind: "failed" as const, failures: [] };
   const validation =
@@ -250,10 +279,17 @@ export const runCorpusChecks = async (
   return {
     kind: "checked",
     declaredRefusals: extended.declaredRefusals,
-    failures: [...fixedPoint.failures, ...validation, ...styleSet, ...extended.failures],
+    failures: [
+      ...fixedPoint.failures,
+      ...validation,
+      ...styleSet,
+      ...extended.failures,
+    ],
     producer: extended.producer.label,
     cost,
     timings: extended.timings,
-    ...(extended.truncatedAt === undefined ? {} : { truncatedAt: extended.truncatedAt }),
+    ...(extended.truncatedAt === undefined
+      ? {}
+      : { truncatedAt: extended.truncatedAt }),
   };
 };

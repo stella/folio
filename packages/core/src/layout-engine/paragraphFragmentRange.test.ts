@@ -3,11 +3,11 @@ import { describe, expect, test } from "bun:test";
 import { layoutDocument } from "./index";
 import type {
   FlowBlock,
+  LayoutOptions,
   Measure,
+  MeasuredLine,
   ParagraphBlock,
   ParagraphFragment,
-  MeasuredLine,
-  LayoutOptions,
 } from "./types";
 
 function makeLine(
@@ -39,7 +39,9 @@ function makeParagraphMeasure(lines: MeasuredLine[]): Measure {
   };
 }
 
-function makeLayoutOptions(overrides: Partial<LayoutOptions> = {}): LayoutOptions {
+function makeLayoutOptions(
+  overrides: Partial<LayoutOptions> = {},
+): LayoutOptions {
   return {
     pageSize: { w: 300, h: 80 },
     margins: { top: 20, right: 20, bottom: 20, left: 20 },
@@ -101,7 +103,9 @@ describe("paragraph fragment PM ranges", () => {
       }),
     );
 
-    const fragments = layout.pages.flatMap((p) => p.fragments) as ParagraphFragment[];
+    const fragments = layout.pages.flatMap(
+      (p) => p.fragments,
+    ) as ParagraphFragment[];
     expect(fragments).toHaveLength(2);
     expect(fragments[0]!.fromLine).toBe(0);
     expect(fragments[0]!.toLine).toBe(2);
@@ -132,7 +136,9 @@ describe("paragraph fragment PM ranges", () => {
       }),
     );
 
-    const fragments = layout.pages.flatMap((p) => p.fragments) as ParagraphFragment[];
+    const fragments = layout.pages.flatMap(
+      (p) => p.fragments,
+    ) as ParagraphFragment[];
     expect(fragments).toHaveLength(2);
     expect(fragments[0]!.pmStart).toBe(9);
     expect(fragments[0]!.pmEnd).toBe(34);

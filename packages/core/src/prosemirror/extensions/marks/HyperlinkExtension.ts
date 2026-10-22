@@ -2,21 +2,24 @@
  * Hyperlink Mark Extension
  */
 
-import { withCanonicalCommand } from "../../canonicalCommands";
-import { canonicalSelectionRange } from "../../canonicalSelectionRange";
-import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
-import { getDocumentBuiltInStyles } from "../../plugins/documentStyles";
 import { panic } from "better-result";
 import type { Command, EditorState } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
-import { expectHyperlinkMarkAttrs } from "../../attrs";
+import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
 import {
   anchorTargetAttrs,
   normalizeUserUrl,
   sanitizeExternalUrl,
 } from "../../../utils/urlSecurity";
-import { assertHyperlinkRemovalRange, removeHyperlinkInRange } from "../../hyperlinkRemoval";
+import { expectHyperlinkMarkAttrs } from "../../attrs";
+import { withCanonicalCommand } from "../../canonicalCommands";
+import { canonicalSelectionRange } from "../../canonicalSelectionRange";
+import {
+  assertHyperlinkRemovalRange,
+  removeHyperlinkInRange,
+} from "../../hyperlinkRemoval";
+import { getDocumentBuiltInStyles } from "../../plugins/documentStyles";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 import { isMarkActive } from "./markUtils";
@@ -78,7 +81,9 @@ export function isHyperlinkActive(state: EditorState): boolean {
   return isMarkActive(state, hlType);
 }
 
-export function getHyperlinkAttrs(state: EditorState): { href: string; tooltip?: string } | null {
+export function getHyperlinkAttrs(
+  state: EditorState,
+): { href: string; tooltip?: string } | null {
   const hlType = state.schema.marks["hyperlink"];
   if (!hlType) {
     return null;
@@ -145,7 +150,9 @@ export const HyperlinkExtension = createMarkExtension({
         getAttrs: (dom) => {
           const index = dom.getAttribute(DOCX_HYPERLINK_INDEX_ATTRIBUTE);
           const docxHyperlinkIndex =
-            index !== null && /^\d+$/u.test(index) && Number.isSafeInteger(Number(index))
+            index !== null &&
+            /^\d+$/u.test(index) &&
+            Number.isSafeInteger(Number(index))
               ? Number(index)
               : undefined;
           return {
@@ -163,7 +170,8 @@ export const HyperlinkExtension = createMarkExtension({
       },
     ],
     toDOM(mark) {
-      const { href, target, tooltip, _docxHyperlinkIndex } = expectHyperlinkMarkAttrs(mark);
+      const { href, target, tooltip, _docxHyperlinkIndex } =
+        expectHyperlinkMarkAttrs(mark);
       const domAttrs: Record<string, string> = {
         // Defense in depth: re-sanitize the stored href before it reaches the
         // live DOM, in case a mark was created by another path.
@@ -233,7 +241,9 @@ export const HyperlinkExtension = createMarkExtension({
       const { from, to } = canonicalSelectionRange(state);
       assertHyperlinkRemovalRange({ doc: state.doc, from, to });
       if (!empty) return { from, to };
-      const linkMark = $from.marks().find((mark) => mark.type === documentHyperlinkType(state));
+      const linkMark = $from
+        .marks()
+        .find((mark) => mark.type === documentHyperlinkType(state));
       if (!linkMark) return undefined;
       let contiguous: { from: number; to: number } | undefined;
       let selected: typeof contiguous;
@@ -255,15 +265,22 @@ export const HyperlinkExtension = createMarkExtension({
         const range = removalRange(state);
         if (!range) return false;
         if (dispatch)
-          dispatch(removeHyperlinkInRange(state, state.tr, range.from, range.to).scrollIntoView());
+          dispatch(
+            removeHyperlinkInRange(
+              state,
+              state.tr,
+              range.from,
+              range.to,
+            ).scrollIntoView(),
+          );
         return true;
       },
       (state) => {
         const range = removalRange(state);
         if (!range) return [];
-        const hyperlinkStyleId = getDocumentBuiltInStyles(state).styleIdForBuiltInName(
-          BUILT_IN_STYLE_NAME.hyperlink,
-        );
+        const hyperlinkStyleId = getDocumentBuiltInStyles(
+          state,
+        ).styleIdForBuiltInName(BUILT_IN_STYLE_NAME.hyperlink);
         return [
           {
             type: "removeHyperlink",
@@ -274,7 +291,11 @@ export const HyperlinkExtension = createMarkExtension({
       },
     );
 
-    const insertHyperlink = (text: string, href: string, tooltip?: string): Command =>
+    const insertHyperlink = (
+      text: string,
+      href: string,
+      tooltip?: string,
+    ): Command =>
       withCanonicalCommand(
         (state, dispatch) => {
           const hlType = documentHyperlinkType(state);
@@ -284,7 +305,9 @@ export const HyperlinkExtension = createMarkExtension({
               tooltip: tooltip || null,
             });
             const textNode = state.schema.text(text, [mark]);
-            dispatch(state.tr.replaceSelectionWith(textNode, false).scrollIntoView());
+            dispatch(
+              state.tr.replaceSelectionWith(textNode, false).scrollIntoView(),
+            );
           }
           return true;
         },

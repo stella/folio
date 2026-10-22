@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import type { Node as PMNode } from "prosemirror-model";
 
 import { layoutDocument } from "../../layout-engine/index";
 import {
@@ -13,8 +14,12 @@ import {
   withFakeTextMeasure,
 } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
 import { measureBlocks } from "../../layout-engine/measure/measureBlocks";
-import type { FlowBlock, Layout, LayoutOptions, PageMargins } from "../../layout-engine/types";
-import type { Node as PMNode } from "prosemirror-model";
+import type {
+  FlowBlock,
+  Layout,
+  LayoutOptions,
+  PageMargins,
+} from "../../layout-engine/types";
 import { schema } from "../../prosemirror/schema";
 import { toFlowBlocks } from "./toFlowBlocks";
 
@@ -31,7 +36,9 @@ const spaced = {
 };
 
 const breakOnlyParagraph = (attrs: Record<string, unknown> = {}) =>
-  schema.node("paragraph", { ...spaced, ...attrs }, [schema.node("pageBreakRun")]);
+  schema.node("paragraph", { ...spaced, ...attrs }, [
+    schema.node("pageBreakRun"),
+  ]);
 
 type LaidOut = { result: Layout; lastBlock: FlowBlock };
 
@@ -45,7 +52,11 @@ const layout = (doc: PMNode): LaidOut => {
         throw new Error("Expected flow blocks");
       }
       laidOut = {
-        result: layoutDocument(blocks, measureBlocks(blocks, CONTENT_WIDTH), LAYOUT_OPTIONS),
+        result: layoutDocument(
+          blocks,
+          measureBlocks(blocks, CONTENT_WIDTH),
+          LAYOUT_OPTIONS,
+        ),
         lastBlock,
       };
     },
@@ -59,7 +70,9 @@ const layout = (doc: PMNode): LaidOut => {
 
 const fragmentOf = ({ result, lastBlock }: LaidOut) => {
   for (const [pageIndex, page] of result.pages.entries()) {
-    const fragment = page.fragments.find((candidate) => candidate.blockId === lastBlock.id);
+    const fragment = page.fragments.find(
+      (candidate) => candidate.blockId === lastBlock.id,
+    );
     if (fragment) {
       return { pageIndex, y: fragment.y };
     }
@@ -102,10 +115,12 @@ describe("a break-only paragraph mark that stays with its page break", () => {
       schema.node("paragraph", null, [schema.text("Second page")]),
     ]);
 
-    const carrier = toFlowBlocks(doc, { splitPageBreakAndParagraphMark: true }).find(
-      (block) => block.kind === "paragraph" && block.runs.length === 0,
-    );
+    const carrier = toFlowBlocks(doc, {
+      splitPageBreakAndParagraphMark: true,
+    }).find((block) => block.kind === "paragraph" && block.runs.length === 0);
 
-    expect(carrier?.kind === "paragraph" && carrier.attrs?.spacing?.after).toBeGreaterThan(0);
+    expect(
+      carrier?.kind === "paragraph" && carrier.attrs?.spacing?.after,
+    ).toBeGreaterThan(0);
   });
 });

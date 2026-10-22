@@ -15,12 +15,14 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import { parseTable } from "./tableParser";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createParseWarningCollector } from "./parseContext";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializeTable } from "./serializer/tableSerializer";
+import { parseTable } from "./tableParser";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -52,7 +54,10 @@ const roundTrip = (rowChildren: string): string => {
   if (!root) {
     throw new Error("Failed to parse the table fixture");
   }
-  return serializeTable(parseTable(root, null, null, null, null, null), serializeParagraph);
+  return serializeTable(
+    parseTable(root, null, null, null, null, null),
+    serializeParagraph,
+  );
 };
 
 describe("a table row keeps the children folio does not model", () => {
@@ -76,7 +81,9 @@ describe("a table row keeps the children folio does not model", () => {
         // Save, reopen, save: the second save is where a capture that only
         // replays and does not re-parse stops being a fixed point.
         expect(
-          roundTrip(saved.slice(saved.indexOf("<w:tr>") + 6, saved.indexOf("</w:tr>"))),
+          roundTrip(
+            saved.slice(saved.indexOf("<w:tr>") + 6, saved.indexOf("</w:tr>")),
+          ),
         ).toContain(child);
       }),
       propertyConfig({ numRuns: 100 }),
@@ -107,8 +114,11 @@ describe("a table row keeps the children folio does not model", () => {
           );
           for (const output of [saved, savedAgain]) {
             expect(output).toContain(expected);
-            expect(output.split('<w:customXml w:element="empty"').length - 1).toBe(1);
-            const cellsBefore = output.slice(0, output.indexOf(expected)).match(/<w:tc>/gu) ?? [];
+            expect(
+              output.split('<w:customXml w:element="empty"').length - 1,
+            ).toBe(1);
+            const cellsBefore =
+              output.slice(0, output.indexOf(expected)).match(/<w:tc>/gu) ?? [];
             expect(cellsBefore).toHaveLength(index);
           }
         },
@@ -125,7 +135,9 @@ describe("a table row keeps the children folio does not model", () => {
 
   test("a row-level content control is still unwrapped, and its markup kept", () => {
     const input = `<w:sdt><w:sdtPr><w:alias w:val="row-control"/></w:sdtPr><w:sdtContent><w:tr>${CELL}</w:tr></w:sdtContent></w:sdt>`;
-    const root = parseXmlDocument(`<w:tbl xmlns:w="${W}">${input}</w:tbl>`) as XmlElement;
+    const root = parseXmlDocument(
+      `<w:tbl xmlns:w="${W}">${input}</w:tbl>`,
+    ) as XmlElement;
     const parsed = parseTable(root, null, null, null, null, null);
 
     expect(parsed?.rows[0]?.cells).toHaveLength(1);
@@ -151,9 +163,11 @@ describe("a table row keeps the children folio does not model", () => {
   });
 
   test("row and table customXml wrappers leave their rows and cells readable", () => {
-    const rowCustomXml = '<w:customXml w:uri="urn:row" w:element="row">' + `${CELL}</w:customXml>`;
+    const rowCustomXml =
+      '<w:customXml w:uri="urn:row" w:element="row">' + `${CELL}</w:customXml>`;
     const tableCustomXml =
-      '<w:customXml w:uri="urn:table" w:element="table">' + `<w:tr>${CELL}</w:tr></w:customXml>`;
+      '<w:customXml w:uri="urn:table" w:element="table">' +
+      `<w:tr>${CELL}</w:tr></w:customXml>`;
     const rowRoot = parseXmlDocument(tableXml(rowCustomXml)) as XmlElement;
     const tableRoot = parseXmlDocument(
       `<w:tbl xmlns:w="${W}">${tableCustomXml}</w:tbl>`,
@@ -163,7 +177,9 @@ describe("a table row keeps the children folio does not model", () => {
     const tableTable = parseTable(tableRoot, null, null, null, null, null);
     expect(rowTable?.rows[0]?.cells).toHaveLength(1);
     expect(tableTable?.rows[0]?.cells).toHaveLength(1);
-    expect(serializeTable(rowTable!, serializeParagraph)).toContain('<w:customXml w:uri="urn:row"');
+    expect(serializeTable(rowTable!, serializeParagraph)).toContain(
+      '<w:customXml w:uri="urn:row"',
+    );
     expect(serializeTable(tableTable!, serializeParagraph)).toContain(
       '<w:customXml w:uri="urn:table"',
     );
@@ -175,7 +191,9 @@ describe("a table row keeps the children folio does not model", () => {
     ) as XmlElement;
     const collector = createParseWarningCollector("word/document.xml");
 
-    parseTable(root, null, null, null, null, null, { context: collector.context });
+    parseTable(root, null, null, null, null, null, {
+      context: collector.context,
+    });
 
     expect(collector.warnings()).toContainEqual({
       code: "nested-row-opaque",
@@ -185,7 +203,8 @@ describe("a table row keeps the children folio does not model", () => {
   });
 
   test("customXmlPr and bookmark markers stay inside table and row wrappers", () => {
-    const property = '<w:customXmlPr><w:attr w:name="key" w:val="value"/></w:customXmlPr>';
+    const property =
+      '<w:customXmlPr><w:attr w:name="key" w:val="value"/></w:customXmlPr>';
     const rowWrapped =
       '<w:customXml w:element="row">' +
       `${property}<w:bookmarkStart w:id="21" w:name="row-boundary"/>${CELL}` +
@@ -247,8 +266,13 @@ describe("a table row keeps the children folio does not model", () => {
       `<w:customXml w:element="outer"><w:sdt><w:sdtPr/><w:sdtContent>` +
       `<w:tr>${CELL}</w:tr></w:sdtContent></w:sdt></w:customXml>`;
     const parseAndSave = (children: string): string => {
-      const root = parseXmlDocument(`<w:tbl xmlns:w="${W}">${children}</w:tbl>`) as XmlElement;
-      return serializeTable(parseTable(root, null, null, null, null, null)!, serializeParagraph);
+      const root = parseXmlDocument(
+        `<w:tbl xmlns:w="${W}">${children}</w:tbl>`,
+      ) as XmlElement;
+      return serializeTable(
+        parseTable(root, null, null, null, null, null)!,
+        serializeParagraph,
+      );
     };
     const sdtOuterSaved = parseAndSave(sdtOuter);
     const customXmlOuterSaved = parseAndSave(customXmlOuter);
@@ -262,7 +286,9 @@ describe("a table row keeps the children folio does not model", () => {
     const rowSdtOuterSaved = roundTrip(rowSdtOuter);
     const rowCustomXmlOuterSaved = roundTrip(rowCustomXmlOuter);
 
-    expect(sdtOuterSaved.indexOf("<w:sdt>")).toBeLessThan(sdtOuterSaved.indexOf("<w:customXml"));
+    expect(sdtOuterSaved.indexOf("<w:sdt>")).toBeLessThan(
+      sdtOuterSaved.indexOf("<w:customXml"),
+    );
     expect(customXmlOuterSaved.indexOf("<w:customXml")).toBeLessThan(
       customXmlOuterSaved.indexOf("<w:sdt>"),
     );

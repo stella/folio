@@ -15,12 +15,18 @@
  */
 
 import {
-  emptyDeclaredRefusalCounts,
+  CORPUS_EVIDENCE,
+  type CorpusEvidence,
+  type CorpusFileId,
+  MAX_EXAMPLES_PER_SIGNATURE,
+} from "./corpus-census";
+import {
   countDeclaredRefusals,
-  mergeDeclaredRefusalCounts,
   declaredRefusalCount,
-  renderDeclaredRefusals,
   type DeclaredRefusalCounts,
+  emptyDeclaredRefusalCounts,
+  mergeDeclaredRefusalCounts,
+  renderDeclaredRefusals,
 } from "./corpus-declared-refusals";
 import type { CorpusDeclaredRefusal } from "./corpus-invariants/contract";
 import {
@@ -30,12 +36,6 @@ import {
   isGatingFailure,
   isZeroFailure,
 } from "./corpus-invariants/contract";
-import {
-  CORPUS_EVIDENCE,
-  type CorpusEvidence,
-  type CorpusFileId,
-  MAX_EXAMPLES_PER_SIGNATURE,
-} from "./corpus-census";
 import {
   type CorpusFailure,
   type CorpusInvariant,
@@ -99,7 +99,10 @@ const EXTENDED_FAMILIES = Object.values(EXTENDED_INVARIANT_FAMILY);
 
 export { familyOf } from "./corpus-invariants/contract";
 
-export const emptyFamilyCensus = (lockDigest: string, reportOnlyDigest: string): FamilyCensus => ({
+export const emptyFamilyCensus = (
+  lockDigest: string,
+  reportOnlyDigest: string,
+): FamilyCensus => ({
   schemaVersion: 1,
   lockDigest,
   reportOnlyDigest,
@@ -132,7 +135,9 @@ export const countedFailures = (
   distinctBySignature(
     evidence === CORPUS_EVIDENCE.gating
       ? failures
-      : failures.filter((failure) => !isGatingFailure(failure) || isZeroFailure(failure)),
+      : failures.filter(
+          (failure) => !isGatingFailure(failure) || isZeroFailure(failure),
+        ),
   );
 
 const keepSlowest = (into: StageTiming[], timing: StageTiming): void => {
@@ -183,7 +188,14 @@ export class FamilyCensusBuilder {
     countDeclaredRefusals(this.#census.declaredRefusals, declaredRefusals);
     this.#census.files += 1;
     bump(this.#census.producers, producer);
-    this.#census.costs.push({ file, bytes, parseMs, peakRssBytes, referenceMs, producer });
+    this.#census.costs.push({
+      file,
+      bytes,
+      parseMs,
+      peakRssBytes,
+      referenceMs,
+      producer,
+    });
 
     for (const [stage, ms] of Object.entries(timings)) {
       const into = (this.#census.slowest[stage] ??= []);
@@ -219,7 +231,10 @@ export class FamilyCensusBuilder {
     }
 
     for (const family of EXTENDED_FAMILIES) {
-      const totals = (this.#census.totals[family] ??= { files: 0, failedFiles: 0 });
+      const totals = (this.#census.totals[family] ??= {
+        files: 0,
+        failedFiles: 0,
+      });
       totals.files += 1;
       if (familiesTouched.has(family)) {
         totals.failedFiles += 1;
@@ -237,7 +252,10 @@ export class FamilyCensusBuilder {
 }
 
 /** Busiest first, then by signature so a census is byte-stable across runs. */
-const compareByFilesThenSignature = (left: FamilySignature, right: FamilySignature): number => {
+const compareByFilesThenSignature = (
+  left: FamilySignature,
+  right: FamilySignature,
+): number => {
   if (left.files !== right.files) {
     return right.files - left.files;
   }
@@ -253,7 +271,9 @@ const mergeCounts = (into: ProducerCounts, from: ProducerCounts): void => {
   }
 };
 
-export const mergeFamilyCensuses = (censuses: readonly FamilyCensus[]): FamilyCensus => {
+export const mergeFamilyCensuses = (
+  censuses: readonly FamilyCensus[],
+): FamilyCensus => {
   const first = censuses.at(0);
   if (first === undefined) {
     throw new Error("A family census merge needs at least one census");
@@ -261,7 +281,10 @@ export const mergeFamilyCensuses = (censuses: readonly FamilyCensus[]): FamilyCe
   const merged = emptyFamilyCensus(first.lockDigest, first.reportOnlyDigest);
   const bySignature = new Map<string, FamilySignature>();
   for (const census of censuses) {
-    mergeDeclaredRefusalCounts(merged.declaredRefusals, census.declaredRefusals);
+    mergeDeclaredRefusalCounts(
+      merged.declaredRefusals,
+      census.declaredRefusals,
+    );
     merged.files += census.files;
     mergeCounts(merged.producers, census.producers);
     merged.costs.push(...census.costs);
@@ -289,7 +312,10 @@ export const mergeFamilyCensuses = (censuses: readonly FamilyCensus[]): FamilyCe
       existing.files += signature.files;
       mergeCounts(existing.producers, signature.producers);
       existing.examples.push(
-        ...signature.examples.slice(0, MAX_EXAMPLES_PER_SIGNATURE - existing.examples.length),
+        ...signature.examples.slice(
+          0,
+          MAX_EXAMPLES_PER_SIGNATURE - existing.examples.length,
+        ),
       );
     }
   }
@@ -319,11 +345,18 @@ export const censusWithLateFailures = (
   const bySignature = new Map(
     census.signatures.map((signature) => [
       signature.signature,
-      { ...signature, producers: { ...signature.producers }, examples: [...signature.examples] },
+      {
+        ...signature,
+        producers: { ...signature.producers },
+        examples: [...signature.examples],
+      },
     ]),
   );
   const totals: Record<string, FamilyTotals> = Object.fromEntries(
-    Object.entries(census.totals).map(([family, value]) => [family, { ...value }]),
+    Object.entries(census.totals).map(([family, value]) => [
+      family,
+      { ...value },
+    ]),
   );
   const failedByFamily = new Map<CorpusInvariantFamily, Set<string>>();
 
@@ -360,7 +393,11 @@ export const censusWithLateFailures = (
     const into = (totals[family] ??= { files: census.files, failedFiles: 0 });
     into.failedFiles += failed.size;
   }
-  return { ...census, totals, signatures: sortSignatures([...bySignature.values()]) };
+  return {
+    ...census,
+    totals,
+    signatures: sortSignatures([...bySignature.values()]),
+  };
 };
 
 const PRODUCERS_PER_SIGNATURE = 4;
@@ -379,7 +416,9 @@ export const renderFamilyCensus = ({
   const lines = [`producers: ${describeProducers(census.producers, 12)}`];
   for (const family of [...new Set(EXTENDED_FAMILIES)].sort()) {
     const totals = census.totals[family] ?? { files: 0, failedFiles: 0 };
-    const signatures = census.signatures.filter((signature) => signature.family === family);
+    const signatures = census.signatures.filter(
+      (signature) => signature.family === family,
+    );
     lines.push(
       `${family}: ${totals.files} files, ${totals.files - totals.failedFiles - declaredRefusalCount(census.declaredRefusals, family)} pass, ${totals.failedFiles} fail, ${signatures.length} signatures`,
     );
@@ -419,7 +458,10 @@ const compareProducerEntries = (
   return leftLabel < rightLabel ? -1 : 1;
 };
 
-export const describeProducers = (producers: ProducerCounts, limit: number): string =>
+export const describeProducers = (
+  producers: ProducerCounts,
+  limit: number,
+): string =>
   Object.entries(producers)
     .sort(compareProducerEntries)
     .slice(0, limit)

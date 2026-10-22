@@ -24,7 +24,10 @@ const markCharacterStyleFormatting = (
   styleResolver: RunStyleResolver,
 ): TextFormatting | undefined => {
   const styleId = mark?.styleId;
-  if (styleId === undefined || styleResolver.getStyle(styleId)?.type !== "character") {
+  if (
+    styleId === undefined ||
+    styleResolver.getStyle(styleId)?.type !== "character"
+  ) {
     return undefined;
   }
   return styleResolver.getRunStyleOwnProperties(styleId);
@@ -51,11 +54,12 @@ export const resolveParagraphMarkFormatting = (
   styleResolver: RunStyleResolver,
 ): TextFormatting | undefined => {
   const mark = pmAttrs._originalFormatting?.runProperties;
-  const { baseFormatting, baseToggleCascade } = resolveParagraphBodyRunFormatting({
-    styleId: pmAttrs.styleId ?? undefined,
-    styleResolver,
-    tableRunFormatting: pmAttrs._tableRunFormatting,
-  });
+  const { baseFormatting, baseToggleCascade } =
+    resolveParagraphBodyRunFormatting({
+      styleId: pmAttrs.styleId ?? undefined,
+      styleResolver,
+      tableRunFormatting: pmAttrs._tableRunFormatting,
+    });
   const characterStyle = markCharacterStyleFormatting(mark, styleResolver);
   return cascadeStyleTextFormatting(
     [

@@ -36,7 +36,9 @@ export const expectTextBoxAnchorAttrs = (node: PMNode): TextBoxAnchorAttrs => {
   }
   const result = readTextBoxAnchorAttrs(node);
   if (!result.ok) {
-    const details = result.issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n");
+    const details = result.issues
+      .map((issue) => `${issue.path}: ${issue.message}`)
+      .join("\n");
     panic(`Invalid ProseMirror text box anchor attrs:\n${details}`);
   }
   attrsCache.set(node, result.value);

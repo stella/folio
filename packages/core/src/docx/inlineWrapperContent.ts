@@ -26,7 +26,9 @@ import type {
 
 /** `true` for exactly the paragraph-content types `Admitted` holds. */
 type AdmissionMap<Admitted extends ParagraphContent> = {
-  [Type in ParagraphContent["type"]]: Type extends Admitted["type"] ? true : false;
+  [Type in ParagraphContent["type"]]: Type extends Admitted["type"]
+    ? true
+    : false;
 };
 
 /**
@@ -196,17 +198,20 @@ export const SIMPLE_FIELD_CONTENT = {
  */
 export const isTrackedChangeWrapperChild = <Content extends ParagraphContent>(
   content: Content,
-): content is Extract<Content, TrackedRunContent> => TRACKED_CHANGE_WRAPPER_CONTENT[content.type];
+): content is Extract<Content, TrackedRunContent> =>
+  TRACKED_CHANGE_WRAPPER_CONTENT[content.type];
 
 /** Whether an inline content control keeps this content inside `<w:sdtContent>`. */
 export const isInlineSdtContent = <Content extends ParagraphContent>(
   content: Content,
-): content is Extract<Content, InlineSdt["content"][number]> => INLINE_SDT_CONTENT[content.type];
+): content is Extract<Content, InlineSdt["content"][number]> =>
+  INLINE_SDT_CONTENT[content.type];
 
 /** Whether a `w:hyperlink` keeps this content inside itself. */
 export const isHyperlinkContent = <Content extends ParagraphContent>(
   content: Content,
-): content is Extract<Content, Hyperlink["children"][number]> => HYPERLINK_CONTENT[content.type];
+): content is Extract<Content, Hyperlink["children"][number]> =>
+  HYPERLINK_CONTENT[content.type];
 
 /** Whether a `w:fldSimple` keeps this content inside itself. */
 export const isSimpleFieldContent = <Content extends ParagraphContent>(

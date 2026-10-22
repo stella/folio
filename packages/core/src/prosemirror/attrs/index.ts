@@ -1,16 +1,44 @@
-import { isNoteReferenceOccurrenceId } from "../noteReferenceOccurrenceId";
-import {
-  isResolutionJoins,
-  isParagraphMarkResolutionJoin,
-} from "../../docx/reviewResolutionProvenance";
 import type { Mark, Node as PMNode } from "prosemirror-model";
-import { isSafePreservedChildXml, isWithinPreservedMarkupBudget } from "@stll/docx-core/schema";
 
 import {
+  DRAWING_RAW_XML_MODES,
+  isOoxmlSymbolCharacter,
+  THEME_COLORS,
+} from "@stll/docx-core/model";
+import {
+  isSafePreservedChildXml,
+  isWithinPreservedMarkupBudget,
+} from "@stll/docx-core/schema";
+
+import { isSerializablePreservedAttribute } from "../../docx/attributeRemainder";
+import { DRAWING_ANCHOR_FLAG_KEYS } from "../../docx/drawingAnchor";
+import { isFoldedListNumber } from "../../docx/foldedListNumberFields";
+import { GRAPHIC_FRAME_LOCK_KEYS } from "../../docx/graphicFrameLocks";
+import {
+  allowsDirectDrawingEdit,
+  isDrawingRawXmlMode,
+} from "../../docx/imageRawXml";
+import {
+  isParagraphMarkResolutionJoin,
+  isResolutionJoins,
+} from "../../docx/reviewResolutionProvenance";
+import {
+  attrsRecord,
+  attrsResult,
+  expectAttrs,
+  expectCachedNodeAttrs,
+  expectNodeType,
+  isRecord,
+  type ProseMirrorAttrIssue,
+  type ReadProseMirrorAttrsResult,
+} from "../../internal/prosemirrorAttrBoundary";
+import type { ParagraphFormatting } from "../../types/document";
+import {
+  COUNTER_FORMAT_VALUES,
+  EMPHASIS_MARK_VALUES,
   FIELD_TYPE_VALUES,
   FONT_HINT_VALUES,
   FONT_THEME_VALUES,
-  EMPHASIS_MARK_VALUES,
   HIGHLIGHT_COLOR_VALUES,
   IMAGE_HORIZONTAL_ALIGNMENT_VALUES,
   IMAGE_HORIZONTAL_RELATIVE_TO_VALUES,
@@ -19,7 +47,6 @@ import {
   IMAGE_WRAP_TEXT_VALUES,
   IMAGE_WRAP_TYPE_VALUES,
   LINE_SPACING_RULE_VALUES,
-  COUNTER_FORMAT_VALUES,
   OUTLINE_STYLE_ATTR_VALUES,
   PARAGRAPH_ALIGNMENT_VALUES,
   POSITIONAL_TAB_ALIGNMENT_VALUES,
@@ -28,63 +55,56 @@ import {
   SDT_LOCK_VALUES,
   SDT_TYPE_VALUES,
   SHADING_PATTERN_VALUES,
-  TEXT_DIRECTION_VALUES,
+  TAB_LEADER_VALUES,
+  TAB_STOP_ALIGNMENT_VALUES,
   TABLE_CELL_VERTICAL_ALIGNMENT_VALUES,
   TABLE_JUSTIFICATION_VALUES,
   TABLE_ROW_HEIGHT_RULE_VALUES,
   TABLE_WIDTH_TYPE_VALUES,
-  TAB_LEADER_VALUES,
-  TAB_STOP_ALIGNMENT_VALUES,
+  TEXT_DIRECTION_VALUES,
   TEXT_EFFECT_VALUES,
   UNDERLINE_STYLE_VALUES,
 } from "../../types/documentEnumValues";
-import { DRAWING_ANCHOR_FLAG_KEYS } from "../../docx/drawingAnchor";
-import { isSerializablePreservedAttribute } from "../../docx/attributeRemainder";
-import { isFoldedListNumber } from "../../docx/foldedListNumberFields";
-import { GRAPHIC_FRAME_LOCK_KEYS } from "../../docx/graphicFrameLocks";
-import { PICTURE_NAME_DOM_ATTRIBUTES } from "../imagePictureNames";
-import { paragraphNumberingFromAttrValue } from "../numberingAttr";
-import { outlineLevelFromAttrValue } from "../outlineLevelAttr";
-import { allowsDirectDrawingEdit, isDrawingRawXmlMode } from "../../docx/imageRawXml";
-import type { ParagraphFormatting } from "../../types/document";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
-import { DRAWING_RAW_XML_MODES, isOoxmlSymbolCharacter, THEME_COLORS } from "@stll/docx-core/model";
+import { PICTURE_NAME_DOM_ATTRIBUTES } from "../imagePictureNames";
+import { isNoteReferenceOccurrenceId } from "../noteReferenceOccurrenceId";
+import { paragraphNumberingFromAttrValue } from "../numberingAttr";
+import { outlineLevelFromAttrValue } from "../outlineLevelAttr";
 import { isParagraphDirection } from "../paragraphDirection";
-import { PRESERVED_XML_LEVELS, TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES } from "../schema/nodes";
 import type {
-  BlockSdtAttrs,
   BlockCustomXmlAttrs,
+  BlockSdtAttrs,
   CharacterSpacingAttrs,
   CharacterStyleAttrs,
   CommentAttrs,
   EmphasisMarkAttrs,
   FieldAttrs,
   FontFamilyAttrs,
-  LanguageAttrs,
   FontSizeAttrs,
   FootnoteRefAttrs,
+  HardBreakAttrs,
   HighlightAttrs,
   HyperlinkAttrs,
-  HardBreakAttrs,
+  ImageAttrs,
   InlineWrapperAttrs,
   InlineWrapperKind,
   InlineWrapperLayer,
-  PageBreakRunAttrs,
-  RunIdentityMarkAttrs,
-  TabAttrs,
-  SymbolAttrs,
-  PreservedXmlAttrs,
-  PreservedBlockAttrs,
-  ImageAttrs,
+  LanguageAttrs,
   MathAttrs,
+  PageBreakRunAttrs,
   ParagraphAttrs,
+  PreservedBlockAttrs,
+  PreservedXmlAttrs,
   RunFormattingOverrideAttrs,
+  RunIdentityMarkAttrs,
   RunPropertyChangeMarkAttrs,
   RunShadingAttrs,
   SdtAttrs,
   ShapeAttrs,
   StrikeAttrs,
+  SymbolAttrs,
+  TabAttrs,
   TableAttrs,
   TableCellAttrs,
   TableRowAttrs,
@@ -101,17 +121,10 @@ import {
   RUN_FORMATTING_VALUE_PROPERTIES,
   TRACKED_CHANGE_PROVENANCE_VALUES,
 } from "../schema/marks";
-
 import {
-  attrsRecord,
-  attrsResult,
-  expectAttrs,
-  expectCachedNodeAttrs,
-  expectNodeType,
-  isRecord,
-  type ProseMirrorAttrIssue,
-  type ReadProseMirrorAttrsResult,
-} from "../../internal/prosemirrorAttrBoundary";
+  PRESERVED_XML_LEVELS,
+  TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES,
+} from "../schema/nodes";
 
 export type {
   ProseMirrorAttrIssue,
@@ -126,13 +139,17 @@ const PRESERVED_XML_LEVEL_VALUES: ReadonlySet<unknown> = new Set(
   Object.values(PRESERVED_XML_LEVELS),
 );
 
-const IMAGE_DISPLAY_MODES = ["inline", "float", "block"] as const satisfies readonly NonNullable<
-  ImageAttrs["displayMode"]
->[];
+const IMAGE_DISPLAY_MODES = [
+  "inline",
+  "float",
+  "block",
+] as const satisfies readonly NonNullable<ImageAttrs["displayMode"]>[];
 
-const IMAGE_CSS_FLOATS = ["left", "right", "none"] as const satisfies readonly NonNullable<
-  ImageAttrs["cssFloat"]
->[];
+const IMAGE_CSS_FLOATS = [
+  "left",
+  "right",
+  "none",
+] as const satisfies readonly NonNullable<ImageAttrs["cssFloat"]>[];
 
 const TEXT_BOX_AUTO_FIT_VALUES = [
   "none",
@@ -140,19 +157,24 @@ const TEXT_BOX_AUTO_FIT_VALUES = [
   "shape",
 ] as const satisfies readonly NonNullable<TextBoxAttrs["autoFit"]>[];
 
-const TEXT_BOX_TEXT_WRAP_VALUES = ["square", "none"] as const satisfies readonly NonNullable<
-  TextBoxAttrs["textWrap"]
->[];
+const TEXT_BOX_TEXT_WRAP_VALUES = [
+  "square",
+  "none",
+] as const satisfies readonly NonNullable<TextBoxAttrs["textWrap"]>[];
 
 /** The complete DrawingML transform subset carried by text boxes. */
 const TEXT_BOX_TRANSFORM_PATTERN =
   /^(?=rotate|scaleX|scaleY)(?:rotate\(-?\d+(?:\.\d+)?deg\)(?: )?)?(?:scaleX\(-1\)(?: )?)?(?:scaleY\(-1\))?$/u;
 
-const FIELD_KINDS = ["simple", "complex"] as const satisfies readonly FieldAttrs["fieldKind"][];
+const FIELD_KINDS = [
+  "simple",
+  "complex",
+] as const satisfies readonly FieldAttrs["fieldKind"][];
 
-const MATH_DISPLAYS = ["inline", "block"] as const satisfies readonly NonNullable<
-  MathAttrs["display"]
->[];
+const MATH_DISPLAYS = [
+  "inline",
+  "block",
+] as const satisfies readonly NonNullable<MathAttrs["display"]>[];
 
 const SHAPE_FILL_TYPES = [
   "none",
@@ -169,13 +191,17 @@ const SHAPE_GRADIENT_TYPES = [
   "path",
 ] as const satisfies readonly NonNullable<ShapeAttrs["gradientType"]>[];
 
-const SHAPE_OUTLINE_CAPS = ["flat", "round", "square"] as const satisfies readonly NonNullable<
-  ShapeAttrs["outlineCap"]
->[];
+const SHAPE_OUTLINE_CAPS = [
+  "flat",
+  "round",
+  "square",
+] as const satisfies readonly NonNullable<ShapeAttrs["outlineCap"]>[];
 
-const SHAPE_OUTLINE_JOINS = ["bevel", "miter", "round"] as const satisfies readonly NonNullable<
-  ShapeAttrs["outlineJoin"]
->[];
+const SHAPE_OUTLINE_JOINS = [
+  "bevel",
+  "miter",
+  "round",
+] as const satisfies readonly NonNullable<ShapeAttrs["outlineJoin"]>[];
 
 const SHAPE_LINE_END_TYPES = [
   "none",
@@ -184,9 +210,15 @@ const SHAPE_LINE_END_TYPES = [
   "diamond",
   "oval",
   "arrow",
-] as const satisfies readonly NonNullable<ShapeAttrs["outlineHeadEnd"]>["type"][];
+] as const satisfies readonly NonNullable<
+  ShapeAttrs["outlineHeadEnd"]
+>["type"][];
 
-const SHAPE_LINE_END_SIZES = ["sm", "med", "lg"] as const satisfies readonly NonNullable<
+const SHAPE_LINE_END_SIZES = [
+  "sm",
+  "med",
+  "lg",
+] as const satisfies readonly NonNullable<
   ShapeAttrs["outlineHeadEnd"]
 >["width"][];
 
@@ -203,22 +235,25 @@ const TEXT_EFFECT_NON_NONE_VALUES = TEXT_EFFECT_VALUES.filter(
   (value): value is TextEffectAttrs["effect"] => value !== "none",
 );
 
-const NOTE_TYPES = ["footnote", "endnote"] as const satisfies readonly NonNullable<
-  FootnoteRefAttrs["noteType"]
->[];
+const NOTE_TYPES = [
+  "footnote",
+  "endnote",
+] as const satisfies readonly NonNullable<FootnoteRefAttrs["noteType"]>[];
 
-const NOTE_REF_VERT_ALIGNS = ["baseline", "superscript"] as const satisfies readonly NonNullable<
-  FootnoteRefAttrs["vertAlign"]
->[];
+const NOTE_REF_VERT_ALIGNS = [
+  "baseline",
+  "superscript",
+] as const satisfies readonly NonNullable<FootnoteRefAttrs["vertAlign"]>[];
 
 const TEXT_BOX_DOCX_PLACEMENTS = [
   "standalone",
   "inlineWithPrevious",
 ] as const satisfies readonly NonNullable<TextBoxAttrs["_docxPlacement"]>[];
 
-const TRACKED_CHANGE_MOVE_KINDS = ["moveTo", "moveFrom"] as const satisfies readonly NonNullable<
-  TrackedChangeMarkAttrs["moveKind"]
->[];
+const TRACKED_CHANGE_MOVE_KINDS = [
+  "moveTo",
+  "moveFrom",
+] as const satisfies readonly NonNullable<TrackedChangeMarkAttrs["moveKind"]>[];
 const TRACKED_REVISION_ANCESTOR_TYPES = [
   "insertion",
   "deletion",
@@ -231,15 +266,19 @@ const TEXT_BOX_TRACKED_CHANGE_TYPES = [
   "deletion",
   "moveFrom",
   "moveTo",
-] as const satisfies readonly NonNullable<TextBoxAttrs["_docxTrackedChange"]>["type"][];
+] as const satisfies readonly NonNullable<
+  TextBoxAttrs["_docxTrackedChange"]
+>["type"][];
 
-const HARD_BREAK_TYPES = ["column", "textWrapping"] as const satisfies readonly NonNullable<
-  HardBreakAttrs["breakType"]
->[];
+const HARD_BREAK_TYPES = [
+  "column",
+  "textWrapping",
+] as const satisfies readonly NonNullable<HardBreakAttrs["breakType"]>[];
 
-const HARD_BREAK_SOURCE_ELEMENTS = ["br", "cr"] as const satisfies readonly NonNullable<
-  HardBreakAttrs["sourceElement"]
->[];
+const HARD_BREAK_SOURCE_ELEMENTS = [
+  "br",
+  "cr",
+] as const satisfies readonly NonNullable<HardBreakAttrs["sourceElement"]>[];
 
 const PAGE_BREAK_CLEAR_VALUES = [
   "none",
@@ -276,7 +315,12 @@ const RUN_FORMATTING_OVERRIDE_STRING_SENTINELS = {
 } as const satisfies Record<
   keyof Pick<
     RunFormattingOverrideAttrs,
-    "color" | "effect" | "emphasisMark" | "highlight" | "underline" | "vertAlign"
+    | "color"
+    | "effect"
+    | "emphasisMark"
+    | "highlight"
+    | "underline"
+    | "vertAlign"
   >,
   readonly string[]
 >;
@@ -287,11 +331,18 @@ const RUN_FORMATTING_OVERRIDE_NUMBER_SENTINELS = {
   scale: 100,
   spacing: 0,
 } as const satisfies Record<
-  keyof Pick<RunFormattingOverrideAttrs, "kerning" | "position" | "scale" | "spacing">,
+  keyof Pick<
+    RunFormattingOverrideAttrs,
+    "kerning" | "position" | "scale" | "spacing"
+  >,
   number
 >;
 
-const RUN_FORMATTING_OVERRIDE_DIRECT_FONT_PROPERTIES = ["fontFamily", "fontSize", "color"] as const;
+const RUN_FORMATTING_OVERRIDE_DIRECT_FONT_PROPERTIES = [
+  "fontFamily",
+  "fontSize",
+  "color",
+] as const;
 
 const SECTION_ORIENTATIONS = ["portrait", "landscape"] as const;
 const SECTION_START_TYPES = [
@@ -301,7 +352,12 @@ const SECTION_START_TYPES = [
   "evenPage",
   "nextColumn",
 ] as const;
-const SECTION_VERTICAL_ALIGNMENTS = ["top", "center", "both", "bottom"] as const;
+const SECTION_VERTICAL_ALIGNMENTS = [
+  "top",
+  "center",
+  "both",
+  "bottom",
+] as const;
 const OMITTED_GRID_SLOT_VALUES = ["before", "after"] as const;
 
 const hardBreakAttrsCache = new WeakMap<PMNode, HardBreakAttrs>();
@@ -333,10 +389,16 @@ const textEffectAttrsCache = new WeakMap<Mark, TextEffectAttrs>();
 const footnoteRefAttrsCache = new WeakMap<Mark, FootnoteRefAttrs>();
 const commentAttrsCache = new WeakMap<Mark, CommentAttrs>();
 const trackedChangeAttrsCache = new WeakMap<Mark, TrackedChangeMarkAttrs>();
-const runPropertyChangeAttrsCache = new WeakMap<Mark, RunPropertyChangeMarkAttrs>();
+const runPropertyChangeAttrsCache = new WeakMap<
+  Mark,
+  RunPropertyChangeMarkAttrs
+>();
 const runIdentityAttrsCache = new WeakMap<Mark, RunIdentityMarkAttrs>();
 const inlineWrapperAttrsCache = new WeakMap<Mark, InlineWrapperAttrs>();
-const runFormattingOverrideAttrsCache = new WeakMap<Mark, RunFormattingOverrideAttrs>();
+const runFormattingOverrideAttrsCache = new WeakMap<
+  Mark,
+  RunFormattingOverrideAttrs
+>();
 const hyperlinkAttrsCache = new WeakMap<Mark, HyperlinkAttrs>();
 
 /**
@@ -348,7 +410,10 @@ const hyperlinkAttrsCache = new WeakMap<Mark, HyperlinkAttrs>();
 const memoizeNodeAttrsReader = <T extends object>(
   read: (node: PMNode) => ReadProseMirrorAttrsResult<T>,
 ): ((node: PMNode) => ReadProseMirrorAttrsResult<Readonly<T>>) => {
-  const results = new WeakMap<PMNode, ReadProseMirrorAttrsResult<Readonly<T>>>();
+  const results = new WeakMap<
+    PMNode,
+    ReadProseMirrorAttrsResult<Readonly<T>>
+  >();
   return (node) => {
     const cached = results.get(node);
     if (cached !== undefined) {
@@ -370,7 +435,9 @@ const freezeAttrsResult = <T extends object>(
   return Object.freeze({ ok: true, value: Object.freeze(result.value) });
 };
 
-const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<ParagraphAttrs> => {
+const readParagraphAttrsUncached = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<ParagraphAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "paragraph", issues);
@@ -409,11 +476,31 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
     PARAGRAPH_ALIGNMENT_VALUES,
   );
   optionalString(attrs, "styleId", "paragraph.attrs.styleId", issues);
-  optionalNumber(attrs, "_tableOfContentsLevel", "paragraph.attrs._tableOfContentsLevel", issues);
+  optionalNumber(
+    attrs,
+    "_tableOfContentsLevel",
+    "paragraph.attrs._tableOfContentsLevel",
+    issues,
+  );
   optionalBoolean(attrs, "kinsoku", "paragraph.attrs.kinsoku", issues);
-  optionalBoolean(attrs, "overflowPunctuation", "paragraph.attrs.overflowPunctuation", issues);
-  optionalBoolean(attrs, "suppressAutoHyphens", "paragraph.attrs.suppressAutoHyphens", issues);
-  optionalBoolean(attrs, "suppressLineNumbers", "paragraph.attrs.suppressLineNumbers", issues);
+  optionalBoolean(
+    attrs,
+    "overflowPunctuation",
+    "paragraph.attrs.overflowPunctuation",
+    issues,
+  );
+  optionalBoolean(
+    attrs,
+    "suppressAutoHyphens",
+    "paragraph.attrs.suppressAutoHyphens",
+    issues,
+  );
+  optionalBoolean(
+    attrs,
+    "suppressLineNumbers",
+    "paragraph.attrs.suppressLineNumbers",
+    issues,
+  );
   optionalNumber(attrs, "spaceBefore", "paragraph.attrs.spaceBefore", issues);
   optionalNumber(attrs, "spaceAfter", "paragraph.attrs.spaceAfter", issues);
   optionalNumber(attrs, "lineSpacing", "paragraph.attrs.lineSpacing", issues);
@@ -433,29 +520,76 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
   );
   optionalNumber(attrs, "indentLeft", "paragraph.attrs.indentLeft", issues);
   optionalNumber(attrs, "indentRight", "paragraph.attrs.indentRight", issues);
-  optionalNumber(attrs, "indentFirstLine", "paragraph.attrs.indentFirstLine", issues);
-  optionalBoolean(attrs, "hangingIndent", "paragraph.attrs.hangingIndent", issues);
-  optionalOutlineLevel(attrs, "outlineLevel", "paragraph.attrs.outlineLevel", issues);
+  optionalNumber(
+    attrs,
+    "indentFirstLine",
+    "paragraph.attrs.indentFirstLine",
+    issues,
+  );
+  optionalBoolean(
+    attrs,
+    "hangingIndent",
+    "paragraph.attrs.hangingIndent",
+    issues,
+  );
+  optionalOutlineLevel(
+    attrs,
+    "outlineLevel",
+    "paragraph.attrs.outlineLevel",
+    issues,
+  );
   optionalString(attrs, "listNumFmt", "paragraph.attrs.listNumFmt", issues);
-  optionalBoolean(attrs, "listIsBullet", "paragraph.attrs.listIsBullet", issues);
+  optionalBoolean(
+    attrs,
+    "listIsBullet",
+    "paragraph.attrs.listIsBullet",
+    issues,
+  );
   optionalBoolean(attrs, "listIsLegal", "paragraph.attrs.listIsLegal", issues);
   optionalString(attrs, "listMarker", "paragraph.attrs.listMarker", issues);
-  optionalString(attrs, "listMarkerTemplate", "paragraph.attrs.listMarkerTemplate", issues);
-  optionalString(attrs, "listFoldedMarkerSuffix", "paragraph.attrs.listFoldedMarkerSuffix", issues);
-  optionalBoolean(attrs, "listMarkerHidden", "paragraph.attrs.listMarkerHidden", issues);
+  optionalString(
+    attrs,
+    "listMarkerTemplate",
+    "paragraph.attrs.listMarkerTemplate",
+    issues,
+  );
+  optionalString(
+    attrs,
+    "listFoldedMarkerSuffix",
+    "paragraph.attrs.listFoldedMarkerSuffix",
+    issues,
+  );
+  optionalBoolean(
+    attrs,
+    "listMarkerHidden",
+    "paragraph.attrs.listMarkerHidden",
+    issues,
+  );
   optionalTextFormatting(
     attrs,
     "listMarkerFormatting",
     "paragraph.attrs.listMarkerFormatting",
     issues,
   );
-  optionalOneOf(attrs, "listMarkerAlignment", "paragraph.attrs.listMarkerAlignment", issues, [
-    "left",
-    "center",
-    "right",
-  ]);
-  optionalString(attrs, "listMarkerSuffix", "paragraph.attrs.listMarkerSuffix", issues);
-  optionalBoolean(attrs, "listMarkerAllCaps", "paragraph.attrs.listMarkerAllCaps", issues);
+  optionalOneOf(
+    attrs,
+    "listMarkerAlignment",
+    "paragraph.attrs.listMarkerAlignment",
+    issues,
+    ["left", "center", "right"],
+  );
+  optionalString(
+    attrs,
+    "listMarkerSuffix",
+    "paragraph.attrs.listMarkerSuffix",
+    issues,
+  );
+  optionalBoolean(
+    attrs,
+    "listMarkerAllCaps",
+    "paragraph.attrs.listMarkerAllCaps",
+    issues,
+  );
   optionalNumber(
     attrs,
     "listImplicitChildLevelAdvances",
@@ -468,32 +602,91 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
     "paragraph.attrs.listMarkerSecondSlotOffsetTwips",
     issues,
   );
-  optionalNumber(attrs, "listStartOverride", "paragraph.attrs.listStartOverride", issues);
-  optionalBoolean(attrs, "pageBreakBefore", "paragraph.attrs.pageBreakBefore", issues);
+  optionalNumber(
+    attrs,
+    "listStartOverride",
+    "paragraph.attrs.listStartOverride",
+    issues,
+  );
+  optionalBoolean(
+    attrs,
+    "pageBreakBefore",
+    "paragraph.attrs.pageBreakBefore",
+    issues,
+  );
   optionalBoolean(
     attrs,
     "renderedPageBreakBefore",
     "paragraph.attrs.renderedPageBreakBefore",
     issues,
   );
-  optionalBoolean(attrs, "_trailingPageBreak", "paragraph.attrs._trailingPageBreak", issues);
-  optionalBoolean(attrs, "_pageBreakCarrier", "paragraph.attrs._pageBreakCarrier", issues);
-  optionalBoolean(attrs, "runInWithNext", "paragraph.attrs.runInWithNext", issues);
+  optionalBoolean(
+    attrs,
+    "_trailingPageBreak",
+    "paragraph.attrs._trailingPageBreak",
+    issues,
+  );
+  optionalBoolean(
+    attrs,
+    "_pageBreakCarrier",
+    "paragraph.attrs._pageBreakCarrier",
+    issues,
+  );
+  optionalBoolean(
+    attrs,
+    "runInWithNext",
+    "paragraph.attrs.runInWithNext",
+    issues,
+  );
   optionalBoolean(attrs, "keepNext", "paragraph.attrs.keepNext", issues);
   optionalBoolean(attrs, "keepLines", "paragraph.attrs.keepLines", issues);
-  optionalBoolean(attrs, "widowControl", "paragraph.attrs.widowControl", issues);
-  optionalBoolean(attrs, "contextualSpacing", "paragraph.attrs.contextualSpacing", issues);
+  optionalBoolean(
+    attrs,
+    "widowControl",
+    "paragraph.attrs.widowControl",
+    issues,
+  );
+  optionalBoolean(
+    attrs,
+    "contextualSpacing",
+    "paragraph.attrs.contextualSpacing",
+    issues,
+  );
   const direction = attrs["direction"];
-  if (direction !== undefined && direction !== null && !isParagraphDirection(direction)) {
+  if (
+    direction !== undefined &&
+    direction !== null &&
+    !isParagraphDirection(direction)
+  ) {
     issues.push({
       path: "paragraph.attrs.direction",
       message: "Expected a ParagraphDirection.",
     });
   }
-  optionalStringArray(attrs, "listLevelNumFmts", "paragraph.attrs.listLevelNumFmts", issues);
-  optionalNumberArray(attrs, "listLevelStarts", "paragraph.attrs.listLevelStarts", issues);
-  optionalTabStops(attrs, "listLevelTabs", "paragraph.attrs.listLevelTabs", issues);
-  optionalNumber(attrs, "listAbstractNumId", "paragraph.attrs.listAbstractNumId", issues);
+  optionalStringArray(
+    attrs,
+    "listLevelNumFmts",
+    "paragraph.attrs.listLevelNumFmts",
+    issues,
+  );
+  optionalNumberArray(
+    attrs,
+    "listLevelStarts",
+    "paragraph.attrs.listLevelStarts",
+    issues,
+  );
+  optionalTabStops(
+    attrs,
+    "listLevelTabs",
+    "paragraph.attrs.listLevelTabs",
+    issues,
+  );
+  optionalNumber(
+    attrs,
+    "listAbstractNumId",
+    "paragraph.attrs.listAbstractNumId",
+    issues,
+  );
   optionalBorderMap(attrs, "borders", "paragraph.attrs.borders", issues, [
     "top",
     "bottom",
@@ -504,8 +697,18 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
   ]);
   optionalShading(attrs, "shading", "paragraph.attrs.shading", issues);
   optionalTabStops(attrs, "tabs", "paragraph.attrs.tabs", issues);
-  optionalRecord(attrs, "spacingExplicit", "paragraph.attrs.spacingExplicit", issues);
-  optionalRecord(attrs, "spacingFromDocDefaults", "paragraph.attrs.spacingFromDocDefaults", issues);
+  optionalRecord(
+    attrs,
+    "spacingExplicit",
+    "paragraph.attrs.spacingExplicit",
+    issues,
+  );
+  optionalRecord(
+    attrs,
+    "spacingFromDocDefaults",
+    "paragraph.attrs.spacingFromDocDefaults",
+    issues,
+  );
   optionalRecord(
     attrs,
     "spacingFromImplicitDefaultStyle",
@@ -525,7 +728,12 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
     issues,
   );
   optionalParagraphNumbering(attrs, "numPr", "paragraph.attrs.numPr", issues);
-  optionalParagraphNumbering(attrs, "numPrFromStyle", "paragraph.attrs.numPrFromStyle", issues);
+  optionalParagraphNumbering(
+    attrs,
+    "numPrFromStyle",
+    "paragraph.attrs.numPrFromStyle",
+    issues,
+  );
   optionalNestedRecord(
     attrs,
     "_originalFormatting",
@@ -542,9 +750,13 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
     "paragraph.attrs._sectionProperties",
     issues,
   );
-  optionalPropertyChanges(attrs, "_propertyChanges", "paragraph.attrs._propertyChanges", issues, [
-    "paragraphPropertyChange",
-  ]);
+  optionalPropertyChanges(
+    attrs,
+    "_propertyChanges",
+    "paragraph.attrs._propertyChanges",
+    issues,
+    ["paragraphPropertyChange"],
+  );
   optionalPreservedAttributes(
     attrs,
     "_preservedAttributes",
@@ -555,12 +767,16 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
   return attrsResult(attrs, issues);
 };
 
-export const readParagraphAttrs = memoizeNodeAttrsReader(readParagraphAttrsUncached);
+export const readParagraphAttrs = memoizeNodeAttrsReader(
+  readParagraphAttrsUncached,
+);
 
 export const expectParagraphAttrs = (node: PMNode): Readonly<ParagraphAttrs> =>
   expectAttrs(readParagraphAttrs(node), "paragraph attrs");
 
-export const readHardBreakAttrs = (node: PMNode): ReadProseMirrorAttrsResult<HardBreakAttrs> => {
+export const readHardBreakAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<HardBreakAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "hardBreak", issues);
@@ -572,8 +788,20 @@ export const readHardBreakAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Har
     issues,
     HARD_BREAK_SOURCE_ELEMENTS,
   );
-  optionalOneOf(attrs, "breakType", "hardBreak.attrs.breakType", issues, HARD_BREAK_TYPES);
-  optionalOneOf(attrs, "clear", "hardBreak.attrs.clear", issues, PAGE_BREAK_CLEAR_VALUES);
+  optionalOneOf(
+    attrs,
+    "breakType",
+    "hardBreak.attrs.breakType",
+    issues,
+    HARD_BREAK_TYPES,
+  );
+  optionalOneOf(
+    attrs,
+    "clear",
+    "hardBreak.attrs.clear",
+    issues,
+    PAGE_BREAK_CLEAR_VALUES,
+  );
   if (attrs["sourceElement"] === "cr") {
     if (attrs["breakType"] !== undefined && attrs["breakType"] !== null) {
       issues.push({
@@ -593,7 +821,12 @@ export const readHardBreakAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Har
 };
 
 export const expectHardBreakAttrs = (node: PMNode): HardBreakAttrs =>
-  expectCachedNodeAttrs(node, hardBreakAttrsCache, readHardBreakAttrs, "hard break attrs");
+  expectCachedNodeAttrs(
+    node,
+    hardBreakAttrsCache,
+    readHardBreakAttrs,
+    "hard break attrs",
+  );
 
 export const readPageBreakRunAttrs = (
   node: PMNode,
@@ -602,7 +835,13 @@ export const readPageBreakRunAttrs = (
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "pageBreakRun", issues);
 
-  optionalOneOf(attrs, "clear", "pageBreakRun.attrs.clear", issues, PAGE_BREAK_CLEAR_VALUES);
+  optionalOneOf(
+    attrs,
+    "clear",
+    "pageBreakRun.attrs.clear",
+    issues,
+    PAGE_BREAK_CLEAR_VALUES,
+  );
 
   return attrsResult(attrs, issues);
 };
@@ -615,7 +854,9 @@ export const expectPageBreakRunAttrs = (node: PMNode): PageBreakRunAttrs =>
     "page break run attrs",
   );
 
-export const readTabAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TabAttrs> => {
+export const readTabAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<TabAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "tab", issues);
@@ -652,7 +893,9 @@ export const readTabAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TabAttrs>
 export const expectTabAttrs = (node: PMNode): TabAttrs =>
   expectCachedNodeAttrs(node, tabAttrsCache, readTabAttrs, "tab attrs");
 
-export const readSymbolAttrs = (node: PMNode): ReadProseMirrorAttrsResult<SymbolAttrs> => {
+export const readSymbolAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<SymbolAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "symbol", issues);
@@ -677,7 +920,12 @@ export const readSymbolAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Symbol
 };
 
 export const expectSymbolAttrs = (node: PMNode): SymbolAttrs =>
-  expectCachedNodeAttrs(node, symbolAttrsCache, readSymbolAttrs, "symbol attrs");
+  expectCachedNodeAttrs(
+    node,
+    symbolAttrsCache,
+    readSymbolAttrs,
+    "symbol attrs",
+  );
 
 export const readPreservedXmlAttrs = (
   node: PMNode,
@@ -709,7 +957,12 @@ export const readPreservedXmlAttrs = (
 };
 
 export const expectPreservedXmlAttrs = (node: PMNode): PreservedXmlAttrs =>
-  expectCachedNodeAttrs(node, preservedXmlAttrsCache, readPreservedXmlAttrs, "preservedXml attrs");
+  expectCachedNodeAttrs(
+    node,
+    preservedXmlAttrsCache,
+    readPreservedXmlAttrs,
+    "preservedXml attrs",
+  );
 
 export const readPreservedBlockAttrs = (
   node: PMNode,
@@ -719,7 +972,12 @@ export const readPreservedBlockAttrs = (
   expectNodeType(node, "preservedBlock", issues);
 
   requiredString(attrs, "xml", "preservedBlock.attrs.xml", issues);
-  optionalString(attrs, "readerText", "preservedBlock.attrs.readerText", issues);
+  optionalString(
+    attrs,
+    "readerText",
+    "preservedBlock.attrs.readerText",
+    issues,
+  );
 
   return attrsResult(attrs, issues);
 };
@@ -732,14 +990,22 @@ export const expectPreservedBlockAttrs = (node: PMNode): PreservedBlockAttrs =>
     "preservedBlock attrs",
   );
 
-const readTableAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<TableAttrs> => {
+const readTableAttrsUncached = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<TableAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "table", issues);
 
   optionalString(attrs, "styleId", "table.attrs.styleId", issues);
   optionalNumber(attrs, "width", "table.attrs.width", issues);
-  optionalOneOf(attrs, "widthType", "table.attrs.widthType", issues, TABLE_WIDTH_TYPE_VALUES);
+  optionalOneOf(
+    attrs,
+    "widthType",
+    "table.attrs.widthType",
+    issues,
+    TABLE_WIDTH_TYPE_VALUES,
+  );
   optionalOneOf(
     attrs,
     "justification",
@@ -747,7 +1013,12 @@ const readTableAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<TableA
     issues,
     TABLE_JUSTIFICATION_VALUES,
   );
-  optionalNumberArray(attrs, "columnWidths", "table.attrs.columnWidths", issues);
+  optionalNumberArray(
+    attrs,
+    "columnWidths",
+    "table.attrs.columnWidths",
+    issues,
+  );
   optionalRecord(attrs, "floating", "table.attrs.floating", issues);
   optionalInsetMap(attrs, "cellMargins", "table.attrs.cellMargins", issues);
   optionalRecord(attrs, "look", "table.attrs.look", issues);
@@ -767,10 +1038,25 @@ const readTableAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<TableA
     TABLE_JUSTIFICATION_VALUES,
   );
   optionalBoolean(attrs, "_resolvedBidi", "table.attrs._resolvedBidi", issues);
-  optionalRecord(attrs, "_originalFormatting", "table.attrs._originalFormatting", issues);
+  optionalRecord(
+    attrs,
+    "_originalFormatting",
+    "table.attrs._originalFormatting",
+    issues,
+  );
   optionalPositionedBookmarks(attrs, "table.attrs._bookmarks", issues);
-  optionalTablePreservedMarkup(attrs, "_preserved", "table.attrs._preserved", issues);
-  optionalTableContentCarriers(attrs, "carrierStack", "table.attrs.carrierStack", issues);
+  optionalTablePreservedMarkup(
+    attrs,
+    "_preserved",
+    "table.attrs._preserved",
+    issues,
+  );
+  optionalTableContentCarriers(
+    attrs,
+    "carrierStack",
+    "table.attrs.carrierStack",
+    issues,
+  );
 
   return attrsResult(attrs, issues);
 };
@@ -780,7 +1066,9 @@ export const readTableAttrs = memoizeNodeAttrsReader(readTableAttrsUncached);
 export const expectTableAttrs = (node: PMNode): Readonly<TableAttrs> =>
   expectAttrs(readTableAttrs(node), "table attrs");
 
-const readTableRowAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<TableRowAttrs> => {
+const readTableRowAttrsUncached = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<TableRowAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "tableRow", issues);
@@ -802,7 +1090,12 @@ const readTableRowAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Tab
     issues,
     TABLE_JUSTIFICATION_VALUES,
   );
-  optionalRecord(attrs, "_originalFormatting", "tableRow.attrs._originalFormatting", issues);
+  optionalRecord(
+    attrs,
+    "_originalFormatting",
+    "tableRow.attrs._originalFormatting",
+    issues,
+  );
   optionalRecord(
     attrs,
     "_tablePropertyExceptions",
@@ -825,18 +1118,32 @@ const readTableRowAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Tab
   );
   optionalPositionedBookmarks(attrs, "tableRow.attrs._bookmarks", issues);
   optionalContentControls(attrs, "tableRow.attrs.contentControls", issues);
-  optionalTableContentCarriers(attrs, "carrierStack", "tableRow.attrs.carrierStack", issues);
-  optionalTablePreservedMarkup(attrs, "_preserved", "tableRow.attrs._preserved", issues);
+  optionalTableContentCarriers(
+    attrs,
+    "carrierStack",
+    "tableRow.attrs.carrierStack",
+    issues,
+  );
+  optionalTablePreservedMarkup(
+    attrs,
+    "_preserved",
+    "tableRow.attrs._preserved",
+    issues,
+  );
 
   return attrsResult(attrs, issues);
 };
 
-export const readTableRowAttrs = memoizeNodeAttrsReader(readTableRowAttrsUncached);
+export const readTableRowAttrs = memoizeNodeAttrsReader(
+  readTableRowAttrsUncached,
+);
 
 export const expectTableRowAttrs = (node: PMNode): Readonly<TableRowAttrs> =>
   expectAttrs(readTableRowAttrs(node), "table row attrs");
 
-export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableCellAttrs> => {
+export const readTableCellAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<TableCellAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeTypeOneOf(node, ["tableCell", "tableHeader"], issues);
@@ -855,7 +1162,13 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
     allowNull: true,
   });
   optionalNumber(attrs, "width", "tableCell.attrs.width", issues);
-  optionalOneOf(attrs, "widthType", "tableCell.attrs.widthType", issues, TABLE_WIDTH_TYPE_VALUES);
+  optionalOneOf(
+    attrs,
+    "widthType",
+    "tableCell.attrs.widthType",
+    issues,
+    TABLE_WIDTH_TYPE_VALUES,
+  );
   optionalAuthoredWidth(attrs, issues);
   optionalOneOf(
     attrs,
@@ -864,7 +1177,12 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
     issues,
     TABLE_CELL_VERTICAL_ALIGNMENT_VALUES,
   );
-  optionalString(attrs, "backgroundColor", "tableCell.attrs.backgroundColor", issues);
+  optionalString(
+    attrs,
+    "backgroundColor",
+    "tableCell.attrs.backgroundColor",
+    issues,
+  );
   optionalString(
     attrs,
     "_resolvedBackgroundColor",
@@ -889,10 +1207,20 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
     "topRightToBottomLeft",
   ]);
   optionalInsetMap(attrs, "margins", "tableCell.attrs.margins", issues);
-  optionalRecord(attrs, "_originalFormatting", "tableCell.attrs._originalFormatting", issues);
+  optionalRecord(
+    attrs,
+    "_originalFormatting",
+    "tableCell.attrs._originalFormatting",
+    issues,
+  );
   optionalTableCellRevision(attrs, issues);
   optionalContentControls(attrs, "tableCell.attrs.contentControls", issues);
-  optionalTableContentCarriers(attrs, "carrierStack", "tableCell.attrs.carrierStack", issues);
+  optionalTableContentCarriers(
+    attrs,
+    "carrierStack",
+    "tableCell.attrs.carrierStack",
+    issues,
+  );
   optionalBoolean(
     attrs,
     "_preserveVMergeRestart",
@@ -903,9 +1231,16 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
 };
 
 export const expectTableCellAttrs = (node: PMNode): TableCellAttrs =>
-  expectCachedNodeAttrs(node, tableCellAttrsCache, readTableCellAttrs, "table cell attrs");
+  expectCachedNodeAttrs(
+    node,
+    tableCellAttrsCache,
+    readTableCellAttrs,
+    "table cell attrs",
+  );
 
-export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAttrs> => {
+export const readImageAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<ImageAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "image", issues);
@@ -927,9 +1262,27 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalString(attrs, "rId", "image.attrs.rId", issues);
   optionalNumber(attrs, "width", "image.attrs.width", issues);
   optionalNumber(attrs, "height", "image.attrs.height", issues);
-  optionalOneOf(attrs, "wrapType", "image.attrs.wrapType", issues, IMAGE_WRAP_TYPE_VALUES);
-  optionalOneOf(attrs, "displayMode", "image.attrs.displayMode", issues, IMAGE_DISPLAY_MODES);
-  optionalOneOf(attrs, "cssFloat", "image.attrs.cssFloat", issues, IMAGE_CSS_FLOATS);
+  optionalOneOf(
+    attrs,
+    "wrapType",
+    "image.attrs.wrapType",
+    issues,
+    IMAGE_WRAP_TYPE_VALUES,
+  );
+  optionalOneOf(
+    attrs,
+    "displayMode",
+    "image.attrs.displayMode",
+    issues,
+    IMAGE_DISPLAY_MODES,
+  );
+  optionalOneOf(
+    attrs,
+    "cssFloat",
+    "image.attrs.cssFloat",
+    issues,
+    IMAGE_CSS_FLOATS,
+  );
   optionalString(attrs, "transform", "image.attrs.transform", issues);
   optionalNumber(attrs, "docxRotation", "image.attrs.docxRotation", issues);
   optionalBoolean(attrs, "docxFlipH", "image.attrs.docxFlipH", issues);
@@ -951,7 +1304,12 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalNumber(attrs, "paddingLeft", "image.attrs.paddingLeft", issues);
   optionalImagePosition(attrs, "position", "image.attrs.position", issues);
   optionalDrawingAnchor(attrs, "anchor", "image.attrs.anchor", issues);
-  optionalWrapDistanceSlots(attrs, "wrapDistanceSlots", "image.attrs.wrapDistanceSlots", issues);
+  optionalWrapDistanceSlots(
+    attrs,
+    "wrapDistanceSlots",
+    "image.attrs.wrapDistanceSlots",
+    issues,
+  );
   optionalEffectExtentSlots(
     attrs,
     "wrapEffectExtentSlots",
@@ -961,8 +1319,18 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalWrapPolygon(attrs, "wrapPolygon", "image.attrs.wrapPolygon", issues);
   optionalBoolean(attrs, "decorative", "image.attrs.decorative", issues);
   optionalBoolean(attrs, "hidden", "image.attrs.hidden", issues);
-  optionalStringArray(attrs, "docPrExtensions", "image.attrs.docPrExtensions", issues);
-  optionalImageFrameLocks(attrs, "frameLocks", "image.attrs.frameLocks", issues);
+  optionalStringArray(
+    attrs,
+    "docPrExtensions",
+    "image.attrs.docPrExtensions",
+    issues,
+  );
+  optionalImageFrameLocks(
+    attrs,
+    "frameLocks",
+    "image.attrs.frameLocks",
+    issues,
+  );
   optionalAuthoredEmu(
     attrs,
     "_docxAuthoredEmu",
@@ -973,10 +1341,21 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalNumber(attrs, "borderWidth", "image.attrs.borderWidth", issues);
   optionalString(attrs, "borderColor", "image.attrs.borderColor", issues);
   optionalString(attrs, "borderStyle", "image.attrs.borderStyle", issues);
-  optionalOneOf(attrs, "wrapText", "image.attrs.wrapText", issues, IMAGE_WRAP_TEXT_VALUES);
+  optionalOneOf(
+    attrs,
+    "wrapText",
+    "image.attrs.wrapText",
+    issues,
+    IMAGE_WRAP_TEXT_VALUES,
+  );
   optionalString(attrs, "hlinkHref", "image.attrs.hlinkHref", issues);
   optionalString(attrs, "hlinkRId", "image.attrs.hlinkRId", issues);
-  optionalDocPrLink(attrs, "hlinkClickSource", "image.attrs.hlinkClickSource", issues);
+  optionalDocPrLink(
+    attrs,
+    "hlinkClickSource",
+    "image.attrs.hlinkClickSource",
+    issues,
+  );
   optionalString(attrs, "hlinkHoverXml", "image.attrs.hlinkHoverXml", issues);
   optionalString(attrs, "docPrId", "image.attrs.docPrId", issues);
   optionalString(attrs, "_docxRawXml", "image.attrs._docxRawXml", issues);
@@ -987,7 +1366,12 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
     issues,
     Object.values(DRAWING_RAW_XML_MODES),
   );
-  optionalString(attrs, "_docxRawImageFingerprint", "image.attrs._docxRawImageFingerprint", issues);
+  optionalString(
+    attrs,
+    "_docxRawImageFingerprint",
+    "image.attrs._docxRawImageFingerprint",
+    issues,
+  );
   const rawXml = attrs["_docxRawXml"];
   // Every mode classifies captured raw XML, so a classified drawing without it
   // is incoherent: the model union makes `rawXml` required on both branches.
@@ -1000,7 +1384,12 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
       message: "Classified drawings require raw XML.",
     });
   }
-  optionalBoolean(attrs, "_docxObjectPreview", "image.attrs._docxObjectPreview", issues);
+  optionalBoolean(
+    attrs,
+    "_docxObjectPreview",
+    "image.attrs._docxObjectPreview",
+    issues,
+  );
 
   return attrsResult(attrs, issues);
 };
@@ -1008,7 +1397,10 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
 export const expectImageAttrs = (node: PMNode): ImageAttrs =>
   expectCachedNodeAttrs(node, imageAttrsCache, readImageAttrs, "image attrs");
 
-const validateEmptyFieldResultRuns = (value: unknown, issues: ProseMirrorAttrIssue[]): void => {
+const validateEmptyFieldResultRuns = (
+  value: unknown,
+  issues: ProseMirrorAttrIssue[],
+): void => {
   if (!Array.isArray(value) || value.length === 0) {
     issues.push({
       path: "field.attrs._docxEmptyResultRuns",
@@ -1026,22 +1418,40 @@ const validateEmptyFieldResultRuns = (value: unknown, issues: ProseMirrorAttrIss
     const content = run["content"];
     if (
       !Array.isArray(content) ||
-      !content.every((item) => isRecord(item) && item["type"] === "text" && item["text"] === "")
+      !content.every(
+        (item) =>
+          isRecord(item) && item["type"] === "text" && item["text"] === "",
+      )
     ) {
-      issues.push({ path: `${path}.content`, message: "Expected only empty text." });
+      issues.push({
+        path: `${path}.content`,
+        message: "Expected only empty text.",
+      });
     }
     const formatting = run["formatting"];
     if (formatting !== undefined) {
       if (!isRecord(formatting)) {
-        issues.push({ path: `${path}.formatting`, message: "Expected formatting object." });
+        issues.push({
+          path: `${path}.formatting`,
+          message: "Expected formatting object.",
+        });
       } else {
         validateTextFormatting(formatting, `${path}.formatting`, issues);
       }
     }
-    optionalPropertyChanges(run, "propertyChanges", `${path}.propertyChanges`, issues, [
-      "runPropertyChange",
-    ]);
-    optionalPreservedAttributes(run, "preservedAttributes", `${path}.preservedAttributes`, issues);
+    optionalPropertyChanges(
+      run,
+      "propertyChanges",
+      `${path}.propertyChanges`,
+      issues,
+      ["runPropertyChange"],
+    );
+    optionalPreservedAttributes(
+      run,
+      "preservedAttributes",
+      `${path}.preservedAttributes`,
+      issues,
+    );
   }
 };
 
@@ -1072,7 +1482,9 @@ const isFieldCodeContent = (value: unknown): boolean => {
         typeof value["text"] === "string"
       );
     case "symbol":
-      return typeof value["font"] === "string" && typeof value["char"] === "string";
+      return (
+        typeof value["font"] === "string" && typeof value["char"] === "string"
+      );
     case "footnoteRef":
     case "endnoteRef":
       return typeof value["id"] === "number";
@@ -1096,12 +1508,17 @@ const isFieldCodeContent = (value: unknown): boolean => {
 export const isValidFieldCode = (
   value: unknown,
 ): value is NonNullable<FieldAttrs["_docxFieldCode"]> => {
-  if (!isRecord(value) || typeof value["instruction"] !== "string") return false;
+  if (!isRecord(value) || typeof value["instruction"] !== "string")
+    return false;
   const runs = value["runs"];
   if (!Array.isArray(runs) || runs.length === 0) return false;
   const issues: ProseMirrorAttrIssue[] = [];
   for (const [index, run] of runs.entries()) {
-    if (!isRecord(run) || run["type"] !== "run" || !Array.isArray(run["content"])) {
+    if (
+      !isRecord(run) ||
+      run["type"] !== "run" ||
+      !Array.isArray(run["content"])
+    ) {
       return false;
     }
     if (!run["content"].every(isFieldCodeContent)) return false;
@@ -1110,36 +1527,81 @@ export const isValidFieldCode = (
       if (!isRecord(run["formatting"])) return false;
       validateTextFormatting(run["formatting"], `${path}.formatting`, issues);
     }
-    optionalPropertyChanges(run, "propertyChanges", `${path}.propertyChanges`, issues, [
-      "runPropertyChange",
-    ]);
-    optionalPreservedAttributes(run, "preservedAttributes", `${path}.preservedAttributes`, issues);
+    optionalPropertyChanges(
+      run,
+      "propertyChanges",
+      `${path}.propertyChanges`,
+      issues,
+      ["runPropertyChange"],
+    );
+    optionalPreservedAttributes(
+      run,
+      "preservedAttributes",
+      `${path}.preservedAttributes`,
+      issues,
+    );
   }
   return issues.length === 0;
 };
 
-export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAttrs> => {
+export const readFieldAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<FieldAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeTypeOneOf(node, ["field", "structuredField"], issues);
 
-  requiredOneOf(attrs, "fieldType", "field.attrs.fieldType", issues, FIELD_TYPE_VALUES);
+  requiredOneOf(
+    attrs,
+    "fieldType",
+    "field.attrs.fieldType",
+    issues,
+    FIELD_TYPE_VALUES,
+  );
   requiredString(attrs, "instruction", "field.attrs.instruction", issues);
   requiredString(attrs, "displayText", "field.attrs.displayText", issues);
-  optionalString(attrs, "_numberedRefBaseline", "field.attrs._numberedRefBaseline", issues);
-  requiredOneOf(attrs, "fieldKind", "field.attrs.fieldKind", issues, FIELD_KINDS);
+  optionalString(
+    attrs,
+    "_numberedRefBaseline",
+    "field.attrs._numberedRefBaseline",
+    issues,
+  );
+  requiredOneOf(
+    attrs,
+    "fieldKind",
+    "field.attrs.fieldKind",
+    issues,
+    FIELD_KINDS,
+  );
   optionalBoolean(attrs, "fldLock", "field.attrs.fldLock", issues);
   optionalBoolean(attrs, "dirty", "field.attrs.dirty", issues);
-  optionalBoolean(attrs, "fieldResultIsFallback", "field.attrs.fieldResultIsFallback", issues);
-  optionalString(attrs, "formFieldDataXml", "field.attrs.formFieldDataXml", issues);
+  optionalBoolean(
+    attrs,
+    "fieldResultIsFallback",
+    "field.attrs.fieldResultIsFallback",
+    issues,
+  );
+  optionalString(
+    attrs,
+    "formFieldDataXml",
+    "field.attrs.formFieldDataXml",
+    issues,
+  );
   if (attrs["fieldKind"] === "simple") {
-    if (attrs["fieldResultIsFallback"] !== undefined && attrs["fieldResultIsFallback"] !== null) {
+    if (
+      attrs["fieldResultIsFallback"] !== undefined &&
+      attrs["fieldResultIsFallback"] !== null
+    ) {
       issues.push({
         path: "field.attrs.fieldResultIsFallback",
-        message: "Simple fields cannot have a synthesized complex-field result.",
+        message:
+          "Simple fields cannot have a synthesized complex-field result.",
       });
     }
-    if (attrs["formFieldDataXml"] !== undefined && attrs["formFieldDataXml"] !== null) {
+    if (
+      attrs["formFieldDataXml"] !== undefined &&
+      attrs["formFieldDataXml"] !== null
+    ) {
       issues.push({
         path: "field.attrs.formFieldDataXml",
         message: "Simple fields cannot carry complex-field form data.",
@@ -1151,7 +1613,11 @@ export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAt
     validateEmptyFieldResultRuns(emptyResultRuns, issues);
   }
   const fieldCode = attrs["_docxFieldCode"];
-  if (fieldCode !== undefined && fieldCode !== null && !isValidFieldCode(fieldCode)) {
+  if (
+    fieldCode !== undefined &&
+    fieldCode !== null &&
+    !isValidFieldCode(fieldCode)
+  ) {
     issues.push({
       path: "field.attrs._docxFieldCode",
       message: "Expected source field code runs.",
@@ -1164,10 +1630,14 @@ export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAt
         message: "Simple fields cannot carry complex-field code runs.",
       });
     }
-    if (attrs["fieldResultIsFallback"] !== undefined && attrs["fieldResultIsFallback"] !== null) {
+    if (
+      attrs["fieldResultIsFallback"] !== undefined &&
+      attrs["fieldResultIsFallback"] !== null
+    ) {
       issues.push({
         path: "field.attrs.fieldResultIsFallback",
-        message: "Simple fields cannot have a synthesized complex-field result.",
+        message:
+          "Simple fields cannot have a synthesized complex-field result.",
       });
     }
   }
@@ -1178,7 +1648,9 @@ export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAt
 export const expectFieldAttrs = (node: PMNode): FieldAttrs =>
   expectCachedNodeAttrs(node, fieldAttrsCache, readFieldAttrs, "field attrs");
 
-export const readMathAttrs = (node: PMNode): ReadProseMirrorAttrsResult<MathAttrs> => {
+export const readMathAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<MathAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "math", issues);
@@ -1193,7 +1665,9 @@ export const readMathAttrs = (node: PMNode): ReadProseMirrorAttrsResult<MathAttr
 export const expectMathAttrs = (node: PMNode): MathAttrs =>
   expectCachedNodeAttrs(node, mathAttrsCache, readMathAttrs, "math attrs");
 
-export const readSdtAttrs = (node: PMNode): ReadProseMirrorAttrsResult<SdtAttrs> => {
+export const readSdtAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<SdtAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "sdt", issues);
@@ -1215,9 +1689,24 @@ export const readBlockCustomXmlAttrs = (
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "blockCustomXml", issues);
-  requiredString(attrs, "openingXml", "blockCustomXml.attrs.openingXml", issues);
-  requiredString(attrs, "closingXml", "blockCustomXml.attrs.closingXml", issues);
-  optionalBoolean(attrs, "_originallyEmpty", "blockCustomXml.attrs._originallyEmpty", issues);
+  requiredString(
+    attrs,
+    "openingXml",
+    "blockCustomXml.attrs.openingXml",
+    issues,
+  );
+  requiredString(
+    attrs,
+    "closingXml",
+    "blockCustomXml.attrs.closingXml",
+    issues,
+  );
+  optionalBoolean(
+    attrs,
+    "_originallyEmpty",
+    "blockCustomXml.attrs._originallyEmpty",
+    issues,
+  );
   return attrsResult(attrs, issues);
 };
 
@@ -1229,26 +1718,59 @@ export const expectBlockCustomXmlAttrs = (node: PMNode): BlockCustomXmlAttrs =>
     "blockCustomXml attrs",
   );
 
-export const readBlockSdtAttrs = (node: PMNode): ReadProseMirrorAttrsResult<BlockSdtAttrs> => {
+export const readBlockSdtAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<BlockSdtAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "blockSdt", issues);
 
-  requiredOneOf(attrs, "sdtType", "blockSdt.attrs.sdtType", issues, SDT_TYPE_VALUES);
+  requiredOneOf(
+    attrs,
+    "sdtType",
+    "blockSdt.attrs.sdtType",
+    issues,
+    SDT_TYPE_VALUES,
+  );
   optionalString(attrs, "alias", "blockSdt.attrs.alias", issues);
   optionalString(attrs, "tag", "blockSdt.attrs.tag", issues);
   optionalNumber(attrs, "id", "blockSdt.attrs.id", issues);
   optionalOneOf(attrs, "lock", "blockSdt.attrs.lock", issues, SDT_LOCK_VALUES);
   optionalString(attrs, "placeholder", "blockSdt.attrs.placeholder", issues);
-  optionalBoolean(attrs, "showingPlaceholder", "blockSdt.attrs.showingPlaceholder", issues);
+  optionalBoolean(
+    attrs,
+    "showingPlaceholder",
+    "blockSdt.attrs.showingPlaceholder",
+    issues,
+  );
   optionalString(attrs, "dateFormat", "blockSdt.attrs.dateFormat", issues);
   optionalString(attrs, "dateValueISO", "blockSdt.attrs.dateValueISO", issues);
   optionalSdtListItems(attrs, "listItems", "blockSdt.attrs.listItems", issues);
-  optionalString(attrs, "dropdownLastValue", "blockSdt.attrs.dropdownLastValue", issues);
+  optionalString(
+    attrs,
+    "dropdownLastValue",
+    "blockSdt.attrs.dropdownLastValue",
+    issues,
+  );
   optionalBoolean(attrs, "checked", "blockSdt.attrs.checked", issues);
-  optionalBoolean(attrs, "_originallyEmpty", "blockSdt.attrs._originallyEmpty", issues);
-  optionalPreservedMarkup(attrs, "_preserved", "blockSdt.attrs._preserved", issues);
-  optionalString(attrs, "rawEndPropertiesXml", "blockSdt.attrs.rawEndPropertiesXml", issues);
+  optionalBoolean(
+    attrs,
+    "_originallyEmpty",
+    "blockSdt.attrs._originallyEmpty",
+    issues,
+  );
+  optionalPreservedMarkup(
+    attrs,
+    "_preserved",
+    "blockSdt.attrs._preserved",
+    issues,
+  );
+  optionalString(
+    attrs,
+    "rawEndPropertiesXml",
+    "blockSdt.attrs.rawEndPropertiesXml",
+    issues,
+  );
   optionalSdtEndProperties(attrs, "blockSdt.attrs.endProperties", issues);
   optionalString(
     attrs,
@@ -1267,15 +1789,27 @@ export const readBlockSdtAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Bloc
 };
 
 export const expectBlockSdtAttrs = (node: PMNode): BlockSdtAttrs =>
-  expectCachedNodeAttrs(node, blockSdtAttrsCache, readBlockSdtAttrs, "blockSdt attrs");
+  expectCachedNodeAttrs(
+    node,
+    blockSdtAttrsCache,
+    readBlockSdtAttrs,
+    "blockSdt attrs",
+  );
 
-export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAttrs> => {
+export const readShapeAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<ShapeAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "shape", issues);
 
   optionalString(attrs, "shapeType", "shape.attrs.shapeType", issues);
-  optionalString(attrs, "geometryAdjustments", "shape.attrs.geometryAdjustments", issues);
+  optionalString(
+    attrs,
+    "geometryAdjustments",
+    "shape.attrs.geometryAdjustments",
+    issues,
+  );
   optionalString(attrs, "shapeId", "shape.attrs.shapeId", issues);
   optionalString(attrs, "shapeName", "shape.attrs.shapeName", issues);
   optionalString(attrs, "alt", "shape.attrs.alt", issues);
@@ -1290,14 +1824,41 @@ export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAt
     SHAPE_AUTHORED_EMU_ATTRS,
   );
   optionalString(attrs, "fillColor", "shape.attrs.fillColor", issues);
-  optionalColorValue(attrs, "fillColorValue", "shape.attrs.fillColorValue", issues);
-  optionalOneOf(attrs, "fillType", "shape.attrs.fillType", issues, SHAPE_FILL_TYPES);
-  optionalOneOf(attrs, "gradientType", "shape.attrs.gradientType", issues, SHAPE_GRADIENT_TYPES);
+  optionalColorValue(
+    attrs,
+    "fillColorValue",
+    "shape.attrs.fillColorValue",
+    issues,
+  );
+  optionalOneOf(
+    attrs,
+    "fillType",
+    "shape.attrs.fillType",
+    issues,
+    SHAPE_FILL_TYPES,
+  );
+  optionalOneOf(
+    attrs,
+    "gradientType",
+    "shape.attrs.gradientType",
+    issues,
+    SHAPE_GRADIENT_TYPES,
+  );
   optionalNumber(attrs, "gradientAngle", "shape.attrs.gradientAngle", issues);
-  optionalGradientStops(attrs, "gradientStops", "shape.attrs.gradientStops", issues);
+  optionalGradientStops(
+    attrs,
+    "gradientStops",
+    "shape.attrs.gradientStops",
+    issues,
+  );
   optionalNumber(attrs, "outlineWidth", "shape.attrs.outlineWidth", issues);
   optionalString(attrs, "outlineColor", "shape.attrs.outlineColor", issues);
-  optionalColorValue(attrs, "outlineColorValue", "shape.attrs.outlineColorValue", issues);
+  optionalColorValue(
+    attrs,
+    "outlineColorValue",
+    "shape.attrs.outlineColorValue",
+    issues,
+  );
   optionalOneOf(
     attrs,
     "outlineStyle",
@@ -1305,25 +1866,76 @@ export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAt
     issues,
     OUTLINE_STYLE_ATTR_VALUES,
   );
-  optionalOneOf(attrs, "outlineCap", "shape.attrs.outlineCap", issues, SHAPE_OUTLINE_CAPS);
-  optionalOneOf(attrs, "outlineJoin", "shape.attrs.outlineJoin", issues, SHAPE_OUTLINE_JOINS);
-  optionalShapeLineEnd(attrs, "outlineHeadEnd", "shape.attrs.outlineHeadEnd", issues);
-  optionalShapeLineEnd(attrs, "outlineTailEnd", "shape.attrs.outlineTailEnd", issues);
+  optionalOneOf(
+    attrs,
+    "outlineCap",
+    "shape.attrs.outlineCap",
+    issues,
+    SHAPE_OUTLINE_CAPS,
+  );
+  optionalOneOf(
+    attrs,
+    "outlineJoin",
+    "shape.attrs.outlineJoin",
+    issues,
+    SHAPE_OUTLINE_JOINS,
+  );
+  optionalShapeLineEnd(
+    attrs,
+    "outlineHeadEnd",
+    "shape.attrs.outlineHeadEnd",
+    issues,
+  );
+  optionalShapeLineEnd(
+    attrs,
+    "outlineTailEnd",
+    "shape.attrs.outlineTailEnd",
+    issues,
+  );
   optionalString(attrs, "transform", "shape.attrs.transform", issues);
   optionalNumber(attrs, "docxRotation", "shape.attrs.docxRotation", issues);
   optionalBoolean(attrs, "docxFlipH", "shape.attrs.docxFlipH", issues);
   optionalBoolean(attrs, "docxFlipV", "shape.attrs.docxFlipV", issues);
-  optionalOneOf(attrs, "displayMode", "shape.attrs.displayMode", issues, IMAGE_DISPLAY_MODES);
-  optionalOneOf(attrs, "cssFloat", "shape.attrs.cssFloat", issues, IMAGE_CSS_FLOATS);
-  optionalOneOf(attrs, "wrapType", "shape.attrs.wrapType", issues, IMAGE_WRAP_TYPE_VALUES);
-  optionalOneOf(attrs, "wrapText", "shape.attrs.wrapText", issues, IMAGE_WRAP_TEXT_VALUES);
+  optionalOneOf(
+    attrs,
+    "displayMode",
+    "shape.attrs.displayMode",
+    issues,
+    IMAGE_DISPLAY_MODES,
+  );
+  optionalOneOf(
+    attrs,
+    "cssFloat",
+    "shape.attrs.cssFloat",
+    issues,
+    IMAGE_CSS_FLOATS,
+  );
+  optionalOneOf(
+    attrs,
+    "wrapType",
+    "shape.attrs.wrapType",
+    issues,
+    IMAGE_WRAP_TYPE_VALUES,
+  );
+  optionalOneOf(
+    attrs,
+    "wrapText",
+    "shape.attrs.wrapText",
+    issues,
+    IMAGE_WRAP_TEXT_VALUES,
+  );
   optionalNumber(attrs, "distTop", "shape.attrs.distTop", issues);
   optionalNumber(attrs, "distBottom", "shape.attrs.distBottom", issues);
   optionalNumber(attrs, "distLeft", "shape.attrs.distLeft", issues);
   optionalNumber(attrs, "distRight", "shape.attrs.distRight", issues);
   optionalImagePosition(attrs, "position", "shape.attrs.position", issues);
   optionalDrawingAnchor(attrs, "anchor", "shape.attrs.anchor", issues);
-  optionalWrapDistanceSlots(attrs, "wrapDistanceSlots", "shape.attrs.wrapDistanceSlots", issues);
+  optionalWrapDistanceSlots(
+    attrs,
+    "wrapDistanceSlots",
+    "shape.attrs.wrapDistanceSlots",
+    issues,
+  );
   optionalEffectExtentSlots(
     attrs,
     "wrapEffectExtentSlots",
@@ -1345,22 +1957,41 @@ export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAt
 export const expectShapeAttrs = (node: PMNode): ShapeAttrs =>
   expectCachedNodeAttrs(node, shapeAttrsCache, readShapeAttrs, "shape attrs");
 
-export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextBoxAttrs> => {
+export const readTextBoxAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<TextBoxAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "textBox", issues);
 
   optionalNumber(attrs, "width", "textBox.attrs.width", issues);
   optionalNumber(attrs, "height", "textBox.attrs.height", issues);
-  optionalOneOf(attrs, "autoFit", "textBox.attrs.autoFit", issues, TEXT_BOX_AUTO_FIT_VALUES);
+  optionalOneOf(
+    attrs,
+    "autoFit",
+    "textBox.attrs.autoFit",
+    issues,
+    TEXT_BOX_AUTO_FIT_VALUES,
+  );
   optionalWordArt(attrs, "wordArt", "textBox.attrs.wordArt", issues);
-  optionalOneOf(attrs, "textWrap", "textBox.attrs.textWrap", issues, TEXT_BOX_TEXT_WRAP_VALUES);
+  optionalOneOf(
+    attrs,
+    "textWrap",
+    "textBox.attrs.textWrap",
+    issues,
+    TEXT_BOX_TEXT_WRAP_VALUES,
+  );
   optionalString(attrs, "textBoxId", "textBox.attrs.textBoxId", issues);
   optionalString(attrs, "textBoxName", "textBox.attrs.textBoxName", issues);
   optionalString(attrs, "alt", "textBox.attrs.alt", issues);
   optionalString(attrs, "title", "textBox.attrs.title", issues);
   optionalString(attrs, "fillColor", "textBox.attrs.fillColor", issues);
-  optionalGradientFill(attrs, "gradientFill", "textBox.attrs.gradientFill", issues);
+  optionalGradientFill(
+    attrs,
+    "gradientFill",
+    "textBox.attrs.gradientFill",
+    issues,
+  );
   optionalNumber(attrs, "outlineWidth", "textBox.attrs.outlineWidth", issues);
   optionalAuthoredEmu(
     attrs,
@@ -1377,7 +2008,12 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
     issues,
     OUTLINE_STYLE_ATTR_VALUES,
   );
-  optionalTextBoxTransform(attrs, "transform", "textBox.attrs.transform", issues);
+  optionalTextBoxTransform(
+    attrs,
+    "transform",
+    "textBox.attrs.transform",
+    issues,
+  );
   optionalNumber(attrs, "docxRotation", "textBox.attrs.docxRotation", issues);
   optionalBoolean(attrs, "docxFlipH", "textBox.attrs.docxFlipH", issues);
   optionalBoolean(attrs, "docxFlipV", "textBox.attrs.docxFlipV", issues);
@@ -1386,24 +2022,58 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   optionalNumber(attrs, "marginLeft", "textBox.attrs.marginLeft", issues);
   optionalNumber(attrs, "marginRight", "textBox.attrs.marginRight", issues);
   optionalString(attrs, "verticalAlign", "textBox.attrs.verticalAlign", issues);
-  optionalOneOf(attrs, "displayMode", "textBox.attrs.displayMode", issues, IMAGE_DISPLAY_MODES);
-  optionalOneOf(attrs, "cssFloat", "textBox.attrs.cssFloat", issues, IMAGE_CSS_FLOATS);
-  optionalOneOf(attrs, "wrapType", "textBox.attrs.wrapType", issues, IMAGE_WRAP_TYPE_VALUES);
-  optionalOneOf(attrs, "wrapText", "textBox.attrs.wrapText", issues, IMAGE_WRAP_TEXT_VALUES);
+  optionalOneOf(
+    attrs,
+    "displayMode",
+    "textBox.attrs.displayMode",
+    issues,
+    IMAGE_DISPLAY_MODES,
+  );
+  optionalOneOf(
+    attrs,
+    "cssFloat",
+    "textBox.attrs.cssFloat",
+    issues,
+    IMAGE_CSS_FLOATS,
+  );
+  optionalOneOf(
+    attrs,
+    "wrapType",
+    "textBox.attrs.wrapType",
+    issues,
+    IMAGE_WRAP_TYPE_VALUES,
+  );
+  optionalOneOf(
+    attrs,
+    "wrapText",
+    "textBox.attrs.wrapText",
+    issues,
+    IMAGE_WRAP_TEXT_VALUES,
+  );
   optionalNumber(attrs, "distTop", "textBox.attrs.distTop", issues);
   optionalNumber(attrs, "distBottom", "textBox.attrs.distBottom", issues);
   optionalNumber(attrs, "distLeft", "textBox.attrs.distLeft", issues);
   optionalNumber(attrs, "distRight", "textBox.attrs.distRight", issues);
   optionalImagePosition(attrs, "position", "textBox.attrs.position", issues);
   optionalDrawingAnchor(attrs, "anchor", "textBox.attrs.anchor", issues);
-  optionalWrapDistanceSlots(attrs, "wrapDistanceSlots", "textBox.attrs.wrapDistanceSlots", issues);
+  optionalWrapDistanceSlots(
+    attrs,
+    "wrapDistanceSlots",
+    "textBox.attrs.wrapDistanceSlots",
+    issues,
+  );
   optionalEffectExtentSlots(
     attrs,
     "wrapEffectExtentSlots",
     "textBox.attrs.wrapEffectExtentSlots",
     issues,
   );
-  optionalWrapPolygon(attrs, "wrapPolygon", "textBox.attrs.wrapPolygon", issues);
+  optionalWrapPolygon(
+    attrs,
+    "wrapPolygon",
+    "textBox.attrs.wrapPolygon",
+    issues,
+  );
   optionalOneOf(
     attrs,
     "_docxPlacement",
@@ -1411,10 +2081,19 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
     issues,
     TEXT_BOX_DOCX_PLACEMENTS,
   );
-  optionalAlternateContent(attrs, "textBox.attrs._docxAlternateContent", issues);
+  optionalAlternateContent(
+    attrs,
+    "textBox.attrs._docxAlternateContent",
+    issues,
+  );
   optionalString(attrs, "_docxGroupId", "textBox.attrs._docxGroupId", issues);
   optionalString(attrs, "_docxAnchorId", "textBox.attrs._docxAnchorId", issues);
-  optionalDrawingGroupChild(attrs, "_docxGroupChild", "textBox.attrs._docxGroupChild", issues);
+  optionalDrawingGroupChild(
+    attrs,
+    "_docxGroupChild",
+    "textBox.attrs._docxGroupChild",
+    issues,
+  );
   requiredTextBoxBodyContentState(attrs, issues);
   optionalTextBoxTrackedChange(attrs, issues);
   optionalTextBoxInlineSdts(attrs, issues);
@@ -1424,29 +2103,54 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
     "textBox.attrs._preservedAttributes",
     issues,
   );
-  optionalRecord(attrs, "_docxHostParagraph", "textBox.attrs._docxHostParagraph", issues);
+  optionalRecord(
+    attrs,
+    "_docxHostParagraph",
+    "textBox.attrs._docxHostParagraph",
+    issues,
+  );
 
   return attrsResult(attrs, issues);
 };
 
 export const expectTextBoxAttrs = (node: PMNode): TextBoxAttrs =>
-  expectCachedNodeAttrs(node, textBoxAttrsCache, readTextBoxAttrs, "text box attrs");
+  expectCachedNodeAttrs(
+    node,
+    textBoxAttrsCache,
+    readTextBoxAttrs,
+    "text box attrs",
+  );
 
-export const readUnderlineMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<UnderlineAttrs> => {
+export const readUnderlineMarkAttrs = (
+  mark: Mark,
+): ReadProseMirrorAttrsResult<UnderlineAttrs> => {
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "underline", issues);
 
-  optionalOneOf(attrs, "style", "underline.attrs.style", issues, UNDERLINE_STYLE_VALUES);
+  optionalOneOf(
+    attrs,
+    "style",
+    "underline.attrs.style",
+    issues,
+    UNDERLINE_STYLE_VALUES,
+  );
   optionalTextColor(attrs, "color", "underline.attrs.color", issues);
 
   return attrsResult(attrs, issues);
 };
 
 export const expectUnderlineMarkAttrs = (mark: Mark): UnderlineAttrs =>
-  expectCachedMarkAttrs(mark, underlineAttrsCache, readUnderlineMarkAttrs, "underline attrs");
+  expectCachedMarkAttrs(
+    mark,
+    underlineAttrsCache,
+    readUnderlineMarkAttrs,
+    "underline attrs",
+  );
 
-export const readStrikeMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<StrikeAttrs> => {
+export const readStrikeMarkAttrs = (
+  mark: Mark,
+): ReadProseMirrorAttrsResult<StrikeAttrs> => {
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "strike", issues);
@@ -1457,9 +2161,16 @@ export const readStrikeMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<Stri
 };
 
 export const expectStrikeMarkAttrs = (mark: Mark): StrikeAttrs =>
-  expectCachedMarkAttrs(mark, strikeAttrsCache, readStrikeMarkAttrs, "strike attrs");
+  expectCachedMarkAttrs(
+    mark,
+    strikeAttrsCache,
+    readStrikeMarkAttrs,
+    "strike attrs",
+  );
 
-export const readTextColorMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<TextColorAttrs> => {
+export const readTextColorMarkAttrs = (
+  mark: Mark,
+): ReadProseMirrorAttrsResult<TextColorAttrs> => {
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "textColor", issues);
@@ -1470,20 +2181,38 @@ export const readTextColorMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<T
 };
 
 export const expectTextColorMarkAttrs = (mark: Mark): TextColorAttrs =>
-  expectCachedMarkAttrs(mark, textColorAttrsCache, readTextColorMarkAttrs, "text color attrs");
+  expectCachedMarkAttrs(
+    mark,
+    textColorAttrsCache,
+    readTextColorMarkAttrs,
+    "text color attrs",
+  );
 
-export const readHighlightMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<HighlightAttrs> => {
+export const readHighlightMarkAttrs = (
+  mark: Mark,
+): ReadProseMirrorAttrsResult<HighlightAttrs> => {
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "highlight", issues);
 
-  requiredOneOf(attrs, "color", "highlight.attrs.color", issues, HIGHLIGHT_COLOR_VALUES);
+  requiredOneOf(
+    attrs,
+    "color",
+    "highlight.attrs.color",
+    issues,
+    HIGHLIGHT_COLOR_VALUES,
+  );
 
   return attrsResult(attrs, issues);
 };
 
 export const expectHighlightMarkAttrs = (mark: Mark): HighlightAttrs =>
-  expectCachedMarkAttrs(mark, highlightAttrsCache, readHighlightMarkAttrs, "highlight attrs");
+  expectCachedMarkAttrs(
+    mark,
+    highlightAttrsCache,
+    readHighlightMarkAttrs,
+    "highlight attrs",
+  );
 
 export const readRunShadingMarkAttrs = (
   mark: Mark,
@@ -1494,14 +2223,30 @@ export const readRunShadingMarkAttrs = (
 
   // Fill color (flattened ColorValue, same shape as textColor).
   optionalTextColorFields(attrs, "runShading.attrs", issues);
-  optionalOneOf(attrs, "pattern", "runShading.attrs.pattern", issues, SHADING_PATTERN_VALUES);
-  optionalString(attrs, "patternColor", "runShading.attrs.patternColor", issues);
+  optionalOneOf(
+    attrs,
+    "pattern",
+    "runShading.attrs.pattern",
+    issues,
+    SHADING_PATTERN_VALUES,
+  );
+  optionalString(
+    attrs,
+    "patternColor",
+    "runShading.attrs.patternColor",
+    issues,
+  );
 
   return attrsResult(attrs, issues);
 };
 
 export const expectRunShadingMarkAttrs = (mark: Mark): RunShadingAttrs =>
-  expectCachedMarkAttrs(mark, runShadingAttrsCache, readRunShadingMarkAttrs, "run shading attrs");
+  expectCachedMarkAttrs(
+    mark,
+    runShadingAttrsCache,
+    readRunShadingMarkAttrs,
+    "run shading attrs",
+  );
 
 export const readCharacterStyleMarkAttrs = (
   mark: Mark,
@@ -1515,7 +2260,9 @@ export const readCharacterStyleMarkAttrs = (
   return attrsResult(attrs, issues);
 };
 
-export const expectCharacterStyleMarkAttrs = (mark: Mark): CharacterStyleAttrs =>
+export const expectCharacterStyleMarkAttrs = (
+  mark: Mark,
+): CharacterStyleAttrs =>
   expectCachedMarkAttrs(
     mark,
     characterStyleAttrsCache,
@@ -1523,7 +2270,9 @@ export const expectCharacterStyleMarkAttrs = (mark: Mark): CharacterStyleAttrs =
     "character style attrs",
   );
 
-export const readFontSizeMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<FontSizeAttrs> => {
+export const readFontSizeMarkAttrs = (
+  mark: Mark,
+): ReadProseMirrorAttrsResult<FontSizeAttrs> => {
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "fontSize", issues);
@@ -1534,7 +2283,12 @@ export const readFontSizeMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<Fo
 };
 
 export const expectFontSizeMarkAttrs = (mark: Mark): FontSizeAttrs =>
-  expectCachedMarkAttrs(mark, fontSizeAttrsCache, readFontSizeMarkAttrs, "font size attrs");
+  expectCachedMarkAttrs(
+    mark,
+    fontSizeAttrsCache,
+    readFontSizeMarkAttrs,
+    "font size attrs",
+  );
 
 export const readFontFamilyMarkAttrs = (
   mark: Mark,
@@ -1548,8 +2302,20 @@ export const readFontFamilyMarkAttrs = (
   optionalString(attrs, "eastAsia", "fontFamily.attrs.eastAsia", issues);
   optionalString(attrs, "cs", "fontFamily.attrs.cs", issues);
   optionalString(attrs, "hint", "fontFamily.attrs.hint", issues);
-  optionalOneOf(attrs, "asciiTheme", "fontFamily.attrs.asciiTheme", issues, FONT_THEME_VALUES);
-  optionalOneOf(attrs, "hAnsiTheme", "fontFamily.attrs.hAnsiTheme", issues, FONT_THEME_VALUES);
+  optionalOneOf(
+    attrs,
+    "asciiTheme",
+    "fontFamily.attrs.asciiTheme",
+    issues,
+    FONT_THEME_VALUES,
+  );
+  optionalOneOf(
+    attrs,
+    "hAnsiTheme",
+    "fontFamily.attrs.hAnsiTheme",
+    issues,
+    FONT_THEME_VALUES,
+  );
   optionalOneOf(
     attrs,
     "eastAsiaTheme",
@@ -1557,15 +2323,28 @@ export const readFontFamilyMarkAttrs = (
     issues,
     FONT_THEME_VALUES,
   );
-  optionalOneOf(attrs, "csTheme", "fontFamily.attrs.csTheme", issues, FONT_THEME_VALUES);
+  optionalOneOf(
+    attrs,
+    "csTheme",
+    "fontFamily.attrs.csTheme",
+    issues,
+    FONT_THEME_VALUES,
+  );
 
   return attrsResult(attrs, issues);
 };
 
 export const expectFontFamilyMarkAttrs = (mark: Mark): FontFamilyAttrs =>
-  expectCachedMarkAttrs(mark, fontFamilyAttrsCache, readFontFamilyMarkAttrs, "font family attrs");
+  expectCachedMarkAttrs(
+    mark,
+    fontFamilyAttrsCache,
+    readFontFamilyMarkAttrs,
+    "font family attrs",
+  );
 
-export const readLanguageMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<LanguageAttrs> => {
+export const readLanguageMarkAttrs = (
+  mark: Mark,
+): ReadProseMirrorAttrsResult<LanguageAttrs> => {
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "language", issues);
@@ -1578,7 +2357,12 @@ export const readLanguageMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<La
 };
 
 export const expectLanguageMarkAttrs = (mark: Mark): LanguageAttrs =>
-  expectCachedMarkAttrs(mark, languageAttrsCache, readLanguageMarkAttrs, "language attrs");
+  expectCachedMarkAttrs(
+    mark,
+    languageAttrsCache,
+    readLanguageMarkAttrs,
+    "language attrs",
+  );
 
 export const readCharacterSpacingMarkAttrs = (
   mark: Mark,
@@ -1605,7 +2389,9 @@ export const readCharacterSpacingMarkAttrs = (
   return result;
 };
 
-export const expectCharacterSpacingMarkAttrs = (mark: Mark): CharacterSpacingAttrs =>
+export const expectCharacterSpacingMarkAttrs = (
+  mark: Mark,
+): CharacterSpacingAttrs =>
   expectCachedMarkAttrs(
     mark,
     characterSpacingAttrsCache,
@@ -1620,13 +2406,24 @@ export const readEmphasisMarkAttrs = (
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "emphasisMark", issues);
 
-  optionalOneOf(attrs, "type", "emphasisMark.attrs.type", issues, EMPHASIS_MARK_TYPES);
+  optionalOneOf(
+    attrs,
+    "type",
+    "emphasisMark.attrs.type",
+    issues,
+    EMPHASIS_MARK_TYPES,
+  );
 
   return attrsResult(attrs, issues);
 };
 
 export const expectEmphasisMarkAttrs = (mark: Mark): EmphasisMarkAttrs =>
-  expectCachedMarkAttrs(mark, emphasisMarkAttrsCache, readEmphasisMarkAttrs, "emphasis mark attrs");
+  expectCachedMarkAttrs(
+    mark,
+    emphasisMarkAttrsCache,
+    readEmphasisMarkAttrs,
+    "emphasis mark attrs",
+  );
 
 export const readTextEffectMarkAttrs = (
   mark: Mark,
@@ -1635,13 +2432,24 @@ export const readTextEffectMarkAttrs = (
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "textEffect", issues);
 
-  requiredOneOf(attrs, "effect", "textEffect.attrs.effect", issues, TEXT_EFFECT_NON_NONE_VALUES);
+  requiredOneOf(
+    attrs,
+    "effect",
+    "textEffect.attrs.effect",
+    issues,
+    TEXT_EFFECT_NON_NONE_VALUES,
+  );
 
   return attrsResult(attrs, issues);
 };
 
 export const expectTextEffectMarkAttrs = (mark: Mark): TextEffectAttrs =>
-  expectCachedMarkAttrs(mark, textEffectAttrsCache, readTextEffectMarkAttrs, "text effect attrs");
+  expectCachedMarkAttrs(
+    mark,
+    textEffectAttrsCache,
+    readTextEffectMarkAttrs,
+    "text effect attrs",
+  );
 
 export const readFootnoteRefMarkAttrs = (
   mark: Mark,
@@ -1656,9 +2464,26 @@ export const readFootnoteRefMarkAttrs = (
       path: "footnoteRef.attrs.occurrenceId",
       message: "Expected a nonblank occurrence identity.",
     });
-  optionalOneOf(attrs, "noteType", "footnoteRef.attrs.noteType", issues, NOTE_TYPES);
-  optionalOneOf(attrs, "vertAlign", "footnoteRef.attrs.vertAlign", issues, NOTE_REF_VERT_ALIGNS);
-  optionalBoolean(attrs, "customMarkFollows", "footnoteRef.attrs.customMarkFollows", issues);
+  optionalOneOf(
+    attrs,
+    "noteType",
+    "footnoteRef.attrs.noteType",
+    issues,
+    NOTE_TYPES,
+  );
+  optionalOneOf(
+    attrs,
+    "vertAlign",
+    "footnoteRef.attrs.vertAlign",
+    issues,
+    NOTE_REF_VERT_ALIGNS,
+  );
+  optionalBoolean(
+    attrs,
+    "customMarkFollows",
+    "footnoteRef.attrs.customMarkFollows",
+    issues,
+  );
 
   return attrsResult(attrs, issues);
 };
@@ -1671,7 +2496,9 @@ export const expectFootnoteRefMarkAttrs = (mark: Mark): FootnoteRefAttrs =>
     "footnote reference attrs",
   );
 
-export const readCommentMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<CommentAttrs> => {
+export const readCommentMarkAttrs = (
+  mark: Mark,
+): ReadProseMirrorAttrsResult<CommentAttrs> => {
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "comment", issues);
@@ -1682,7 +2509,12 @@ export const readCommentMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<Com
 };
 
 export const expectCommentMarkAttrs = (mark: Mark): CommentAttrs =>
-  expectCachedMarkAttrs(mark, commentAttrsCache, readCommentMarkAttrs, "comment attrs");
+  expectCachedMarkAttrs(
+    mark,
+    commentAttrsCache,
+    readCommentMarkAttrs,
+    "comment attrs",
+  );
 
 export const isTrackedRevisionAncestorArray = (
   value: unknown,
@@ -1692,18 +2524,24 @@ export const isTrackedRevisionAncestorArray = (
   value.every(
     (ancestor: unknown) =>
       isRecord(ancestor) &&
-      TRACKED_REVISION_ANCESTOR_TYPES.some((type) => type === ancestor["type"]) &&
+      TRACKED_REVISION_ANCESTOR_TYPES.some(
+        (type) => type === ancestor["type"],
+      ) &&
       typeof ancestor["revisionId"] === "number" &&
       Number.isSafeInteger(ancestor["revisionId"]) &&
       ancestor["revisionId"] >= 0 &&
       typeof ancestor["author"] === "string" &&
-      (ancestor["date"] === undefined || typeof ancestor["date"] === "string") &&
-      (ancestor["utcDate"] === undefined || typeof ancestor["utcDate"] === "string") &&
-      (ancestor["initials"] === undefined || typeof ancestor["initials"] === "string") &&
+      (ancestor["date"] === undefined ||
+        typeof ancestor["date"] === "string") &&
+      (ancestor["utcDate"] === undefined ||
+        typeof ancestor["utcDate"] === "string") &&
+      (ancestor["initials"] === undefined ||
+        typeof ancestor["initials"] === "string") &&
       typeof ancestor["outerWrapperCount"] === "number" &&
       Number.isSafeInteger(ancestor["outerWrapperCount"]) &&
       ancestor["outerWrapperCount"] >= 0 &&
-      (ancestor["resolutionJoins"] === undefined || isResolutionJoins(ancestor["resolutionJoins"])),
+      (ancestor["resolutionJoins"] === undefined ||
+        isResolutionJoins(ancestor["resolutionJoins"])),
   );
 
 export const readTrackedChangeMarkAttrs = (
@@ -1713,7 +2551,12 @@ export const readTrackedChangeMarkAttrs = (
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkTypeOneOf(mark, ["insertion", "deletion"], issues);
 
-  requiredNumber(attrs, "revisionId", `${mark.type.name}.attrs.revisionId`, issues);
+  requiredNumber(
+    attrs,
+    "revisionId",
+    `${mark.type.name}.attrs.revisionId`,
+    issues,
+  );
   requiredString(attrs, "author", `${mark.type.name}.attrs.author`, issues);
   optionalString(attrs, "date", `${mark.type.name}.attrs.date`, issues);
   optionalString(attrs, "utcDate", `${mark.type.name}.attrs.utcDate`, issues);
@@ -1743,7 +2586,8 @@ export const readTrackedChangeMarkAttrs = (
           typeof boundary !== "object" ||
           boundary === null ||
           (boundary["type"] !== "start" && boundary["type"] !== "end") ||
-          (boundary["owner"] !== "revision" && boundary["owner"] !== "parent") ||
+          (boundary["owner"] !== "revision" &&
+            boundary["owner"] !== "parent") ||
           typeof boundary["commentId"] !== "number" ||
           !Number.isSafeInteger(boundary["commentId"]) ||
           boundary["commentId"] < 0,
@@ -1764,7 +2608,11 @@ export const readTrackedChangeMarkAttrs = (
       message: "Expected valid tracked-resolution provenance.",
     });
   }
-  if (ancestors !== undefined && ancestors !== null && !isTrackedRevisionAncestorArray(ancestors)) {
+  if (
+    ancestors !== undefined &&
+    ancestors !== null &&
+    !isTrackedRevisionAncestorArray(ancestors)
+  ) {
     issues.push({
       path: `${mark.type.name}.attrs._docxRevisionAncestors`,
       message: "Expected a non-empty array of valid revision ancestors.",
@@ -1784,7 +2632,12 @@ export const readTrackedChangeMarkAttrs = (
     issues,
     TRACKED_CHANGE_PROVENANCE_VALUES,
   );
-  optionalString(attrs, "suggestionId", `${mark.type.name}.attrs.suggestionId`, issues);
+  optionalString(
+    attrs,
+    "suggestionId",
+    `${mark.type.name}.attrs.suggestionId`,
+    issues,
+  );
   optionalBoolean(
     attrs,
     "_historicalFormatting",
@@ -1795,7 +2648,9 @@ export const readTrackedChangeMarkAttrs = (
   return attrsResult(attrs, issues);
 };
 
-export const expectTrackedChangeMarkAttrs = (mark: Mark): TrackedChangeMarkAttrs =>
+export const expectTrackedChangeMarkAttrs = (
+  mark: Mark,
+): TrackedChangeMarkAttrs =>
   expectCachedMarkAttrs(
     mark,
     trackedChangeAttrsCache,
@@ -1809,9 +2664,13 @@ export const readRunPropertyChangeMarkAttrs = (
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "runPropertyChange", issues);
-  optionalPropertyChanges(attrs, "changes", "runPropertyChange.attrs.changes", issues, [
-    "runPropertyChange",
-  ]);
+  optionalPropertyChanges(
+    attrs,
+    "changes",
+    "runPropertyChange.attrs.changes",
+    issues,
+    ["runPropertyChange"],
+  );
   optionalOneOf(
     attrs,
     "provenance",
@@ -1819,12 +2678,19 @@ export const readRunPropertyChangeMarkAttrs = (
     issues,
     TRACKED_CHANGE_PROVENANCE_VALUES,
   );
-  optionalString(attrs, "suggestionId", "runPropertyChange.attrs.suggestionId", issues);
+  optionalString(
+    attrs,
+    "suggestionId",
+    "runPropertyChange.attrs.suggestionId",
+    issues,
+  );
 
   return attrsResult(attrs, issues);
 };
 
-export const expectRunPropertyChangeMarkAttrs = (mark: Mark): RunPropertyChangeMarkAttrs =>
+export const expectRunPropertyChangeMarkAttrs = (
+  mark: Mark,
+): RunPropertyChangeMarkAttrs =>
   expectCachedMarkAttrs(
     mark,
     runPropertyChangeAttrsCache,
@@ -1860,7 +2726,12 @@ export const readRunIdentityMarkAttrs = (
     "runIdentity.attrs.preservedAttributes",
     issues,
   );
-  optionalPreservedMarkup(attrs, "preserved", "runIdentity.attrs.preserved", issues);
+  optionalPreservedMarkup(
+    attrs,
+    "preserved",
+    "runIdentity.attrs.preserved",
+    issues,
+  );
   return attrsResult(attrs, issues);
 };
 
@@ -1878,12 +2749,18 @@ type InlineWrapperLayerValidator = (
   issues: ProseMirrorAttrIssue[],
 ) => void;
 
-const BIDI_LAYER_CONTROLS = ["embedding", "override"] as const satisfies readonly Extract<
+const BIDI_LAYER_CONTROLS = [
+  "embedding",
+  "override",
+] as const satisfies readonly Extract<
   InlineWrapperLayer,
   { kind: "bidi" }
 >["control"][];
 
-const BIDI_LAYER_DIRECTIONS = ["ltr", "rtl"] as const satisfies readonly NonNullable<
+const BIDI_LAYER_DIRECTIONS = [
+  "ltr",
+  "rtl",
+] as const satisfies readonly NonNullable<
   Extract<InlineWrapperLayer, { kind: "bidi" }>["direction"]
 >[];
 
@@ -1909,7 +2786,10 @@ const taggedLayerValidator =
       }
     }
     const propertiesXml = layer["propertiesXml"];
-    if (typeof propertiesXml === "string" && !isSafePreservedChildXml(propertiesXml)) {
+    if (
+      typeof propertiesXml === "string" &&
+      !isSafePreservedChildXml(propertiesXml)
+    ) {
       issues.push({
         path: `${path}.propertiesXml`,
         message: "Expected one bounded, well-formed XML element.",
@@ -1917,7 +2797,10 @@ const taggedLayerValidator =
     }
     for (const key of Object.keys(layer)) {
       if (!TAGGED_LAYER_KEYS.has(key)) {
-        issues.push({ path: `${path}.${key}`, message: `Unexpected ${label} wrapper property.` });
+        issues.push({
+          path: `${path}.${key}`,
+          message: `Unexpected ${label} wrapper property.`,
+        });
       }
     }
   };
@@ -1930,11 +2813,26 @@ const taggedLayerValidator =
  */
 const INLINE_WRAPPER_LAYER_VALIDATORS = {
   bidi: (layer, path, issues) => {
-    requiredOneOf(layer, "control", `${path}.control`, issues, BIDI_LAYER_CONTROLS);
-    optionalOneOf(layer, "direction", `${path}.direction`, issues, BIDI_LAYER_DIRECTIONS);
+    requiredOneOf(
+      layer,
+      "control",
+      `${path}.control`,
+      issues,
+      BIDI_LAYER_CONTROLS,
+    );
+    optionalOneOf(
+      layer,
+      "direction",
+      `${path}.direction`,
+      issues,
+      BIDI_LAYER_DIRECTIONS,
+    );
     for (const key of Object.keys(layer)) {
       if (!BIDI_LAYER_KEYS.has(key)) {
-        issues.push({ path: `${path}.${key}`, message: "Unexpected bidi wrapper property." });
+        issues.push({
+          path: `${path}.${key}`,
+          message: "Unexpected bidi wrapper property.",
+        });
       }
     }
   },
@@ -1942,23 +2840,31 @@ const INLINE_WRAPPER_LAYER_VALIDATORS = {
   customXml: taggedLayerValidator("custom XML"),
 } as const satisfies Record<InlineWrapperKind, InlineWrapperLayerValidator>;
 
-const inlineWrapperLayerValidator = (kind: unknown): InlineWrapperLayerValidator | undefined => {
+const inlineWrapperLayerValidator = (
+  kind: unknown,
+): InlineWrapperLayerValidator | undefined => {
   const byKind: Record<string, InlineWrapperLayerValidator | undefined> =
     INLINE_WRAPPER_LAYER_VALIDATORS;
   return typeof kind === "string" ? byKind[kind] : undefined;
 };
 
-const inlineWrapperProperties = function* (layers: readonly unknown[]): Generator<unknown> {
+const inlineWrapperProperties = function* (
+  layers: readonly unknown[],
+): Generator<unknown> {
   for (let index = 0; index < layers.length; index += 1) {
     const layer = layers[index];
     yield {
       xml:
-        isRecord(layer) && typeof layer["propertiesXml"] === "string" ? layer["propertiesXml"] : "",
+        isRecord(layer) && typeof layer["propertiesXml"] === "string"
+          ? layer["propertiesXml"]
+          : "",
     };
   }
 };
 
-const emptyHyperlinkWrapperProperties = function* (stacks: readonly unknown[]): Generator<unknown> {
+const emptyHyperlinkWrapperProperties = function* (
+  stacks: readonly unknown[],
+): Generator<unknown> {
   for (let stackIndex = 0; stackIndex < stacks.length; stackIndex += 1) {
     const stack = stacks[stackIndex];
     // One entry per stack keeps empty arrays inside the same aggregate count
@@ -1976,21 +2882,33 @@ const validateInlineWrapperStack = (
   issues: ProseMirrorAttrIssue[],
 ): void => {
   if (!Array.isArray(value)) {
-    issues.push({ path, message: "Expected an array of inline wrapper layers." });
+    issues.push({
+      path,
+      message: "Expected an array of inline wrapper layers.",
+    });
     return;
   }
   if (value.length === 0) {
-    issues.push({ path, message: "Expected at least one inline wrapper layer." });
+    issues.push({
+      path,
+      message: "Expected at least one inline wrapper layer.",
+    });
     return;
   }
   if (!isWithinPreservedMarkupBudget(inlineWrapperProperties(value))) {
-    issues.push({ path, message: "Inline wrapper stack exceeds its resource budget." });
+    issues.push({
+      path,
+      message: "Inline wrapper stack exceeds its resource budget.",
+    });
     return;
   }
   for (const [index, layer] of value.entries()) {
     const layerPath = `${path}[${index}]`;
     if (!isRecord(layer)) {
-      issues.push({ path: layerPath, message: "Expected an inline wrapper layer object." });
+      issues.push({
+        path: layerPath,
+        message: "Expected an inline wrapper layer object.",
+      });
       continue;
     }
     const validator = inlineWrapperLayerValidator(layer["kind"]);
@@ -2029,18 +2947,28 @@ export const readInlineWrapperMarkAttrs = (
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "inlineWrapper", issues);
-  validateInlineWrapperStack(attrs["stack"], "inlineWrapper.attrs.stack", issues);
+  validateInlineWrapperStack(
+    attrs["stack"],
+    "inlineWrapper.attrs.stack",
+    issues,
+  );
   const hyperlinkIndex = attrs["_docxHyperlinkIndex"];
   const stackStart = attrs["_docxInsideHyperlinkStackStart"];
-  const hasHyperlinkIndex = hyperlinkIndex !== undefined && hyperlinkIndex !== null;
+  const hasHyperlinkIndex =
+    hyperlinkIndex !== undefined && hyperlinkIndex !== null;
   const hasStackStart = stackStart !== undefined && stackStart !== null;
   if (hasHyperlinkIndex !== hasStackStart) {
     issues.push({
       path: "inlineWrapper.attrs",
-      message: "Hyperlink wrapper provenance requires both an index and stack start.",
+      message:
+        "Hyperlink wrapper provenance requires both an index and stack start.",
     });
   } else if (hasHyperlinkIndex && hasStackStart) {
-    validateNonNegativeInteger(hyperlinkIndex, "inlineWrapper.attrs._docxHyperlinkIndex", issues);
+    validateNonNegativeInteger(
+      hyperlinkIndex,
+      "inlineWrapper.attrs._docxHyperlinkIndex",
+      issues,
+    );
     validateNonNegativeInteger(
       stackStart,
       "inlineWrapper.attrs._docxInsideHyperlinkStackStart",
@@ -2082,11 +3010,31 @@ export const readRunFormattingOverrideMarkAttrs = (
   for (const key of RUN_FORMATTING_OVERRIDE_FALSE_KEYS) {
     optionalFalse(attrs, key, `runFormattingOverride.attrs.${key}`, issues);
   }
-  optionalBoolean(attrs, "boldCs", "runFormattingOverride.attrs.boldCs", issues);
-  optionalBoolean(attrs, "italicCs", "runFormattingOverride.attrs.italicCs", issues);
-  optionalNumber(attrs, "fontSizeCs", "runFormattingOverride.attrs.fontSizeCs", issues);
+  optionalBoolean(
+    attrs,
+    "boldCs",
+    "runFormattingOverride.attrs.boldCs",
+    issues,
+  );
+  optionalBoolean(
+    attrs,
+    "italicCs",
+    "runFormattingOverride.attrs.italicCs",
+    issues,
+  );
+  optionalNumber(
+    attrs,
+    "fontSizeCs",
+    "runFormattingOverride.attrs.fontSizeCs",
+    issues,
+  );
   optionalBoolean(attrs, "cs", "runFormattingOverride.attrs.cs", issues);
-  optionalShading(attrs, "shading", "runFormattingOverride.attrs.shading", issues);
+  optionalShading(
+    attrs,
+    "shading",
+    "runFormattingOverride.attrs.shading",
+    issues,
+  );
   const shading = attrs["shading"];
   if (isRecord(shading) && shading["pattern"] !== "nil") {
     issues.push({
@@ -2094,13 +3042,26 @@ export const readRunFormattingOverrideMarkAttrs = (
       message: 'Expected "nil".',
     });
   }
-  for (const [key, values] of Object.entries(RUN_FORMATTING_OVERRIDE_STRING_SENTINELS)) {
-    optionalOneOf(attrs, key, `runFormattingOverride.attrs.${key}`, issues, values);
+  for (const [key, values] of Object.entries(
+    RUN_FORMATTING_OVERRIDE_STRING_SENTINELS,
+  )) {
+    optionalOneOf(
+      attrs,
+      key,
+      `runFormattingOverride.attrs.${key}`,
+      issues,
+      values,
+    );
   }
-  for (const [key, expected] of Object.entries(RUN_FORMATTING_OVERRIDE_NUMBER_SENTINELS)) {
+  for (const [key, expected] of Object.entries(
+    RUN_FORMATTING_OVERRIDE_NUMBER_SENTINELS,
+  )) {
     const value = attrs[key];
     if (value !== undefined && value !== null && value !== expected) {
-      issues.push({ path: `runFormattingOverride.attrs.${key}`, message: `Expected ${expected}.` });
+      issues.push({
+        path: `runFormattingOverride.attrs.${key}`,
+        message: `Expected ${expected}.`,
+      });
     }
   }
   optionalOneOfArray(
@@ -2161,7 +3122,8 @@ export const readRunFormattingOverrideMarkAttrs = (
   const complexScriptPropertyAbsences = attrs["complexScriptPropertyAbsences"];
   if (
     Array.isArray(complexScriptPropertyAbsences) &&
-    new Set(complexScriptPropertyAbsences).size !== complexScriptPropertyAbsences.length
+    new Set(complexScriptPropertyAbsences).size !==
+      complexScriptPropertyAbsences.length
   ) {
     issues.push({
       path: "runFormattingOverride.attrs.complexScriptPropertyAbsences",
@@ -2173,14 +3135,18 @@ export const readRunFormattingOverrideMarkAttrs = (
       if (attrs[property] !== undefined && attrs[property] !== null) {
         issues.push({
           path: `runFormattingOverride.attrs.${property}`,
-          message: "Expected a property to be either present or explicitly absent, not both.",
+          message:
+            "Expected a property to be either present or explicitly absent, not both.",
         });
       }
     }
   }
   for (const provenanceKey of ["_authoredOn", "_authoredOff"] as const) {
     const properties = attrs[provenanceKey];
-    if (Array.isArray(properties) && new Set(properties).size !== properties.length) {
+    if (
+      Array.isArray(properties) &&
+      new Set(properties).size !== properties.length
+    ) {
       issues.push({
         path: `runFormattingOverride.attrs.${provenanceKey}`,
         message: "Expected unique authored formatting properties.",
@@ -2195,7 +3161,8 @@ export const readRunFormattingOverrideMarkAttrs = (
       if (off.has(property)) {
         issues.push({
           path: "runFormattingOverride.attrs._authoredOff",
-          message: "Expected authored formatting to be either on or off, not both.",
+          message:
+            "Expected authored formatting to be either on or off, not both.",
         });
       }
     }
@@ -2204,7 +3171,9 @@ export const readRunFormattingOverrideMarkAttrs = (
   return attrsResult(attrs, issues);
 };
 
-export const expectRunFormattingOverrideMarkAttrs = (mark: Mark): RunFormattingOverrideAttrs =>
+export const expectRunFormattingOverrideMarkAttrs = (
+  mark: Mark,
+): RunFormattingOverrideAttrs =>
   expectCachedMarkAttrs(
     mark,
     runFormattingOverrideAttrsCache,
@@ -2212,7 +3181,9 @@ export const expectRunFormattingOverrideMarkAttrs = (mark: Mark): RunFormattingO
     "run formatting override attrs",
   );
 
-export const readHyperlinkMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<HyperlinkAttrs> => {
+export const readHyperlinkMarkAttrs = (
+  mark: Mark,
+): ReadProseMirrorAttrsResult<HyperlinkAttrs> => {
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "hyperlink", issues);
@@ -2233,9 +3204,16 @@ export const readHyperlinkMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<H
 };
 
 export const expectHyperlinkMarkAttrs = (mark: Mark): HyperlinkAttrs =>
-  expectCachedMarkAttrs(mark, hyperlinkAttrsCache, readHyperlinkMarkAttrs, "hyperlink attrs");
+  expectCachedMarkAttrs(
+    mark,
+    hyperlinkAttrsCache,
+    readHyperlinkMarkAttrs,
+    "hyperlink attrs",
+  );
 
-type NodeAttrReader<T extends object> = (node: PMNode) => ReadProseMirrorAttrsResult<T>;
+type NodeAttrReader<T extends object> = (
+  node: PMNode,
+) => ReadProseMirrorAttrsResult<T>;
 
 type NodeAttrPatch<T extends object> = {
   [K in keyof T]?: T[K] | undefined;
@@ -2274,18 +3252,25 @@ const imageAttrValuesEqual = (left: unknown, right: unknown): boolean => {
   if (left === right) {
     return true;
   }
-  if ((left === undefined || left === null) && (right === undefined || right === null)) {
+  if (
+    (left === undefined || left === null) &&
+    (right === undefined || right === null)
+  ) {
     return true;
   }
   return canonicalJson(left) === canonicalJson(right);
 };
 
-export const mergeImageAttrs = (node: PMNode, patch: NodeAttrPatch<ImageAttrs>): ImageAttrs => {
+export const mergeImageAttrs = (
+  node: PMNode,
+  patch: NodeAttrPatch<ImageAttrs>,
+): ImageAttrs => {
   const current = expectImageAttrs(node);
   const merged = mergeNodeAttrs(node, readImageAttrs, "image attrs", patch);
   const changesEditableProjection = Object.entries(patch).some(
     ([key, value]) =>
-      !IMAGE_RESOURCE_ATTRS.has(key) && !imageAttrValuesEqual(Reflect.get(current, key), value),
+      !IMAGE_RESOURCE_ATTRS.has(key) &&
+      !imageAttrValuesEqual(Reflect.get(current, key), value),
   );
   if (!changesEditableProjection || current._docxRawXml === undefined) {
     return merged;
@@ -2296,7 +3281,8 @@ export const mergeImageAttrs = (node: PMNode, patch: NodeAttrPatch<ImageAttrs>):
   // raw XML — it is the only faithful representation — so it drops the capture
   // marker instead, and the missing marker is what blocks the next save.
   if (!allowsDirectDrawingEdit(current._docxRawXmlMode)) {
-    const { _docxRawImageFingerprint: _discardedFingerprint, ...editedAttrs } = merged;
+    const { _docxRawImageFingerprint: _discardedFingerprint, ...editedAttrs } =
+      merged;
     return editedAttrs;
   }
 
@@ -2307,15 +3293,19 @@ export const mergeImageAttrs = (node: PMNode, patch: NodeAttrPatch<ImageAttrs>):
 export const mergeParagraphAttrs = (
   node: PMNode,
   patch: NodeAttrPatch<ParagraphAttrs>,
-): ParagraphAttrs => mergeNodeAttrs(node, readParagraphAttrs, "paragraph attrs", patch);
+): ParagraphAttrs =>
+  mergeNodeAttrs(node, readParagraphAttrs, "paragraph attrs", patch);
 
-export const mergeTableAttrs = (node: PMNode, patch: NodeAttrPatch<TableAttrs>): TableAttrs =>
-  mergeNodeAttrs(node, readTableAttrs, "table attrs", patch);
+export const mergeTableAttrs = (
+  node: PMNode,
+  patch: NodeAttrPatch<TableAttrs>,
+): TableAttrs => mergeNodeAttrs(node, readTableAttrs, "table attrs", patch);
 
 export const mergeTableRowAttrs = (
   node: PMNode,
   patch: NodeAttrPatch<TableRowAttrs>,
-): TableRowAttrs => mergeNodeAttrs(node, readTableRowAttrs, "table row attrs", patch);
+): TableRowAttrs =>
+  mergeNodeAttrs(node, readTableRowAttrs, "table row attrs", patch);
 
 /**
  * A command that moves a cell's width states one.
@@ -2330,7 +3320,12 @@ export const mergeTableCellAttrs = (
   node: PMNode,
   patch: NodeAttrPatch<TableCellAttrs>,
 ): TableCellAttrs => {
-  const merged = mergeNodeAttrs(node, readTableCellAttrs, "table cell attrs", patch);
+  const merged = mergeNodeAttrs(
+    node,
+    readTableCellAttrs,
+    "table cell attrs",
+    patch,
+  );
   if (!("width" in patch) && !("widthType" in patch)) {
     return merged;
   }
@@ -2338,7 +3333,10 @@ export const mergeTableCellAttrs = (
     const { _authoredWidth: _cleared, ...withoutStatedWidth } = merged;
     return withoutStatedWidth;
   }
-  return { ...merged, _authoredWidth: { value: merged.width, type: merged.widthType ?? "dxa" } };
+  return {
+    ...merged,
+    _authoredWidth: { value: merged.width, type: merged.widthType ?? "dxa" },
+  };
 };
 
 function expectCachedMarkAttrs<T extends object>(
@@ -2370,7 +3368,11 @@ const expectNodeTypeOneOf = (
   }
 };
 
-const expectMarkType = (mark: Mark, expected: string, issues: ProseMirrorAttrIssue[]): void => {
+const expectMarkType = (
+  mark: Mark,
+  expected: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
   if (mark.type.name !== expected) {
     issues.push({
       path: "mark.type.name",
@@ -2444,7 +3446,8 @@ const optionalTextBoxTransform = (
   if (!TEXT_BOX_TRANSFORM_PATTERN.test(value)) {
     issues.push({
       path,
-      message: "Expected DrawingML rotation and/or horizontal or vertical flips.",
+      message:
+        "Expected DrawingML rotation and/or horizontal or vertical flips.",
     });
   }
 };
@@ -2630,7 +3633,13 @@ const optionalShapeLineEnd = (
 
   optionalOneOf(value, "type", `${path}.type`, issues, SHAPE_LINE_END_TYPES);
   optionalOneOf(value, "width", `${path}.width`, issues, SHAPE_LINE_END_SIZES);
-  optionalOneOf(value, "length", `${path}.length`, issues, SHAPE_LINE_END_SIZES);
+  optionalOneOf(
+    value,
+    "length",
+    `${path}.length`,
+    issues,
+    SHAPE_LINE_END_SIZES,
+  );
 };
 
 const requiredOneOf = (
@@ -2679,7 +3688,13 @@ const optionalTextColorFields = (
   issues: ProseMirrorAttrIssue[],
 ): void => {
   optionalString(attrs, "rgb", `${path}.rgb`, issues);
-  optionalOneOf(attrs, "themeColor", `${path}.themeColor`, issues, THEME_COLORS);
+  optionalOneOf(
+    attrs,
+    "themeColor",
+    `${path}.themeColor`,
+    issues,
+    THEME_COLORS,
+  );
   optionalString(attrs, "themeTint", `${path}.themeTint`, issues);
   optionalString(attrs, "themeShade", `${path}.themeShade`, issues);
 };
@@ -2740,7 +3755,8 @@ const optionalOutlineLevel = (
   if (outlineLevelFromAttrValue(value) === null) {
     issues.push({
       path,
-      message: 'Expected { kind: "bodyText" } or { kind: "heading", level: 0-8 }.',
+      message:
+        'Expected { kind: "bodyText" } or { kind: "heading", level: 0-8 }.',
     });
   }
 };
@@ -2842,7 +3858,11 @@ const optionalTableCellRevision = (
     issues.push({ path, message: "Expected an object." });
     return;
   }
-  requiredOneOf(value, "kind", `${path}.kind`, issues, ["ins", "del", "merge"] as const);
+  requiredOneOf(value, "kind", `${path}.kind`, issues, [
+    "ins",
+    "del",
+    "merge",
+  ] as const);
   const info = value["info"];
   if (!isRecord(info)) {
     issues.push({ path: `${path}.info`, message: "Expected an object." });
@@ -2857,19 +3877,28 @@ const optionalTableCellRevision = (
     // Merge markers never carry suggestion provenance: cell merge/split cannot
     // run in suggested mode, so the fields are structurally excluded.
     if (info["provenance"] !== undefined) {
-      issues.push({ path: `${path}.info.provenance`, message: "Not allowed on a merge marker." });
+      issues.push({
+        path: `${path}.info.provenance`,
+        message: "Not allowed on a merge marker.",
+      });
     }
     if (info["suggestionId"] !== undefined) {
-      issues.push({ path: `${path}.info.suggestionId`, message: "Not allowed on a merge marker." });
+      issues.push({
+        path: `${path}.info.suggestionId`,
+        message: "Not allowed on a merge marker.",
+      });
     }
     optionalOneOf(value, "verticalMerge", `${path}.verticalMerge`, issues, [
       "continue",
       "rest",
     ] as const);
-    optionalOneOf(value, "verticalMergeOriginal", `${path}.verticalMergeOriginal`, issues, [
-      "continue",
-      "rest",
-    ] as const);
+    optionalOneOf(
+      value,
+      "verticalMergeOriginal",
+      `${path}.verticalMergeOriginal`,
+      issues,
+      ["continue", "rest"] as const,
+    );
   } else {
     optionalOneOf(
       info,
@@ -2891,7 +3920,10 @@ const optionalTextBoxTrackedChange = (
     return;
   }
   if (!isRecord(value)) {
-    issues.push({ path: "textBox.attrs._docxTrackedChange", message: "Expected an object." });
+    issues.push({
+      path: "textBox.attrs._docxTrackedChange",
+      message: "Expected an object.",
+    });
     return;
   }
 
@@ -2910,9 +3942,24 @@ const optionalTextBoxTrackedChange = (
     });
     return;
   }
-  requiredNumber(info, "id", "textBox.attrs._docxTrackedChange.info.id", issues);
-  requiredString(info, "author", "textBox.attrs._docxTrackedChange.info.author", issues);
-  optionalString(info, "date", "textBox.attrs._docxTrackedChange.info.date", issues);
+  requiredNumber(
+    info,
+    "id",
+    "textBox.attrs._docxTrackedChange.info.id",
+    issues,
+  );
+  requiredString(
+    info,
+    "author",
+    "textBox.attrs._docxTrackedChange.info.author",
+    issues,
+  );
+  optionalString(
+    info,
+    "date",
+    "textBox.attrs._docxTrackedChange.info.date",
+    issues,
+  );
 };
 
 /** `_docxAlternateContent`: a captured element and its node fingerprint, or absent. */
@@ -2963,7 +4010,10 @@ const optionalTextBoxInlineSdts = (
     return;
   }
   if (!Array.isArray(value)) {
-    issues.push({ path: "textBox.attrs._docxInlineSdts", message: "Expected an array." });
+    issues.push({
+      path: "textBox.attrs._docxInlineSdts",
+      message: "Expected an array.",
+    });
     return;
   }
   for (const [index, item] of value.entries()) {
@@ -2987,14 +4037,29 @@ const validateSdtAttrsRecord = (
   optionalNumber(attrs, "id", `${path}.id`, issues);
   optionalOneOf(attrs, "lock", `${path}.lock`, issues, SDT_LOCK_VALUES);
   optionalString(attrs, "placeholder", `${path}.placeholder`, issues);
-  optionalBoolean(attrs, "showingPlaceholder", `${path}.showingPlaceholder`, issues);
+  optionalBoolean(
+    attrs,
+    "showingPlaceholder",
+    `${path}.showingPlaceholder`,
+    issues,
+  );
   optionalString(attrs, "dateFormat", `${path}.dateFormat`, issues);
   optionalString(attrs, "dateValueISO", `${path}.dateValueISO`, issues);
   optionalSdtListItems(attrs, "listItems", `${path}.listItems`, issues);
-  optionalString(attrs, "dropdownLastValue", `${path}.dropdownLastValue`, issues);
+  optionalString(
+    attrs,
+    "dropdownLastValue",
+    `${path}.dropdownLastValue`,
+    issues,
+  );
   optionalBoolean(attrs, "checked", `${path}.checked`, issues);
   optionalPreservedMarkup(attrs, "_preserved", `${path}._preserved`, issues);
-  optionalString(attrs, "rawEndPropertiesXml", `${path}.rawEndPropertiesXml`, issues);
+  optionalString(
+    attrs,
+    "rawEndPropertiesXml",
+    `${path}.rawEndPropertiesXml`,
+    issues,
+  );
   optionalSdtEndProperties(attrs, `${path}.endProperties`, issues);
   optionalNumberArray(
     attrs,
@@ -3062,24 +4127,48 @@ const optionalTableContentCarriers = (
     if (carrier["type"] === "customXml") {
       const wrapper = carrier["wrapper"];
       if (!isRecord(wrapper)) {
-        issues.push({ path: `${carrierPath}.wrapper`, message: "Expected an object." });
+        issues.push({
+          path: `${carrierPath}.wrapper`,
+          message: "Expected an object.",
+        });
         continue;
       }
       requiredNumber(wrapper, "id", `${carrierPath}.wrapper.id`, issues);
-      requiredString(wrapper, "openingXml", `${carrierPath}.wrapper.openingXml`, issues);
-      requiredString(wrapper, "closingXml", `${carrierPath}.wrapper.closingXml`, issues);
+      requiredString(
+        wrapper,
+        "openingXml",
+        `${carrierPath}.wrapper.openingXml`,
+        issues,
+      );
+      requiredString(
+        wrapper,
+        "closingXml",
+        `${carrierPath}.wrapper.closingXml`,
+        issues,
+      );
       continue;
     }
     if (carrier["type"] === "sdt") {
       const properties = carrier["properties"];
       if (!isRecord(properties)) {
-        issues.push({ path: `${carrierPath}.properties`, message: "Expected an object." });
+        issues.push({
+          path: `${carrierPath}.properties`,
+          message: "Expected an object.",
+        });
         continue;
       }
-      requiredString(properties, "sdtType", `${carrierPath}.properties.sdtType`, issues);
+      requiredString(
+        properties,
+        "sdtType",
+        `${carrierPath}.properties.sdtType`,
+        issues,
+      );
       continue;
     }
-    issues.push({ path: `${carrierPath}.type`, message: 'Expected "customXml" or "sdt".' });
+    issues.push({
+      path: `${carrierPath}.type`,
+      message: 'Expected "customXml" or "sdt".',
+    });
   }
 };
 
@@ -3099,7 +4188,11 @@ const optionalTablePreservedMarkup = (
     if (!isRecord(child)) {
       continue;
     }
-    optionalContentControls(child, `${path}.children[${index}].contentControls`, issues);
+    optionalContentControls(
+      child,
+      `${path}.children[${index}].contentControls`,
+      issues,
+    );
   }
 };
 
@@ -3121,7 +4214,12 @@ const optionalSdtEndProperties = (
     issues.push({ path, message: "Expected an object." });
     return;
   }
-  optionalTextFormatting(value, "runProperties", `${path}.runProperties`, issues);
+  optionalTextFormatting(
+    value,
+    "runProperties",
+    `${path}.runProperties`,
+    issues,
+  );
 };
 
 const optionalPreservedAttributes = (
@@ -3152,11 +4250,15 @@ const optionalPreservedAttributes = (
     if (
       typeof name === "string" &&
       (namespace === undefined || typeof namespace === "string") &&
-      !isSerializablePreservedAttribute({ name, ...(namespace === undefined ? {} : { namespace }) })
+      !isSerializablePreservedAttribute({
+        name,
+        ...(namespace === undefined ? {} : { namespace }),
+      })
     ) {
       issues.push({
         path: `${entryPath}.name`,
-        message: "Expected an XML local name in a namespace the serializer binds.",
+        message:
+          "Expected an XML local name in a namespace the serializer binds.",
       });
     }
   }
@@ -3195,7 +4297,12 @@ const optionalPreservedMarkup = (
     }
     requiredNumber(entry, "index", `${entryPath}.index`, issues);
     requiredString(entry, "xml", `${entryPath}.xml`, issues);
-    optionalTableContentCarriers(entry, "carrierStack", `${entryPath}.carrierStack`, issues);
+    optionalTableContentCarriers(
+      entry,
+      "carrierStack",
+      `${entryPath}.carrierStack`,
+      issues,
+    );
     const xml = entry["xml"];
     if (typeof xml === "string" && !isSafePreservedChildXml(xml)) {
       issues.push({
@@ -3232,11 +4339,23 @@ const optionalPositionedBookmarks = (
       issues.push({ path: entryPath, message: "Expected an object." });
       continue;
     }
-    validateNonNegativeSafeInteger(entry["index"], `${entryPath}.index`, issues);
-    optionalTableContentCarriers(entry, "carrierStack", `${entryPath}.carrierStack`, issues);
+    validateNonNegativeSafeInteger(
+      entry["index"],
+      `${entryPath}.index`,
+      issues,
+    );
+    optionalTableContentCarriers(
+      entry,
+      "carrierStack",
+      `${entryPath}.carrierStack`,
+      issues,
+    );
     const marker = entry["marker"];
     if (!isRecord(marker)) {
-      issues.push({ path: `${entryPath}.marker`, message: "Expected an object." });
+      issues.push({
+        path: `${entryPath}.marker`,
+        message: "Expected an object.",
+      });
       continue;
     }
     const type = marker["type"];
@@ -3247,7 +4366,11 @@ const optionalPositionedBookmarks = (
       });
       continue;
     }
-    validateNonNegativeSafeInteger(marker["id"], `${entryPath}.marker.id`, issues);
+    validateNonNegativeSafeInteger(
+      marker["id"],
+      `${entryPath}.marker.id`,
+      issues,
+    );
     if (type === "bookmarkStart") {
       requiredString(marker, "name", `${entryPath}.marker.name`, issues);
     }
@@ -3298,7 +4421,11 @@ const optionalBorderMap = (
   }
 };
 
-const validateBorderSpec = (value: unknown, path: string, issues: ProseMirrorAttrIssue[]): void => {
+const validateBorderSpec = (
+  value: unknown,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
   if (value === undefined || value === null) {
     return;
   }
@@ -3313,7 +4440,12 @@ const validateBorderSpec = (value: unknown, path: string, issues: ProseMirrorAtt
   optionalBoolean(value, "shadow", `${path}.shadow`, issues);
   optionalBoolean(value, "frame", `${path}.frame`, issues);
   optionalColorValue(value, "color", `${path}.color`, issues);
-  optionalPreservedAttributes(value, "preservedAttributes", `${path}.preservedAttributes`, issues);
+  optionalPreservedAttributes(
+    value,
+    "preservedAttributes",
+    `${path}.preservedAttributes`,
+    issues,
+  );
 };
 
 const optionalColorValue = (
@@ -3333,7 +4465,13 @@ const optionalColorValue = (
 
   optionalString(value, "rgb", `${path}.rgb`, issues);
   optionalBoolean(value, "auto", `${path}.auto`, issues);
-  optionalOneOf(value, "themeColor", `${path}.themeColor`, issues, THEME_COLORS);
+  optionalOneOf(
+    value,
+    "themeColor",
+    `${path}.themeColor`,
+    issues,
+    THEME_COLORS,
+  );
   optionalString(value, "themeTint", `${path}.themeTint`, issues);
   optionalString(value, "themeShade", `${path}.themeShade`, issues);
 };
@@ -3355,8 +4493,19 @@ const optionalShading = (
 
   optionalColorValue(value, "color", `${path}.color`, issues);
   optionalColorValue(value, "fill", `${path}.fill`, issues);
-  optionalOneOf(value, "pattern", `${path}.pattern`, issues, SHADING_PATTERN_VALUES);
-  optionalPreservedAttributes(value, "preservedAttributes", `${path}.preservedAttributes`, issues);
+  optionalOneOf(
+    value,
+    "pattern",
+    `${path}.pattern`,
+    issues,
+    SHADING_PATTERN_VALUES,
+  );
+  optionalPreservedAttributes(
+    value,
+    "preservedAttributes",
+    `${path}.preservedAttributes`,
+    issues,
+  );
 };
 
 const optionalTabStops = (
@@ -3381,8 +4530,20 @@ const optionalTabStops = (
       continue;
     }
     requiredNumber(item, "position", `${itemPath}.position`, issues);
-    requiredOneOf(item, "alignment", `${itemPath}.alignment`, issues, TAB_STOP_ALIGNMENT_VALUES);
-    optionalOneOf(item, "leader", `${itemPath}.leader`, issues, TAB_LEADER_VALUES);
+    requiredOneOf(
+      item,
+      "alignment",
+      `${itemPath}.alignment`,
+      issues,
+      TAB_STOP_ALIGNMENT_VALUES,
+    );
+    optionalOneOf(
+      item,
+      "leader",
+      `${itemPath}.leader`,
+      issues,
+      TAB_LEADER_VALUES,
+    );
     optionalPreservedAttributes(
       item,
       "preservedAttributes",
@@ -3448,17 +4609,38 @@ const validateTextFormatting = (
   optionalNumber(value, "kerning", `${path}.kerning`, issues);
   optionalString(value, "styleId", `${path}.styleId`, issues);
   optionalOneOf(value, "effect", `${path}.effect`, issues, TEXT_EFFECT_VALUES);
-  optionalOneOf(value, "emphasisMark", `${path}.emphasisMark`, issues, EMPHASIS_MARK_VALUES);
+  optionalOneOf(
+    value,
+    "emphasisMark",
+    `${path}.emphasisMark`,
+    issues,
+    EMPHASIS_MARK_VALUES,
+  );
   optionalColorValue(value, "color", `${path}.color`, issues);
-  optionalOneOf(value, "highlight", `${path}.highlight`, issues, HIGHLIGHT_COLOR_VALUES);
+  optionalOneOf(
+    value,
+    "highlight",
+    `${path}.highlight`,
+    issues,
+    HIGHLIGHT_COLOR_VALUES,
+  );
   optionalShading(value, "shading", `${path}.shading`, issues);
 
   const underline = value["underline"];
   if (underline !== undefined && underline !== null) {
     if (!isRecord(underline)) {
-      issues.push({ path: `${path}.underline`, message: "Expected an object." });
+      issues.push({
+        path: `${path}.underline`,
+        message: "Expected an object.",
+      });
     } else {
-      requiredOneOf(underline, "style", `${path}.underline.style`, issues, UNDERLINE_STYLE_VALUES);
+      requiredOneOf(
+        underline,
+        "style",
+        `${path}.underline.style`,
+        issues,
+        UNDERLINE_STYLE_VALUES,
+      );
       optionalColorValue(underline, "color", `${path}.underline.color`, issues);
     }
   }
@@ -3466,14 +4648,34 @@ const validateTextFormatting = (
   const fontFamily = value["fontFamily"];
   if (fontFamily !== undefined && fontFamily !== null) {
     if (!isRecord(fontFamily)) {
-      issues.push({ path: `${path}.fontFamily`, message: "Expected an object." });
+      issues.push({
+        path: `${path}.fontFamily`,
+        message: "Expected an object.",
+      });
     } else {
       for (const key of ["ascii", "hAnsi", "eastAsia", "cs"] as const) {
         optionalString(fontFamily, key, `${path}.fontFamily.${key}`, issues);
       }
-      optionalOneOf(fontFamily, "hint", `${path}.fontFamily.hint`, issues, FONT_HINT_VALUES);
-      for (const key of ["asciiTheme", "hAnsiTheme", "eastAsiaTheme", "csTheme"] as const) {
-        optionalOneOf(fontFamily, key, `${path}.fontFamily.${key}`, issues, FONT_THEME_VALUES);
+      optionalOneOf(
+        fontFamily,
+        "hint",
+        `${path}.fontFamily.hint`,
+        issues,
+        FONT_HINT_VALUES,
+      );
+      for (const key of [
+        "asciiTheme",
+        "hAnsiTheme",
+        "eastAsiaTheme",
+        "csTheme",
+      ] as const) {
+        optionalOneOf(
+          fontFamily,
+          key,
+          `${path}.fontFamily.${key}`,
+          issues,
+          FONT_THEME_VALUES,
+        );
       }
     }
   }
@@ -3541,8 +4743,20 @@ const optionalSectionProperties = (
   ]) {
     optionalNumber(value, numberKey, `${path}.${numberKey}`, issues);
   }
-  optionalOneOf(value, "orientation", `${path}.orientation`, issues, SECTION_ORIENTATIONS);
-  optionalOneOf(value, "sectionStart", `${path}.sectionStart`, issues, SECTION_START_TYPES);
+  optionalOneOf(
+    value,
+    "orientation",
+    `${path}.orientation`,
+    issues,
+    SECTION_ORIENTATIONS,
+  );
+  optionalOneOf(
+    value,
+    "sectionStart",
+    `${path}.sectionStart`,
+    issues,
+    SECTION_START_TYPES,
+  );
   optionalOneOf(
     value,
     "verticalAlign",
@@ -3554,7 +4768,12 @@ const optionalSectionProperties = (
   optionalBoolean(value, "separator", `${path}.separator`, issues);
   optionalBoolean(value, "bidi", `${path}.bidi`, issues);
   optionalBoolean(value, "titlePg", `${path}.titlePg`, issues);
-  optionalBoolean(value, "evenAndOddHeaders", `${path}.evenAndOddHeaders`, issues);
+  optionalBoolean(
+    value,
+    "evenAndOddHeaders",
+    `${path}.evenAndOddHeaders`,
+    issues,
+  );
 };
 
 const optionalPropertyChanges = (
@@ -3582,7 +4801,11 @@ const optionalPropertyChanges = (
     requiredOneOf(item, "type", `${itemPath}.type`, issues, allowedTypes);
     validatePropertyChangeInfo(item["info"], `${itemPath}.info`, issues);
     let validateFormatting:
-      | ((value: Record<string, unknown>, path: string, issues: ProseMirrorAttrIssue[]) => void)
+      | ((
+          value: Record<string, unknown>,
+          path: string,
+          issues: ProseMirrorAttrIssue[],
+        ) => void)
       | undefined;
     if (allowedTypes.includes("paragraphPropertyChange")) {
       validateFormatting = validateParagraphFormatting;
@@ -3605,8 +4828,18 @@ const optionalPropertyChanges = (
         validateFormatting,
       );
     } else {
-      optionalRecord(item, "previousFormatting", `${itemPath}.previousFormatting`, issues);
-      optionalRecord(item, "currentFormatting", `${itemPath}.currentFormatting`, issues);
+      optionalRecord(
+        item,
+        "previousFormatting",
+        `${itemPath}.previousFormatting`,
+        issues,
+      );
+      optionalRecord(
+        item,
+        "currentFormatting",
+        `${itemPath}.currentFormatting`,
+        issues,
+      );
     }
   }
 };
@@ -3616,7 +4849,11 @@ const optionalNestedRecord = (
   key: string,
   path: string,
   issues: ProseMirrorAttrIssue[],
-  validate: (value: Record<string, unknown>, path: string, issues: ProseMirrorAttrIssue[]) => void,
+  validate: (
+    value: Record<string, unknown>,
+    path: string,
+    issues: ProseMirrorAttrIssue[],
+  ) => void,
 ): void => {
   const value = attrs[key];
   if (value === undefined || value === null) {
@@ -3719,7 +4956,13 @@ const validateParagraphFormatting = (
   path: string,
   issues: ProseMirrorAttrIssue[],
 ): void => {
-  optionalOneOf(value, "alignment", `${path}.alignment`, issues, PARAGRAPH_ALIGNMENT_VALUES);
+  optionalOneOf(
+    value,
+    "alignment",
+    `${path}.alignment`,
+    issues,
+    PARAGRAPH_ALIGNMENT_VALUES,
+  );
   for (const key of PARAGRAPH_FORMATTING_BOOLEAN_KEYS) {
     optionalBoolean(value, key, `${path}.${key}`, issues);
   }
@@ -3757,18 +5000,51 @@ const validateParagraphFormatting = (
     LINE_SPACING_RULE_VALUES,
   );
   optionalString(value, "styleId", `${path}.styleId`, issues);
-  optionalString(value, "numberingChangeXml", `${path}.numberingChangeXml`, issues);
-  optionalString(value, "numberingInsertionXml", `${path}.numberingInsertionXml`, issues);
-  optionalOneOf(value, "listNumFmt", `${path}.listNumFmt`, issues, COUNTER_FORMAT_VALUES);
+  optionalString(
+    value,
+    "numberingChangeXml",
+    `${path}.numberingChangeXml`,
+    issues,
+  );
+  optionalString(
+    value,
+    "numberingInsertionXml",
+    `${path}.numberingInsertionXml`,
+    issues,
+  );
+  optionalOneOf(
+    value,
+    "listNumFmt",
+    `${path}.listNumFmt`,
+    issues,
+    COUNTER_FORMAT_VALUES,
+  );
   optionalString(value, "listMarker", `${path}.listMarker`, issues);
-  optionalString(value, "listMarkerTemplate", `${path}.listMarkerTemplate`, issues);
-  optionalString(value, "listFoldedMarkerSuffix", `${path}.listFoldedMarkerSuffix`, issues);
-  optionalTextFormatting(value, "listMarkerFormatting", `${path}.listMarkerFormatting`, issues);
-  optionalOneOf(value, "listMarkerAlignment", `${path}.listMarkerAlignment`, issues, [
-    "left",
-    "center",
-    "right",
-  ]);
+  optionalString(
+    value,
+    "listMarkerTemplate",
+    `${path}.listMarkerTemplate`,
+    issues,
+  );
+  optionalString(
+    value,
+    "listFoldedMarkerSuffix",
+    `${path}.listFoldedMarkerSuffix`,
+    issues,
+  );
+  optionalTextFormatting(
+    value,
+    "listMarkerFormatting",
+    `${path}.listMarkerFormatting`,
+    issues,
+  );
+  optionalOneOf(
+    value,
+    "listMarkerAlignment",
+    `${path}.listMarkerAlignment`,
+    issues,
+    ["left", "center", "right"],
+  );
   optionalOneOf(value, "listMarkerSuffix", `${path}.listMarkerSuffix`, issues, [
     "tab",
     "space",
@@ -3781,15 +5057,27 @@ const validateParagraphFormatting = (
     issues,
     COUNTER_FORMAT_VALUES,
   );
-  optionalNumberArray(value, "listLevelStarts", `${path}.listLevelStarts`, issues);
+  optionalNumberArray(
+    value,
+    "listLevelStarts",
+    `${path}.listLevelStarts`,
+    issues,
+  );
   optionalTabStops(value, "listLevelTabs", `${path}.listLevelTabs`, issues);
   optionalAutospacingBase(value, `${path}._autospacingBase`, issues);
   for (const key of ["numPr", "numPrFromStyle"] as const) {
     optionalParagraphNumbering(value, key, `${path}.${key}`, issues);
   }
   const direction = value["direction"];
-  if (direction !== undefined && direction !== null && !isParagraphDirection(direction)) {
-    issues.push({ path: `${path}.direction`, message: "Expected a ParagraphDirection." });
+  if (
+    direction !== undefined &&
+    direction !== null &&
+    !isParagraphDirection(direction)
+  ) {
+    issues.push({
+      path: `${path}.direction`,
+      message: "Expected a ParagraphDirection.",
+    });
   }
 
   for (const key of [
@@ -3820,7 +5108,10 @@ const validateParagraphFormatting = (
   optionalShading(value, "shading", `${path}.shading`, issues);
   optionalTabStops(value, "tabs", `${path}.tabs`, issues);
   optionalPreservedMarkup(value, "preserved", `${path}.preserved`, issues);
-  for (const key of ["indentPreservedAttributes", "spacingPreservedAttributes"] as const) {
+  for (const key of [
+    "indentPreservedAttributes",
+    "spacingPreservedAttributes",
+  ] as const) {
     optionalPreservedAttributes(value, key, `${path}.${key}`, issues);
   }
   optionalNestedRecord(
@@ -3836,9 +5127,21 @@ const validateParagraphFormatting = (
     if (!isRecord(frame)) {
       issues.push({ path: `${path}.frame`, message: "Expected an object." });
     } else {
-      optionalOneOf(frame, "dropCap", `${path}.frame.dropCap`, issues, ["none", "drop", "margin"]);
-      optionalOneOf(frame, "hAnchor", `${path}.frame.hAnchor`, issues, ["text", "margin", "page"]);
-      optionalOneOf(frame, "vAnchor", `${path}.frame.vAnchor`, issues, ["text", "margin", "page"]);
+      optionalOneOf(frame, "dropCap", `${path}.frame.dropCap`, issues, [
+        "none",
+        "drop",
+        "margin",
+      ]);
+      optionalOneOf(frame, "hAnchor", `${path}.frame.hAnchor`, issues, [
+        "text",
+        "margin",
+        "page",
+      ]);
+      optionalOneOf(frame, "vAnchor", `${path}.frame.vAnchor`, issues, [
+        "text",
+        "margin",
+        "page",
+      ]);
       optionalOneOf(frame, "xAlign", `${path}.frame.xAlign`, issues, [
         "left",
         "center",
@@ -3862,7 +5165,15 @@ const validateParagraphFormatting = (
         "through",
         "tight",
       ]);
-      for (const key of ["lines", "width", "height", "hSpace", "vSpace", "x", "y"] as const) {
+      for (const key of [
+        "lines",
+        "width",
+        "height",
+        "hSpace",
+        "vSpace",
+        "x",
+        "y",
+      ] as const) {
         optionalNumber(frame, key, `${path}.frame.${key}`, issues);
       }
       optionalPreservedAttributes(
@@ -3932,14 +5243,22 @@ const optionalAuthoredEmu = (
 
   for (const name of Object.keys(value)) {
     if (!allowed.includes(name)) {
-      issues.push({ path: `${path}.${name}`, message: "Not a pixel attribute of this node." });
+      issues.push({
+        path: `${path}.${name}`,
+        message: "Not a pixel attribute of this node.",
+      });
       continue;
     }
     optionalNumber(value, name, `${path}.${name}`, issues);
   }
 };
 
-const WRAP_DISTANCE_ATTRS = ["distTop", "distBottom", "distLeft", "distRight"] as const;
+const WRAP_DISTANCE_ATTRS = [
+  "distTop",
+  "distBottom",
+  "distLeft",
+  "distRight",
+] as const;
 
 /** The inset keys the model names them by, which the slot records are keyed on. */
 const WRAP_DISTANCE_MODEL_KEYS = ["distT", "distB", "distL", "distR"] as const;
@@ -3947,11 +5266,29 @@ const WRAP_DISTANCE_MODEL_KEYS = ["distT", "distB", "distL", "distR"] as const;
 /** The `wp:effectExtent` sides the model names them by, keyed as the slots are. */
 const EFFECT_EXTENT_MODEL_KEYS = ["top", "right", "bottom", "left"] as const;
 
-const TEXT_BOX_MARGIN_ATTRS = ["marginTop", "marginBottom", "marginLeft", "marginRight"] as const;
+const TEXT_BOX_MARGIN_ATTRS = [
+  "marginTop",
+  "marginBottom",
+  "marginLeft",
+  "marginRight",
+] as const;
 
-const IMAGE_AUTHORED_EMU_ATTRS = ["width", "height", "borderWidth", ...WRAP_DISTANCE_ATTRS];
-const SHAPE_AUTHORED_EMU_ATTRS = ["width", "height", "outlineWidth", ...WRAP_DISTANCE_ATTRS];
-const TEXT_BOX_AUTHORED_EMU_ATTRS = [...SHAPE_AUTHORED_EMU_ATTRS, ...TEXT_BOX_MARGIN_ATTRS];
+const IMAGE_AUTHORED_EMU_ATTRS = [
+  "width",
+  "height",
+  "borderWidth",
+  ...WRAP_DISTANCE_ATTRS,
+];
+const SHAPE_AUTHORED_EMU_ATTRS = [
+  "width",
+  "height",
+  "outlineWidth",
+  ...WRAP_DISTANCE_ATTRS,
+];
+const TEXT_BOX_AUTHORED_EMU_ATTRS = [
+  ...SHAPE_AUTHORED_EMU_ATTRS,
+  ...TEXT_BOX_MARGIN_ATTRS,
+];
 
 const optionalImageFrameLocks = (
   attrs: Record<string, unknown>,
@@ -4007,7 +5344,10 @@ const optionalDrawingAnchor = (
     return;
   }
   if (!isRecord(simplePosition)) {
-    issues.push({ path: `${path}.simplePosition`, message: "Expected an object." });
+    issues.push({
+      path: `${path}.simplePosition`,
+      message: "Expected an object.",
+    });
     return;
   }
   optionalNumber(simplePosition, "x", `${path}.simplePosition.x`, issues);
@@ -4166,22 +5506,37 @@ const optionalGradientFill = (
     issues.push({ path: `${path}.gradient`, message: "Expected an object." });
     return;
   }
-  optionalOneOf(gradient, "type", `${path}.gradient.type`, issues, SHAPE_GRADIENT_TYPES);
+  optionalOneOf(
+    gradient,
+    "type",
+    `${path}.gradient.type`,
+    issues,
+    SHAPE_GRADIENT_TYPES,
+  );
   optionalNumber(gradient, "angle", `${path}.gradient.angle`, issues);
   optionalBoolean(gradient, "scaled", `${path}.gradient.scaled`, issues);
   const stops = gradient["stops"];
   if (!Array.isArray(stops)) {
-    issues.push({ path: `${path}.gradient.stops`, message: "Expected an array." });
+    issues.push({
+      path: `${path}.gradient.stops`,
+      message: "Expected an array.",
+    });
     return;
   }
   stops.forEach((stop, index) => {
     const stopPath = `${path}.gradient.stops[${index}]`;
     if (!isRecord(stop)) {
-      issues.push({ path: stopPath, message: "Expected a gradient stop object." });
+      issues.push({
+        path: stopPath,
+        message: "Expected a gradient stop object.",
+      });
       return;
     }
     if (typeof stop["position"] !== "number") {
-      issues.push({ path: `${stopPath}.position`, message: "Expected a number." });
+      issues.push({
+        path: `${stopPath}.position`,
+        message: "Expected a number.",
+      });
     }
     optionalColorValue(stop, "color", `${stopPath}.color`, issues);
   });
@@ -4208,7 +5563,10 @@ const optionalDrawingGroupChild = (
     childPath.length === 0 ||
     !childPath.every((index) => Number.isInteger(index) && index >= 0)
   ) {
-    issues.push({ path: `${path}.path`, message: "Expected a non-empty array of indices." });
+    issues.push({
+      path: `${path}.path`,
+      message: "Expected a non-empty array of indices.",
+    });
   }
   requiredString(value, "group", `${path}.group`, issues);
   requiredString(value, "content", `${path}.content`, issues);
@@ -4288,7 +5646,13 @@ const validateImagePositionAxis = (
     return;
   }
 
-  optionalOneOf(value, "relativeTo", `${path}.relativeTo`, options.issues, options.relativeTo);
+  optionalOneOf(
+    value,
+    "relativeTo",
+    `${path}.relativeTo`,
+    options.issues,
+    options.relativeTo,
+  );
   optionalNumber(value, "posOffset", `${path}.posOffset`, options.issues);
   optionalOneOf(value, "align", `${path}.align`, options.issues, options.align);
 };
@@ -4410,7 +5774,10 @@ const validateNonNegativeSafeInteger = (
   }
 };
 
-const optionalBookmarkArray = (value: unknown, issues: ProseMirrorAttrIssue[]): void => {
+const optionalBookmarkArray = (
+  value: unknown,
+  issues: ProseMirrorAttrIssue[],
+): void => {
   if (value === undefined || value === null) {
     return;
   }
@@ -4448,7 +5815,10 @@ const optionalBookmarkArray = (value: unknown, issues: ProseMirrorAttrIssue[]): 
   }
 };
 
-const optionalEmptyHyperlinkArray = (value: unknown, issues: ProseMirrorAttrIssue[]): void => {
+const optionalEmptyHyperlinkArray = (
+  value: unknown,
+  issues: ProseMirrorAttrIssue[],
+): void => {
   if (value === undefined || value === null) {
     return;
   }
@@ -4486,10 +5856,15 @@ const optionalEmptyHyperlinkArray = (value: unknown, issues: ProseMirrorAttrIssu
       });
       continue;
     }
-    if (!isWithinPreservedMarkupBudget(emptyHyperlinkWrapperProperties(wrapperStacks))) {
+    if (
+      !isWithinPreservedMarkupBudget(
+        emptyHyperlinkWrapperProperties(wrapperStacks),
+      )
+    ) {
       issues.push({
         path: `${itemPath}._docxEmptyWrapperStacks`,
-        message: "Empty inline wrapper stacks exceed their aggregate resource budget.",
+        message:
+          "Empty inline wrapper stacks exceed their aggregate resource budget.",
       });
       continue;
     }

@@ -10,11 +10,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
 } from "@stll/folio-core/server";
-import { paragraphNumberingReference } from "@stll/docx-core/model";
 
 import {
   directNumberedDocument,
@@ -25,18 +25,31 @@ import {
   plainDocument,
   unusedNumberingDocument,
 } from "../support/documents.ts";
-import { assertHealthy, saveAndReopen, visibleState } from "../support/invariants.ts";
-import { paragraphBlocks } from "../support/readers.ts";
-import { reportScenarioFailure, shellQuote } from "../support/failure-fingerprints.ts";
-import { assertRequestedOutcome, capture } from "../support/oracle.ts";
-import { type Block, coreBatch, GENERATORS, MODES, supports } from "../support/operations.ts";
-import { createRandom } from "../support/random.ts";
+import {
+  reportScenarioFailure,
+  shellQuote,
+} from "../support/failure-fingerprints.ts";
+import {
+  assertHealthy,
+  saveAndReopen,
+  visibleState,
+} from "../support/invariants.ts";
 import {
   expectedFailure,
   FINDING_SYMPTOMS,
-  matchesFailureSymptom,
   KNOWN_FAILING_OPERATION_RUNS,
+  matchesFailureSymptom,
 } from "../support/known-issues.ts";
+import {
+  type Block,
+  coreBatch,
+  GENERATORS,
+  MODES,
+  supports,
+} from "../support/operations.ts";
+import { assertRequestedOutcome, capture } from "../support/oracle.ts";
+import { createRandom } from "../support/random.ts";
+import { paragraphBlocks } from "../support/readers.ts";
 import { resolvedText, settledText } from "../support/review.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
@@ -47,11 +60,13 @@ const matrixSeed = (fallback: number): number => {
   const raw = process.env["FOLIO_OPERATION_MATRIX_SEED"];
   if (raw === undefined) return fallback;
   const seed = Number(raw);
-  if (!Number.isSafeInteger(seed)) throw new Error(`Invalid operation matrix seed: ${raw}`);
+  if (!Number.isSafeInteger(seed))
+    throw new Error(`Invalid operation matrix seed: ${raw}`);
   return seed;
 };
 
-const testPattern = (title: string): string => `^${title.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}`;
+const testPattern = (title: string): string =>
+  `^${title.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}`;
 
 describe("applyDocumentOperations", () => {
   for (const name of FIXTURE_NAMES) {
@@ -69,7 +84,11 @@ describe("applyDocumentOperations", () => {
           } catch (error) {
             if (
               known &&
-              matchesFailureSymptom(known.finding, FINDING_SYMPTOMS[known.finding], error)
+              matchesFailureSymptom(
+                known.finding,
+                FINDING_SYMPTOMS[known.finding],
+                error,
+              )
             )
               throw error;
             reportScenarioFailure({
@@ -81,7 +100,12 @@ describe("applyDocumentOperations", () => {
           }
         };
         if (known) {
-          return expectedFailure(known.finding, title, FINDING_SYMPTOMS[known.finding], run);
+          return expectedFailure(
+            known.finding,
+            title,
+            FINDING_SYMPTOMS[known.finding],
+            run,
+          );
         }
         return test(title, run);
       };
@@ -89,7 +113,8 @@ describe("applyDocumentOperations", () => {
         const before = await FIXTURES[name]();
         const reviewer = await openReviewer(before);
         // `"suggested"` edits stay out of the saved package until accepted.
-        const persisted = mode === "suggested" ? { persisted: visibleState(reviewer) } : {};
+        const persisted =
+          mode === "suggested" ? { persisted: visibleState(reviewer) } : {};
         const random = createRandom(seed);
         const log: string[] = [];
         for (const type of Object.keys(GENERATORS)) {
@@ -119,9 +144,16 @@ describe("applyDocumentOperations", () => {
             `${type} neither applied nor refused: ${JSON.stringify(result)}`,
           );
           if (result.skipped.length > 0) {
-            assert.ok(result.issues.length > 0, `${type} was skipped without an issue`);
+            assert.ok(
+              result.issues.length > 0,
+              `${type} was skipped without an issue`,
+            );
           }
-          await assertHealthy(reviewer, `${name} / ${mode} after ${log.join(" → ")}`, persisted);
+          await assertHealthy(
+            reviewer,
+            `${name} / ${mode} after ${log.join(" → ")}`,
+            persisted,
+          );
         }
         assert.ok(
           log.some((entry) => entry.endsWith("applied")),
@@ -214,20 +246,36 @@ describe("resolving tracked edits that build on pending ones", () => {
         { undefinedReferences: "refuse" },
       );
     const block = (prefix: string) => {
-      const found = reviewer.getContent().find(({ text }) => text.startsWith(prefix));
+      const found = reviewer
+        .getContent()
+        .find(({ text }) => text.startsWith(prefix));
       assert.ok(found, `no block starts with "${prefix}"`);
       return found;
     };
     return { reviewer, apply, block };
   };
   const originalText = async () =>
-    (await openReviewer(await plainDocument())).getContent().map(({ text }) => text);
+    (await openReviewer(await plainDocument()))
+      .getContent()
+      .map(({ text }) => text);
 
   test("rejectAll undoes a merge of a split's second half into an inserted paragraph", async () => {
     const { reviewer, apply, block } = await tracked();
-    apply({ type: "insertAfterBlock", blockId: block("Signed").id, text: "Inserted clause." });
-    apply({ type: "splitBlock", blockId: block("Signed").id, offset: "Signed in ".length });
-    apply({ type: "mergeBlockWithNext", blockId: block("two copies").id, separator: " " });
+    apply({
+      type: "insertAfterBlock",
+      blockId: block("Signed").id,
+      text: "Inserted clause.",
+    });
+    apply({
+      type: "splitBlock",
+      blockId: block("Signed").id,
+      offset: "Signed in ".length,
+    });
+    apply({
+      type: "mergeBlockWithNext",
+      blockId: block("two copies").id,
+      separator: " ",
+    });
     reviewer.rejectAll();
     assert.deepEqual(
       reviewer.getContent().map(({ text }) => text),
@@ -238,8 +286,16 @@ describe("resolving tracked edits that build on pending ones", () => {
   test("rejecting a split with a table inserted between its halves joins them again", async () => {
     const { reviewer, apply, block } = await tracked();
     const target = block("The Supplier");
-    apply({ type: "splitBlock", blockId: target.id, offset: SUPPLIER.indexOf("good order") });
-    apply({ type: "insertTable", blockId: target.id, rows: [["Term", "Value"]] });
+    apply({
+      type: "splitBlock",
+      blockId: target.id,
+      offset: SUPPLIER.indexOf("good order"),
+    });
+    apply({
+      type: "insertTable",
+      blockId: target.id,
+      rows: [["Term", "Value"]],
+    });
     reviewer.rejectAll();
     assert.deepEqual(
       reviewer.getContent().map(({ text }) => text),
@@ -258,9 +314,19 @@ describe("resolving tracked edits that build on pending ones", () => {
       endOffset: start + "good".length,
     });
     assert.ok(range);
-    apply({ type: "commentOnRange", range, comment: { text: "Which standard?" } });
-    apply({ type: "replaceBlock", blockId: target.id, text: "The Supplier delivers promptly." });
-    const before = reviewer.getComments().map((comment) => comment.anchoredText);
+    apply({
+      type: "commentOnRange",
+      range,
+      comment: { text: "Which standard?" },
+    });
+    apply({
+      type: "replaceBlock",
+      blockId: target.id,
+      text: "The Supplier delivers promptly.",
+    });
+    const before = reviewer
+      .getComments()
+      .map((comment) => comment.anchoredText);
     // The removed word and its complete aligned replacement span.
     assert.deepEqual(before, ["good promptly."]);
     const { reopened } = await saveAndReopen(reviewer, "comment anchor");
@@ -284,13 +350,20 @@ describe("list labels after an operation", () => {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "direct",
         operations: [
-          { id: "1", type: "insertAfterBlock", blockId: anchor.id, text: "Interim payment" },
+          {
+            id: "1",
+            type: "insertAfterBlock",
+            blockId: anchor.id,
+            text: "Interim payment",
+          },
         ],
       },
       { undefinedReferences: "refuse" },
     );
     const live = paragraphBlocks(reviewer.getContent())
-      .filter((block) => block.listReference?.numId === anchor.listReference?.numId)
+      .filter(
+        (block) => block.listReference?.numId === anchor.listReference?.numId,
+      )
       .map((block) => `${block.displayLabel} ${block.text}`);
     assert.deepEqual(
       live,
@@ -307,7 +380,9 @@ describe("list labels after an operation", () => {
 
   test("a paragraph numbered at a level its instance does not define reads alike everywhere", async () => {
     const reviewer = await openReviewer(await directNumberedDocument());
-    const anchor = reviewer.getContent().find(({ text }) => text === "Unnumbered body text.");
+    const anchor = reviewer
+      .getContent()
+      .find(({ text }) => text === "Unnumbered body text.");
     assert.ok(anchor);
     reviewer.applyDocumentOperations(
       {
@@ -331,7 +406,11 @@ describe("list labels after an operation", () => {
     );
     assert.equal(unmarked?.kind, "paragraph");
     assert.equal(unmarked?.displayLabel, undefined);
-    assert.deepEqual(unmarked?.statedNumbering, { kind: "reference", numId: 7, ilvl: 8 });
+    assert.deepEqual(unmarked?.statedNumbering, {
+      kind: "reference",
+      numId: 7,
+      ilvl: 8,
+    });
     assert.deepEqual(unmarked?.listReference, { numId: 7, level: 8 });
     await assertHealthy(reviewer, "undefined level");
   });
@@ -376,7 +455,9 @@ describe("an operation naming a paragraph style the package does not define", ()
 
   test("setBlockParagraphProperties with an undefined styleId is refused, not applied", async () => {
     const reviewer = await openReviewer(await plainDocument());
-    const target = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
+    const target = reviewer
+      .getContent()
+      .find((block) => block.text === "Signed in two copies.");
     assert.ok(target);
     const result = reviewer.applyDocumentOperations(
       {
@@ -398,12 +479,17 @@ describe("an operation naming a paragraph style the package does not define", ()
       result.skipped.map(({ reason }) => reason),
       ["missingStyle"],
     );
-    await assertHealthy(reviewer, "setBlockParagraphProperties undefined styleId");
+    await assertHealthy(
+      reviewer,
+      "setBlockParagraphProperties undefined styleId",
+    );
   });
 
   test("control: a defined paragraph style applies and reopens as a heading", async () => {
     const reviewer = await openReviewer(await plainDocument());
-    const target = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
+    const target = reviewer
+      .getContent()
+      .find((block) => block.text === "Signed in two copies.");
     assert.ok(target);
     const result = reviewer.applyDocumentOperations(
       {
@@ -424,8 +510,13 @@ describe("an operation naming a paragraph style the package does not define", ()
       result.applied.map(({ id }) => id),
       ["1"],
     );
-    const { reopened } = await assertHealthy(reviewer, "defined paragraph style");
-    const heading = reopened.getContent().find((block) => block.text === "Signed in two copies.");
+    const { reopened } = await assertHealthy(
+      reviewer,
+      "defined paragraph style",
+    );
+    const heading = reopened
+      .getContent()
+      .find((block) => block.text === "Signed in two copies.");
     assert.equal(heading?.kind, "heading");
     assert.equal(heading?.headingLevel, 2);
   });
@@ -435,7 +526,9 @@ describe("an operation naming a numbering instance the package does not define (
   for (const mode of MODES) {
     test(`insertAfterBlock with an undefined numId is refused, not saved broken (${mode})`, async () => {
       const reviewer = await openReviewer(await unusedNumberingDocument());
-      const anchor = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
+      const anchor = reviewer
+        .getContent()
+        .find((block) => block.text === "Signed in two copies.");
       assert.ok(anchor);
       const result = reviewer.applyDocumentOperations(
         {
@@ -469,7 +562,9 @@ describe("an operation naming a numbering instance the package does not define (
 
   test("setBlockParagraphProperties with an undefined numId is refused, not saved broken", async () => {
     const reviewer = await openReviewer(await plainDocument());
-    const target = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
+    const target = reviewer
+      .getContent()
+      .find((block) => block.text === "Signed in two copies.");
     assert.ok(target);
     const result = reviewer.applyDocumentOperations(
       {
@@ -480,7 +575,9 @@ describe("an operation naming a numbering instance the package does not define (
             id: "1",
             type: "setBlockParagraphProperties",
             blockId: target.id,
-            properties: { numbering: paragraphNumberingReference({ numId: 3, ilvl: 0 }) },
+            properties: {
+              numbering: paragraphNumberingReference({ numId: 3, ilvl: 0 }),
+            },
           },
         ],
       },
@@ -491,7 +588,10 @@ describe("an operation naming a numbering instance the package does not define (
       result.skipped.map(({ reason }) => reason),
       ["missingNumbering"],
     );
-    await assertHealthy(reviewer, "setBlockParagraphProperties undefined numId");
+    await assertHealthy(
+      reviewer,
+      "setBlockParagraphProperties undefined numId",
+    );
   });
 });
 
@@ -500,32 +600,48 @@ describe("a batch that merges a block into one it deletes", () => {
   // joins across the deleted block, or, where the deletions run to the end
   // and nothing is left to join, directly it is refused and tracked it joins
   // no separator onto the end.
-  const outcomes = async (mergedPrefix: string, deletedPrefixes: readonly string[]) => {
+  const outcomes = async (
+    mergedPrefix: string,
+    deletedPrefixes: readonly string[],
+  ) => {
     const texts: string[][] = [];
     for (const mode of ["direct", "tracked-changes"] as const) {
       const reviewer = await openReviewer(await plainDocument());
       const idOf = (prefix: string) => {
-        const block = reviewer.getContent().find((candidate) => candidate.text.startsWith(prefix));
+        const block = reviewer
+          .getContent()
+          .find((candidate) => candidate.text.startsWith(prefix));
         assert.ok(block, prefix);
         return block.id;
       };
       reviewer.applyDocumentOperations(
         coreBatch(
           [
-            ...deletedPrefixes.map((prefix) => ({ type: "deleteBlock", blockId: idOf(prefix) })),
-            { type: "mergeBlockWithNext", blockId: idOf(mergedPrefix), separator: " " },
+            ...deletedPrefixes.map((prefix) => ({
+              type: "deleteBlock",
+              blockId: idOf(prefix),
+            })),
+            {
+              type: "mergeBlockWithNext",
+              blockId: idOf(mergedPrefix),
+              separator: " ",
+            },
           ],
           mode,
         ) as never,
         { undefinedReferences: "refuse" },
       );
-      texts.push(await resolvedText(new Uint8Array(await reviewer.toBuffer()), "accept"));
+      texts.push(
+        await resolvedText(new Uint8Array(await reviewer.toBuffer()), "accept"),
+      );
     }
     return texts;
   };
 
   test("joins across it, directly and tracked alike", async () => {
-    const [direct, tracked] = await outcomes("This agreement", ["The Supplier"]);
+    const [direct, tracked] = await outcomes("This agreement", [
+      "The Supplier",
+    ]);
     assert.deepEqual(tracked, direct);
   });
 
@@ -533,7 +649,9 @@ describe("a batch that merges a block into one it deletes", () => {
     const [direct, tracked] = await outcomes("The Buyer", ["Signed"]);
     assert.deepEqual(tracked, direct);
     assert.ok(
-      direct?.some((text) => text.endsWith("The Buyer pays each invoice within thirty days.")),
+      direct?.some((text) =>
+        text.endsWith("The Buyer pays each invoice within thirty days."),
+      ),
     );
   });
 });

@@ -15,7 +15,8 @@ export const LAYOUT_MEASURE = {
   incremental: "incremental",
 } as const;
 
-export type LayoutMeasure = (typeof LAYOUT_MEASURE)[keyof typeof LAYOUT_MEASURE];
+export type LayoutMeasure =
+  (typeof LAYOUT_MEASURE)[keyof typeof LAYOUT_MEASURE];
 
 export type LayoutRunOptions = {
   /** Defaults to {@link LAYOUT_MEASURE.full}. */

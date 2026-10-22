@@ -2,8 +2,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, type Plugin } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../../test/property-testing";
 import { schema } from "../../schema";
 import { validateProseMirrorDocument } from "../../validation";
 import { BookmarkBoundaryExtension } from "./BookmarkBoundaryExtension";
@@ -21,15 +23,21 @@ class FakeHTMLElement {
 const parseBookmarkBoundary = (attrs: Readonly<Record<string, string>>) => {
   const getAttrs = schema.nodes.bookmarkBoundary.spec.parseDOM?.at(0)?.getAttrs;
   if (!getAttrs) {
-    throw new Error("BookmarkBoundaryExtension must define parseDOM[0].getAttrs");
+    throw new Error(
+      "BookmarkBoundaryExtension must define parseDOM[0].getAttrs",
+    );
   }
   return getAttrs(new FakeHTMLElement(attrs) as unknown as HTMLElement);
 };
 
 const getBoundaryIntegrityPlugin = (): Plugin => {
-  const plugin = BookmarkBoundaryExtension().onSchemaReady({ schema }).plugins?.at(0);
+  const plugin = BookmarkBoundaryExtension()
+    .onSchemaReady({ schema })
+    .plugins?.at(0);
   if (!plugin) {
-    throw new Error("BookmarkBoundaryExtension must enforce boundary integrity");
+    throw new Error(
+      "BookmarkBoundaryExtension must enforce boundary integrity",
+    );
   }
   return plugin;
 };
@@ -37,9 +45,17 @@ const getBoundaryIntegrityPlugin = (): Plugin => {
 const createBoundaryDocument = () =>
   schema.node("doc", null, [
     schema.node("paragraph", null, [
-      schema.node("bookmarkBoundary", { type: "start", id: 101, name: "range-a" }),
+      schema.node("bookmarkBoundary", {
+        type: "start",
+        id: 101,
+        name: "range-a",
+      }),
       schema.text("alpha"),
-      schema.node("bookmarkBoundary", { type: "start", id: 202, name: "range-b" }),
+      schema.node("bookmarkBoundary", {
+        type: "start",
+        id: 202,
+        name: "range-b",
+      }),
       schema.text("beta"),
       schema.node("bookmarkBoundary", { type: "end", id: 101 }),
       schema.text("gamma"),
@@ -49,7 +65,9 @@ const createBoundaryDocument = () =>
 
 const expectValidBoundaryStructure = (state: EditorState): void => {
   const result = validateProseMirrorDocument(state.doc);
-  expect(result.issues.filter(({ message }) => message.includes("Bookmark"))).toEqual([]);
+  expect(
+    result.issues.filter(({ message }) => message.includes("Bookmark")),
+  ).toEqual([]);
 };
 
 describe("BookmarkBoundaryExtension DOM round-trip", () => {
@@ -119,7 +137,10 @@ describe("BookmarkBoundaryExtension DOM round-trip", () => {
       throw new Error("Reconstruction atoms must define toDOM");
     }
 
-    const boundaryDom = boundaryToDOM(boundary) as [string, Record<string, string>];
+    const boundaryDom = boundaryToDOM(boundary) as [
+      string,
+      Record<string, string>,
+    ];
     const anchorDom = anchorToDOM(anchor) as [string, Record<string, string>];
 
     expect(boundaryDom[1]["data-docx-internal-clipboard"]).toBeTruthy();
@@ -165,13 +186,24 @@ describe("BookmarkBoundaryExtension editing integrity", () => {
 
   test("removes ambiguous node pairs that collide with paragraph bookmark ids", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { bookmarks: [{ id: 303, name: "paragraph-range" }] }, [
-        schema.node("bookmarkBoundary", { type: "start", id: 303, name: "node-range" }),
-        schema.text("synthetic"),
-        schema.node("bookmarkBoundary", { type: "end", id: 303 }),
-      ]),
+      schema.node(
+        "paragraph",
+        { bookmarks: [{ id: 303, name: "paragraph-range" }] },
+        [
+          schema.node("bookmarkBoundary", {
+            type: "start",
+            id: 303,
+            name: "node-range",
+          }),
+          schema.text("synthetic"),
+          schema.node("bookmarkBoundary", { type: "end", id: 303 }),
+        ],
+      ),
     ]);
-    const state = EditorState.create({ doc, plugins: [getBoundaryIntegrityPlugin()] });
+    const state = EditorState.create({
+      doc,
+      plugins: [getBoundaryIntegrityPlugin()],
+    });
 
     const applied = state.applyTransaction(state.tr.insertText("x", 3));
 

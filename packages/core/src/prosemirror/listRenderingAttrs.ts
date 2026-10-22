@@ -10,14 +10,17 @@
 
 import type { ListRendering } from "../types/document";
 import {
-  paragraphNumberingSourcesFromBoundary,
   effectiveParagraphNumberingReference,
   type ParagraphNumberingBoundarySources,
+  paragraphNumberingSourcesFromBoundary,
 } from "./numberingAttr";
 import type { ParagraphAttrs } from "./schema/nodes";
 
 /** `ListRendering` fields that have their own editor attr. */
-export type ListRenderingAttrField = Exclude<keyof ListRendering, "level" | "numId">;
+export type ListRenderingAttrField = Exclude<
+  keyof ListRendering,
+  "level" | "numId"
+>;
 
 export const LIST_RENDERING_ATTR_BY_FIELD = {
   marker: "listMarker",
@@ -40,23 +43,29 @@ export const LIST_RENDERING_ATTR_BY_FIELD = {
   markerSecondSlotOffsetTwips: "listMarkerSecondSlotOffsetTwips",
 } as const satisfies Record<ListRenderingAttrField, keyof ParagraphAttrs>;
 
-export type ListRenderingAttrKey = (typeof LIST_RENDERING_ATTR_BY_FIELD)[ListRenderingAttrField];
+export type ListRenderingAttrKey =
+  (typeof LIST_RENDERING_ATTR_BY_FIELD)[ListRenderingAttrField];
 
-export const LIST_RENDERING_ATTR_KEYS: readonly ListRenderingAttrKey[] = Object.values(
-  LIST_RENDERING_ATTR_BY_FIELD,
-);
+export const LIST_RENDERING_ATTR_KEYS: readonly ListRenderingAttrKey[] =
+  Object.values(LIST_RENDERING_ATTR_BY_FIELD);
 
 /** Every list attr, required, so a table entry without a projection is a compile error. */
-type ListRenderingAttrPatch = { [K in ListRenderingAttrKey]-?: ParagraphAttrs[K] | undefined };
+type ListRenderingAttrPatch = {
+  [K in ListRenderingAttrKey]-?: ParagraphAttrs[K] | undefined;
+};
 
-type OptionalListRenderingField = Exclude<ListRenderingAttrField, "marker" | "isBullet">;
+type OptionalListRenderingField = Exclude<
+  ListRenderingAttrField,
+  "marker" | "isBullet"
+>;
 
 /** Every optional `ListRendering` field, required, for the same reason. */
 type OptionalListRenderingFields = {
   [F in OptionalListRenderingField]-?: ListRendering[F] | undefined;
 };
 
-const isDefinedEntry = ([, value]: [string, unknown]): boolean => value !== undefined;
+const isDefinedEntry = ([, value]: [string, unknown]): boolean =>
+  value !== undefined;
 
 const definedAttrs = (
   patch: ListRenderingAttrPatch,
@@ -73,7 +82,9 @@ const definedFields = (
  * unset: the editor treats `null` and absent alike for those, and the parser
  * never authors them as `false` or `""` deliberately.
  */
-export const listRenderingAttrPatch = (rendering: ListRendering): Partial<ParagraphAttrs> => {
+export const listRenderingAttrPatch = (
+  rendering: ListRendering,
+): Partial<ParagraphAttrs> => {
   const patch: ListRenderingAttrPatch = {
     listMarker: rendering.marker || undefined,
     listMarkerTemplate: rendering.markerTemplate || undefined,
@@ -86,7 +97,9 @@ export const listRenderingAttrPatch = (rendering: ListRendering): Partial<Paragr
     listMarkerAlignment: rendering.markerAlignment || undefined,
     listMarkerAllCaps: rendering.markerAllCaps || undefined,
     listMarkerSuffix: rendering.markerSuffix || undefined,
-    listLevelTabs: rendering.levelTabs?.length ? rendering.levelTabs : undefined,
+    listLevelTabs: rendering.levelTabs?.length
+      ? rendering.levelTabs
+      : undefined,
     listLevelNumFmts: rendering.levelNumFmts || undefined,
     listLevelStarts: rendering.levelStarts || undefined,
     listAbstractNumId: rendering.abstractNumId,
@@ -105,10 +118,16 @@ export const listRenderingAttrPatch = (rendering: ListRendering): Partial<Paragr
  */
 export const hasListRendering = (
   attrs: Pick<ParagraphAttrs, "listMarker" | "listIsBullet" | "listNumFmt">,
-): boolean => attrs.listMarker != null || attrs.listIsBullet === true || attrs.listNumFmt != null;
+): boolean =>
+  attrs.listMarker != null ||
+  attrs.listIsBullet === true ||
+  attrs.listNumFmt != null;
 
 /** The attrs a rendering is read back from: a paragraph's, or a recorded previous state's. */
-export type ListRenderingSourceAttrs = Pick<ParagraphAttrs, ListRenderingAttrKey> &
+export type ListRenderingSourceAttrs = Pick<
+  ParagraphAttrs,
+  ListRenderingAttrKey
+> &
   Partial<ParagraphNumberingBoundarySources>;
 
 type ListRenderingFromAttrsOptions = {
@@ -139,8 +158,10 @@ export const listRenderingFromAttrs = ({
     levelStarts: attrs.listLevelStarts ?? undefined,
     abstractNumId: attrs.listAbstractNumId ?? undefined,
     startOverride: attrs.listStartOverride ?? undefined,
-    implicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances ?? undefined,
-    markerSecondSlotOffsetTwips: attrs.listMarkerSecondSlotOffsetTwips ?? undefined,
+    implicitChildLevelAdvances:
+      attrs.listImplicitChildLevelAdvances ?? undefined,
+    markerSecondSlotOffsetTwips:
+      attrs.listMarkerSecondSlotOffsetTwips ?? undefined,
   };
   const numbering = effectiveParagraphNumberingReference(
     paragraphNumberingSourcesFromBoundary({

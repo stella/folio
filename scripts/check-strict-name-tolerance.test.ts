@@ -37,9 +37,11 @@ describe("a reader that hand-lists a rename", () => {
 
 describe("a name that is not a rename", () => {
   test("a list's first number reads alone", () => {
-    expect(handListedSpellings(`const start = parseNumericAttribute(lvl, "w", "start");`)).toEqual(
-      [],
-    );
+    expect(
+      handListedSpellings(
+        `const start = parseNumericAttribute(lvl, "w", "start");`,
+      ),
+    ).toEqual([]);
   });
 
   test("two elements are two slots, not one pair", () => {

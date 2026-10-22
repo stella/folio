@@ -14,7 +14,10 @@ describe("normalisation warning coverage", () => {
   test("a normaliser that reaches for a warning code passes", () => {
     expect(
       findNormalizationWarningViolations([
-        module_("a/fooNormalization.ts", "warn({ code: PARSE_WARNING_CODES.duplicateNoteId });"),
+        module_(
+          "a/fooNormalization.ts",
+          "warn({ code: PARSE_WARNING_CODES.duplicateNoteId });",
+        ),
       ]),
     ).toEqual([]);
   });
@@ -50,14 +53,20 @@ describe("normalisation warning coverage", () => {
 
   test("the code name in a string literal does not pass the gate", () => {
     const violations = findNormalizationWarningViolations([
-      module_("a/fooNormalization.ts", 'export const note = "PARSE_WARNING_CODES";'),
+      module_(
+        "a/fooNormalization.ts",
+        'export const note = "PARSE_WARNING_CODES";',
+      ),
     ]);
     expect(violations).toHaveLength(1);
   });
 
   test("an exemption with no reason is not a decision", () => {
     const violations = findNormalizationWarningViolations([
-      module_("a/fooNormalization.ts", "// PARSE-WARNING-EXEMPT:\nexport const f = () => {};"),
+      module_(
+        "a/fooNormalization.ts",
+        "// PARSE-WARNING-EXEMPT:\nexport const f = () => {};",
+      ),
     ]);
     expect(violations).toHaveLength(1);
     expect(violations[0]?.detail).toContain("no reason");

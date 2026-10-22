@@ -25,9 +25,8 @@
  *   bun scripts/generate-theme-colors.ts check
  */
 
-import path from "node:path";
-
 import { TaggedError } from "better-result";
+import path from "node:path";
 
 import {
   emitGeneratedModule,
@@ -35,10 +34,17 @@ import {
   renderList,
   renderModule,
 } from "./lib/generated-enumeration";
-import { buildIndex, loadSchemaGraph, type SchemaGraph } from "./lib/ooxml-schema-graph";
+import {
+  buildIndex,
+  loadSchemaGraph,
+  type SchemaGraph,
+} from "./lib/ooxml-schema-graph";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const OUTPUT_PATH = path.join(REPO_ROOT, "packages/docx-core/src/model/themeColor.gen.ts");
+const OUTPUT_PATH = path.join(
+  REPO_ROOT,
+  "packages/docx-core/src/model/themeColor.gen.ts",
+);
 const SCRIPT = "generate:theme-colors";
 
 const WML = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -57,13 +63,19 @@ class GenerateThemeColorsError extends TaggedError("GenerateThemeColorsError")<{
 const colorSchemeSlots = (graph: SchemaGraph): readonly string[] => {
   const owner = `complexType:{${DML}}CT_ColorScheme`;
   const slots = graph.children
-    .filter((child) => child.owner === owner && child.kind === "element" && child.name !== "extLst")
+    .filter(
+      (child) =>
+        child.owner === owner &&
+        child.kind === "element" &&
+        child.name !== "extLst",
+    )
     .toSorted((left, right) => (left.order ?? 0) - (right.order ?? 0))
     .map((child) => child.name)
     .filter((name): name is string => name !== undefined);
   if (slots.length === 0) {
     throw new GenerateThemeColorsError({
-      message: "CT_ColorScheme declares no slot elements; the schema graph drifted.",
+      message:
+        "CT_ColorScheme declares no slot elements; the schema graph drifted.",
     });
   }
   return slots;
@@ -73,20 +85,28 @@ const colorSchemeSlots = (graph: SchemaGraph): readonly string[] => {
 const clrSchemeMappingKeys = (graph: SchemaGraph): readonly string[] => {
   const owner = `complexType:{${WML}}CT_ColorSchemeMapping`;
   const keys = graph.attributes
-    .filter((attribute) => attribute.owner === owner && attribute.kind === "attribute")
+    .filter(
+      (attribute) =>
+        attribute.owner === owner && attribute.kind === "attribute",
+    )
     .toSorted((left, right) => (left.order ?? 0) - (right.order ?? 0))
     .map((attribute) => attribute.name)
     .filter((name): name is string => name !== undefined);
   if (keys.length === 0) {
     throw new GenerateThemeColorsError({
-      message: "CT_ColorSchemeMapping declares no attributes; the schema graph drifted.",
+      message:
+        "CT_ColorSchemeMapping declares no attributes; the schema graph drifted.",
     });
   }
   return keys;
 };
 
-const sameMembers = (left: readonly string[], right: readonly string[]): boolean =>
-  left.length === right.length && [...left].toSorted().join() === [...right].toSorted().join();
+const sameMembers = (
+  left: readonly string[],
+  right: readonly string[],
+): boolean =>
+  left.length === right.length &&
+  [...left].toSorted().join() === [...right].toSorted().join();
 
 const main = async (): Promise<void> => {
   const graph = await loadSchemaGraph();

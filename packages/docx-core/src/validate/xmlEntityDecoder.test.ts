@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createXmlEntityDecoder } from "./xmlEntityDecoder";
 
 test(
@@ -18,7 +22,9 @@ test(
           const decoder = createXmlEntityDecoder();
           const character = String.fromCodePoint(codePoint);
           expect(decoder.decode(`&#${codePoint};`)).toBe(character);
-          expect(decoder.decode(`&#x${codePoint.toString(16)};`)).toBe(character);
+          expect(decoder.decode(`&#x${codePoint.toString(16)};`)).toBe(
+            character,
+          );
           expect(decoder.decode(character)).toBe(character);
         },
       ),

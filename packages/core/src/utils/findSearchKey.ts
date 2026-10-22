@@ -1,9 +1,13 @@
 import { documentStories, storyBody } from "@stll/docx-core/ops";
+
 import type { Document } from "../types/document";
 import type { FindOptions, FindSearchContext } from "./findReplace";
 
 /** Every matching option must make an explicit decision in the search key. */
-export const createFindQueryKey = (query: string, options: FindOptions): string => {
+export const createFindQueryKey = (
+  query: string,
+  options: FindOptions,
+): string => {
   const matchingOptions = {
     matchCase: options.matchCase,
     matchWholeWord: options.matchWholeWord,
@@ -42,10 +46,13 @@ export const createFindSearchKey = ({
       .filter((story) => story !== "main")
       .map((story) => [story, storyBody(document, story)]),
     document.package.document.comments ?? [],
-    document.package.document.sections?.map(({ properties }) => properties) ?? [],
+    document.package.document.sections?.map(({ properties }) => properties) ??
+      [],
   ]),
   storyScope: JSON.stringify(
-    context?.renderedStories?.map((story) => JSON.stringify(story)).toSorted() ?? null,
+    context?.renderedStories
+      ?.map((story) => JSON.stringify(story))
+      .toSorted() ?? null,
   ),
 });
 
@@ -62,7 +69,8 @@ const sameFindDocumentVersion = (
   previous: ReturnType<typeof createFindSearchKey>,
   current: ReturnType<typeof createFindSearchKey>,
 ): boolean =>
-  sameFindBodyVersion(previous, current) && previous.documentVersion === current.documentVersion;
+  sameFindBodyVersion(previous, current) &&
+  previous.documentVersion === current.documentVersion;
 
 /** Secondary edits cannot acknowledge a pending body replacement. */
 export const sameFindBodyVersion = (

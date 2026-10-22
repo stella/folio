@@ -1,7 +1,15 @@
 // Activation against a stand-in `vscode` module: what the extension registers,
 // and the MCP server definition it hands the editor.
 
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 
 type Listener = () => void;
 
@@ -86,7 +94,11 @@ const mockVscode = () => ({
       state.warnings += 1;
       return Promise.resolve(undefined);
     },
-    registerCustomEditorProvider: (viewType: string, _provider: unknown, options: unknown) => {
+    registerCustomEditorProvider: (
+      viewType: string,
+      _provider: unknown,
+      options: unknown,
+    ) => {
       state.editors.set(viewType, { options });
       return disposable;
     },
@@ -196,7 +208,9 @@ describe("activate", () => {
         expect(context.subscriptions).toHaveLength(1);
         expect(state.warnings).toBe(0);
         expect(logged).toHaveBeenCalledTimes(1);
-        expect(logged.mock.calls.at(0)?.at(0)).toContain("MCP registration skipped");
+        expect(logged.mock.calls.at(0)?.at(0)).toContain(
+          "MCP registration skipped",
+        );
       } finally {
         logged.mockRestore();
         delete process.env["FOLIO_VSCODE_TEST"];
@@ -268,7 +282,10 @@ describe("activate", () => {
     state.git = "Git Name";
     state.os = "osuser";
 
-    expect((await definitions())[0]?.args.slice(-2)).toEqual(["--author", "Ada Lovelace"]);
+    expect((await definitions())[0]?.args.slice(-2)).toEqual([
+      "--author",
+      "Ada Lovelace",
+    ]);
   });
 
   test("falls back to git user.name when the setting is blank", async () => {
@@ -276,14 +293,20 @@ describe("activate", () => {
     state.git = "Git Name";
     state.os = "osuser";
 
-    expect((await definitions())[0]?.args.slice(-2)).toEqual(["--author", "Git Name"]);
+    expect((await definitions())[0]?.args.slice(-2)).toEqual([
+      "--author",
+      "Git Name",
+    ]);
   });
 
   test("falls back to the OS user name without a setting or git name", async () => {
     state.author = "";
     state.os = "osuser";
 
-    expect((await definitions())[0]?.args.slice(-2)).toEqual(["--author", "osuser"]);
+    expect((await definitions())[0]?.args.slice(-2)).toEqual([
+      "--author",
+      "osuser",
+    ]);
     expect(state.warnings).toBe(0);
   });
 

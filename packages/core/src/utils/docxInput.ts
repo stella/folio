@@ -41,5 +41,7 @@ export function toArrayBuffer(input: DocxInput): Promise<ArrayBuffer> {
     return input.arrayBuffer();
   }
   // Exhaustive check — should never happen at runtime
-  return Promise.reject(new TypeError(`Unsupported DocxInput type: ${typeof input}`));
+  return Promise.reject(
+    new TypeError(`Unsupported DocxInput type: ${typeof input}`),
+  );
 }

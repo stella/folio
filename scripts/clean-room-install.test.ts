@@ -6,11 +6,17 @@ import path from "node:path";
 import { writeCleanRoomInstallConfig } from "./clean-room-install";
 
 test("clean rooms derive exactly the repository release-age settings on every write", async () => {
-  const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-install-policy-"));
+  const consumerDir = await mkdtemp(
+    path.join(tmpdir(), "folio-install-policy-"),
+  );
   try {
-    const repo = Bun.TOML.parse(await readFile(new URL("../bunfig.toml", import.meta.url), "utf8"));
+    const repo = Bun.TOML.parse(
+      await readFile(new URL("../bunfig.toml", import.meta.url), "utf8"),
+    );
     const policy = Object.fromEntries(
-      Object.entries(repo.install).filter(([key]) => key.startsWith("minimumReleaseAge")),
+      Object.entries(repo.install).filter(([key]) =>
+        key.startsWith("minimumReleaseAge"),
+      ),
     );
     for (const existing of [
       "",
@@ -18,7 +24,9 @@ test("clean rooms derive exactly the repository release-age settings on every wr
     ]) {
       await writeFile(path.join(consumerDir, "bunfig.toml"), existing);
       await writeCleanRoomInstallConfig(consumerDir);
-      const written = Bun.TOML.parse(await readFile(path.join(consumerDir, "bunfig.toml"), "utf8"));
+      const written = Bun.TOML.parse(
+        await readFile(path.join(consumerDir, "bunfig.toml"), "utf8"),
+      );
       expect(written).toEqual({ install: policy });
     }
   } finally {
@@ -38,7 +46,10 @@ test("the install subprocess receives the policy first, preserves arguments, and
       '#!/bin/sh\ntest -f bunfig.toml || exit 91\ncp bunfig.toml observed.toml\nprintf "%s\\n" "$@" > observed-args\nexit "${INSTALL_TEST_EXIT:-0}"\n',
       { mode: 0o755 },
     );
-    const dependencies = [path.join(root, "package with spaces.tgz"), "react@^19"];
+    const dependencies = [
+      path.join(root, "package with spaces.tgz"),
+      "react@^19",
+    ];
     const entry = new URL("./clean-room-install.ts", import.meta.url).href;
     const code = `import { installCleanRoomDependencies } from ${JSON.stringify(entry)}; await installCleanRoomDependencies(${JSON.stringify({ consumerDir, dependencies })});`;
     for (const exitCode of [0, 7]) {
@@ -55,11 +66,13 @@ test("the install subprocess receives the policy first, preserves arguments, and
       });
       const result = await child.exited;
       expect(result === 0).toBe(exitCode === 0);
-      expect(await readFile(path.join(consumerDir, "observed.toml"), "utf8")).toBe(
-        await readFile(path.join(consumerDir, "bunfig.toml"), "utf8"),
-      );
       expect(
-        (await readFile(path.join(consumerDir, "observed-args"), "utf8")).trim().split("\n"),
+        await readFile(path.join(consumerDir, "observed.toml"), "utf8"),
+      ).toBe(await readFile(path.join(consumerDir, "bunfig.toml"), "utf8"));
+      expect(
+        (await readFile(path.join(consumerDir, "observed-args"), "utf8"))
+          .trim()
+          .split("\n"),
       ).toEqual(["add", ...dependencies]);
     }
   } finally {
@@ -68,10 +81,14 @@ test("the install subprocess receives the policy first, preserves arguments, and
 });
 
 test("dependency consumers explicitly select the isolated linker", async () => {
-  const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-isolated-consumer-"));
+  const consumerDir = await mkdtemp(
+    path.join(tmpdir(), "folio-isolated-consumer-"),
+  );
   try {
     await writeCleanRoomInstallConfig(consumerDir, "isolated");
-    const config = Bun.TOML.parse(await readFile(path.join(consumerDir, "bunfig.toml"), "utf8"));
+    const config = Bun.TOML.parse(
+      await readFile(path.join(consumerDir, "bunfig.toml"), "utf8"),
+    );
     expect(config.install.linker).toBe("isolated");
   } finally {
     await rm(consumerDir, { recursive: true, force: true });

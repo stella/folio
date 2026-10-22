@@ -13,13 +13,16 @@
  * paths landed alongside the feature flag.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import type { Paragraph } from "../types/document";
 import { parseDocx } from "./parser";
 import { attemptSelectiveSave } from "./selectiveSave";
-import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES, resolveSelectiveSaveFlags } from "./selectiveSaveFlags";
+import {
+  DEFAULT_SELECTIVE_SAVE_MAX_BYTES,
+  resolveSelectiveSaveFlags,
+} from "./selectiveSaveFlags";
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
@@ -214,7 +217,9 @@ describe("fallback contract", () => {
         {
           type: "hyperlink",
           href: "https://example.com",
-          children: [{ type: "run", content: [{ type: "text", text: "link" }] }],
+          children: [
+            { type: "run", content: [{ type: "text", text: "link" }] },
+          ],
         },
       ],
     });
@@ -249,7 +254,8 @@ describe("fallback contract", () => {
     const buffer = await makeFixture();
     const doc = await parseDocx(buffer, { preloadFonts: false });
     const target = doc.package.document.content.find(
-      (block): block is Paragraph => block.type === "paragraph" && block.paraId !== undefined,
+      (block): block is Paragraph =>
+        block.type === "paragraph" && block.paraId !== undefined,
     );
     if (!target?.paraId) {
       throw new Error("Expected paragraph with paraId");
@@ -290,9 +296,9 @@ describe("package entry guard", () => {
 
     expect(result).not.toBeNull();
     const saved = await JSZip.loadAsync(result!);
-    expect(await saved.file("word/vbaProject.bin")?.async("uint8array")).toEqual(
-      new Uint8Array([0, 1, 2, 3]),
-    );
+    expect(
+      await saved.file("word/vbaProject.bin")?.async("uint8array"),
+    ).toEqual(new Uint8Array([0, 1, 2, 3]));
   });
 
   test("does not bail on the Word package preview thumbnail", async () => {
@@ -306,7 +312,10 @@ describe("package entry guard", () => {
     zip.file("word/document.xml", DOCUMENT_XML);
     zip.file("word/styles.xml", STYLES);
     zip.file("docProps/core.xml", CORE_PROPS);
-    zip.file("docProps/thumbnail.jpeg", new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
+    zip.file(
+      "docProps/thumbnail.jpeg",
+      new Uint8Array([0xff, 0xd8, 0xff, 0xd9]),
+    );
     const buffer = await zip.generateAsync({ type: "arraybuffer" });
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
@@ -376,7 +385,8 @@ describe("flag resolution at the call boundary", () => {
     expect(selective).toBeNull();
 
     const { repackDocx } = await import("./rezip");
-    const fallback = selective ?? (await repackDocx({ ...doc, originalBuffer: buffer }));
+    const fallback =
+      selective ?? (await repackDocx({ ...doc, originalBuffer: buffer }));
     expect(fallback).not.toBeNull();
     expect(fallback.byteLength).toBeGreaterThan(0);
   });

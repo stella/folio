@@ -2,23 +2,34 @@ import { beforeAll, describe, expect, test } from "bun:test";
 
 import type { ParagraphAttrs, ParagraphBlock, Run } from "../types";
 import {
+  fixedCharWidth,
   sizeProportionalCharWidth,
   smallCapsAwareCharWidth,
   withFakeTextMeasure,
-  fixedCharWidth,
 } from "./__tests__/fakeTextMeasure";
 import { hashParagraphBlock } from "./cache";
 import { preloadHyphenationDictionaries } from "./hyphenationPreload";
-import { resetLineBreakProvider, setLineBreakProvider } from "./lineBreakProvider";
-import { buildFontString, buildRunFontStyle, docxScriptFontSize } from "./measureHelpers";
-import { clampFloatingWrapMargins, getRunCharWidths, measureParagraph } from "./measureParagraph";
-import { SMALL_CAPS_SCALE } from "./smallCapsCasing";
+import {
+  resetLineBreakProvider,
+  setLineBreakProvider,
+} from "./lineBreakProvider";
+import {
+  buildFontString,
+  buildRunFontStyle,
+  docxScriptFontSize,
+} from "./measureHelpers";
+import {
+  clampFloatingWrapMargins,
+  getRunCharWidths,
+  measureParagraph,
+} from "./measureParagraph";
 import {
   getFontMetrics,
   getMeasureProvider,
   measureTextWidth,
   setMeasureProvider,
 } from "./measureProvider";
+import { SMALL_CAPS_SCALE } from "./smallCapsCasing";
 
 const PT_TO_PX = 96 / 72;
 
@@ -103,8 +114,16 @@ describe("text measurement cache", () => {
   test("keeps enabled kerning in the text width cache key", () => {
     withFakeTextMeasure((getMeasureCount) => {
       const text = "AVAV";
-      measureTextWidth(text, { fontFamily: "Arial", fontSize: 11, kerning: false });
-      measureTextWidth(text, { fontFamily: "Arial", fontSize: 11, kerning: true });
+      measureTextWidth(text, {
+        fontFamily: "Arial",
+        fontSize: 11,
+        kerning: false,
+      });
+      measureTextWidth(text, {
+        fontFamily: "Arial",
+        fontSize: 11,
+        kerning: true,
+      });
 
       expect(getMeasureCount()).toBe(2);
     }, fakeMeasure);
@@ -121,19 +140,32 @@ describe("script measurement", () => {
     [12, 8],
     [72, 48],
     [0.5, 0.5],
-  ])("sizes %spt superscript and subscript text at %spt", (fontSize, scriptSize) => {
-    const baseline = buildRunFontStyle({ fontSize }, "Calibri", 11);
-    const superscript = buildRunFontStyle({ fontSize, superscript: true }, "Calibri", 11);
-    const subscript = buildRunFontStyle({ fontSize, subscript: true }, "Calibri", 11);
+  ])(
+    "sizes %spt superscript and subscript text at %spt",
+    (fontSize, scriptSize) => {
+      const baseline = buildRunFontStyle({ fontSize }, "Calibri", 11);
+      const superscript = buildRunFontStyle(
+        { fontSize, superscript: true },
+        "Calibri",
+        11,
+      );
+      const subscript = buildRunFontStyle(
+        { fontSize, subscript: true },
+        "Calibri",
+        11,
+      );
 
-    expect(docxScriptFontSize(fontSize)).toBe(scriptSize);
-    expect(superscript.fontSize).toBe(scriptSize);
-    expect(subscript.fontSize).toBe(scriptSize);
-    expect(baseline.fontSize).toBe(fontSize);
-  });
+      expect(docxScriptFontSize(fontSize)).toBe(scriptSize);
+      expect(superscript.fontSize).toBe(scriptSize);
+      expect(subscript.fontSize).toBe(scriptSize);
+      expect(baseline.fontSize).toBe(fontSize);
+    },
+  );
 
   test("applies the same size when the run inherits its font size", () => {
-    expect(buildRunFontStyle({ superscript: true }, "Calibri", 11).fontSize).toBe(7);
+    expect(
+      buildRunFontStyle({ superscript: true }, "Calibri", 11).fontSize,
+    ).toBe(7);
   });
 });
 
@@ -148,16 +180,21 @@ describe("run kerning threshold", () => {
 
         expect(measureParagraph(base, availableWidth).lines).toHaveLength(2);
         expect(
-          measureParagraph({ ...base, runs: [{ ...runs[0]!, kerningMinPt: 10 }] }, availableWidth)
-            .lines,
+          measureParagraph(
+            { ...base, runs: [{ ...runs[0]!, kerningMinPt: 10 }] },
+            availableWidth,
+          ).lines,
         ).toHaveLength(1);
         expect(
-          measureParagraph({ ...base, runs: [{ ...runs[0]!, kerningMinPt: 12 }] }, availableWidth)
-            .lines,
+          measureParagraph(
+            { ...base, runs: [{ ...runs[0]!, kerningMinPt: 12 }] },
+            availableWidth,
+          ).lines,
         ).toHaveLength(2);
       },
       {
-        charWidth: (_char, _font, fontKerning) => (fontKerning === "normal" ? 4 : 5),
+        charWidth: (_char, _font, fontKerning) =>
+          fontKerning === "normal" ? 4 : 5,
       },
     );
   });
@@ -280,19 +317,31 @@ describe("font metrics cache", () => {
         attrs: { documentGridLinePitch: 24 },
       }),
     );
-    expect(hashParagraphBlock({ ...paragraph, attrs: { documentGridLinePitch: 24 } })).not.toBe(
+    expect(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: { documentGridLinePitch: 24 },
+      }),
+    ).not.toBe(
       hashParagraphBlock({
         ...paragraph,
         attrs: { documentGridLinePitch: 24, snapToGrid: false },
       }),
     );
-    expect(hashParagraphBlock({ ...paragraph, attrs: { documentGridLinePitch: 24 } })).toBe(
+    expect(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: { documentGridLinePitch: 24 },
+      }),
+    ).toBe(
       hashParagraphBlock({
         ...paragraph,
         attrs: { documentGridLinePitch: 24, snapToGrid: true },
       }),
     );
-    expect(hashParagraphBlock({ ...paragraph, attrs: { alignment: "left" } })).toBe(
+    expect(
+      hashParagraphBlock({ ...paragraph, attrs: { alignment: "left" } }),
+    ).toBe(
       hashParagraphBlock({
         ...paragraph,
         attrs: { alignment: "left", snapToGrid: false },
@@ -308,8 +357,17 @@ describe("empty paragraph line-height floor", () => {
         {
           kind: "paragraph",
           id: "mapped-line-height",
-          runs: [{ kind: "text", text: "Mapped metrics", fontFamily: "Segoe UI", fontSize: 10 }],
-          attrs: { spacing: { line: 1.15, lineUnit: "multiplier", lineRule: "auto" } },
+          runs: [
+            {
+              kind: "text",
+              text: "Mapped metrics",
+              fontFamily: "Segoe UI",
+              fontSize: 10,
+            },
+          ],
+          attrs: {
+            spacing: { line: 1.15, lineUnit: "multiplier", lineRule: "auto" },
+          },
         },
         600,
       );
@@ -457,8 +515,14 @@ describe("empty paragraph line-height floor", () => {
     );
 
     expect(outlined.lines).toHaveLength(1);
-    expect(outlined.lines[0]?.lineHeight).toBeCloseTo((ordinary.lines[0]?.lineHeight ?? 0) * 2, 1);
-    expect(outlined.totalHeight).toBeCloseTo(outlined.lines[0]?.lineHeight ?? 0, 1);
+    expect(outlined.lines[0]?.lineHeight).toBeCloseTo(
+      (ordinary.lines[0]?.lineHeight ?? 0) * 2,
+      1,
+    );
+    expect(outlined.totalHeight).toBeCloseTo(
+      outlined.lines[0]?.lineHeight ?? 0,
+      1,
+    );
   });
 
   test("outline metadata does not change non-empty paragraph height", () => {
@@ -507,7 +571,10 @@ describe("empty paragraph line-height floor", () => {
       );
 
       expect(measure.lines).toHaveLength(1);
-      expect(measure.totalHeight).toBeCloseTo((measure.lines[0]?.lineHeight ?? 0) + 12, 1);
+      expect(measure.totalHeight).toBeCloseTo(
+        (measure.lines[0]?.lineHeight ?? 0) + 12,
+        1,
+      );
     });
   }
 
@@ -608,10 +675,20 @@ describe("empty paragraph line-height floor", () => {
           kind: "paragraph",
           id: "hard-break-default-metrics",
           runs: [
-            { kind: "text", text: "first", fontSize: 9, fontFamily: "Times New Roman" },
+            {
+              kind: "text",
+              text: "first",
+              fontSize: 9,
+              fontFamily: "Times New Roman",
+            },
             { kind: "lineBreak" },
             { kind: "lineBreak" },
-            { kind: "text", text: "last", fontSize: 9, fontFamily: "Times New Roman" },
+            {
+              kind: "text",
+              text: "last",
+              fontSize: 9,
+              fontFamily: "Times New Roman",
+            },
           ],
           attrs: {
             defaultFontSize: 9,
@@ -623,7 +700,10 @@ describe("empty paragraph line-height floor", () => {
       );
 
       expect(measure.lines).toHaveLength(3);
-      expect(measure.lines[1]?.lineHeight).toBeCloseTo(measure.lines[0]?.lineHeight ?? 0, 5);
+      expect(measure.lines[1]?.lineHeight).toBeCloseTo(
+        measure.lines[0]?.lineHeight ?? 0,
+        5,
+      );
     }, fakeMeasure);
   });
 });
@@ -666,12 +746,16 @@ describe("measureParagraph cross-run line breaking", () => {
   const lineStartsAtRun = (
     lines: { fromRun: number; fromChar: number }[],
     runIndex: number,
-  ): boolean => lines.some((line) => line.fromRun === runIndex && line.fromChar === 0);
+  ): boolean =>
+    lines.some((line) => line.fromRun === runIndex && line.fromChar === 0);
   const lineStartsAt = (
     lines: { fromRun: number; fromChar: number }[],
     runIndex: number,
     charIndex: number,
-  ): boolean => lines.some((line) => line.fromRun === runIndex && line.fromChar === charIndex);
+  ): boolean =>
+    lines.some(
+      (line) => line.fromRun === runIndex && line.fromChar === charIndex,
+    );
 
   test("reuses visible-word measurements for ordinary trailing spaces", () => {
     withFakeTextMeasure(
@@ -798,7 +882,10 @@ describe("measureParagraph cross-run line breaking", () => {
           );
 
           expect(measured.lines).toHaveLength(2);
-          expect(measured.lines.map((line) => line.width)).toEqual([expectedWidth, expectedWidth]);
+          expect(measured.lines.map((line) => line.width)).toEqual([
+            expectedWidth,
+            expectedWidth,
+          ]);
         },
         { charWidth: fixedCharWidth(5) },
       );
@@ -812,7 +899,10 @@ describe("measureParagraph cross-run line breaking", () => {
         setMeasureProvider({
           ...baseProvider,
           measureTextWidth: (text, measuredStyle) => {
-            const measuredWidth = baseProvider.measureTextWidth(text, measuredStyle);
+            const measuredWidth = baseProvider.measureTextWidth(
+              text,
+              measuredStyle,
+            );
             if (measuredStyle.kerning && text === "AV ") {
               return measuredWidth - 2;
             }
@@ -827,7 +917,10 @@ describe("measureParagraph cross-run line breaking", () => {
           paragraph([{ kind: "text", text: "AV X", kerningMinPt: 1 }]),
           1000,
         );
-        const tabbed = measureParagraph(paragraph([{ kind: "text", text: "a\tb" }]), 1000);
+        const tabbed = measureParagraph(
+          paragraph([{ kind: "text", text: "a\tb" }]),
+          1000,
+        );
 
         expect(kerned.lines[0]?.width).toBe(18);
         expect(tabbed.lines[0]?.width).toBe(45);
@@ -860,8 +953,14 @@ describe("measureParagraph cross-run line breaking", () => {
         { kind: "text", text: "alpha o\u00A0", language: { val: "cs-CZ" } },
         { kind: "text", text: "beta", bold: true, language: { val: "cs-CZ" } },
       ];
-      const ordinaryMeasure = measureParagraph(paragraph(ordinaryWhitespace), width("alpha o"));
-      const noBreakMeasure = measureParagraph(paragraph(noBreakWhitespace), width("alpha o"));
+      const ordinaryMeasure = measureParagraph(
+        paragraph(ordinaryWhitespace),
+        width("alpha o"),
+      );
+      const noBreakMeasure = measureParagraph(
+        paragraph(noBreakWhitespace),
+        width("alpha o"),
+      );
 
       expect(lineStartsAtRun(ordinaryMeasure.lines, 1)).toBe(true);
       expect(lineStartsAt(noBreakMeasure.lines, 0, "alpha ".length)).toBe(true);
@@ -900,7 +999,10 @@ describe("measureParagraph cross-run line breaking", () => {
   test("consumes a break-space after the last visible word on a line", () => {
     withFakeTextMeasure(() => {
       const text = "alpha beta gamma";
-      const { lines } = measureParagraph(paragraph([{ kind: "text", text }]), width("alpha beta"));
+      const { lines } = measureParagraph(
+        paragraph([{ kind: "text", text }]),
+        width("alpha beta"),
+      );
 
       expect(lines).toHaveLength(2);
       expect(lines[0]?.toChar).toBe("alpha beta ".length);
@@ -911,7 +1013,10 @@ describe("measureParagraph cross-run line breaking", () => {
   test("does not create a whitespace-only line after hard-breaking a long word", () => {
     withFakeTextMeasure(() => {
       const text = "abcdefgh ";
-      const { lines } = measureParagraph(paragraph([{ kind: "text", text }]), width("abcd"));
+      const { lines } = measureParagraph(
+        paragraph([{ kind: "text", text }]),
+        width("abcd"),
+      );
 
       expect(lines).toHaveLength(2);
       expect(lines[1]?.toChar).toBe(text.length);
@@ -924,11 +1029,17 @@ describe("measureParagraph cross-run line breaking", () => {
       () => {
         const family = "👨‍👩‍👧‍👦";
         const text = `${family}x`;
-        const { lines } = measureParagraph(paragraph([{ kind: "text", text }]), 10);
+        const { lines } = measureParagraph(
+          paragraph([{ kind: "text", text }]),
+          10,
+        );
 
         expect(lines).toHaveLength(2);
         expect(lines[0]?.toChar).toBe(family.length);
-        expect(lines[1]).toMatchObject({ fromChar: family.length, toChar: text.length });
+        expect(lines[1]).toMatchObject({
+          fromChar: family.length,
+          toChar: text.length,
+        });
       },
       { charWidth: fixedCharWidth(5) },
     );
@@ -938,7 +1049,10 @@ describe("measureParagraph cross-run line breaking", () => {
     withFakeTextMeasure(() => {
       const spaces = " ".repeat(12);
       const text = `alpha${spaces}beta`;
-      const { lines } = measureParagraph(paragraph([{ kind: "text", text }]), width("alpha"));
+      const { lines } = measureParagraph(
+        paragraph([{ kind: "text", text }]),
+        width("alpha"),
+      );
 
       expect(lines).toHaveLength(2);
       expect(lines[0]?.width).toBe(width("alpha"));
@@ -953,10 +1067,17 @@ describe("measureParagraph cross-run line breaking", () => {
   test("preserves leading and fitting internal spaces", () => {
     withFakeTextMeasure(() => {
       const text = "  alpha   beta";
-      const { lines } = measureParagraph(paragraph([{ kind: "text", text }]), width(text));
+      const { lines } = measureParagraph(
+        paragraph([{ kind: "text", text }]),
+        width(text),
+      );
 
       expect(lines).toHaveLength(1);
-      expect(lines[0]).toMatchObject({ fromRun: 0, fromChar: 0, width: width(text) });
+      expect(lines[0]).toMatchObject({
+        fromRun: 0,
+        fromChar: 0,
+        width: width(text),
+      });
     }, fakeMeasure);
   });
 
@@ -1124,7 +1245,11 @@ describe("automatic hyphenation", () => {
           width: 70,
           discretionaryHyphen: { runIndex: 0 },
         });
-        expect(measured.lines[1]).toMatchObject({ fromChar: 6, toChar: 11, width: 50 });
+        expect(measured.lines[1]).toMatchObject({
+          fromChar: 6,
+          toChar: 11,
+          width: 50,
+        });
       },
       { charWidth: fixedCharWidth(10) },
     );
@@ -1181,7 +1306,9 @@ describe("automatic hyphenation", () => {
           attrs: {
             automaticHyphenation: {
               enabled: true,
-              ...(hyphenationZoneTwips !== undefined ? { hyphenationZoneTwips } : {}),
+              ...(hyphenationZoneTwips !== undefined
+                ? { hyphenationZoneTwips }
+                : {}),
             },
           },
         },
@@ -1218,9 +1345,17 @@ describe("automatic hyphenation", () => {
           70,
         );
 
-        expect(measured.lines[0]).toMatchObject({ fromChar: 0, toChar: 7, width: 70 });
+        expect(measured.lines[0]).toMatchObject({
+          fromChar: 0,
+          toChar: 7,
+          width: 70,
+        });
         expect(measured.lines[0]?.discretionaryHyphen).toBeUndefined();
-        expect(measured.lines[1]).toMatchObject({ fromChar: 7, toChar: 11, width: 40 });
+        expect(measured.lines[1]).toMatchObject({
+          fromChar: 7,
+          toChar: 11,
+          width: 40,
+        });
       },
       { charWidth: fixedCharWidth(10) },
     );
@@ -1233,7 +1368,13 @@ describe("automatic hyphenation", () => {
           {
             kind: "paragraph",
             id: "consecutive-hyphen-limit",
-            runs: [{ kind: "text", text: "characteristically", language: { val: "en-US" } }],
+            runs: [
+              {
+                kind: "text",
+                text: "characteristically",
+                language: { val: "en-US" },
+              },
+            ],
             attrs: {
               automaticHyphenation: { enabled: true, consecutiveLineLimit: 1 },
             },
@@ -1277,7 +1418,8 @@ describe("automatic hyphenation", () => {
 
 describe("measureParagraph justified shrink tolerance", () => {
   const fractionalWidth = (char: string): number => (char === "b" ? 0.6 : 1);
-  const ordinarySpaceRichWidth = (char: string): number => (char === "b" ? 0.4 : 1);
+  const ordinarySpaceRichWidth = (char: string): number =>
+    char === "b" ? 0.4 : 1;
   const text = `${"a".repeat(99)} bbb`;
   const spaceRichText = `${"a ".repeat(20)}${"a".repeat(60)}bbb`;
 
@@ -1531,7 +1673,10 @@ describe("measureParagraph justified shrink tolerance", () => {
     {
       label: "accepts modern indented justified prose within the bound",
       overflow: 2.4,
-      attrs: { alignment: "justify", indent: { left: 36 } } satisfies ParagraphAttrs,
+      attrs: {
+        alignment: "justify",
+        indent: { left: 36 },
+      } satisfies ParagraphAttrs,
       maxWidth: 136,
       expectedLines: 1,
       expectedPaint: true,
@@ -1539,7 +1684,10 @@ describe("measureParagraph justified shrink tolerance", () => {
     {
       label: "rejects modern indented justified prose beyond the bound",
       overflow: 2.6,
-      attrs: { alignment: "justify", indent: { left: 36 } } satisfies ParagraphAttrs,
+      attrs: {
+        alignment: "justify",
+        indent: { left: 36 },
+      } satisfies ParagraphAttrs,
       maxWidth: 136,
       expectedLines: 2,
       expectedPaint: false,
@@ -1559,50 +1707,64 @@ describe("measureParagraph justified shrink tolerance", () => {
     {
       label: "rejects non-justified indented prose",
       overflow: 2.4,
-      attrs: { alignment: "left", indent: { left: 36 } } satisfies ParagraphAttrs,
+      attrs: {
+        alignment: "left",
+        indent: { left: 36 },
+      } satisfies ParagraphAttrs,
       maxWidth: 136,
       expectedLines: 2,
       expectedPaint: false,
     },
     {
-      label: "accepts zero-indent non-list justified prose within the space budget",
+      label:
+        "accepts zero-indent non-list justified prose within the space budget",
       overflow: 2.4,
-      attrs: { alignment: "justify", indent: { left: 0 } } satisfies ParagraphAttrs,
+      attrs: {
+        alignment: "justify",
+        indent: { left: 0 },
+      } satisfies ParagraphAttrs,
       maxWidth: 100,
       expectedLines: 1,
       expectedPaint: true,
     },
     {
-      label: "rejects zero-indent non-list justified prose beyond the space budget",
+      label:
+        "rejects zero-indent non-list justified prose beyond the space budget",
       overflow: 2.6,
-      attrs: { alignment: "justify", indent: { left: 0 } } satisfies ParagraphAttrs,
+      attrs: {
+        alignment: "justify",
+        indent: { left: 0 },
+      } satisfies ParagraphAttrs,
       maxWidth: 100,
       expectedLines: 2,
       expectedPaint: false,
     },
-  ])("$label", ({ overflow, attrs, maxWidth, expectedLines, expectedPaint }) => {
-    withFakeTextMeasure(
-      () => {
-        const measure = measureParagraph(
-          {
-            kind: "paragraph",
-            id: "justified-prose-final-line-contraction",
-            runs: [{ kind: "text", text: `${"a ".repeat(10)}bbb` }],
-            attrs,
-          },
-          maxWidth,
-        );
+  ])(
+    "$label",
+    ({ overflow, attrs, maxWidth, expectedLines, expectedPaint }) => {
+      withFakeTextMeasure(
+        () => {
+          const measure = measureParagraph(
+            {
+              kind: "paragraph",
+              id: "justified-prose-final-line-contraction",
+              runs: [{ kind: "text", text: `${"a ".repeat(10)}bbb` }],
+              attrs,
+            },
+            maxWidth,
+          );
 
-        expect(measure.lines).toHaveLength(expectedLines);
-        expect(measure.lines[0]?.justificationPaint?.type === "space-contraction").toBe(
-          expectedPaint,
-        );
-      },
-      // Ten 1 px words and spaces leave 80 px for the final token, which
-      // overflows the 100 px measure by `overflow`.
-      { charWidth: (char) => (char === "b" ? (80 + overflow) / 3 : 1) },
-    );
-  });
+          expect(measure.lines).toHaveLength(expectedLines);
+          expect(
+            measure.lines[0]?.justificationPaint?.type === "space-contraction",
+          ).toBe(expectedPaint);
+        },
+        // Ten 1 px words and spaces leave 80 px for the final token, which
+        // overflows the 100 px measure by `overflow`.
+        { charWidth: (char) => (char === "b" ? (80 + overflow) / 3 : 1) },
+      );
+    },
+  );
 
   test("ignores unused tab stops when choosing justified prose shrink tolerance", () => {
     withFakeTextMeasure(
@@ -1636,7 +1798,11 @@ describe("measureParagraph justified shrink tolerance", () => {
           {
             kind: "paragraph",
             id: "justified-literal-tabbed-first-line",
-            runs: [{ kind: "text", text: "x" }, { kind: "tab" }, { kind: "text", text }],
+            runs: [
+              { kind: "text", text: "x" },
+              { kind: "tab" },
+              { kind: "text", text },
+            ],
             attrs: {
               alignment: "justify",
               indent: { firstLine: 48 },
@@ -1680,7 +1846,8 @@ describe("measureParagraph justified shrink tolerance", () => {
 
   test("uses the literal-tab continuation tolerance after the first line", () => {
     const continuationText = `${"a".repeat(101)}c`;
-    const continuationWidth = (char: string): number => (char === "c" ? 0.65 : 1);
+    const continuationWidth = (char: string): number =>
+      char === "c" ? 0.65 : 1;
 
     withFakeTextMeasure(
       () => {
@@ -1741,7 +1908,9 @@ describe("measureParagraph justified shrink tolerance", () => {
           {
             kind: "paragraph",
             id: "justified-list-space-budget",
-            runs: [{ kind: "text", text: `${"a ".repeat(8)}${"b".repeat(24)}` }],
+            runs: [
+              { kind: "text", text: `${"a ".repeat(8)}${"b".repeat(24)}` },
+            ],
             attrs: {
               alignment: "justify",
               indent: { left: 24, hanging: 24 },
@@ -1904,10 +2073,16 @@ describe("measureParagraph justified shrink tolerance", () => {
         );
 
         expect(finalTokenMeasure.lines).toHaveLength(2);
-        expect(finalTokenMeasure.lines.at(-1)?.justificationPaint?.type).toBe("space-contraction");
-        expect(finalTokenMeasure.lines.at(-1)?.justificationPaint?.contractionPx).toBeCloseTo(2.4);
+        expect(finalTokenMeasure.lines.at(-1)?.justificationPaint?.type).toBe(
+          "space-contraction",
+        );
+        expect(
+          finalTokenMeasure.lines.at(-1)?.justificationPaint?.contractionPx,
+        ).toBeCloseTo(2.4);
         expect(intermediateTokenMeasure.lines).toHaveLength(3);
-        expect(intermediateTokenMeasure.lines.at(1)?.justificationPaint).toBeUndefined();
+        expect(
+          intermediateTokenMeasure.lines.at(1)?.justificationPaint,
+        ).toBeUndefined();
       },
       { charWidth: (char) => (char === "b" ? 0.8 : 1) },
     );
@@ -1944,7 +2119,9 @@ describe("measureParagraph justified shrink tolerance", () => {
           (line) => line.justificationPaint?.type === "space-contraction",
         );
         expect(plannedLineIndex).toBe(measure.lines.length - 1);
-        expect(measure.lines.at(-1)?.justificationPaint?.contractionPx).toBeCloseTo(2.4);
+        expect(
+          measure.lines.at(-1)?.justificationPaint?.contractionPx,
+        ).toBeCloseTo(2.4);
       },
       { charWidth: (char) => (char === "b" ? 0.8 : 1) },
     );
@@ -2553,7 +2730,9 @@ describe("inline image paragraph measurement", () => {
       const descent = line?.descent ?? 0;
       // Footprint = imageHeight + distTop + distBottom; the image-with-text
       // branch adds a single descent buffer below baseline.
-      expect(line?.lineHeight).toBe(imageHeight + distTop + distBottom + descent);
+      expect(line?.lineHeight).toBe(
+        imageHeight + distTop + distBottom + descent,
+      );
     }, fakeMeasure);
   });
 
@@ -2589,7 +2768,9 @@ describe("inline image paragraph measurement", () => {
       // The preceding text line stays text-height, not inflated to the image.
       expect(measure.lines.at(0)?.lineHeight ?? 0).toBeLessThan(imageHeight);
       // The image lands on the next line, which reserves its full height.
-      expect(measure.lines.at(1)?.lineHeight ?? 0).toBeGreaterThanOrEqual(imageHeight);
+      expect(measure.lines.at(1)?.lineHeight ?? 0).toBeGreaterThanOrEqual(
+        imageHeight,
+      );
     }, fakeMeasure);
   });
 
@@ -2614,7 +2795,9 @@ describe("inline image paragraph measurement", () => {
       );
 
       expect(measure.lines).toHaveLength(1);
-      expect(measure.lines.at(0)?.lineHeight ?? 0).toBeGreaterThanOrEqual(imageHeight);
+      expect(measure.lines.at(0)?.lineHeight ?? 0).toBeGreaterThanOrEqual(
+        imageHeight,
+      );
     }, fakeMeasure);
   });
 
@@ -2996,7 +3179,11 @@ describe("all-caps paragraph measurement", () => {
       () => {
         const [fullWidth] = getRunCharWidths({ kind: "text", text: "I" });
         const expected = (fullWidth ?? 0) * SMALL_CAPS_SCALE;
-        for (const width of getRunCharWidths({ kind: "text", text: "ii", smallCaps: true })) {
+        for (const width of getRunCharWidths({
+          kind: "text",
+          text: "ii",
+          smallCaps: true,
+        })) {
           expect(width).toBeCloseTo(expected, 9);
         }
       },
@@ -3112,8 +3299,12 @@ describe("CJK line breaking", () => {
         const paragraph = (overflowPunctuation?: boolean): ParagraphBlock => ({
           kind: "paragraph",
           id: `cjk-overflow-punctuation-${String(overflowPunctuation)}`,
-          runs: [{ kind: "text", text: "中文。", language: { eastAsia: "zh-CN" } }],
-          ...(overflowPunctuation === undefined ? {} : { attrs: { overflowPunctuation } }),
+          runs: [
+            { kind: "text", text: "中文。", language: { eastAsia: "zh-CN" } },
+          ],
+          ...(overflowPunctuation === undefined
+            ? {}
+            : { attrs: { overflowPunctuation } }),
         });
 
         expect(measureParagraph(paragraph(false), 20).lines).toHaveLength(2);
@@ -3154,7 +3345,9 @@ describe("CJK line breaking", () => {
         const paragraph: ParagraphBlock = {
           kind: "paragraph",
           id: "cjk-opening-punctuation",
-          runs: [{ kind: "text", text: "中文（", language: { eastAsia: "zh-CN" } }],
+          runs: [
+            { kind: "text", text: "中文（", language: { eastAsia: "zh-CN" } },
+          ],
           attrs: { overflowPunctuation: true },
         };
 
@@ -3170,7 +3363,9 @@ describe("CJK line breaking", () => {
         const paragraph: ParagraphBlock = {
           kind: "paragraph",
           id: "custom-hanging-punctuation",
-          runs: [{ kind: "text", text: "中文※", language: { eastAsia: "zh-CN" } }],
+          runs: [
+            { kind: "text", text: "中文※", language: { eastAsia: "zh-CN" } },
+          ],
           attrs: {
             overflowPunctuation: true,
             lineBreakRules: {
@@ -3191,7 +3386,8 @@ describe("CJK line breaking", () => {
     try {
       setLineBreakProvider({
         findBreaks: () => [1, 2, text.length],
-        findGraphemeBreaks: (value) => (value === text ? [1, 2, text.length] : [value.length]),
+        findGraphemeBreaks: (value) =>
+          value === text ? [1, 2, text.length] : [value.length],
         isHangingPunctuation: (value) => value === punctuation,
       });
       withFakeTextMeasure(
@@ -3250,7 +3446,9 @@ describe("tab run line height", () => {
   test("a line of only tabs takes its height from the tab font", () => {
     withFakeTextMeasure(() => {
       const tabOnly = lineHeightOf([{ kind: "tab", fontSize: 20 }]);
-      const textOnly = lineHeightOf([{ kind: "text", text: "x", fontSize: 20 }]);
+      const textOnly = lineHeightOf([
+        { kind: "text", text: "x", fontSize: 20 },
+      ]);
 
       expect(tabOnly).toBeCloseTo(textOnly, 5);
     }, fakeMeasure);
@@ -3306,7 +3504,12 @@ describe("CJK line height", () => {
       // SimSun keeps the 1.15 default ratio — landing there (not at the 1.303
       // fallback) proves the eastAsia face itself supplied the line height.
       const simsunHeight = firstLineHeight([
-        { kind: "text", text: "保密协议", fontFamily: "Century", eastAsiaFontFamily: "SimSun" },
+        {
+          kind: "text",
+          text: "保密协议",
+          fontFamily: "Century",
+          eastAsiaFontFamily: "SimSun",
+        },
       ]);
       const minchoHeight = firstLineHeight([
         {
@@ -3341,10 +3544,20 @@ describe("CJK line height", () => {
     withFakeTextMeasure(() => {
       const latinFirst = firstLineHeight([
         { kind: "text", text: "Article 1 ", fontFamily: "Century" },
-        { kind: "text", text: "秘密保持", fontFamily: "Century", eastAsiaFontFamily: "Century" },
+        {
+          kind: "text",
+          text: "秘密保持",
+          fontFamily: "Century",
+          eastAsiaFontFamily: "Century",
+        },
       ]);
       const cjkFirst = firstLineHeight([
-        { kind: "text", text: "秘密保持", fontFamily: "Century", eastAsiaFontFamily: "Century" },
+        {
+          kind: "text",
+          text: "秘密保持",
+          fontFamily: "Century",
+          eastAsiaFontFamily: "Century",
+        },
         { kind: "text", text: " (Confidentiality)", fontFamily: "Century" },
       ]);
 

@@ -1,15 +1,18 @@
 import { expect, test } from "bun:test";
-import * as Y from "yjs";
 import { WebrtcProvider } from "y-webrtc";
+import * as Y from "yjs";
 
 import type { Comment } from "@stll/folio-core/types/content";
+
 import { createCollaborationStore } from "./useCollaboration";
 
 test("collaboration subscriptions own connections and publish external updates", () => {
   const createResources = () => {
     const ydoc = new Y.Doc();
     // No remote signaling: this exercises the real provider's events locally.
-    const provider = new WebrtcProvider(`test-${ydoc.clientID}`, ydoc, { signaling: [] });
+    const provider = new WebrtcProvider(`test-${ydoc.clientID}`, ydoc, {
+      signaling: [],
+    });
     provider.disconnect();
     const connection = {
       ydoc,
@@ -36,7 +39,12 @@ test("collaboration subscriptions own connections and publish external updates",
   expect(connections).toHaveLength(1);
   store.setUser({ name: "Local", color: "blue" });
   expect(store.getSnapshot().users).toEqual([
-    { clientId: first.provider.awareness.clientID, name: "Local", color: "blue", isLocal: true },
+    {
+      clientId: first.provider.awareness.clientID,
+      name: "Local",
+      color: "blue",
+      isLocal: true,
+    },
   ]);
   first.provider.emit("status", [{ connected: true }]);
   expect(store.getSnapshot().status).toBe("connected");
@@ -60,7 +68,9 @@ test("collaboration subscriptions own connections and publish external updates",
   // StrictMode's unsubscribe/resubscribe cycle must create a fresh live connection.
   const unsubscribeAgain = store.subscribe(() => notifications++);
   expect(connections).toHaveLength(2);
-  expect(store.getSnapshot().collaboration?.yXmlFragment.doc).not.toBe(first.ydoc);
+  expect(store.getSnapshot().collaboration?.yXmlFragment.doc).not.toBe(
+    first.ydoc,
+  );
   unsubscribeAgain();
   expect(connections.at(1)?.ydoc.isDestroyed).toBe(true);
 });

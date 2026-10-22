@@ -26,10 +26,13 @@ import { parseTableCellProperties, parseTableProperties } from "../tableParser";
 import type { XmlElement } from "../xmlParser";
 import { parseXmlDocument } from "../xmlParser";
 
-const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W_NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const parseSectPr = (inner: string) => {
-  const node = parseXmlDocument(`<w:sectPr ${W_NS}>${inner}</w:sectPr>`) as XmlElement | null;
+  const node = parseXmlDocument(
+    `<w:sectPr ${W_NS}>${inner}</w:sectPr>`,
+  ) as XmlElement | null;
   if (!node) {
     throw new Error("Failed to parse sectPr fixture");
   }
@@ -38,30 +41,40 @@ const parseSectPr = (inner: string) => {
 
 describe("serializeBorder", () => {
   test("emits an explicit nil side instead of dropping it", () => {
-    expect(serializeBorder({ style: "nil" }, "top")).toBe('<w:top w:val="nil"/>');
-    expect(serializeBorder({ style: "none" }, "bottom")).toBe('<w:bottom w:val="none"/>');
+    expect(serializeBorder({ style: "nil" }, "top")).toBe(
+      '<w:top w:val="nil"/>',
+    );
+    expect(serializeBorder({ style: "none" }, "bottom")).toBe(
+      '<w:bottom w:val="none"/>',
+    );
   });
 
   test("serializes a normal border with size, space, and color", () => {
     expect(
-      serializeBorder({ style: "single", size: 4, space: 24, color: { rgb: "FF0000" } }, "top"),
+      serializeBorder(
+        { style: "single", size: 4, space: 24, color: { rgb: "FF0000" } },
+        "top",
+      ),
     ).toBe('<w:top w:val="single" w:sz="4" w:space="24" w:color="FF0000"/>');
   });
 
   test("emits auto color", () => {
-    expect(serializeBorder({ style: "single", color: { auto: true } }, "left")).toBe(
-      '<w:left w:val="single" w:color="auto"/>',
-    );
+    expect(
+      serializeBorder({ style: "single", color: { auto: true } }, "left"),
+    ).toBe('<w:left w:val="single" w:color="auto"/>');
   });
 
   test("preserves custom page-border art relationship ids", () => {
-    expect(serializeBorder({ style: "single", artRelationshipId: "rId7" }, "top")).toContain(
-      'r:id="rId7"',
-    );
+    expect(
+      serializeBorder({ style: "single", artRelationshipId: "rId7" }, "top"),
+    ).toContain('r:id="rId7"');
   });
 
   test("escapes untrusted style/color so a crafted value cannot inject markup", () => {
-    const out = serializeBorder({ style: 'single"/><w:evil', color: { rgb: 'x"/>' } }, "top");
+    const out = serializeBorder(
+      { style: 'single"/><w:evil', color: { rgb: 'x"/>' } },
+      "top",
+    );
     expect(out).not.toContain('"/><w:evil');
     expect(out).toContain("&quot;");
     expect(out).toContain("&lt;w:evil");

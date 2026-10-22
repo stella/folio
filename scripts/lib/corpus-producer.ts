@@ -52,7 +52,8 @@ export const PRODUCER_FAMILIES = {
   unknown: "unknown",
 } as const;
 
-export type ProducerFamily = (typeof PRODUCER_FAMILIES)[keyof typeof PRODUCER_FAMILIES];
+export type ProducerFamily =
+  (typeof PRODUCER_FAMILIES)[keyof typeof PRODUCER_FAMILIES];
 
 export type CorpusProducer = {
   family: ProducerFamily;
@@ -61,8 +62,10 @@ export type CorpusProducer = {
 };
 
 const EXTENDED_PROPERTIES_PART = "docProps/app.xml";
-const APPLICATION_RE = /<(?:[\w.-]+:)?Application>([^<]*)<\/(?:[\w.-]+:)?Application>/u;
-const APP_VERSION_RE = /<(?:[\w.-]+:)?AppVersion>([^<]*)<\/(?:[\w.-]+:)?AppVersion>/u;
+const APPLICATION_RE =
+  /<(?:[\w.-]+:)?Application>([^<]*)<\/(?:[\w.-]+:)?Application>/u;
+const APP_VERSION_RE =
+  /<(?:[\w.-]+:)?AppVersion>([^<]*)<\/(?:[\w.-]+:)?AppVersion>/u;
 /** The leading integer of `16.0000`, `7.0.6.2$Linux_X86_64 …` or `11.1.0.11664_…`. */
 const MAJOR_VERSION_RE = /(\d+)/u;
 
@@ -70,7 +73,10 @@ const MAJOR_VERSION_RE = /(\d+)/u;
  * Ordered because the tests overlap: "Microsoft Macintosh Word" also matches
  * the Word pattern, and every LibreOffice string also contains "Office".
  */
-const FAMILY_PATTERNS: ReadonlyArray<{ family: ProducerFamily; pattern: RegExp }> = [
+const FAMILY_PATTERNS: ReadonlyArray<{
+  family: ProducerFamily;
+  pattern: RegExp;
+}> = [
   { family: PRODUCER_FAMILIES.wordMac, pattern: /macintosh\s+word/u },
   { family: PRODUCER_FAMILIES.outlook, pattern: /outlook/u },
   { family: PRODUCER_FAMILIES.libreoffice, pattern: /libreoffice/u },
@@ -117,7 +123,10 @@ const VERSIONLESS_FAMILIES: ReadonlySet<ProducerFamily> = new Set([
   PRODUCER_FAMILIES.unknown,
 ]);
 
-export const producerLabel = (family: ProducerFamily, version: string): string => {
+export const producerLabel = (
+  family: ProducerFamily,
+  version: string,
+): string => {
   if (VERSIONLESS_FAMILIES.has(family)) {
     return family;
   }
@@ -140,7 +149,11 @@ const WORD_FAMILIES: ReadonlySet<ProducerFamily> = new Set([
   PRODUCER_FAMILIES.outlook,
 ]);
 
-const versionFor = (family: ProducerFamily, application: string, appVersion: string): string => {
+const versionFor = (
+  family: ProducerFamily,
+  application: string,
+  appVersion: string,
+): string => {
   if (WORD_FAMILIES.has(family)) {
     return appVersion;
   }
@@ -160,7 +173,10 @@ export const readCorpusProducer = async ({
 }: ReadProducerOptions): Promise<CorpusProducer> => {
   const archive = await JSZip.loadAsync(bytes).catch(() => null);
   if (archive === null) {
-    return { family: PRODUCER_FAMILIES.unknown, label: PRODUCER_FAMILIES.unknown };
+    return {
+      family: PRODUCER_FAMILIES.unknown,
+      label: PRODUCER_FAMILIES.unknown,
+    };
   }
   const part = archive.file(EXTENDED_PROPERTIES_PART);
   if (part === null) {
@@ -171,15 +187,22 @@ export const readCorpusProducer = async ({
   }
   const xml = await part.async("string").catch(() => null);
   if (xml === null) {
-    return { family: PRODUCER_FAMILIES.unknown, label: PRODUCER_FAMILIES.unknown };
+    return {
+      family: PRODUCER_FAMILIES.unknown,
+      label: PRODUCER_FAMILIES.unknown,
+    };
   }
 
   const application = APPLICATION_RE.exec(xml)?.[1] ?? "";
   const appVersion = APP_VERSION_RE.exec(xml)?.[1] ?? "";
   const named = producerFamilyOf(application);
   const family =
-    named === PRODUCER_FAMILIES.word && documentPart === WORD_ONLINE_DOCUMENT_PART
+    named === PRODUCER_FAMILIES.word &&
+    documentPart === WORD_ONLINE_DOCUMENT_PART
       ? PRODUCER_FAMILIES.wordOnline
       : named;
-  return { family, label: producerLabel(family, versionFor(family, application, appVersion)) };
+  return {
+    family,
+    label: producerLabel(family, versionFor(family, application, appVersion)),
+  };
 };

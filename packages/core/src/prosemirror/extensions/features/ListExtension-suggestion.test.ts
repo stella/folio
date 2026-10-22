@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
@@ -52,7 +52,9 @@ describe("ListExtension suggestion mode integration", () => {
     const plugin = createSuggestionModePlugin(true, "Jane");
 
     let state = EditorState.create({
-      doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("Hello")])]),
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("Hello")]),
+      ]),
       plugins: [plugin],
     });
 
@@ -76,7 +78,11 @@ describe("ListExtension suggestion mode integration", () => {
 
     // Paragraph should now have numPr set, and also _propertyChanges set!
     const updatedPara = state.doc.child(0);
-    expect(updatedPara.attrs.numPr).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
+    expect(updatedPara.attrs.numPr).toEqual({
+      kind: "reference",
+      numId: 1,
+      ilvl: 0,
+    });
 
     expect(updatedPara.attrs._propertyChanges).not.toBeNull();
     expect(updatedPara.attrs._propertyChanges.length).toBe(1);
@@ -112,7 +118,9 @@ describe("ListExtension suggestion mode integration", () => {
     const plugin = createSuggestionModePlugin(true, "Jane");
 
     let state = EditorState.create({
-      doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("Hello")])]),
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("Hello")]),
+      ]),
       plugins: [plugin],
     });
 
@@ -147,7 +155,9 @@ describe("ListExtension suggestion mode integration", () => {
     const plugin = createSuggestionModePlugin(true, "Jane");
 
     let state = EditorState.create({
-      doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("Hello")])]),
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("Hello")]),
+      ]),
       plugins: [plugin],
     });
 
@@ -193,7 +203,10 @@ describe("ListExtension suggestion mode integration", () => {
           [schema.text("Hello")],
         ),
       ]),
-      plugins: [plugin, createDocumentNumberingPlugin(BULLET_NUMBERING.definitions)],
+      plugins: [
+        plugin,
+        createDocumentNumberingPlugin(BULLET_NUMBERING.definitions),
+      ],
     });
 
     const sel = TextSelection.create(state.doc, 3);
@@ -243,7 +256,11 @@ describe("ListExtension suggestion mode integration", () => {
               },
             ],
           },
-          [schema.text("A "), schema.text("new", [insertionMark]), schema.text(" word")],
+          [
+            schema.text("A "),
+            schema.text("new", [insertionMark]),
+            schema.text(" word"),
+          ],
         ),
       ]),
     });
@@ -267,10 +284,14 @@ describe("ListExtension suggestion mode integration", () => {
   test("a second list change while w:pPrChange is pending keeps one record of the original", () => {
     const plugin = createSuggestionModePlugin(true, "Jane");
     let state = EditorState.create({
-      doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("Hello")])]),
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("Hello")]),
+      ]),
       plugins: [plugin],
     });
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 3)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 3)),
+    );
 
     expect(
       toggleBulletList(state, (tr) => {

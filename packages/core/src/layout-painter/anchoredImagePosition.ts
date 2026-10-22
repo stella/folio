@@ -114,13 +114,20 @@ export function resolveAnchoredImagePosition(
   let y: number;
   if (position?.vertical) {
     const v = position.vertical;
-    const { baseY, bandHeight } = resolveVerticalBand(v.relativeTo, fragmentY, geometry);
-    const verticalHasBand = v.relativeTo !== "paragraph" && v.relativeTo !== "line";
+    const { baseY, bandHeight } = resolveVerticalBand(
+      v.relativeTo,
+      fragmentY,
+      geometry,
+    );
+    const verticalHasBand =
+      v.relativeTo !== "paragraph" && v.relativeTo !== "line";
 
     if (v.align === "top" || v.align === "inside") {
       y = baseY;
     } else if (v.align === "center") {
-      y = verticalHasBand ? baseY + (bandHeight - imgRun.height) / 2 : fragmentY;
+      y = verticalHasBand
+        ? baseY + (bandHeight - imgRun.height) / 2
+        : fragmentY;
     } else if (v.align === "bottom" || v.align === "outside") {
       y = verticalHasBand ? baseY + bandHeight - imgRun.height : fragmentY;
     } else if (v.posOffset !== undefined) {

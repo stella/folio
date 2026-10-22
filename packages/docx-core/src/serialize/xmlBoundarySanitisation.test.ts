@@ -9,10 +9,10 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { compileMarkdownToContent } from "../markdown/content";
 import { parseLegalSource } from "../legal-source/parser";
-import { validateDocumentModel } from "../validate/docx";
+import { compileMarkdownToContent } from "../markdown/content";
 import type { Document, Paragraph } from "../model/document";
+import { validateDocumentModel } from "../validate/docx";
 
 const NUL = String.fromCodePoint(0);
 const LONE_HIGH_SURROGATE = String.fromCodePoint(0xd8_00);
@@ -29,14 +29,18 @@ const firstParagraphText = (blocks: readonly unknown[]): string => {
 
 describe("markdown", () => {
   test("drops what XML cannot hold and keeps the rest", () => {
-    const { content } = compileMarkdownToContent(`Signed${NUL} here${LONE_HIGH_SURROGATE}`);
+    const { content } = compileMarkdownToContent(
+      `Signed${NUL} here${LONE_HIGH_SURROGATE}`,
+    );
     expect(firstParagraphText(content)).toBe("Signed here\uFFFD");
   });
 });
 
 describe("legal source", () => {
   test("drops what XML cannot hold and says so", () => {
-    const { draft, diagnostics } = parseLegalSource(`@title Deed${NUL} of Assignment`);
+    const { draft, diagnostics } = parseLegalSource(
+      `@title Deed${NUL} of Assignment`,
+    );
     expect(draft.meta.title).toBe("Deed of Assignment");
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toContain(
       "illegal-xml-characters-dropped",
@@ -56,23 +60,31 @@ describe("a model built in memory", () => {
     package: {
       document: {
         content: [
-          { type: "paragraph", content: [{ type: "run", content: [{ type: "text", text }] }] },
+          {
+            type: "paragraph",
+            content: [{ type: "run", content: [{ type: "text", text }] }],
+          },
         ],
       },
     },
   });
 
   test("is reported, not rejected: the save still produces a package that opens", () => {
-    const { valid, issues } = validateDocumentModel(documentWithText(`a${NUL}b`));
+    const { valid, issues } = validateDocumentModel(
+      documentWithText(`a${NUL}b`),
+    );
     expect(valid).toBe(true);
     expect(issues).toContainEqual({
       path: "package.document.content[0].content[0].content[0].text",
-      message: "Text holds characters XML 1.0 cannot represent; they will be dropped on save.",
+      message:
+        "Text holds characters XML 1.0 cannot represent; they will be dropped on save.",
       severity: "warning",
     });
   });
 
   test("says nothing about text XML can hold", () => {
-    expect(validateDocumentModel(documentWithText("a\tb\nc")).issues).toEqual([]);
+    expect(validateDocumentModel(documentWithText("a\tb\nc")).issues).toEqual(
+      [],
+    );
   });
 });

@@ -18,9 +18,10 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { StyleOption } from "./StylePicker.types";
+
 import { useFolioUI } from "../../ui/folio-ui";
 import type { FolioSelectItem } from "../../ui/folio-ui";
+import type { StyleOption } from "./StylePicker.types";
 
 // Resolve Select from the FolioUI injection provider so a host override
 // takes effect here too (previously a native `<select>`).

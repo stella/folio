@@ -2,10 +2,11 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, mock, test } from "bun:test";
 import { panic } from "better-result";
+import { afterAll, expect, mock, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
+
 import { schema } from "@stll/folio-core/prosemirror/schema";
 import type { Document } from "@stll/folio-core/types/document";
 
@@ -24,7 +25,8 @@ test.each(["header", "footer"] as const)(
         footers: new Map(),
       },
     };
-    const parts = position === "header" ? source.package.headers : source.package.footers;
+    const parts =
+      position === "header" ? source.package.headers : source.package.footers;
     (parts ?? panic("Expected header/footer map")).set("rId-active", {
       type: position,
       content: [],
@@ -40,7 +42,9 @@ test.each(["header", "footer"] as const)(
     const readOnly = ref(false);
     const syncHfPMs = mock(() => {});
     const onDocumentChange = mock((_document: Document) => {});
-    const holder: { pointer: ReturnType<typeof usePagesPointer> | null } = { pointer: null };
+    const holder: { pointer: ReturnType<typeof usePagesPointer> | null } = {
+      pointer: null,
+    };
     const app = createApp(
       defineComponent({
         setup() {
@@ -56,7 +60,10 @@ test.each(["header", "footer"] as const)(
             showHeaderFooterEditing: ref(true),
             zoom: ref(1),
             layout: ref(null),
-            tableResize: { tryStartResize: () => false, isResizing: ref(false) },
+            tableResize: {
+              tryStartResize: () => false,
+              isResizing: ref(false),
+            },
             getCommands: () => ({}),
             getDocument: () => currentDocument,
             getHfPmView: () => hfView,
@@ -77,7 +84,8 @@ test.each(["header", "footer"] as const)(
     );
     app.mount(document.createElement("div"));
     try {
-      const pointer = holder.pointer ?? panic("Expected pages pointer composable");
+      const pointer =
+        holder.pointer ?? panic("Expected pages pointer composable");
       pointer.hfEdit.value = {
         isFirstPage: false,
         pageNumber: 1,
@@ -88,11 +96,15 @@ test.each(["header", "footer"] as const)(
       readOnly.value = true;
       expect(pointer.hfEdit.value).toBeNull();
       const updatedParts =
-        position === "header" ? currentDocument.package.headers : currentDocument.package.footers;
+        position === "header"
+          ? currentDocument.package.headers
+          : currentDocument.package.footers;
       expect(updatedParts?.get("rId-active")?.content).toMatchObject([
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "Pending edit" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Pending edit" }] },
+          ],
         },
       ]);
       expect(parts?.get("rId-active")?.content).toEqual([]);

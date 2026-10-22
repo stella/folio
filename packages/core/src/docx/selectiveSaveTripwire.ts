@@ -108,7 +108,10 @@ export async function compareSelectiveVsFull(
     return { kind: "selective-skipped", reason: "selective-returned-null" };
   }
 
-  const [selectiveZip, fullZip] = await Promise.all([listEntries(selective), listEntries(full)]);
+  const [selectiveZip, fullZip] = await Promise.all([
+    listEntries(selective),
+    listEntries(full),
+  ]);
 
   const selectiveSet = new Set(selectiveZip.paths);
   const fullSet = new Set(fullZip.paths);

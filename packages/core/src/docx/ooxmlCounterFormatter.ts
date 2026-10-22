@@ -38,7 +38,10 @@ const toRoman = (value: number): string => {
   return result;
 };
 
-const toRepeatedSequence = (value: number, sequence: string[]): string | undefined => {
+const toRepeatedSequence = (
+  value: number,
+  sequence: string[],
+): string | undefined => {
   if (!Number.isSafeInteger(value) || value <= 0) {
     return "";
   }
@@ -67,7 +70,10 @@ export const padDecimal = (value: number, width: number): string => {
 };
 
 /** Format one OOXML numbering counter using Microsoft Word display semantics. */
-export const formatOoxmlCounter = (value: number, format: CounterFormat | undefined): string => {
+export const formatOoxmlCounter = (
+  value: number,
+  format: CounterFormat | undefined,
+): string => {
   if (!Number.isFinite(value)) {
     return "";
   }
@@ -145,7 +151,9 @@ export const formatOoxmlCounter = (value: number, format: CounterFormat | undefi
     case "lowerRoman":
       return toRoman(value).toLowerCase();
     case "upperLetter":
-      return (toRepeatedSequence(value, LATIN_LOWER_SEQUENCE) ?? String(value)).toUpperCase();
+      return (
+        toRepeatedSequence(value, LATIN_LOWER_SEQUENCE) ?? String(value)
+      ).toUpperCase();
     case "lowerLetter":
       return toRepeatedSequence(value, LATIN_LOWER_SEQUENCE) ?? String(value);
     case "ordinal":

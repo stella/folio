@@ -18,22 +18,29 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+
 import { setDocumentBodyComments } from "@stll/docx-core/model";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Document, Paragraph, Run } from "../types/document";
-
+import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "./parser";
 import { createDocx, repackDocx } from "./rezip";
-import { createEmptyDocument } from "../utils/createDocument";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const WP_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const WP_NAMESPACE =
+  "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
 const A_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/main";
-const WPS_NAMESPACE = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+const WPS_NAMESPACE =
+  "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
 
 /**
  * A `wps` text box, whose run the parser keeps empty on purpose: the shape is
@@ -66,19 +73,24 @@ const RUN_BODIES = {
   break: () => "<w:br/>",
   textBox: (index: number) => textBoxDrawing(index + 1),
   commentReference: (index: number) => `<w:commentReference w:id="${index}"/>`,
-  textAndCommentReference: (index: number) => `<w:t>x</w:t><w:commentReference w:id="${index}"/>`,
+  textAndCommentReference: (index: number) =>
+    `<w:t>x</w:t><w:commentReference w:id="${index}"/>`,
 } as const;
 
 type RunKind = keyof typeof RUN_BODIES;
 
 /** Which kinds state a `w:rPr` whatever the generated case says. */
-const KINDS_ALWAYS_STATING_PROPERTIES: ReadonlySet<RunKind> = new Set(["properties"]);
+const KINDS_ALWAYS_STATING_PROPERTIES: ReadonlySet<RunKind> = new Set([
+  "properties",
+]);
 
 type GeneratedRun = { kind: RunKind; bold: boolean };
 
 const runXml = ({ kind, bold }: GeneratedRun, index: number): string => {
   const statesProperties = bold || KINDS_ALWAYS_STATING_PROPERTIES.has(kind);
-  const properties = statesProperties ? `<w:rPr>${bold ? "<w:b/>" : ""}</w:rPr>` : "";
+  const properties = statesProperties
+    ? `<w:rPr>${bold ? "<w:b/>" : ""}</w:rPr>`
+    : "";
   return `<w:r>${properties}${RUN_BODIES[kind](index)}</w:r>`;
 };
 
@@ -101,7 +113,8 @@ const generatedCase = fc.record({
   bookmarked: fc.boolean(),
 });
 
-const BOOKMARK_PAIR = '<w:bookmarkStart w:id="0" w:name="_GoBack"/><w:bookmarkEnd w:id="0"/>';
+const BOOKMARK_PAIR =
+  '<w:bookmarkStart w:id="0" w:name="_GoBack"/><w:bookmarkEnd w:id="0"/>';
 
 const bodyXml = ({
   runs,
@@ -109,22 +122,27 @@ const bodyXml = ({
 }: {
   runs: readonly GeneratedRun[];
   bookmarked: boolean;
-}): string => `${bookmarked ? BOOKMARK_PAIR : ""}<w:p>${runs.map(runXml).join("")}</w:p>`;
+}): string =>
+  `${bookmarked ? BOOKMARK_PAIR : ""}<w:p>${runs.map(runXml).join("")}</w:p>`;
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
   setDocumentBodyComments(
     document.package.document,
-    [...body.matchAll(/<w:commentReference w:id="(?<id>\d+)"/gu)].map((match) => ({
-      id: Number(match.groups?.["id"]),
-      author: "Reviewer",
-      content: [
-        {
-          type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "Check." }] }],
-        },
-      ],
-    })),
+    [...body.matchAll(/<w:commentReference w:id="(?<id>\d+)"/gu)].map(
+      (match) => ({
+        id: Number(match.groups?.["id"]),
+        author: "Reviewer",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "run", content: [{ type: "text", text: "Check." }] },
+            ],
+          },
+        ],
+      }),
+    ),
   );
   const zip = await JSZip.loadAsync(await createDocx(document));
   zip.file(
@@ -137,7 +155,9 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
 };
 
 /** Every part of a package, by path, so a comparison names the part that drifted. */
-const packageParts = async (buffer: ArrayBuffer): Promise<Map<string, string>> => {
+const packageParts = async (
+  buffer: ArrayBuffer,
+): Promise<Map<string, string>> => {
   const zip = await JSZip.loadAsync(buffer);
   return new Map(
     await Promise.all(
@@ -152,7 +172,9 @@ const packageParts = async (buffer: ArrayBuffer): Promise<Map<string, string>> =
 };
 
 const bodyParagraphs = ({ package: { document } }: Document): Paragraph[] =>
-  document.content.filter((block): block is Paragraph => block.type === "paragraph");
+  document.content.filter(
+    (block): block is Paragraph => block.type === "paragraph",
+  );
 
 const bodyRuns = (document: Document): Run[] =>
   bodyParagraphs(document).flatMap((paragraph) =>
@@ -172,7 +194,9 @@ const runRecords = (document: Document): string[] =>
     JSON.stringify({
       formatting: run.formatting ?? null,
       content: run.content.map((content) =>
-        content.type === "text" ? { type: content.type, text: content.text } : content.type,
+        content.type === "text"
+          ? { type: content.type, text: content.text }
+          : content.type,
       ),
     }),
   );
@@ -219,14 +243,17 @@ describe("a run that holds no payload is never written", () => {
           const parsed = await parseDocx(source, { preloadFonts: false });
           const actual = bodyParagraphs(parsed).flatMap((paragraph) =>
             paragraph.content.flatMap((item) => {
-              if (item.type === "commentReference") return [`comment:${item.id}`];
+              if (item.type === "commentReference")
+                return [`comment:${item.id}`];
               if (item.type !== "run") return [];
               return item.content.flatMap((payload) => {
                 if (payload.type === "shape") return ["shape"];
                 // Consolidation may join adjacent text leaves; compare their
                 // characters so the oracle checks order, not run boundaries.
                 if (payload.type === "text")
-                  return [...payload.text].map((character) => `text:${character}`);
+                  return [...payload.text].map(
+                    (character) => `text:${character}`,
+                  );
                 return [];
               });
             }),

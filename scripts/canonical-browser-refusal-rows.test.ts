@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 
+import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import {
   canonicalBrowserRefusalRows,
   matchCanonicalRefusalRow,
   validateHarnessRefusalRows,
 } from "../test/canonical-refusal-rows";
-import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import { BROWSER_PASTE_PAYLOADS } from "../tests/visual/browserInputTrace";
 import type { BrowserInputAction } from "../tests/visual/browserInputTrace";
 
@@ -16,7 +16,10 @@ const tablePaste = {
 
 test("canonical browser table paste declares exact refusal alternatives", () => {
   const rows = canonicalBrowserRefusalRows(tablePaste);
-  expect(rows.map(({ id }) => id)).toEqual(["clipboard-table", "clipboard-nested-blocks"]);
+  expect(rows.map(({ id }) => id)).toEqual([
+    "clipboard-table",
+    "clipboard-nested-blocks",
+  ]);
   validateHarnessRefusalRows(rows);
 
   expect(
@@ -24,7 +27,8 @@ test("canonical browser table paste declares exact refusal alternatives", () => 
       rows,
       refusal: {
         gap: CANONICAL_GAP.dispatch,
-        message: "Clipboard tables and embedded blocks require canonical table editing.",
+        message:
+          "Clipboard tables and embedded blocks require canonical table editing.",
       },
     }),
   ).toEqual(rows[0]);
@@ -33,7 +37,8 @@ test("canonical browser table paste declares exact refusal alternatives", () => 
       rows,
       refusal: {
         gap: CANONICAL_GAP.dispatch,
-        message: "Clipboard tables and nested block containers require canonical table editing.",
+        message:
+          "Clipboard tables and nested block containers require canonical table editing.",
       },
     }),
   ).toEqual(rows[1]);
@@ -52,11 +57,14 @@ test("canonical browser refusal matching rejects unknown and mismatched refusals
       rows,
       refusal: {
         gap: CANONICAL_GAP.commands,
-        message: "Clipboard tables and embedded blocks require canonical table editing.",
+        message:
+          "Clipboard tables and embedded blocks require canonical table editing.",
       },
     }),
   ).toBeUndefined();
-  expect(canonicalBrowserRefusalRows({ kind: "typing", text: "alpha" })).toEqual([]);
+  expect(
+    canonicalBrowserRefusalRows({ kind: "typing", text: "alpha" }),
+  ).toEqual([]);
 });
 
 test("canonical browser refusal rows reject retired ledger gaps", () => {

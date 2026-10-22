@@ -2,24 +2,31 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import {
-  paragraphNumberingReference,
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import {
   type BlockContent,
   type Document,
   type Paragraph,
+  paragraphNumberingReference,
 } from "../../model/document";
-import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
+import {
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  applyDocumentOps,
+} from "../apply";
 import { endsItsContainer, storyParagraphs } from "../blocks";
 import { contractViolation } from "../contract";
 import { revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
+  type DeleteBlocksOp,
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   OP_STORIES,
   REVISION_DECISIONS,
-  type DeleteBlocksOp,
-  type DocumentOp,
   type RevisionDecision,
 } from "../types";
 
@@ -50,7 +57,9 @@ const resolve = (applied: AppliedDocumentOp, decision: RevisionDecision) =>
 const expectInverse = (applied: AppliedDocumentOp, original: Document) => {
   const restored = applyAll(applied.document, applied.inverse);
   expect(restored.document).toStrictEqual(original);
-  expect(applyAll(restored.document, restored.inverse).document).toStrictEqual(applied.document);
+  expect(applyAll(restored.document, restored.inverse).document).toStrictEqual(
+    applied.document,
+  );
   expect(contractViolation(restored.document)).toBeUndefined();
 };
 
@@ -64,10 +73,14 @@ const expectLocality = (original: Document, applied: AppliedDocumentOp) => {
     ...applied.touched.removed,
   ]);
   const byId = new Map(
-    paragraphsOf(applied.document).map((paragraph) => [paragraph.paraId, paragraph]),
+    paragraphsOf(applied.document).map((paragraph) => [
+      paragraph.paraId,
+      paragraph,
+    ]),
   );
   for (const paragraph of paragraphsOf(original)) {
-    if (!touched.has(paragraph.paraId ?? "")) expect(byId.get(paragraph.paraId)).toBe(paragraph);
+    if (!touched.has(paragraph.paraId ?? ""))
+      expect(byId.get(paragraph.paraId)).toBe(paragraph);
   }
 };
 
@@ -83,7 +96,10 @@ const expectFinalMarks = (document: Document) => {
 
 const paragraphArbitrary = fc
   .record({
-    text: fc.string({ unit: fc.constantFrom("a", "b", " ", "ž", "😀"), maxLength: 12 }),
+    text: fc.string({
+      unit: fc.constantFrom("a", "b", " ", "ž", "😀"),
+      maxLength: 12,
+    }),
     alignment: fc.constantFrom("start", "end", "center"),
     bold: fc.boolean(),
     listed: fc.boolean(),
@@ -92,31 +108,53 @@ const paragraphArbitrary = fc
     runInWithNext: fc.boolean(),
   })
   .map(
-    ({ text, alignment, bold, listed, markItalic, markHidden, runInWithNext }) =>
+    ({
+      text,
+      alignment,
+      bold,
+      listed,
+      markItalic,
+      markHidden,
+      runInWithNext,
+    }) =>
       ({
         type: "paragraph",
         formatting: {
           alignment,
           runProperties: { italic: markItalic, hidden: markHidden },
           runInWithNext,
-          ...(listed ? { numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }) } : {}),
+          ...(listed
+            ? { numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }) }
+            : {}),
         },
         content:
           text === ""
             ? []
-            : [{ type: "run", formatting: { bold }, content: [{ type: "text", text }] }],
+            : [
+                {
+                  type: "run",
+                  formatting: { bold },
+                  content: [{ type: "text", text }],
+                },
+              ],
       }) satisfies Paragraph,
   );
 
 type Container = "body" | "cell" | "sdt" | "customXml";
 
-const wrap = (content: BlockContent[], container: Container): BlockContent[] => {
+const wrap = (
+  content: BlockContent[],
+  container: Container,
+): BlockContent[] => {
   switch (container) {
     case "body":
       return content;
     case "cell":
       return [
-        { type: "table", rows: [{ type: "tableRow", cells: [{ type: "tableCell", content }] }] },
+        {
+          type: "table",
+          rows: [{ type: "tableRow", cells: [{ type: "tableCell", content }] }],
+        },
       ];
     case "sdt":
       return [{ type: "blockSdt", properties: {}, content }];
@@ -144,9 +182,14 @@ const rangeArbitrary = fc.record({
 
 type DeletionRange = ReturnType<typeof rangeArbitrary.generate>["value"];
 
-const identifyRange = ({ before, selected, after }: DeletionRange, base: number) => {
+const identifyRange = (
+  { before, selected, after }: DeletionRange,
+  base: number,
+) => {
   const originals = [...before, ...selected, ...after].map((paragraph, index) =>
-    Object.assign({}, paragraph, { paraId: (base + index).toString(16).padStart(8, "0") }),
+    Object.assign({}, paragraph, {
+      paraId: (base + index).toString(16).padStart(8, "0"),
+    }),
   );
   return {
     originals,
@@ -163,11 +206,23 @@ const deletionOp = (range: IdentifiedRange, revisionId: number) =>
     type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
     story: OP_STORIES.MAIN,
     blockIds: range.selected.map(({ paraId }) => paraId),
-    revision: { id: revisionId, author: "Reviewer", date: "2026-02-03T04:05:06Z" },
-    newIds: { revision: Array.from({ length: 32 }, (_, index) => revisionId + index + 1) },
+    revision: {
+      id: revisionId,
+      author: "Reviewer",
+      date: "2026-02-03T04:05:06Z",
+    },
+    newIds: {
+      revision: Array.from(
+        { length: 32 },
+        (_, index) => revisionId + index + 1,
+      ),
+    },
   }) satisfies DeleteBlocksOp;
 
-const expectDirectRange = (range: IdentifiedRange, direct: AppliedDocumentOp) => {
+const expectDirectRange = (
+  range: IdentifiedRange,
+  direct: AppliedDocumentOp,
+) => {
   const originalIds = new Set(range.originals.map(({ paraId }) => paraId));
   const remaining = paragraphsOf(direct.document).filter(({ paraId }) =>
     originalIds.has(paraId ?? ""),
@@ -175,12 +230,15 @@ const expectDirectRange = (range: IdentifiedRange, direct: AppliedDocumentOp) =>
   if (range.after.length > 0) {
     expect(remaining).toStrictEqual([...range.before, ...range.after]);
     for (const paragraph of [...range.before, ...range.after]) {
-      expect(remaining.find(({ paraId }) => paraId === paragraph.paraId)).toBe(paragraph);
+      expect(remaining.find(({ paraId }) => paraId === paragraph.paraId)).toBe(
+        paragraph,
+      );
     }
     return;
   }
   const final = range.selected.at(-1);
-  if (final === undefined) throw new Error("The generated selection is nonempty.");
+  if (final === undefined)
+    throw new Error("The generated selection is nonempty.");
   const preceding = range.before.at(-1);
   const survivor = remaining.at(-1);
   expect(survivor?.paraId).toBe(final.paraId);
@@ -198,9 +256,15 @@ const expectDirectRange = (range: IdentifiedRange, direct: AppliedDocumentOp) =>
 };
 
 const expectStaleInverse = (applied: AppliedDocumentOp) => {
-  const replacement = applied.inverse.find((op) => op.type === DOCUMENT_OP_TYPES.REPLACE_BLOCKS);
+  const replacement = applied.inverse.find(
+    (op) => op.type === DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+  );
   expect(replacement).toBeDefined();
-  if (replacement === undefined || replacement.type !== DOCUMENT_OP_TYPES.REPLACE_BLOCKS) return;
+  if (
+    replacement === undefined ||
+    replacement.type !== DOCUMENT_OP_TYPES.REPLACE_BLOCKS
+  )
+    return;
   const expected = replacement.expected.at(0);
   if (expected?.paraId === undefined)
     throw new Error("The inverse must guard a surviving paragraph.");
@@ -223,7 +287,11 @@ test("block deletion satisfies L1–L7, exact id demand and stale inverses", () 
       fc.constantFrom("body", "cell", "sdt", "customXml"),
       (seed, container) => {
         const range = identifyRange(seed, 1);
-        const outside: Paragraph = { type: "paragraph", paraId: "00000100", content: [] };
+        const outside: Paragraph = {
+          type: "paragraph",
+          paraId: "00000100",
+          content: [],
+        };
         const document: Document = {
           package: {
             document: {
@@ -239,7 +307,10 @@ test("block deletion satisfies L1–L7, exact id demand and stale inverses", () 
         const op = deletionOp(range, 1000);
         const demand = revisionIdDemand(document, op);
         if (demand.isErr()) throw demand.error;
-        const exactOp = { ...op, newIds: { revision: op.newIds.revision.slice(0, demand.value) } };
+        const exactOp = {
+          ...op,
+          newIds: { revision: op.newIds.revision.slice(0, demand.value) },
+        };
         const tracked = apply(document, exactOp);
         const marked =
           range.after.length > 0
@@ -255,7 +326,9 @@ test("block deletion satisfies L1–L7, exact id demand and stale inverses", () 
         const rejected = resolve(tracked, REVISION_DECISIONS.REJECT);
         expect(accepted.document).toStrictEqual(direct.document); // L1
         expect(rejected.document).toStrictEqual(document); // L2
-        expect(applyAll(document, [exactOp]).document).toStrictEqual(tracked.document); // L3
+        expect(applyAll(document, [exactOp]).document).toStrictEqual(
+          tracked.document,
+        ); // L3
         for (const applied of [tracked, direct]) {
           expectInverse(applied, document); // L4
           expectLocality(document, applied); // L6
@@ -264,7 +337,9 @@ test("block deletion satisfies L1–L7, exact id demand and stale inverses", () 
         }
         expectInverse(accepted, tracked.document);
         expectInverse(rejected, tracked.document);
-        expect(apply(structuredClone(document), structuredClone(exactOp))).toStrictEqual(tracked); // L5
+        expect(
+          apply(structuredClone(document), structuredClone(exactOp)),
+        ).toStrictEqual(tracked); // L5
         expectDirectRange(range, direct);
         expectFinalMarks(accepted.document);
         expectFinalMarks(rejected.document);
@@ -272,7 +347,10 @@ test("block deletion satisfies L1–L7, exact id demand and stale inverses", () 
           [REVISION_DECISIONS.ACCEPT, accepted],
           [REVISION_DECISIONS.REJECT, rejected],
         ] as const) {
-          const twice = resolve({ ...tracked, document: resolved.document }, decision);
+          const twice = resolve(
+            { ...tracked, document: resolved.document },
+            decision,
+          );
           expect(twice.document).toBe(resolved.document);
           expect(twice.inverse).toEqual([]);
         }
@@ -289,7 +367,10 @@ test("block deletion satisfies L1–L7, exact id demand and stale inverses", () 
         expect(document).toStrictEqual(original);
       },
     ),
-    { numRuns: NUM_RUNS, id: "block deletion satisfies L1–L7, exact id demand and stale inverses" },
+    {
+      numRuns: NUM_RUNS,
+      id: "block deletion satisfies L1–L7, exact id demand and stale inverses",
+    },
   );
 });
 
@@ -318,7 +399,12 @@ test("terminal deletion folds existing property reviews with stable identity and
                     type: "paragraph",
                     paraId: "00000001",
                     formatting: { alignment: previousAlignment },
-                    content: [{ type: "run", content: [{ type: "text", text: "kept" }] }],
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "kept" }],
+                      },
+                    ],
                   },
                   {
                     type: "paragraph",
@@ -326,7 +412,9 @@ test("terminal deletion folds existing property reviews with stable identity and
                     formatting: { alignment: currentAlignment },
                     propertyChanges: [pending],
                     content:
-                      text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
+                      text === ""
+                        ? []
+                        : [{ type: "run", content: [{ type: "text", text }] }],
                   },
                 ],
                 container,
@@ -339,7 +427,11 @@ test("terminal deletion folds existing property reviews with stable identity and
           type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
           story: OP_STORIES.MAIN,
           blockIds: ["00000002"],
-          revision: { id: 100, author: "Latest reviewer", date: "2026-02-03T04:05:06Z" },
+          revision: {
+            id: 100,
+            author: "Latest reviewer",
+            date: "2026-02-03T04:05:06Z",
+          },
           newIds: { revision: [101, 102] },
         } as const satisfies DeleteBlocksOp;
         const tracked = apply(document, op);
@@ -347,7 +439,14 @@ test("terminal deletion folds existing property reviews with stable identity and
         expect(tracked.revisions).not.toContain(7);
         expect(survivor?.formatting).toEqual({ alignment: previousAlignment });
         expect(survivor?.propertyChanges).toEqual([
-          { ...pending, info: { id: 7, author: "Latest reviewer", date: "2026-02-03T04:05:06Z" } },
+          {
+            ...pending,
+            info: {
+              id: 7,
+              author: "Latest reviewer",
+              date: "2026-02-03T04:05:06Z",
+            },
+          },
         ]);
         expectInverse(tracked, document);
         expectLocality(document, tracked);
@@ -362,9 +461,13 @@ test("terminal deletion folds existing property reviews with stable identity and
           const reviewed = paragraphsOf(resolved.document).at(-1);
           expect(reviewed?.propertyChanges).toBeUndefined();
           const baseline =
-            baselineAlignment === undefined ? undefined : { alignment: baselineAlignment };
+            baselineAlignment === undefined
+              ? undefined
+              : { alignment: baselineAlignment };
           expect(reviewed?.formatting).toEqual(
-            decision === REVISION_DECISIONS.ACCEPT ? { alignment: previousAlignment } : baseline,
+            decision === REVISION_DECISIONS.ACCEPT
+              ? { alignment: previousAlignment }
+              : baseline,
           );
           expectInverse(resolved, tracked.document);
         }
@@ -384,23 +487,38 @@ test("independent deletion sequences satisfy batch acceptance, rejection and inv
       fc.array(rangeArbitrary, { minLength: 2, maxLength: 3 }),
       fc.constantFrom("cell", "sdt", "customXml"),
       (seeds, container) => {
-        const ranges = seeds.map((seed, index) => identifyRange(seed, 1 + index * 32));
-        const outside: Paragraph = { type: "paragraph", paraId: "00000100", content: [] };
+        const ranges = seeds.map((seed, index) =>
+          identifyRange(seed, 1 + index * 32),
+        );
+        const outside: Paragraph = {
+          type: "paragraph",
+          paraId: "00000100",
+          content: [],
+        };
         const document: Document = {
           package: {
             document: {
-              content: [...ranges.flatMap((range) => wrap(range.originals, container)), outside],
+              content: [
+                ...ranges.flatMap((range) => wrap(range.originals, container)),
+                outside,
+              ],
             },
           },
         };
-        const ops = ranges.map((range, index) => deletionOp(range, 1000 + index * 100));
+        const ops = ranges.map((range, index) =>
+          deletionOp(range, 1000 + index * 100),
+        );
         const edits: AppliedDocumentOp[] = [];
         let current = document;
         let direct = document;
         for (const op of ops) {
           const tracked = apply(current, op);
-          expect(resolve(tracked, REVISION_DECISIONS.REJECT).document).toStrictEqual(current);
-          expect(resolve(tracked, REVISION_DECISIONS.ACCEPT).document).toStrictEqual(
+          expect(
+            resolve(tracked, REVISION_DECISIONS.REJECT).document,
+          ).toStrictEqual(current);
+          expect(
+            resolve(tracked, REVISION_DECISIONS.ACCEPT).document,
+          ).toStrictEqual(
             apply(current, { ...op, revision: undefined }).document,
           );
           expectInverse(tracked, current);
@@ -413,9 +531,16 @@ test("independent deletion sequences satisfy batch acceptance, rejection and inv
         const batch = applyAll(document, ops);
         expect(batch.document).toStrictEqual(current);
         expectInverse(batch, document);
-        const all = { ...batch, revisions: edits.flatMap(({ revisions }) => revisions) };
-        expect(resolve(all, REVISION_DECISIONS.ACCEPT).document).toStrictEqual(direct);
-        expect(resolve(all, REVISION_DECISIONS.REJECT).document).toStrictEqual(document);
+        const all = {
+          ...batch,
+          revisions: edits.flatMap(({ revisions }) => revisions),
+        };
+        expect(resolve(all, REVISION_DECISIONS.ACCEPT).document).toStrictEqual(
+          direct,
+        );
+        expect(resolve(all, REVISION_DECISIONS.REJECT).document).toStrictEqual(
+          document,
+        );
         expect(
           applyAll(
             current,
@@ -424,7 +549,10 @@ test("independent deletion sequences satisfy batch acceptance, rejection and inv
         ).toStrictEqual(document);
         let reversed = current;
         for (const edit of edits.toReversed()) {
-          reversed = resolve({ ...edit, document: reversed }, REVISION_DECISIONS.REJECT).document;
+          reversed = resolve(
+            { ...edit, document: reversed },
+            REVISION_DECISIONS.REJECT,
+          ).document;
         }
         expect(reversed).toStrictEqual(document);
       },

@@ -5,10 +5,14 @@
  * Extracted from Toolbar.tsx to reduce file size.
  */
 
-import type { TextFormatting, ParagraphFormatting } from "@stll/folio-core/types/document";
-import { pointsToHalfPoints } from "@stll/folio-core/utils/units";
 import { sameListState } from "@stll/folio-core/prosemirror";
-import type { SelectionFormatting, FormattingAction } from "./Toolbar";
+import type {
+  ParagraphFormatting,
+  TextFormatting,
+} from "@stll/folio-core/types/document";
+import { pointsToHalfPoints } from "@stll/folio-core/utils/units";
+
+import type { FormattingAction, SelectionFormatting } from "./Toolbar";
 import { createDefaultListState, type ListState } from "./ui/ListButtons";
 
 // ============================================================================
@@ -70,13 +74,15 @@ export function getSelectionFormatting(
       result.italic = formatting.italic;
     }
     result.underline =
-      formatting.underline?.style !== "none" && formatting.underline?.style !== undefined;
+      formatting.underline?.style !== "none" &&
+      formatting.underline?.style !== undefined;
     if (formatting.strike !== undefined) {
       result.strike = formatting.strike;
     }
     result.superscript = formatting.vertAlign === "superscript";
     result.subscript = formatting.vertAlign === "subscript";
-    const resolvedFont = formatting.fontFamily?.ascii || formatting.fontFamily?.hAnsi;
+    const resolvedFont =
+      formatting.fontFamily?.ascii || formatting.fontFamily?.hAnsi;
     if (resolvedFont !== undefined) {
       result.fontFamily = resolvedFont;
     }
@@ -172,7 +178,10 @@ export function applyFormattingAction(
       newFormatting.italic = !currentFormatting.italic;
       break;
     case "underline":
-      if (currentFormatting.underline?.style && currentFormatting.underline.style !== "none") {
+      if (
+        currentFormatting.underline?.style &&
+        currentFormatting.underline.style !== "none"
+      ) {
         delete newFormatting.underline;
       } else {
         newFormatting.underline = { style: "single" };
@@ -183,7 +192,9 @@ export function applyFormattingAction(
       break;
     case "superscript":
       newFormatting.vertAlign =
-        currentFormatting.vertAlign === "superscript" ? "baseline" : "superscript";
+        currentFormatting.vertAlign === "superscript"
+          ? "baseline"
+          : "superscript";
       break;
     case "subscript":
       newFormatting.vertAlign =

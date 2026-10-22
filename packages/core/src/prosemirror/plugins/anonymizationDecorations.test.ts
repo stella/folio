@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
-import type { Node as PMNode, Mark } from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import {
@@ -17,7 +17,10 @@ import {
   setAnonymizationTermsMeta,
   slugAnonymizationLabel,
 } from "./anonymizationDecorations";
-import type { AnonymizationMatch, AnonymizationTerm } from "./anonymizationDecorations";
+import type {
+  AnonymizationMatch,
+  AnonymizationTerm,
+} from "./anonymizationDecorations";
 
 // Minimal schema with one mark so we can model DOCX-style
 // formatting boundaries (bold split mid-paragraph) — the
@@ -45,12 +48,17 @@ const para = (...spec: ParagraphSpec[]): PMNode[] =>
       "paragraph",
       null,
       entry.map((part) =>
-        typeof part === "string" ? schema.text(part) : schema.text(part.text, [bold] as Mark[]),
+        typeof part === "string"
+          ? schema.text(part)
+          : schema.text(part.text, [bold] as Mark[]),
       ),
     );
   });
 
-const makeState = (doc: PMNode, terms: readonly AnonymizationTerm[] = []): EditorState => {
+const makeState = (
+  doc: PMNode,
+  terms: readonly AnonymizationTerm[] = [],
+): EditorState => {
   const plugin = createAnonymizationDecorationsPlugin();
   let state = EditorState.create({ doc, plugins: [plugin] });
   if (terms.length > 0) {
@@ -69,30 +77,44 @@ const sliceFromTo = (doc: PMNode, from: number, to: number): string =>
 describe("anonymizationDecorations: literal matching", () => {
   test("matches a contiguous term within a single text node", () => {
     const doc = schema.node("doc", null, para("Hello Pavel Novák there"));
-    const state = makeState(doc, [{ canonical: "Pavel Novák", label: "person" }]);
+    const state = makeState(doc, [
+      { canonical: "Pavel Novák", label: "person" },
+    ]);
     const matches = getMatches(state);
     expect(matches).toHaveLength(1);
-    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe("Pavel Novák");
+    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe(
+      "Pavel Novák",
+    );
     expect(matches[0]!.label).toBe("person");
     expect(matches[0]!.canonical).toBe("Pavel Novák");
   });
 
   test("is case-insensitive", () => {
     const doc = schema.node("doc", null, para("hello PAVEL NOVÁK there"));
-    const matches = getMatches(makeState(doc, [{ canonical: "Pavel Novák", label: "person" }]));
+    const matches = getMatches(
+      makeState(doc, [{ canonical: "Pavel Novák", label: "person" }]),
+    );
     expect(matches).toHaveLength(1);
-    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe("PAVEL NOVÁK");
+    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe(
+      "PAVEL NOVÁK",
+    );
   });
 
   test("respects word boundaries — no partial-word hits", () => {
     const doc = schema.node("doc", null, para("Johnsonville and John ate"));
-    const matches = getMatches(makeState(doc, [{ canonical: "John", label: "person" }]));
+    const matches = getMatches(
+      makeState(doc, [{ canonical: "John", label: "person" }]),
+    );
     expect(matches).toHaveLength(1);
     expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe("John");
   });
 
   test("treats punctuation and whitespace as boundaries", () => {
-    const doc = schema.node("doc", null, para("Names: Pavel Novák, Karel Dvořák."));
+    const doc = schema.node(
+      "doc",
+      null,
+      para("Names: Pavel Novák, Karel Dvořák."),
+    );
     const matches = getMatches(
       makeState(doc, [
         { canonical: "Pavel Novák", label: "person" },
@@ -110,18 +132,28 @@ describe("anonymizationDecorations: literal matching", () => {
     // a regular space — the matcher should treat any whitespace
     // run as equivalent.
     const doc = schema.node("doc", null, para("Pavel Novák"));
-    const matches = getMatches(makeState(doc, [{ canonical: "Pavel Novák", label: "person" }]));
+    const matches = getMatches(
+      makeState(doc, [{ canonical: "Pavel Novák", label: "person" }]),
+    );
     expect(matches).toHaveLength(1);
-    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe("Pavel Novák");
+    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe(
+      "Pavel Novák",
+    );
   });
 
   test("escapes regex metacharacters in canonical terms", () => {
-    const doc = schema.node("doc", null, para("ENCAP s.r.o. and friends s_r_o text"));
+    const doc = schema.node(
+      "doc",
+      null,
+      para("ENCAP s.r.o. and friends s_r_o text"),
+    );
     const matches = getMatches(
       makeState(doc, [{ canonical: "ENCAP s.r.o.", label: "organization" }]),
     );
     expect(matches).toHaveLength(1);
-    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe("ENCAP s.r.o.");
+    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe(
+      "ENCAP s.r.o.",
+    );
   });
 });
 
@@ -141,7 +173,9 @@ describe("anonymizationDecorations: cross-node matching (regression)", () => {
       makeState(doc, [{ canonical: "Ing. Pavel Novák", label: "person" }]),
     );
     expect(matches).toHaveLength(1);
-    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe("Ing. Pavel Novák");
+    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe(
+      "Ing. Pavel Novák",
+    );
   });
 
   test("does NOT join text across paragraph boundaries", () => {
@@ -149,7 +183,9 @@ describe("anonymizationDecorations: cross-node matching (regression)", () => {
     // the term; the matcher must not bridge across paragraph
     // boundaries even when the next paragraph starts mid-name.
     const doc = schema.node("doc", null, [...para("Pavel"), ...para(" Novák")]);
-    const matches = getMatches(makeState(doc, [{ canonical: "Pavel Novák", label: "person" }]));
+    const matches = getMatches(
+      makeState(doc, [{ canonical: "Pavel Novák", label: "person" }]),
+    );
     expect(matches).toHaveLength(0);
   });
 
@@ -173,7 +209,11 @@ describe("anonymizationDecorations: cross-node matching (regression)", () => {
 
 describe("anonymizationDecorations: variants and dedup", () => {
   test("matches any provided variant alongside the canonical", () => {
-    const doc = schema.node("doc", null, para("Acme Corp. and ACME CORPORATION are the same"));
+    const doc = schema.node(
+      "doc",
+      null,
+      para("Acme Corp. and ACME CORPORATION are the same"),
+    );
     const matches = getMatches(
       makeState(doc, [
         {
@@ -204,7 +244,9 @@ describe("anonymizationDecorations: variants and dedup", () => {
       ]),
     );
     expect(matches).toHaveLength(1);
-    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe("Ing. Pavel Novák");
+    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe(
+      "Ing. Pavel Novák",
+    );
   });
 
   test("skips empty canonicals and empty variants without crashing", () => {
@@ -233,7 +275,11 @@ describe("anonymizationDecorations: plugin lifecycle", () => {
   });
 
   test("set-terms meta replaces the term list and recomputes matches", () => {
-    const doc = schema.node("doc", null, para("Pavel Novák and Karel Dvořák here"));
+    const doc = schema.node(
+      "doc",
+      null,
+      para("Pavel Novák and Karel Dvořák here"),
+    );
     let state = makeState(doc, [{ canonical: "Pavel Novák", label: "person" }]);
     expect(getMatches(state)).toHaveLength(1);
 
@@ -243,7 +289,9 @@ describe("anonymizationDecorations: plugin lifecycle", () => {
     state = state.apply(state.tr.setMeta(key, payload));
     const matches = getMatches(state);
     expect(matches).toHaveLength(1);
-    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe("Karel Dvořák");
+    expect(sliceFromTo(doc, matches[0]!.from, matches[0]!.to)).toBe(
+      "Karel Dvořák",
+    );
   });
 
   test("rebuilds matches when the doc changes", () => {
@@ -258,7 +306,9 @@ describe("anonymizationDecorations: plugin lifecycle", () => {
     state = state.apply(state.tr.insertText("Pavel Novák ", 1));
     const matches = getMatches(state);
     expect(matches).toHaveLength(1);
-    expect(sliceFromTo(state.doc, matches[0]!.from, matches[0]!.to)).toBe("Pavel Novák");
+    expect(sliceFromTo(state.doc, matches[0]!.from, matches[0]!.to)).toBe(
+      "Pavel Novák",
+    );
   });
 });
 

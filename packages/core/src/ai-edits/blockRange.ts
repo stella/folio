@@ -10,6 +10,11 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import { findParagraphByParaId } from "../prosemirror/utils/findParagraphByParaId";
+import {
+  getFolioParaIdFromBlockId,
+  getSequentialFolioBlockIdIndex,
+} from "../types/block-id";
 import { buildCleanBlockText, resolveCleanTextRange } from "./clean-text";
 import {
   collectNoteReferenceLabels,
@@ -17,9 +22,11 @@ import {
   hashFolioAIBlockText,
   isFolioAIContentBlock,
 } from "./snapshot";
-import type { FolioAIBlockAnchor, FolioAIEditSnapshot, FolioAITextRangeHandle } from "./types";
-import { findParagraphByParaId } from "../prosemirror/utils/findParagraphByParaId";
-import { getFolioParaIdFromBlockId, getSequentialFolioBlockIdIndex } from "../types/block-id";
+import type {
+  FolioAIBlockAnchor,
+  FolioAIEditSnapshot,
+  FolioAITextRangeHandle,
+} from "./types";
 
 export type DocPositionRange = { from: number; to: number };
 
@@ -93,7 +100,10 @@ export const resolveFolioAITextRange = ({
   if (resolved === null) {
     return null;
   }
-  const selectedText = cleanBlock.text.slice(range.startOffset, range.endOffset);
+  const selectedText = cleanBlock.text.slice(
+    range.startOffset,
+    range.endOffset,
+  );
   if (hashFolioAIBlockText(selectedText) !== range.selectedTextHash) {
     return null;
   }
@@ -176,7 +186,9 @@ const buildPassageNeedleSource = (text: string): string | null => {
   if (trimmed.length === 0) {
     return null;
   }
-  return trimmed.replaceAll(/[\\^$.*+?()[\]{}|]/gu, "\\$&").replaceAll(/\s+/gu, "\\s+");
+  return trimmed
+    .replaceAll(/[\\^$.*+?()[\]{}|]/gu, "\\$&")
+    .replaceAll(/\s+/gu, "\\s+");
 };
 
 type PassageMatch = { start: number; end: number };
@@ -186,7 +198,10 @@ type PassageMatch = { start: number; end: number };
  * each pass wins; `index` and length are clean-text offsets the caller maps back
  * through `offsets`.
  */
-const matchPassage = (haystack: string, needleSource: string): PassageMatch | null => {
+const matchPassage = (
+  haystack: string,
+  needleSource: string,
+): PassageMatch | null => {
   for (const flags of ["u", "iu"]) {
     const match = new RegExp(needleSource, flags).exec(haystack);
     if (match !== null) {
@@ -247,7 +262,10 @@ export const resolveSequentialBlockAnchor = (
  * Order is preserved: if both endpoints exceed `docSize`, the returned
  * `from` may equal `to`, yielding a cursor selection at the doc end.
  */
-export function clampRangeToDocSize(docSize: number, range: DocPositionRange): DocPositionRange {
+export function clampRangeToDocSize(
+  docSize: number,
+  range: DocPositionRange,
+): DocPositionRange {
   return {
     from: Math.min(Math.max(range.from, 0), docSize),
     to: Math.min(Math.max(range.to, 0), docSize),

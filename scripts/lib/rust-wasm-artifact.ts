@@ -1,19 +1,19 @@
-import binaryen from "binaryen";
 import { panic } from "better-result";
+import binaryen from "binaryen";
+import { $ } from "bun";
 import { createHash, timingSafeEqual } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
-import { $ } from "bun";
 
 /**
  * One committed WebAssembly artifact built from one crate.
@@ -45,7 +45,10 @@ export type RustWasmArtifact = {
 
 export type BuildMode = "--check" | "--write";
 
-export const buildModeFrom = (argument: string | undefined, usage: string): BuildMode => {
+export const buildModeFrom = (
+  argument: string | undefined,
+  usage: string,
+): BuildMode => {
   if (argument !== "--check" && argument !== "--write") {
     panic(`usage: ${usage} <--check|--write>`);
   }
@@ -57,9 +60,13 @@ const repoRoot = path.resolve(import.meta.dir, "..", "..");
 // The committed WebAssembly bytes are only comparable against a build from the
 // same platform: another host's codegen is a legitimate difference, not drift.
 // Everything else wasm-bindgen emits is platform-independent.
-const canonicalArtifactPlatform = process.platform === "linux" && process.arch === "x64";
+const canonicalArtifactPlatform =
+  process.platform === "linux" && process.arch === "x64";
 
-const capture = async (command: string, arguments_: string[]): Promise<string> => {
+const capture = async (
+  command: string,
+  arguments_: string[],
+): Promise<string> => {
   const result = await $`${command} ${arguments_}`.cwd(repoRoot).quiet();
   return result.text().trim();
 };
@@ -93,33 +100,48 @@ export const resolvedWasmBuildGraphDescription = (
 ): string => {
   const roots = metadata.packages.filter(({ name }) => name === crate);
   if (roots.length !== 1) {
-    panic(`Expected exactly one Cargo package named ${crate}; found ${roots.length}`);
+    panic(
+      `Expected exactly one Cargo package named ${crate}; found ${roots.length}`,
+    );
   }
-  const root = roots.at(0) ?? panic(`Cargo metadata does not contain package ${crate}`);
+  const root =
+    roots.at(0) ?? panic(`Cargo metadata does not contain package ${crate}`);
   if (metadata.resolve === null) {
     panic("Cargo metadata does not contain a dependency graph");
   }
 
   const nodes = new Map(metadata.resolve.nodes.map((node) => [node.id, node]));
-  const packages = new Map(metadata.packages.map((package_) => [package_.id, package_]));
+  const packages = new Map(
+    metadata.packages.map((package_) => [package_.id, package_]),
+  );
   const pending = [root.id];
   const visited = new Set<string>();
   while (pending.length > 0) {
-    const id = pending.pop() ?? panic("Dependency traversal unexpectedly ran out of packages");
+    const id =
+      pending.pop() ??
+      panic("Dependency traversal unexpectedly ran out of packages");
     if (visited.has(id)) {
       continue;
     }
     visited.add(id);
-    const node = nodes.get(id) ?? panic(`Cargo metadata does not contain resolve node ${id}`);
+    const node =
+      nodes.get(id) ??
+      panic(`Cargo metadata does not contain resolve node ${id}`);
     for (const dependency of node.deps) {
-      if (dependency.dep_kinds.some(({ kind }) => kind === null || kind === "build")) {
+      if (
+        dependency.dep_kinds.some(
+          ({ kind }) => kind === null || kind === "build",
+        )
+      ) {
         pending.push(dependency.pkg);
       }
     }
   }
 
   const resolved = [...visited].map((id) => {
-    const package_ = packages.get(id) ?? panic(`Cargo metadata does not contain package ${id}`);
+    const package_ =
+      packages.get(id) ??
+      panic(`Cargo metadata does not contain package ${id}`);
     return {
       name: package_.name,
       version: package_.version,
@@ -130,7 +152,9 @@ export const resolvedWasmBuildGraphDescription = (
   resolved.sort((left, right) => {
     const leftDescription = JSON.stringify(left);
     const rightDescription = JSON.stringify(right);
-    return leftDescription < rightDescription ? -1 : Number(leftDescription > rightDescription);
+    return leftDescription < rightDescription
+      ? -1
+      : Number(leftDescription > rightDescription);
   });
   return `${JSON.stringify(resolved)}\n`;
 };
@@ -165,13 +189,17 @@ export const manifestBuildDescription = (manifest: string): string => {
   if (typeof target === "object" && target !== null && !Array.isArray(target)) {
     build["target"] = Object.fromEntries(
       Object.entries(target).map(([platform, table]) => {
-        if (typeof table !== "object" || table === null || Array.isArray(table)) {
+        if (
+          typeof table !== "object" ||
+          table === null ||
+          Array.isArray(table)
+        ) {
           return [platform, table];
         }
-        const { "dev-dependencies": _platformDevDependencies, ...platformBuild } = table as Record<
-          string,
-          unknown
-        >;
+        const {
+          "dev-dependencies": _platformDevDependencies,
+          ...platformBuild
+        } = table as Record<string, unknown>;
         return [platform, platformBuild];
       }),
     );
@@ -184,7 +212,10 @@ export const manifestBuildDescription = (manifest: string): string => {
 const generationInputsOf = (artifact: RustWasmArtifact): string[] => {
   const sourceDirectory = path.join(repoRoot, artifact.crateDirectory, "src");
   const sourceFiles = readdirSync(sourceDirectory, { recursive: true })
-    .filter((file): file is string => typeof file === "string" && file.endsWith(".rs"))
+    .filter(
+      (file): file is string =>
+        typeof file === "string" && file.endsWith(".rs"),
+    )
     .map((file) => path.join(sourceDirectory, file));
   return [
     path.join(repoRoot, "Cargo.toml"),
@@ -195,7 +226,9 @@ const generationInputsOf = (artifact: RustWasmArtifact): string[] => {
   ].sort();
 };
 
-const generationInputDigest = async (artifact: RustWasmArtifact): Promise<string> => {
+const generationInputDigest = async (
+  artifact: RustWasmArtifact,
+): Promise<string> => {
   const digest = createHash("sha256");
   for (const file of generationInputsOf(artifact)) {
     digest.update(path.relative(repoRoot, file));
@@ -207,14 +240,24 @@ const generationInputDigest = async (artifact: RustWasmArtifact): Promise<string
   digest.update("\0");
   digest.update(
     manifestBuildDescription(
-      readFileSync(path.join(repoRoot, artifact.crateDirectory, "Cargo.toml"), "utf8"),
+      readFileSync(
+        path.join(repoRoot, artifact.crateDirectory, "Cargo.toml"),
+        "utf8",
+      ),
     ),
   );
   digest.update("\0");
   // Unfiltered by platform: build scripts and procedural macros run on the
   // build host, so a host-only dependency of theirs is a build input too.
   const metadata = JSON.parse(
-    await capture("cargo", ["metadata", "--locked", "--format-version", "1", "--features", "wasm"]),
+    await capture("cargo", [
+      "metadata",
+      "--locked",
+      "--format-version",
+      "1",
+      "--features",
+      "wasm",
+    ]),
   ) as CargoMetadata;
   digest.update("resolved-cargo-build-graph");
   digest.update("\0");
@@ -225,9 +268,18 @@ const generationInputDigest = async (artifact: RustWasmArtifact): Promise<string
 
 const assertPinnedWasmBindgen = async (): Promise<void> => {
   const cargoMetadata = JSON.parse(
-    await capture("cargo", ["metadata", "--locked", "--format-version", "1", "--features", "wasm"]),
+    await capture("cargo", [
+      "metadata",
+      "--locked",
+      "--format-version",
+      "1",
+      "--features",
+      "wasm",
+    ]),
   ) as { packages: { name: string; version: string }[] };
-  const wasmBindgenPackages = cargoMetadata.packages.filter(({ name }) => name === "wasm-bindgen");
+  const wasmBindgenPackages = cargoMetadata.packages.filter(
+    ({ name }) => name === "wasm-bindgen",
+  );
   if (wasmBindgenPackages.length !== 1) {
     panic(
       `Expected exactly one wasm-bindgen package; found ${wasmBindgenPackages.map(({ version }) => version).join(", ") || "none"}`,
@@ -248,15 +300,23 @@ const assertPinnedWasmBindgen = async (): Promise<void> => {
  * specifier has to become an explicitly relative one; a bundler resolves the
  * bare form against node_modules and finds nothing.
  */
-const rewriteToPackageRelativeUrl = (artifact: RustWasmArtifact, directory: string): void => {
-  const generatedJavaScriptPath = path.join(directory, `${artifact.outName}.js`);
+const rewriteToPackageRelativeUrl = (
+  artifact: RustWasmArtifact,
+  directory: string,
+): void => {
+  const generatedJavaScriptPath = path.join(
+    directory,
+    `${artifact.outName}.js`,
+  );
   const generatedJavaScript = readFileSync(generatedJavaScriptPath, "utf8");
   const packageRelativeJavaScript = generatedJavaScript.replace(
     `new URL('${artifact.outName}_bg.wasm', import.meta.url)`,
     `new URL('./${artifact.outName}_bg.wasm', import.meta.url)`,
   );
   if (packageRelativeJavaScript === generatedJavaScript) {
-    panic("Could not normalize wasm-bindgen's package-relative WebAssembly URL");
+    panic(
+      "Could not normalize wasm-bindgen's package-relative WebAssembly URL",
+    );
   }
   writeFileSync(
     generatedJavaScriptPath,
@@ -269,12 +329,16 @@ const optimize = (artifact: RustWasmArtifact, wasmPath: string): void => {
   binaryen.setOptimizeLevel(3);
   binaryen.setShrinkLevel(2);
   wasmModule.setFeatures(
-    wasmModule.getFeatures() | binaryen.Features.BulkMemory | binaryen.Features.BulkMemoryOpt,
+    wasmModule.getFeatures() |
+      binaryen.Features.BulkMemory |
+      binaryen.Features.BulkMemoryOpt,
   );
   wasmModule.optimize();
   wasmModule.optimize();
   if (wasmModule.getMemoryInfo().shared) {
-    panic(`${artifact.label} WebAssembly must not require shared memory or threads`);
+    panic(
+      `${artifact.label} WebAssembly must not require shared memory or threads`,
+    );
   }
   writeFileSync(wasmPath, wasmModule.emitBinary());
   wasmModule.dispose();
@@ -282,7 +346,10 @@ const optimize = (artifact: RustWasmArtifact, wasmPath: string): void => {
 
 type SizeReport = { readonly wasmBytes: number; readonly brotliBytes: number };
 
-const assertLoadableWithinBudget = (artifact: RustWasmArtifact, wasmPath: string): SizeReport => {
+const assertLoadableWithinBudget = (
+  artifact: RustWasmArtifact,
+  wasmPath: string,
+): SizeReport => {
   const wasmBytes = readFileSync(wasmPath);
   const brotliBytes = brotliCompressSync(wasmBytes, {
     params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 9 },
@@ -291,8 +358,8 @@ const assertLoadableWithinBudget = (artifact: RustWasmArtifact, wasmPath: string
     panic(`Generated ${artifact.label} artifact is not valid WebAssembly`);
   }
   const compiledModule = new WebAssembly.Module(wasmBytes);
-  const wasiImports = WebAssembly.Module.imports(compiledModule).filter(({ module }) =>
-    module.startsWith("wasi"),
+  const wasiImports = WebAssembly.Module.imports(compiledModule).filter(
+    ({ module }) => module.startsWith("wasi"),
   );
   if (wasiImports.length > 0) {
     panic(
@@ -309,7 +376,10 @@ const assertLoadableWithinBudget = (artifact: RustWasmArtifact, wasmPath: string
       `${artifact.label} Brotli size is ${brotliBytes.byteLength} bytes; budget is ${artifact.maximumBrotliBytes}`,
     );
   }
-  return { wasmBytes: wasmBytes.byteLength, brotliBytes: brotliBytes.byteLength };
+  return {
+    wasmBytes: wasmBytes.byteLength,
+    brotliBytes: brotliBytes.byteLength,
+  };
 };
 
 const assertCommittedMatches = (
@@ -327,7 +397,9 @@ const assertCommittedMatches = (
     if (!existsSync(expectedPath)) {
       return true;
     }
-    const expected = createHash("sha256").update(readFileSync(expectedPath)).digest();
+    const expected = createHash("sha256")
+      .update(readFileSync(expectedPath))
+      .digest();
     const actual = createHash("sha256")
       .update(readFileSync(path.join(temporaryDir, file)))
       .digest();
@@ -340,7 +412,10 @@ const assertCommittedMatches = (
   }
   if (!canonicalArtifactPlatform) {
     const committedWasmPath = path.join(generatedDir, wasmFile);
-    if (!existsSync(committedWasmPath) || !WebAssembly.validate(readFileSync(committedWasmPath))) {
+    if (
+      !existsSync(committedWasmPath) ||
+      !WebAssembly.validate(readFileSync(committedWasmPath))
+    ) {
       panic(`Committed ${artifact.label} artifact is not valid WebAssembly`);
     }
   }
@@ -356,7 +431,9 @@ export const buildRustWasmArtifact = async (
   mode: BuildMode,
 ): Promise<void> => {
   const generatedDir = path.join(repoRoot, artifact.generatedDirectory);
-  const temporaryDir = mkdtempSync(path.join(tmpdir(), `folio-${artifact.outName}-wasm-`));
+  const temporaryDir = mkdtempSync(
+    path.join(tmpdir(), `folio-${artifact.outName}-wasm-`),
+  );
   const cargoOutput = path.join(
     repoRoot,
     "target",
@@ -391,19 +468,27 @@ export const buildRustWasmArtifact = async (
       await generationInputDigest(artifact),
     );
 
-    const { wasmBytes, brotliBytes } = assertLoadableWithinBudget(artifact, wasmPath);
+    const { wasmBytes, brotliBytes } = assertLoadableWithinBudget(
+      artifact,
+      wasmPath,
+    );
 
     if (mode === "--write") {
       mkdirSync(generatedDir, { recursive: true });
       for (const file of generatedFiles) {
-        writeFileSync(path.join(generatedDir, file), readFileSync(path.join(temporaryDir, file)));
+        writeFileSync(
+          path.join(generatedDir, file),
+          readFileSync(path.join(temporaryDir, file)),
+        );
       }
     } else {
       assertCommittedMatches(artifact, temporaryDir, generatedFiles, wasmFile);
     }
 
     const generatedFileSet: ReadonlySet<string> = new Set(generatedFiles);
-    const unexpected = readdirSync(temporaryDir).filter((file) => !generatedFileSet.has(file));
+    const unexpected = readdirSync(temporaryDir).filter(
+      (file) => !generatedFileSet.has(file),
+    );
     if (unexpected.length > 0) {
       panic(`Unexpected wasm-bindgen artifacts: ${unexpected.join(", ")}`);
     }

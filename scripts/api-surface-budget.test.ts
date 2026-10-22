@@ -9,14 +9,17 @@ const size = (reportLines: number): SurfaceSize => ({
   declarationLines: 10,
 });
 
-const surfaces = (reportLines: number) => new Map([["docx-core", size(reportLines)]]);
+const surfaces = (reportLines: number) =>
+  new Map([["docx-core", size(reportLines)]]);
 
 describe("API surface budget comparison", () => {
   test("a new package with a committed budget passes", () => {
-    expect(evaluateBudget(new Map(), surfaces(4_223), surfaces(4_223))).toEqual({
-      failures: [],
-      warnings: [],
-    });
+    expect(evaluateBudget(new Map(), surfaces(4_223), surfaces(4_223))).toEqual(
+      {
+        failures: [],
+        warnings: [],
+      },
+    );
   });
 
   test("a new package without a committed budget fails and names the package", () => {
@@ -27,7 +30,11 @@ describe("API surface budget comparison", () => {
   });
 
   test("growth without a budget bump fails and identifies the required bump", () => {
-    const result = evaluateBudget(surfaces(4_222), surfaces(4_223), surfaces(4_023));
+    const result = evaluateBudget(
+      surfaces(4_222),
+      surfaces(4_223),
+      surfaces(4_023),
+    );
 
     expect(result.warnings).toEqual([]);
     expect(result.failures).toEqual([
@@ -36,14 +43,20 @@ describe("API surface budget comparison", () => {
   });
 
   test("growth with an exact budget bump passes", () => {
-    expect(evaluateBudget(surfaces(4_222), surfaces(4_223), surfaces(4_223))).toEqual({
+    expect(
+      evaluateBudget(surfaces(4_222), surfaces(4_223), surfaces(4_223)),
+    ).toEqual({
       failures: [],
       warnings: [],
     });
   });
 
   test("no growth over a drifted base passes with a warning", () => {
-    const result = evaluateBudget(surfaces(4_222), surfaces(4_222), surfaces(4_023));
+    const result = evaluateBudget(
+      surfaces(4_222),
+      surfaces(4_222),
+      surfaces(4_023),
+    );
 
     expect(result.failures).toEqual([]);
     expect(result.warnings).toEqual([

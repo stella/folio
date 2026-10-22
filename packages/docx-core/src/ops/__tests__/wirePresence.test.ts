@@ -1,21 +1,36 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
-import { deepStrictEqual, notDeepStrictEqual } from "node:assert/strict";
 import fc from "fast-check";
+import { deepStrictEqual, notDeepStrictEqual } from "node:assert/strict";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { Document, Paragraph, ParagraphMarkChange } from "../../model/document";
-import { applyDocumentOp, applyDocumentOpEnvelope, applyDocumentOps } from "../apply";
-import { allocateEditorIntentIds, compileEditorIntent, type EditorIntent } from "../editorIntent";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import type {
+  Document,
+  Paragraph,
+  ParagraphMarkChange,
+} from "../../model/document";
+import {
+  applyDocumentOp,
+  applyDocumentOpEnvelope,
+  applyDocumentOps,
+} from "../apply";
+import {
+  allocateEditorIntentIds,
+  compileEditorIntent,
+  type EditorIntent,
+} from "../editorIntent";
 import { paragraphLogicalText } from "../offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
-  DOCUMENT_OP_TYPES,
   DOCUMENT_OP_SCHEMA_VERSION,
-  OP_STORIES,
-  toOpEnvelope,
+  DOCUMENT_OP_TYPES,
   type DocumentOp,
+  OP_STORIES,
   type ParagraphPropsPatch,
   type RunPropsPatch,
+  toOpEnvelope,
 } from "../types";
 import { captureDocumentOp, restoreDocumentOp } from "../wire";
 
@@ -83,7 +98,10 @@ const sourceParagraph = (): Paragraph => {
 const replacement = (): DocumentOp => {
   const original = sourceParagraph();
   const changed = structuredClone(original);
-  changed.content.push({ type: "run", content: [{ type: "text", text: "replacement" }] });
+  changed.content.push({
+    type: "run",
+    content: [{ type: "text", text: "replacement" }],
+  });
   const op = {
     type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
     story: OP_STORIES.MAIN,
@@ -95,20 +113,32 @@ const replacement = (): DocumentOp => {
 };
 
 test("non-object wire operations refuse atomically for current and unsupported schemas", () => {
-  const document = { package: { document: { content: [sourceParagraph()] } } } satisfies Document;
+  const document = {
+    package: { document: { content: [sourceParagraph()] } },
+  } satisfies Document;
   const before = structuredClone(document);
   for (const op of [null, undefined, true, 1, "insertText", []]) {
     // JSON decoding is deliberately unchecked here to exercise the runtime boundary.
     const decoded = JSON.parse(JSON.stringify({ op }));
     const restored = restoreDocumentOp(decoded.op);
     expect(restored.isErr()).toBe(true);
-    if (restored.isOk()) throw new TypeError("Non-object operation unexpectedly restored.");
-    expect(restored.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
+    if (restored.isOk())
+      throw new TypeError("Non-object operation unexpectedly restored.");
+    expect(restored.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+    );
     expect(restored.error.opType).toBeUndefined();
-    for (const schema of [DOCUMENT_OP_SCHEMA_VERSION, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
-      const applied = applyDocumentOpEnvelope(document, { schema, op: decoded.op });
+    for (const schema of [
+      DOCUMENT_OP_SCHEMA_VERSION,
+      DOCUMENT_OP_SCHEMA_VERSION + 1,
+    ]) {
+      const applied = applyDocumentOpEnvelope(document, {
+        schema,
+        op: decoded.op,
+      });
       expect(applied.isErr()).toBe(true);
-      if (applied.isOk()) throw new TypeError("Non-object operation unexpectedly applied.");
+      if (applied.isOk())
+        throw new TypeError("Non-object operation unexpectedly applied.");
       expect(applied.error.reason).toBe(
         schema === DOCUMENT_OP_SCHEMA_VERSION
           ? DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH
@@ -127,7 +157,10 @@ test("capture and envelope transport retain recursively owned undefined fields t
   const captured = captureDocumentOp(op);
   expect(captured.undefinedFields?.length).toBeGreaterThanOrEqual(15);
   deepStrictEqual(restoreDocumentOp(jsonTransport(captured)).unwrap(), op);
-  deepStrictEqual(restoreDocumentOp(jsonTransport(toOpEnvelope(op)).op).unwrap(), op);
+  deepStrictEqual(
+    restoreDocumentOp(jsonTransport(toOpEnvelope(op)).op).unwrap(),
+    op,
+  );
   deepStrictEqual(captureDocumentOp(captured), captured);
   deepStrictEqual(op, snapshot);
   const restored = restoreDocumentOp(jsonTransport(captured)).unwrap();
@@ -142,11 +175,24 @@ test("centrally captured inverses restore exact authored snapshots after JSON wi
     package: { document: { content: structuredClone(op.expected) } },
   } satisfies Document;
   const before = structuredClone(document);
-  const applied = applyDocumentOpEnvelope(document, jsonTransport(toOpEnvelope(op))).unwrap();
-  expect(applied.inverse.some((inverse) => (inverse.undefinedFields?.length ?? 0) > 0)).toBe(true);
-  const undo = applyDocumentOps(applied.document, jsonTransport(applied.inverse)).unwrap();
+  const applied = applyDocumentOpEnvelope(
+    document,
+    jsonTransport(toOpEnvelope(op)),
+  ).unwrap();
+  expect(
+    applied.inverse.some(
+      (inverse) => (inverse.undefinedFields?.length ?? 0) > 0,
+    ),
+  ).toBe(true);
+  const undo = applyDocumentOps(
+    applied.document,
+    jsonTransport(applied.inverse),
+  ).unwrap();
   deepStrictEqual(undo.document, before);
-  const redo = applyDocumentOps(undo.document, jsonTransport(undo.inverse)).unwrap();
+  const redo = applyDocumentOps(
+    undo.document,
+    jsonTransport(undo.inverse),
+  ).unwrap();
   deepStrictEqual(redo.document, applied.document);
   deepStrictEqual(document, before);
 });
@@ -189,27 +235,36 @@ const invalidPaths = [
   })),
 ];
 
-test.each(invalidPaths)("malformed presence metadata refuses atomically: $name", ({ paths }) => {
-  const original = replacement();
-  if (original.type !== DOCUMENT_OP_TYPES.REPLACE_BLOCKS)
-    throw new TypeError("Expected replacement fixture.");
-  const document = {
-    package: { document: { content: structuredClone(original.expected) } },
-  } satisfies Document;
-  const op = { ...jsonTransport(original), undefinedFields: paths };
-  const before = structuredClone(document);
-  const opBefore = structuredClone(op);
-  const restored = restoreDocumentOp(op);
-  expect(restored.isErr()).toBe(true);
-  if (restored.isOk()) throw new TypeError("Malformed presence metadata unexpectedly restored.");
-  expect(restored.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
-  const applied = applyDocumentOp(document, op);
-  expect(applied.isErr()).toBe(true);
-  if (applied.isOk()) throw new TypeError("Malformed presence metadata unexpectedly applied.");
-  expect(applied.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
-  deepStrictEqual(document, before);
-  deepStrictEqual(op, opBefore);
-});
+test.each(invalidPaths)(
+  "malformed presence metadata refuses atomically: $name",
+  ({ paths }) => {
+    const original = replacement();
+    if (original.type !== DOCUMENT_OP_TYPES.REPLACE_BLOCKS)
+      throw new TypeError("Expected replacement fixture.");
+    const document = {
+      package: { document: { content: structuredClone(original.expected) } },
+    } satisfies Document;
+    const op = { ...jsonTransport(original), undefinedFields: paths };
+    const before = structuredClone(document);
+    const opBefore = structuredClone(op);
+    const restored = restoreDocumentOp(op);
+    expect(restored.isErr()).toBe(true);
+    if (restored.isOk())
+      throw new TypeError("Malformed presence metadata unexpectedly restored.");
+    expect(restored.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+    );
+    const applied = applyDocumentOp(document, op);
+    expect(applied.isErr()).toBe(true);
+    if (applied.isOk())
+      throw new TypeError("Malformed presence metadata unexpectedly applied.");
+    expect(applied.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+    );
+    deepStrictEqual(document, before);
+    deepStrictEqual(op, opBefore);
+  },
+);
 
 test("presence metadata cannot traverse an inherited intermediate object", () => {
   const op = replacement();
@@ -217,8 +272,11 @@ test("presence metadata cannot traverse an inherited intermediate object", () =>
   op.undefinedFields = [["inherited", "leaf"]];
   const restored = restoreDocumentOp(op);
   expect(restored.isErr()).toBe(true);
-  if (restored.isOk()) throw new TypeError("Inherited metadata parent unexpectedly accepted.");
-  expect(restored.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
+  if (restored.isOk())
+    throw new TypeError("Inherited metadata parent unexpectedly accepted.");
+  expect(restored.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+  );
   expect(Object.hasOwn(op, "inherited")).toBe(false);
 });
 
@@ -232,7 +290,11 @@ test("generated multi-step transported operations keep exact immediate undo and 
           missing: fc.boolean(),
           kind: fc.constantFrom("insert", "properties"),
           text: fc.constantFrom("x", "yz", "é"),
-          alignment: fc.constantFrom("left" as const, "right" as const, "center" as const),
+          alignment: fc.constantFrom(
+            "left" as const,
+            "right" as const,
+            "center" as const,
+          ),
         }),
         { minLength: 8, maxLength: 16 },
       ),
@@ -244,11 +306,17 @@ test("generated multi-step transported operations keep exact immediate undo and 
           const formatting = {};
           ownUndefined(formatting, "italic");
           paragraph.content = [
-            { type: "run", formatting, content: [{ type: "text", text: "abc" }] },
+            {
+              type: "run",
+              formatting,
+              content: [{ type: "text", text: "abc" }],
+            },
           ];
           return paragraph;
         });
-        const original = { package: { document: { content: paragraphs } } } satisfies Document;
+        const original = {
+          package: { document: { content: paragraphs } },
+        } satisfies Document;
         let document: Document = original;
         const journal: {
           before: Document;
@@ -258,7 +326,9 @@ test("generated multi-step transported operations keep exact immediate undo and 
         }[] = [];
         const refusals = new Map<string, number>();
         for (const step of steps) {
-          const paragraph = document.package.document.content.at(step.target % 2);
+          const paragraph = document.package.document.content.at(
+            step.target % 2,
+          );
           if (paragraph?.type !== "paragraph" || !paragraph.paraId)
             throw new TypeError("Generated target disappeared.");
           const blockId = step.missing ? "FFFFFFFF" : paragraph.paraId;
@@ -279,29 +349,45 @@ test("generated multi-step transported operations keep exact immediate undo and 
                   patch: { alignment: step.alignment },
                 };
           const before = structuredClone(document);
-          const applied = applyDocumentOpEnvelope(document, jsonTransport(toOpEnvelope(op)));
+          const applied = applyDocumentOpEnvelope(
+            document,
+            jsonTransport(toOpEnvelope(op)),
+          );
           if (applied.isErr()) {
-            refusals.set(applied.error.reason, (refusals.get(applied.error.reason) ?? 0) + 1);
+            refusals.set(
+              applied.error.reason,
+              (refusals.get(applied.error.reason) ?? 0) + 1,
+            );
             expect(step.missing).toBe(true);
-            expect(applied.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND);
+            expect(applied.error.reason).toBe(
+              DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+            );
             deepStrictEqual(document, before);
             continue;
           }
           expect(step.missing).toBe(false);
           const direct = applyDocumentOp(structuredClone(before), op).unwrap();
           deepStrictEqual(applied.value.document, direct.document);
-          const changed = applied.value.document.package.document.content.at(step.target % 2);
-          if (changed?.type !== "paragraph") throw new TypeError("Changed target disappeared.");
+          const changed = applied.value.document.package.document.content.at(
+            step.target % 2,
+          );
+          if (changed?.type !== "paragraph")
+            throw new TypeError("Changed target disappeared.");
           if (step.kind === "insert")
             expect(paragraphLogicalText(changed)).toBe(
-              textBefore.slice(0, offset) + step.text + textBefore.slice(offset),
+              textBefore.slice(0, offset) +
+                step.text +
+                textBefore.slice(offset),
             );
           const undo = applyDocumentOps(
             applied.value.document,
             jsonTransport(applied.value.inverse),
           ).unwrap();
           deepStrictEqual(undo.document, before);
-          const redo = applyDocumentOps(undo.document, jsonTransport(undo.inverse)).unwrap();
+          const redo = applyDocumentOps(
+            undo.document,
+            jsonTransport(undo.inverse),
+          ).unwrap();
           deepStrictEqual(redo.document, applied.value.document);
           journal.push({
             before,
@@ -312,13 +398,16 @@ test("generated multi-step transported operations keep exact immediate undo and 
           document = redo.document;
         }
         expect([...refusals.keys()]).toEqual(
-          steps.some((step) => step.missing) ? [DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND] : [],
+          steps.some((step) => step.missing)
+            ? [DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND]
+            : [],
         );
-        expect(refusals.get(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND) ?? 0).toBe(
-          steps.filter((step) => step.missing).length,
-        );
+        expect(
+          refusals.get(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND) ?? 0,
+        ).toBe(steps.filter((step) => step.missing).length);
         for (const entry of journal.toReversed()) {
-          document = applyDocumentOps(document, entry.inverse).unwrap().document;
+          document = applyDocumentOps(document, entry.inverse).unwrap()
+            .document;
           deepStrictEqual(document, entry.before);
         }
         deepStrictEqual(document, original);
@@ -358,7 +447,8 @@ const propertyDocument = (): Document => ({
 
 const propertyRecords = (document: Document) => {
   const paragraph = document.package.document.content.at(0);
-  const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+  const run =
+    paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
   if (
     paragraph?.type !== "paragraph" ||
     !paragraph.formatting ||
@@ -385,8 +475,10 @@ test("generated property patches preserve omitted, owned undefined and concrete 
       (paragraphState, runState, steps) => {
         const original = propertyDocument();
         const records = propertyRecords(original);
-        if (paragraphState === "undefined") ownUndefined(records.paragraph, "numPr");
-        if (paragraphState === "concrete") records.paragraph.numPr = { kind: "none" };
+        if (paragraphState === "undefined")
+          ownUndefined(records.paragraph, "numPr");
+        if (paragraphState === "concrete")
+          records.paragraph.numPr = { kind: "none" };
         if (runState === "undefined") ownUndefined(records.run, "bold");
         if (runState === "concrete") records.run.bold = true;
         let document = original;
@@ -423,19 +515,33 @@ test("generated property patches preserve omitted, owned undefined and concrete 
                 }
               : {
                   type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
-                  from: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
-                  to: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 3 },
+                  from: {
+                    story: OP_STORIES.MAIN,
+                    blockId: "00000001",
+                    offset: 0,
+                  },
+                  to: {
+                    story: OP_STORIES.MAIN,
+                    blockId: "00000001",
+                    offset: 3,
+                  },
                   patch: runPatch,
                 };
           const expected = structuredClone(before);
           const expectedRecords = propertyRecords(expected);
           const target =
-            step.field === "paragraph" ? expectedRecords.paragraph : expectedRecords.run;
+            step.field === "paragraph"
+              ? expectedRecords.paragraph
+              : expectedRecords.run;
           const key = step.field === "paragraph" ? "numPr" : "bold";
           if (step.value === "remove") Reflect.deleteProperty(target, key);
           if (step.value === "undefined") ownUndefined(target, key);
           if (step.value === "concrete")
-            Reflect.set(target, key, step.field === "paragraph" ? { kind: "none" } : step.bold);
+            Reflect.set(
+              target,
+              key,
+              step.field === "paragraph" ? { kind: "none" } : step.bold,
+            );
           const applied = applyDocumentOp(document, op).unwrap();
           deepStrictEqual(applied.document, expected);
           const transported = applyDocumentOpEnvelope(
@@ -443,11 +549,20 @@ test("generated property patches preserve omitted, owned undefined and concrete 
             jsonTransport(toOpEnvelope(op)),
           ).unwrap();
           deepStrictEqual(transported.document, expected);
-          const memoryUndo = applyDocumentOps(applied.document, applied.inverse).unwrap();
+          const memoryUndo = applyDocumentOps(
+            applied.document,
+            applied.inverse,
+          ).unwrap();
           deepStrictEqual(memoryUndo.document, before);
-          const undo = applyDocumentOps(applied.document, jsonTransport(applied.inverse)).unwrap();
+          const undo = applyDocumentOps(
+            applied.document,
+            jsonTransport(applied.inverse),
+          ).unwrap();
           deepStrictEqual(undo.document, before);
-          const redo = applyDocumentOps(undo.document, jsonTransport(undo.inverse)).unwrap();
+          const redo = applyDocumentOps(
+            undo.document,
+            jsonTransport(undo.inverse),
+          ).unwrap();
           deepStrictEqual(redo.document, expected);
           journal.push({
             before,
@@ -458,7 +573,8 @@ test("generated property patches preserve omitted, owned undefined and concrete 
           document = redo.document;
         }
         for (const entry of journal.toReversed()) {
-          document = applyDocumentOps(document, entry.inverse).unwrap().document;
+          document = applyDocumentOps(document, entry.inverse).unwrap()
+            .document;
           deepStrictEqual(document, entry.before);
         }
         deepStrictEqual(document, original);
@@ -517,7 +633,9 @@ test("stale property preconditions distinguish absent fields from owned undefine
       ]) {
         expect(refused.isErr()).toBe(true);
         if (refused.isOk())
-          throw new TypeError("Wrong property presence precondition unexpectedly applied.");
+          throw new TypeError(
+            "Wrong property presence precondition unexpectedly applied.",
+          );
         expect(refused.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
         deepStrictEqual(document, before);
       }
@@ -530,41 +648,72 @@ test("generated paragraph mark cut-depth presence survives captured journals and
     fc.property(fc.integer({ min: 1, max: 2147483647 }), (depth) => {
       const marks = [
         { kind: "ins", info: { id: 20, author: "Source" } },
-        { kind: "ins", info: { id: 20, author: "Source" }, resolutionJoin: undefined },
+        {
+          kind: "ins",
+          info: { id: 20, author: "Source" },
+          resolutionJoin: undefined,
+        },
         { kind: "ins", info: { id: 20, author: "Source" }, resolutionJoin: 0 },
-        { kind: "ins", info: { id: 20, author: "Source" }, resolutionJoin: depth },
+        {
+          kind: "ins",
+          info: { id: 20, author: "Source" },
+          resolutionJoin: depth,
+        },
       ] satisfies ParagraphMarkChange[];
       for (const mark of marks) {
         const paragraph = {
           type: "paragraph",
           paraId: "00000001",
           pPrMark: mark,
-          content: [{ type: "run", content: [{ type: "text", text: "before" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "before" }] },
+          ],
         } satisfies Paragraph;
-        const document = { package: { document: { content: [paragraph] } } } satisfies Document;
+        const document = {
+          package: { document: { content: [paragraph] } },
+        } satisfies Document;
         const before = structuredClone(document);
         const changed = structuredClone(paragraph);
-        changed.content = [{ type: "run", content: [{ type: "text", text: "after" }] }];
+        changed.content = [
+          { type: "run", content: [{ type: "text", text: "after" }] },
+        ];
         const op = {
           type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
           story: OP_STORIES.MAIN,
           expected: [paragraph],
           blocks: [changed],
         } satisfies DocumentOp;
-        const restored = restoreDocumentOp(jsonTransport(toOpEnvelope(op)).op).unwrap();
+        const restored = restoreDocumentOp(
+          jsonTransport(toOpEnvelope(op)).op,
+        ).unwrap();
         deepStrictEqual(restored, op);
-        if (Object.hasOwn(mark, "resolutionJoin") && mark.resolutionJoin === undefined)
+        if (
+          Object.hasOwn(mark, "resolutionJoin") &&
+          mark.resolutionJoin === undefined
+        )
           notDeepStrictEqual(jsonTransport(op), op);
-        const applied = applyDocumentOpEnvelope(document, jsonTransport(toOpEnvelope(op))).unwrap();
-        deepStrictEqual(applied.document, applyDocumentOp(document, op).unwrap().document);
-        const undo = applyDocumentOps(applied.document, applied.inverse).unwrap();
+        const applied = applyDocumentOpEnvelope(
+          document,
+          jsonTransport(toOpEnvelope(op)),
+        ).unwrap();
+        deepStrictEqual(
+          applied.document,
+          applyDocumentOp(document, op).unwrap().document,
+        );
+        const undo = applyDocumentOps(
+          applied.document,
+          applied.inverse,
+        ).unwrap();
         const transportedUndo = applyDocumentOps(
           applied.document,
           jsonTransport(applied.inverse),
         ).unwrap();
         deepStrictEqual(undo.document, before);
         deepStrictEqual(transportedUndo.document, before);
-        const redo = applyDocumentOps(undo.document, jsonTransport(undo.inverse)).unwrap();
+        const redo = applyDocumentOps(
+          undo.document,
+          jsonTransport(undo.inverse),
+        ).unwrap();
         deepStrictEqual(redo.document, applied.document);
         deepStrictEqual(document, before);
       }
@@ -607,7 +756,12 @@ test("generated split marks transport source cut depths without losing independe
                         type: "inlineWrapper",
                         kind: "bidi",
                         control: "embedding",
-                        content: [{ type: "run", content: [{ type: "text", text: "abc" }] }],
+                        content: [
+                          {
+                            type: "run",
+                            content: [{ type: "text", text: "abc" }],
+                          },
+                        ],
                       },
                     ],
                   },
@@ -632,17 +786,24 @@ test("generated split marks transport source cut depths without losing independe
           newIds: allocation.newIds,
         },
       }).unwrap();
-      const wireOps = compiled.ops.map((op) => jsonTransport(toOpEnvelope(op)).op);
+      const wireOps = compiled.ops.map(
+        (op) => jsonTransport(toOpEnvelope(op)).op,
+      );
       for (const [index, op] of wireOps.entries()) {
         const originalOp = compiled.ops.at(index);
         if (originalOp === undefined)
           throw new TypeError("Transport preserves every generated operation.");
-        deepStrictEqual(restoreDocumentOp(op).unwrap(), restoreDocumentOp(originalOp).unwrap());
+        deepStrictEqual(
+          restoreDocumentOp(op).unwrap(),
+          restoreDocumentOp(originalOp).unwrap(),
+        );
       }
       const memory = applyDocumentOps(document, compiled.ops).unwrap();
       const leading = memory.document.package.document.content.at(0);
       if (leading?.type !== "paragraph" || leading.pPrMark === undefined)
-        throw new TypeError("Applying the source split must emit a paragraph mark.");
+        throw new TypeError(
+          "Applying the source split must emit a paragraph mark.",
+        );
       expect(Object.hasOwn(leading.pPrMark, "resolutionJoin")).toBe(true);
       expect(Number.isInteger(leading.pPrMark.resolutionJoin)).toBe(true);
       const transported = applyDocumentOps(document, wireOps).unwrap();
@@ -652,7 +813,10 @@ test("generated split marks transport source cut depths without losing independe
         jsonTransport(transported.inverse),
       ).unwrap();
       deepStrictEqual(undo.document, before);
-      const redo = applyDocumentOps(undo.document, jsonTransport(undo.inverse)).unwrap();
+      const redo = applyDocumentOps(
+        undo.document,
+        jsonTransport(undo.inverse),
+      ).unwrap();
       deepStrictEqual(redo.document, transported.document);
       deepStrictEqual(document, before);
     }),

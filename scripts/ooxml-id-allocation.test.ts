@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { parse } from "@vue/compiler-sfc";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import ts from "typescript";
 
@@ -10,18 +10,28 @@ const NUMERIC_ID_NAME =
   /(?:^id$|id(?:cursor|counter|seed)?$|(?:revision|comment|bookmark|footnote|endnote|part)(?:seed|cursor|counter)$)/i;
 const ALLOCATOR_NAME =
   /(?:allocate|generate|next|create).*(?:ids?|revision|comment|bookmark|footnote|endnote|part)$/i;
-const STRING_METHODS = new Set(["toString", "toISOString", "toUTCString", "toLocaleString"]);
+const STRING_METHODS = new Set([
+  "toString",
+  "toISOString",
+  "toUTCString",
+  "toLocaleString",
+]);
 const OOXML_ID_NAME =
   /(?:revision|comment|bookmark|footnote|endnote|part)(?:id(?:cursor|counter|seed)?|seed|cursor|counter)?$|rsid\w*$|(?:para|text)id(?:cursor|counter|seed)?$/i;
 
 const isNumericIdName = (name: string): boolean =>
   !/undo|relationship|shape|textBox(?:Group|Anchor)|^rId$/i.test(name) &&
-  (NUMERIC_ID_NAME.test(name) || ALLOCATOR_NAME.test(name) || OOXML_ID_NAME.test(name));
+  (NUMERIC_ID_NAME.test(name) ||
+    ALLOCATOR_NAME.test(name) ||
+    OOXML_ID_NAME.test(name));
 
 const propertyName = (node: ts.Node): string | undefined => {
   if (ts.isIdentifier(node) || ts.isStringLiteral(node)) return node.text;
   if (ts.isPropertyAccessExpression(node)) return node.name.text;
-  if (ts.isElementAccessExpression(node) && ts.isStringLiteral(node.argumentExpression)) {
+  if (
+    ts.isElementAccessExpression(node) &&
+    ts.isStringLiteral(node.argumentExpression)
+  ) {
     return node.argumentExpression.text;
   }
   return undefined;
@@ -39,7 +49,12 @@ const isClockOrRandom = (node: ts.Node): boolean => {
   const owner = node.expression.getText();
   return (
     (node.name.text === "now" &&
-      ["Date", "performance", "window.performance", "globalThis.performance"].includes(owner)) ||
+      [
+        "Date",
+        "performance",
+        "window.performance",
+        "globalThis.performance",
+      ].includes(owner)) ||
     (node.name.text === "random" && owner === "Math")
   );
 };
@@ -56,7 +71,9 @@ const scriptSource = (file: string, sourceText: string): string => {
   let cursor = 0;
   let result = "";
   for (const block of blocks) {
-    result += sourceText.slice(cursor, block.loc.start.offset).replace(/[^\r\n]/g, " ");
+    result += sourceText
+      .slice(cursor, block.loc.start.offset)
+      .replace(/[^\r\n]/g, " ");
     result += block.content;
     cursor = block.loc.end.offset;
   }
@@ -64,7 +81,10 @@ const scriptSource = (file: string, sourceText: string): string => {
 };
 
 /** Follow local aliases to a fixed point, preserving lexical shadowing. */
-const forbiddenAllocationSites = (file: string, sourceText: string): string[] => {
+const forbiddenAllocationSites = (
+  file: string,
+  sourceText: string,
+): string[] => {
   // OOXML hexadecimal rsid/paraId values have a separate, bounded allocator.
   if (file === HEX_ID_ALLOCATOR) return [];
   const source = ts.createSourceFile(
@@ -77,7 +97,11 @@ const forbiddenAllocationSites = (file: string, sourceText: string): string[] =>
   const bindings: Binding[] = [];
   const scopeOf = (node: ts.Node): ts.Node => {
     let scope = node.parent;
-    while (!ts.isSourceFile(scope) && !ts.isBlock(scope) && !ts.isFunctionLike(scope)) {
+    while (
+      !ts.isSourceFile(scope) &&
+      !ts.isBlock(scope) &&
+      !ts.isFunctionLike(scope)
+    ) {
       scope = scope.parent;
     }
     return scope;
@@ -100,7 +124,10 @@ const forbiddenAllocationSites = (file: string, sourceText: string): string[] =>
       const scope = scopeOf(node);
       const names = scopes.get(scope) ?? new Map<string, Binding>();
       const value = ts.isVariableDeclaration(node) ? node.initializer : node;
-      const binding = { declaration: node, values: value === undefined ? [] : [value] };
+      const binding = {
+        declaration: node,
+        values: value === undefined ? [] : [value],
+      };
       names.set(node.name.text, binding);
       scopes.set(scope, names);
       bindings.push(binding);
@@ -132,9 +159,16 @@ const forbiddenAllocationSites = (file: string, sourceText: string): string[] =>
       const returnsSource = (child: ts.Node): boolean => {
         if (ts.isFunctionLike(child)) return false;
         if (ts.isReturnStatement(child)) {
-          return child.expression !== undefined && containsSource(child.expression);
+          return (
+            child.expression !== undefined && containsSource(child.expression)
+          );
         }
-        return ts.forEachChild(child, (nested) => returnsSource(nested) || undefined) === true;
+        return (
+          ts.forEachChild(
+            child,
+            (nested) => returnsSource(nested) || undefined,
+          ) === true
+        );
       };
       return returnsSource(node.body);
     }
@@ -144,8 +178,12 @@ const forbiddenAllocationSites = (file: string, sourceText: string): string[] =>
       return binding !== undefined && tainted.has(binding.declaration);
     }
     if (ts.isPropertyAssignment(node)) return containsSource(node.initializer);
-    if (ts.isPropertyAccessExpression(node)) return containsSource(node.expression);
-    return ts.forEachChild(node, (child) => containsSource(child) || undefined) === true;
+    if (ts.isPropertyAccessExpression(node))
+      return containsSource(node.expression);
+    return (
+      ts.forEachChild(node, (child) => containsSource(child) || undefined) ===
+      true
+    );
   };
   let changed = true;
   while (changed) {
@@ -156,7 +194,10 @@ const forbiddenAllocationSites = (file: string, sourceText: string): string[] =>
       changed = true;
     }
   }
-  const isStringOutput = (node: ts.Node, visited = new Set<ts.Node>()): boolean => {
+  const isStringOutput = (
+    node: ts.Node,
+    visited = new Set<ts.Node>(),
+  ): boolean => {
     if (visited.has(node)) return false;
     visited.add(node);
     if (
@@ -179,11 +220,18 @@ const forbiddenAllocationSites = (file: string, sourceText: string): string[] =>
       ts.isNonNullExpression(node)
     )
       return isStringOutput(node.expression, visited);
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-      return isStringOutput(node.left, visited) || isStringOutput(node.right, visited);
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.PlusToken
+    ) {
+      return (
+        isStringOutput(node.left, visited) ||
+        isStringOutput(node.right, visited)
+      );
     }
     if (!ts.isCallExpression(node)) return false;
-    if (ts.isIdentifier(node.expression) && node.expression.text === "String") return true;
+    if (ts.isIdentifier(node.expression) && node.expression.text === "String")
+      return true;
     if (!ts.isPropertyAccessExpression(node.expression)) return false;
     return (
       STRING_METHODS.has(node.expression.name.text) ||
@@ -191,13 +239,20 @@ const forbiddenAllocationSites = (file: string, sourceText: string): string[] =>
     );
   };
   const sites: string[] = [];
-  const report = (node: ts.Node, name: string | undefined, value: ts.Node | undefined): void => {
-    if (name === undefined || value === undefined || !isNumericIdName(name)) return;
+  const report = (
+    node: ts.Node,
+    name: string | undefined,
+    value: ts.Node | undefined,
+  ): void => {
+    if (name === undefined || value === undefined || !isNumericIdName(name))
+      return;
     // Generic application string ids are allowed; OOXML decimal/hexadecimal
     // sinks retain clock taint through string coercion and local aliases.
     if (!OOXML_ID_NAME.test(name) && isStringOutput(value)) return;
     if (!containsSource(value)) return;
-    const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
+    const { line } = source.getLineAndCharacterOfPosition(
+      node.getStart(source),
+    );
     sites.push(`${file}:${String(line + 1)} (${name})`);
   };
   const visit = (node: ts.Node): void => {
@@ -230,7 +285,10 @@ const sourceFiles = (): string[] =>
       ["**/node_modules/**"],
     )
     .map((file) => path.relative(REPO_ROOT, file).replaceAll("\\", "/"))
-    .filter((file) => /^packages\/[^/]+\/src\//.test(file) && !/\.test\.tsx?$/.test(file))
+    .filter(
+      (file) =>
+        /^packages\/[^/]+\/src\//.test(file) && !/\.test\.tsx?$/.test(file),
+    )
     .toSorted();
 
 describe("numeric OOXML id allocation", () => {
@@ -253,7 +311,9 @@ describe("numeric OOXML id allocation", () => {
     "const seed = performance.now().toString(16); const paraId = seed.toUpperCase();",
     "const clock = Date.now; const seed = String(clock()); const textId = seed;",
   ])("rejects numeric clock/random allocation: %s", (source) => {
-    expect(forbiddenAllocationSites("probe.ts", source).length).toBeGreaterThan(0);
+    expect(forbiddenAllocationSites("probe.ts", source).length).toBeGreaterThan(
+      0,
+    );
   });
 
   test.each([
@@ -279,10 +339,14 @@ describe("numeric OOXML id allocation", () => {
     const files = sourceFiles();
     expect(files).toContain("packages/core/src/ai-edits/headless.ts");
     expect(files).toContain("packages/react/src/components/commentsHelpers.ts");
-    expect(files).toContain("packages/vue/src/composables/useDocxEditorRefApi.ts");
+    expect(files).toContain(
+      "packages/vue/src/composables/useDocxEditorRefApi.ts",
+    );
     expect(files).toContain("packages/vue/src/components/DocxEditor.vue");
     expect(files.some((file) => file.includes("/node_modules/"))).toBe(false);
-    expect(forbiddenAllocationSites(HEX_ID_ALLOCATOR, "const id = Math.random();")).toEqual([]);
+    expect(
+      forbiddenAllocationSites(HEX_ID_ALLOCATOR, "const id = Math.random();"),
+    ).toEqual([]);
     const forbidden = files.flatMap((file) => {
       const source = ts.sys.readFile(path.join(REPO_ROOT, file));
       if (source === undefined) panic(`Cannot read ${file}.`);

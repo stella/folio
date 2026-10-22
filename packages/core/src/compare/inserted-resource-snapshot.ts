@@ -24,13 +24,16 @@ export const createInsertedResourceProjection = ({
     .flatMap((event) => {
       if (event.type === "pair" || event.type === "baseOnly") return [];
       const anchor =
-        revised.anchors[event.block.id] ?? panic("An inserted block lost its source anchor");
+        revised.anchors[event.block.id] ??
+        panic("An inserted block lost its source anchor");
       const node =
-        document.nodeAt(anchor.from) ?? panic("An inserted block lost its source paragraph");
+        document.nodeAt(anchor.from) ??
+        panic("An inserted block lost its source paragraph");
       return [{ from: anchor.from, to: anchor.to, node }];
     })
     .toSorted((left, right) => left.from - right.from);
-  const carriers: ((typeof insertions)[number] & { projectionFrom: number })[] = [];
+  const carriers: ((typeof insertions)[number] & { projectionFrom: number })[] =
+    [];
   let projectionFrom = 0;
   for (const insertion of insertions) {
     // Copy each source subtree once, even when several inserted blocks belong to it.
@@ -45,11 +48,18 @@ export const createInsertedResourceProjection = ({
   for (const block of revised.blocks) {
     const anchor = revised.anchors[block.id];
     if (anchor === undefined) continue;
-    while (anchor.from >= (carriers.at(carrierIndex)?.to ?? Number.POSITIVE_INFINITY)) {
+    while (
+      anchor.from >= (carriers.at(carrierIndex)?.to ?? Number.POSITIVE_INFINITY)
+    ) {
       carrierIndex++;
     }
     const carrier = carriers.at(carrierIndex);
-    if (carrier === undefined || anchor.from < carrier.from || anchor.to > carrier.to) continue;
+    if (
+      carrier === undefined ||
+      anchor.from < carrier.from ||
+      anchor.to > carrier.to
+    )
+      continue;
     revisedIdsByProjectionPosition.set(
       carrier.projectionFrom + anchor.from - carrier.from,
       block.id,
@@ -60,11 +70,14 @@ export const createInsertedResourceProjection = ({
     styleResolverOf(revised),
   );
   if (snapshot.blocks.length !== revisedIdsByProjectionPosition.size) {
-    return panic("A redline resource projection must preserve its maximal carriers' blocks");
+    return panic(
+      "A redline resource projection must preserve its maximal carriers' blocks",
+    );
   }
   const revisedBlockIds = snapshot.blocks.map((block) => {
     const anchor =
-      snapshot.anchors[block.id] ?? panic("A projected resource block lost its anchor");
+      snapshot.anchors[block.id] ??
+      panic("A projected resource block lost its anchor");
     return (
       revisedIdsByProjectionPosition.get(anchor.from) ??
       panic("A projected resource block lost its carried source identity")
@@ -79,11 +92,15 @@ export const rebindInsertedResourceBlocks = (
   rebound: FolioAIEditSnapshot,
 ) => {
   if (rebound.blocks.length !== projection.revisedBlockIds.length) {
-    return panic("A redline resource import changed the carried insertion count");
+    return panic(
+      "A redline resource import changed the carried insertion count",
+    );
   }
   const blocks = new Map<FolioAIBlock["id"], FolioAIBlock>();
   for (const [index, id] of projection.revisedBlockIds.entries()) {
-    const block = rebound.blocks.at(index) ?? panic("A redline import lost a carried insertion");
+    const block =
+      rebound.blocks.at(index) ??
+      panic("A redline import lost a carried insertion");
     blocks.set(id, { ...block, id });
   }
   return blocks;

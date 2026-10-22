@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
 import { resolveListTemplate } from "../prosemirror/listMarker";
-import { computeListRendering, formatNumber, parseNumbering } from "./numberingParser";
+import {
+  computeListRendering,
+  formatNumber,
+  parseNumbering,
+} from "./numberingParser";
 
-const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
-const MC = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
+const W =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const MC =
+  'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
 
 // Word emits custom number formats (here: zero-padded to 4 digits) wrapped in
 // mc:AlternateContent — the Choice carries the custom format, the Fallback a
@@ -34,19 +40,31 @@ describe("custom numFmt inside mc:AlternateContent (#765)", () => {
 
   test('reads w:numFmt val="custom" format="0001, ..." as custom, format and all', () => {
     expect(numbering.getLevel(1, 0)?.numFmt).toBe("custom");
-    expect(numbering.getLevel(1, 0)?.numFmtFormat).toBe("0001, 0002, 0003, ...");
+    expect(numbering.getLevel(1, 0)?.numFmtFormat).toBe(
+      "0001, 0002, 0003, ...",
+    );
   });
 
   test("counts a 4-digit custom format in decimalZero4", () => {
-    expect(computeListRendering({ numId: 1, ilvl: 0 }, numbering)?.numFmt).toBe("decimalZero4");
+    expect(computeListRendering({ numId: 1, ilvl: 0 }, numbering)?.numFmt).toBe(
+      "decimalZero4",
+    );
   });
 
   test("renders zero-padded markers through the lvlText template", () => {
     expect(
-      resolveListTemplate({ template: "[%1]", counters: [1], levelFormats: ["decimalZero4"] }),
+      resolveListTemplate({
+        template: "[%1]",
+        counters: [1],
+        levelFormats: ["decimalZero4"],
+      }),
     ).toBe("[0001]");
     expect(
-      resolveListTemplate({ template: "[%1]", counters: [12], levelFormats: ["decimalZero4"] }),
+      resolveListTemplate({
+        template: "[%1]",
+        counters: [12],
+        levelFormats: ["decimalZero4"],
+      }),
     ).toBe("[0012]");
     expect(
       resolveListTemplate({
@@ -80,7 +98,9 @@ describe("custom numFmt inside mc:AlternateContent (#765)", () => {
   });
 
   test("custom 3- and 5-digit pad widths count in decimalZero3/5", () => {
-    const xml = (format: string) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    const xml = (
+      format: string,
+    ) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:numbering ${W} ${MC}>
   <w:abstractNum w:abstractNumId="0">
     <w:lvl w:ilvl="0">
@@ -97,7 +117,8 @@ describe("custom numFmt inside mc:AlternateContent (#765)", () => {
   <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
 </w:numbering>`;
     const counterFormat = (format: string) =>
-      computeListRendering({ numId: 1, ilvl: 0 }, parseNumbering(xml(format)))?.numFmt;
+      computeListRendering({ numId: 1, ilvl: 0 }, parseNumbering(xml(format)))
+        ?.numFmt;
     expect(counterFormat("001, 002, ...")).toBe("decimalZero3");
     expect(counterFormat("00001, ...")).toBe("decimalZero5");
     // 6+ digits clamp to 5.
@@ -116,8 +137,12 @@ describe("custom numFmt inside mc:AlternateContent (#765)", () => {
   <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
 </w:numbering>`;
     expect(parseNumbering(xml).getLevel(1, 0)?.numFmt).toBe("custom");
-    expect(parseNumbering(xml).getLevel(1, 0)?.numFmtFormat).toBe("ABC, DEF, ...");
-    expect(computeListRendering({ numId: 1, ilvl: 0 }, parseNumbering(xml))?.numFmt).toBe("custom");
+    expect(parseNumbering(xml).getLevel(1, 0)?.numFmtFormat).toBe(
+      "ABC, DEF, ...",
+    );
+    expect(
+      computeListRendering({ numId: 1, ilvl: 0 }, parseNumbering(xml))?.numFmt,
+    ).toBe("custom");
     expect(formatNumber(7, "custom")).toBe("7");
   });
 
@@ -140,7 +165,9 @@ test("computeListRendering carries parent and current level starts", () => {
 </w:numbering>`;
   const numbering = parseNumbering(xml);
 
-  expect(computeListRendering({ numId: 3, ilvl: 1 }, numbering)?.levelStarts).toEqual([3, 3]);
+  expect(
+    computeListRendering({ numId: 3, ilvl: 1 }, numbering)?.levelStarts,
+  ).toEqual([3, 3]);
 });
 
 test("computeListRendering preserves explicit marker bold states", () => {
@@ -158,8 +185,12 @@ test("computeListRendering preserves explicit marker bold states", () => {
 </w:numbering>`;
   const numbering = parseNumbering(xml);
 
-  expect(computeListRendering({ numId: 4, ilvl: 0 }, numbering)?.markerFormatting?.bold).toBe(true);
-  expect(computeListRendering({ numId: 4, ilvl: 1 }, numbering)?.markerFormatting?.bold).toBe(
-    false,
-  );
+  expect(
+    computeListRendering({ numId: 4, ilvl: 0 }, numbering)?.markerFormatting
+      ?.bold,
+  ).toBe(true);
+  expect(
+    computeListRendering({ numId: 4, ilvl: 1 }, numbering)?.markerFormatting
+      ?.bold,
+  ).toBe(false);
 });

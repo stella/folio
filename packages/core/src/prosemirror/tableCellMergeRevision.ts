@@ -13,7 +13,9 @@ const isVerticalMergeRevisionValue = (
 ): value is NonNullable<TableCellMergeChange["verticalMerge"]> =>
   value === "continue" || value === "rest";
 
-export const getTableCellMergeChange = (value: unknown): TableCellMergeChange | null => {
+export const getTableCellMergeChange = (
+  value: unknown,
+): TableCellMergeChange | null => {
   if (!isRecord(value)) {
     return null;
   }
@@ -22,7 +24,11 @@ export const getTableCellMergeChange = (value: unknown): TableCellMergeChange | 
     return null;
   }
   const info = change["info"];
-  if (!isRecord(info) || typeof info["id"] !== "number" || typeof info["author"] !== "string") {
+  if (
+    !isRecord(info) ||
+    typeof info["id"] !== "number" ||
+    typeof info["author"] !== "string"
+  ) {
     return null;
   }
 

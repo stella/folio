@@ -12,8 +12,9 @@
  * import it.
  */
 
-import type { ParagraphFormatting, TabStop, Theme } from "../types/document";
 import { outlineLevelFromStatedValue } from "@stll/docx-core/model";
+
+import type { ParagraphFormatting, TabStop, Theme } from "../types/document";
 import { readAttributeBag } from "./attributeRemainder";
 import { parseBorderSpec } from "./borderParser";
 import {
@@ -73,7 +74,10 @@ function parseTabStops(tabs: XmlElement | null): TabStop[] | undefined {
 
   for (const tab of tabElements) {
     const pos = parseNumericAttribute(tab, "w", "pos");
-    const alignment = narrowEnum(getAttribute(tab, "w", "val"), TabStopAlignmentSchema);
+    const alignment = narrowEnum(
+      getAttribute(tab, "w", "val"),
+      TabStopAlignmentSchema,
+    );
 
     if (pos !== undefined && alignment) {
       const tabStop: TabStop = {
@@ -81,7 +85,10 @@ function parseTabStops(tabs: XmlElement | null): TabStop[] | undefined {
         alignment,
       };
 
-      const leader = narrowEnum(getAttribute(tab, "w", "leader"), TabLeaderSchema);
+      const leader = narrowEnum(
+        getAttribute(tab, "w", "leader"),
+        TabLeaderSchema,
+      );
       if (leader && leader !== "none") {
         tabStop.leader = leader;
       }
@@ -160,12 +167,18 @@ function parseFrameProperties(
     frame.y = y;
   }
 
-  const xAlign = narrowEnum(getAttribute(framePr, "w", "xAlign"), FrameXAlignSchema);
+  const xAlign = narrowEnum(
+    getAttribute(framePr, "w", "xAlign"),
+    FrameXAlignSchema,
+  );
   if (xAlign) {
     frame.xAlign = xAlign;
   }
 
-  const yAlign = narrowEnum(getAttribute(framePr, "w", "yAlign"), FrameYAlignSchema);
+  const yAlign = narrowEnum(
+    getAttribute(framePr, "w", "yAlign"),
+    FrameYAlignSchema,
+  );
   if (yAlign) {
     frame.yAlign = yAlign;
   }
@@ -191,7 +204,9 @@ function parseFrameProperties(
 
 /** A `w:pPr` child folio models as a tri-state `CT_OnOff` toggle. */
 type ParagraphToggleField = {
-  [Field in keyof ParagraphFormatting]-?: NonNullable<ParagraphFormatting[Field]> extends boolean
+  [Field in keyof ParagraphFormatting]-?: NonNullable<
+    ParagraphFormatting[Field]
+  > extends boolean
     ? Field
     : never;
 }[keyof ParagraphFormatting];
@@ -223,7 +238,10 @@ const readOnce =
     return undefined;
   };
 
-const readToggle = (name: string, field: ParagraphToggleField): ParagraphPropertyReader =>
+const readToggle = (
+  name: string,
+  field: ParagraphToggleField,
+): ParagraphPropertyReader =>
   readOnce(name, (child, formatting) => {
     formatting[field] = parseBooleanElement(child);
     return true;
@@ -270,7 +288,11 @@ const PARAGRAPH_PROPERTY_HANDLERS = {
     if (numberingInsertion) {
       formatting.numberingInsertionXml = captureVerbatimXml(numberingInsertion);
     }
-    const statedLevel = parseNumericAttribute(findChild(child, "w", "ilvl"), "w", "val");
+    const statedLevel = parseNumericAttribute(
+      findChild(child, "w", "ilvl"),
+      "w",
+      "val",
+    );
     return (
       stated !== undefined ||
       numberingChange !== null ||
@@ -319,13 +341,20 @@ const PARAGRAPH_PROPERTY_HANDLERS = {
   bidi: readToggle("bidi", "bidi"),
   adjustRightInd: CAPTURE,
   snapToGrid: readToggle("snapToGrid", "snapToGrid"),
-  spacing: readOnce("spacing", (child, formatting) => readParagraphSpacing(child, formatting)),
-  ind: readOnce("ind", (child, formatting) => readParagraphIndentation(child, formatting)),
+  spacing: readOnce("spacing", (child, formatting) =>
+    readParagraphSpacing(child, formatting),
+  ),
+  ind: readOnce("ind", (child, formatting) =>
+    readParagraphIndentation(child, formatting),
+  ),
   contextualSpacing: readToggle("contextualSpacing", "contextualSpacing"),
   mirrorIndents: CAPTURE,
   suppressOverlap: CAPTURE,
   jc: readOnce("jc", (child, formatting) => {
-    const val = narrowEnum(getAttribute(child, "w", "val"), ParagraphAlignmentSchema);
+    const val = narrowEnum(
+      getAttribute(child, "w", "val"),
+      ParagraphAlignmentSchema,
+    );
     if (!val) {
       return false;
     }
@@ -337,7 +366,8 @@ const PARAGRAPH_PROPERTY_HANDLERS = {
   textboxTightWrap: CAPTURE,
   outlineLvl: readOnce("outlineLvl", (child, formatting) => {
     const val = parseNumericAttribute(child, "w", "val");
-    const level = val === undefined ? undefined : outlineLevelFromStatedValue(val);
+    const level =
+      val === undefined ? undefined : outlineLevelFromStatedValue(val);
     if (level === undefined) {
       return val === -1;
     }
@@ -361,7 +391,10 @@ const PARAGRAPH_PROPERTY_HANDLERS = {
     child: "pPrChange",
     reader: "paragraphParser#parseParagraphPropertyChanges",
   }),
-} as const satisfies ChildHandlers<"paragraph-properties", ParagraphPropertyReadContext>;
+} as const satisfies ChildHandlers<
+  "paragraph-properties",
+  ParagraphPropertyReadContext
+>;
 
 /**
  * Read `w:pPr` into {@link ParagraphFormatting}, every declared child carrying
@@ -401,7 +434,11 @@ export function parseParagraphProperties(
   // the sink does not keep a second copy of markup this reader writes back.
   const rPr = findChild(pPr, "w", "rPr");
   if (rPr) {
-    const runPropsResult = parseRunProperties(rPr, theme, RUN_PROPERTY_OWNERS.paragraphMark);
+    const runPropsResult = parseRunProperties(
+      rPr,
+      theme,
+      RUN_PROPERTY_OWNERS.paragraphMark,
+    );
     if (runPropsResult !== undefined) {
       formatting.runProperties = runPropsResult;
     }
@@ -424,7 +461,14 @@ export function parseParagraphProperties(
 }
 
 /** `w:pBdr`'s sides, in the order `CT_PBdr` declares them. */
-const PARAGRAPH_BORDER_SIDES = ["top", "left", "bottom", "right", "between", "bar"] as const;
+const PARAGRAPH_BORDER_SIDES = [
+  "top",
+  "left",
+  "bottom",
+  "right",
+  "between",
+  "bar",
+] as const;
 
 /**
  * `w:spacing`, which states up to six independent values.
@@ -433,7 +477,10 @@ const PARAGRAPH_BORDER_SIDES = ["top", "left", "bottom", "right", "between", "ba
  *   its bytes instead, because a `<w:spacing/>` the model cannot rebuild is
  *   markup the author wrote.
  */
-const readParagraphSpacing = (spacing: XmlElement, formatting: ParagraphFormatting): boolean => {
+const readParagraphSpacing = (
+  spacing: XmlElement,
+  formatting: ParagraphFormatting,
+): boolean => {
   const before = parseNumericAttribute(spacing, "w", "before");
   if (before !== undefined) {
     formatting.spaceBefore = before;
@@ -460,17 +507,28 @@ const readParagraphSpacing = (spacing: XmlElement, formatting: ParagraphFormatti
     formatting.spacingExplicit = spacingExplicit;
   }
 
-  const lineRule = narrowEnum(getAttribute(spacing, "w", "lineRule"), LineSpacingRuleSchema);
+  const lineRule = narrowEnum(
+    getAttribute(spacing, "w", "lineRule"),
+    LineSpacingRuleSchema,
+  );
   if (lineRule) {
     formatting.lineSpacingRule = lineRule;
   }
 
-  const beforeAutospacing = parseOnOffAttribute(spacing, "w", "beforeAutospacing");
+  const beforeAutospacing = parseOnOffAttribute(
+    spacing,
+    "w",
+    "beforeAutospacing",
+  );
   if (beforeAutospacing !== undefined) {
     formatting.beforeAutospacing = beforeAutospacing;
   }
 
-  const afterAutospacing = parseOnOffAttribute(spacing, "w", "afterAutospacing");
+  const afterAutospacing = parseOnOffAttribute(
+    spacing,
+    "w",
+    "afterAutospacing",
+  );
   if (afterAutospacing !== undefined) {
     formatting.afterAutospacing = afterAutospacing;
   }
@@ -499,7 +557,10 @@ const readParagraphSpacing = (spacing: XmlElement, formatting: ParagraphFormatti
  *
  * @returns whether any indent was taken.
  */
-const readParagraphIndentation = (ind: XmlElement, formatting: ParagraphFormatting): boolean => {
+const readParagraphIndentation = (
+  ind: XmlElement,
+  formatting: ParagraphFormatting,
+): boolean => {
   const left = numericAttributeAnySpelling(ind, "CT_Ind @left");
   if (left !== undefined) {
     formatting.indentLeft = left;
@@ -523,7 +584,10 @@ const readParagraphIndentation = (ind: XmlElement, formatting: ParagraphFormatti
   }
 
   const taken =
-    left !== undefined || right !== undefined || firstLine !== undefined || hanging !== undefined;
+    left !== undefined ||
+    right !== undefined ||
+    firstLine !== undefined ||
+    hanging !== undefined;
   if (!taken) {
     return false;
   }

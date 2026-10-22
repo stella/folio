@@ -16,7 +16,12 @@
 import { escapeXmlAttribute } from "@stll/docx-core";
 
 import type { SdtProperties } from "../types/document";
-import { findChild, getAttribute, OOXML_NAMESPACE_SCOPE, parseXml } from "./xmlParser";
+import {
+  findChild,
+  getAttribute,
+  OOXML_NAMESPACE_SCOPE,
+  parseXml,
+} from "./xmlParser";
 
 /**
  * Drop one attribute by local name (any namespace prefix, or unprefixed) from
@@ -79,20 +84,23 @@ const withCheckedState = (xml: string, checked: boolean): string => {
   if (/<\w+:checked\b[^>]*>[\s\S]*?<\/\w+:checked>/iu.test(xml)) {
     return xml.replaceAll(
       opened,
-      (_match: string, prefix: string) => `<${prefix}:checked ${prefix}:val="${val}"/>`,
+      (_match: string, prefix: string) =>
+        `<${prefix}:checked ${prefix}:val="${val}"/>`,
     );
   }
   if (/<\w+:checked\b[^>]*\/>/iu.test(xml)) {
     return xml.replaceAll(
       /<(?<prefix>\w+):checked\b[^>]*\/>/giu,
-      (_match: string, prefix: string) => `<${prefix}:checked ${prefix}:val="${val}"/>`,
+      (_match: string, prefix: string) =>
+        `<${prefix}:checked ${prefix}:val="${val}"/>`,
     );
   }
   // A `w14:checkbox` that states no checked child at all: fold one in under
   // the wrapper's own prefix, so the element stays in one namespace.
   return xml.replace(
     /<(?<prefix>\w+):checkbox\b[^>]*>/iu,
-    (match: string, prefix: string) => `${match}<${prefix}:checked ${prefix}:val="${val}"/>`,
+    (match: string, prefix: string) =>
+      `${match}<${prefix}:checked ${prefix}:val="${val}"/>`,
   );
 };
 
@@ -104,9 +112,11 @@ const withDateState = (xml: string, props: SdtProperties): string => {
   }
   const capturedDate = parseXml(xml, OOXML_NAMESPACE_SCOPE).elements?.at(0);
   if (
-    (fullDate === undefined || getAttribute(capturedDate, "w", "fullDate") === fullDate) &&
+    (fullDate === undefined ||
+      getAttribute(capturedDate, "w", "fullDate") === fullDate) &&
     (format === undefined ||
-      getAttribute(findChild(capturedDate, "w", "dateFormat"), "w", "val") === format)
+      getAttribute(findChild(capturedDate, "w", "dateFormat"), "w", "val") ===
+        format)
   ) {
     return xml;
   }
@@ -121,18 +131,22 @@ const withDateState = (xml: string, props: SdtProperties): string => {
     format === undefined
       ? ""
       : `<${prefix}:dateFormat ${prefix}:val="${escapeXmlAttribute(format)}"/>`;
-  const opened = /<(?<prefix>\w+):date\b(?<attrs>[^>]*)>(?<inner>[\s\S]*?)<\/\w+:date>/iu;
+  const opened =
+    /<(?<prefix>\w+):date\b(?<attrs>[^>]*)>(?<inner>[\s\S]*?)<\/\w+:date>/iu;
   if (opened.test(xml)) {
-    return xml.replace(opened, (_match, prefix: string, matchedAttrs: string, inner: string) => {
-      // One alternation covers both the self-closing and the expanded-empty
-      // spelling of `w:dateFormat`; stripping only one would leave a stale
-      // sibling beside the replacement on the next save.
-      const body = inner.replaceAll(
-        /<\w+:dateFormat\b[^>]*(?:\/>|>[\s\S]*?<\/\w+:dateFormat>)/giu,
-        "",
-      );
-      return `<${prefix}:date${attributes(prefix, matchedAttrs)}>${formatChild(prefix)}${body}</${prefix}:date>`;
-    });
+    return xml.replace(
+      opened,
+      (_match, prefix: string, matchedAttrs: string, inner: string) => {
+        // One alternation covers both the self-closing and the expanded-empty
+        // spelling of `w:dateFormat`; stripping only one would leave a stale
+        // sibling beside the replacement on the next save.
+        const body = inner.replaceAll(
+          /<\w+:dateFormat\b[^>]*(?:\/>|>[\s\S]*?<\/\w+:dateFormat>)/giu,
+          "",
+        );
+        return `<${prefix}:date${attributes(prefix, matchedAttrs)}>${formatChild(prefix)}${body}</${prefix}:date>`;
+      },
+    );
   }
   return xml.replace(
     /<(?<prefix>\w+):date\b(?<attrs>[^/>]*)\/>/iu,
@@ -168,10 +182,15 @@ const withLastValue = (xml: string, lastValue: string): string => {
  * Pure: returns a new string; the input is not modified. A kind the model
  * states nothing interactive about comes back unchanged.
  */
-export const withModelledControlState = (xml: string, props: SdtProperties): string => {
+export const withModelledControlState = (
+  xml: string,
+  props: SdtProperties,
+): string => {
   switch (props.sdtType) {
     case "checkbox":
-      return typeof props.checked === "boolean" ? withCheckedState(xml, props.checked) : xml;
+      return typeof props.checked === "boolean"
+        ? withCheckedState(xml, props.checked)
+        : xml;
     case "date":
       return withDateState(xml, props);
     case "dropdown":

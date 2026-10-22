@@ -30,7 +30,12 @@ const CORE_DIR = resolve(import.meta.dir, "..");
 
 const FORBIDDEN_PACKAGES = ["react", "react-dom", "@stll/ui"];
 
-const FORBIDDEN_BEHAVIOR_DIRS = ["layout-painter", "layout-bridge", "prosemirror", "managers"];
+const FORBIDDEN_BEHAVIOR_DIRS = [
+  "layout-painter",
+  "layout-bridge",
+  "prosemirror",
+  "managers",
+];
 
 // Match the specifier of every static import/export, bare side-effect import
 // (`import "./setup"`), and dynamic import (`import("./setup")`). Bounded
@@ -98,7 +103,10 @@ const resolvesIntoBehaviorDir = (stripped: string): boolean => {
   return false;
 };
 
-const isForbiddenRelative = (importerPath: string, specifier: string): boolean => {
+const isForbiddenRelative = (
+  importerPath: string,
+  specifier: string,
+): boolean => {
   if (!specifier.startsWith(".")) {
     return false;
   }
@@ -106,7 +114,9 @@ const isForbiddenRelative = (importerPath: string, specifier: string): boolean =
   if (resolvesIntoBehaviorDir(stripped)) {
     return true;
   }
-  return stripped.includes("/layout-engine/") && !isAllowedEngineTarget(stripped);
+  return (
+    stripped.includes("/layout-engine/") && !isAllowedEngineTarget(stripped)
+  );
 };
 
 type ImpureImport = { importer: string; specifier: string };
@@ -117,17 +127,27 @@ type ImpureImport = { importer: string; specifier: string };
 // scan from false-firing on benign comments. The line-comment pattern keeps the
 // character before `//` so it does not eat a `:` from a `https://` URL.
 const stripComments = (source: string): string =>
-  source.replaceAll(/\/\*[\s\S]*?\*\//gu, "").replaceAll(/(?<lead>^|[^:])\/\/[^\n]*/gmu, "$<lead>");
+  source
+    .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
+    .replaceAll(/(?<lead>^|[^:])\/\/[^\n]*/gmu, "$<lead>");
 
-const impureImportsForSource = (filePath: string, source: string): ImpureImport[] => {
+const impureImportsForSource = (
+  filePath: string,
+  source: string,
+): ImpureImport[] => {
   const found: ImpureImport[] = [];
   for (const match of stripComments(source).matchAll(IMPORT_REGEX)) {
     const specifier =
-      match.groups?.["fromSpec"] ?? match.groups?.["importSpec"] ?? match.groups?.["dynImportSpec"];
+      match.groups?.["fromSpec"] ??
+      match.groups?.["importSpec"] ??
+      match.groups?.["dynImportSpec"];
     if (specifier === undefined) {
       continue;
     }
-    if (isForbiddenPackage(specifier) || isForbiddenRelative(filePath, specifier)) {
+    if (
+      isForbiddenPackage(specifier) ||
+      isForbiddenRelative(filePath, specifier)
+    ) {
       found.push({ importer: filePath, specifier });
     }
   }
@@ -165,7 +185,10 @@ describe("folio model layer is pure data", () => {
     const violations = collectModelFiles().flatMap(impureImportsForFile);
     if (violations.length > 0) {
       const formatted = violations
-        .map((v) => `  ${v.importer.replace(CORE_DIR, "<core>")} -> "${v.specifier}"`)
+        .map(
+          (v) =>
+            `  ${v.importer.replace(CORE_DIR, "<core>")} -> "${v.specifier}"`,
+        )
         .join("\n");
       throw new Error(
         "The folio model layer must stay pure data, but found behavior " +

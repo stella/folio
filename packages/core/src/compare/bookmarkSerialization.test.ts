@@ -6,10 +6,19 @@ import { buildBodySequenceDocx } from "./__fixtures__/body-sequence";
 import { compareDocx } from "./compare";
 
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("string")) ?? "";
+  (await (
+    await JSZip.loadAsync(buffer)
+  )
+    .file("word/document.xml")
+    ?.async("string")) ?? "";
 
-const withTrackedBookmark = async (type: "ins" | "del", text: string): Promise<ArrayBuffer> => {
-  const buffer = await buildBodySequenceDocx([{ kind: "paragraph", text: "Before after." }]);
+const withTrackedBookmark = async (
+  type: "ins" | "del",
+  text: string,
+): Promise<ArrayBuffer> => {
+  const buffer = await buildBodySequenceDocx([
+    { kind: "paragraph", text: "Before after." },
+  ]);
   const zip = await JSZip.loadAsync(buffer);
   const xml = await documentPartOf(buffer);
   const textElement = type === "del" ? "delText" : "t";
@@ -32,7 +41,9 @@ const withTrackedBookmark = async (type: "ins" | "del", text: string): Promise<A
 describe("tracked bookmark serialization", () => {
   test("compare removes a deleted bookmark with its accepted revision", async () => {
     const base = await withTrackedBookmark("del", "deleted ");
-    const target = await buildBodySequenceDocx([{ kind: "paragraph", text: "Before after." }]);
+    const target = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "Before after." },
+    ]);
     const result = await compareDocx(base, target, {
       author: "compare",
       timestamp: "2026-09-06T12:00:00.000Z",

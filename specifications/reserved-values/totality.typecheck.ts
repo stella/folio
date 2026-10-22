@@ -10,7 +10,10 @@
  */
 
 import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
-import { NO_RESERVED_VALUE, type ReservedValueDisposition } from "./disposition.ts";
+import {
+  NO_RESERVED_VALUE,
+  type ReservedValueDisposition,
+} from "./disposition.ts";
 
 type FixtureFormatting = {
   alignment?: string;
@@ -29,18 +32,26 @@ const COMPLETE = {
 
 // A key the model type does not declare is rejected by the alias constraint.
 // @ts-expect-error `notAField` is not a field of FixtureFormatting
-type RejectsUnknownField = ExhaustiveFields<FixtureFormatting, "alignment" | "notAField">;
+type RejectsUnknownField = ExhaustiveFields<
+  FixtureFormatting,
+  "alignment" | "notAField"
+>;
 
 type Assert<Claim extends true> = Claim;
 
 type CompleteResolvesToTheModelType = Assert<
-  ExhaustiveFields<FixtureFormatting, keyof typeof COMPLETE> extends FixtureFormatting
+  ExhaustiveFields<
+    FixtureFormatting,
+    keyof typeof COMPLETE
+  > extends FixtureFormatting
     ? true
     : false
 >;
 
 type IncompleteResolvesToNever = Assert<
-  [ExhaustiveFields<FixtureFormatting, keyof typeof INCOMPLETE>] extends [never] ? true : false
+  [ExhaustiveFields<FixtureFormatting, keyof typeof INCOMPLETE>] extends [never]
+    ? true
+    : false
 >;
 
 export type ReservedValueTotalityProof = [

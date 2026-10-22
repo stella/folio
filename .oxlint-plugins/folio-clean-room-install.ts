@@ -5,14 +5,18 @@ type RuleContext = {
 };
 
 const isNode = (value: unknown): value is AstNode =>
-  typeof value === "object" && value !== null && "type" in value && typeof value.type === "string";
+  typeof value === "object" &&
+  value !== null &&
+  "type" in value &&
+  typeof value.type === "string";
 
 const isInstallArgument = (node: unknown) =>
   isNode(node) && (node["value"] === "install" || node["value"] === "add");
 
 const isBunExecutable = (node: unknown) => {
   if (!isNode(node)) return false;
-  if (typeof node["value"] === "string") return /(?:^|\/)bun$/u.test(node["value"]);
+  if (typeof node["value"] === "string")
+    return /(?:^|\/)bun$/u.test(node["value"]);
   // Scripts use process.execPath when spawning the current Bun runtime.
   const property = node["property"];
   return (
@@ -24,7 +28,9 @@ const isBunExecutable = (node: unknown) => {
 
 const containsInstallCommand = (value: unknown) =>
   typeof value === "string" &&
-  /(?:^|[\s;&|])(?:[^\s;&|]*\/)?bun\s+(?:--[^\s]+\s+)*(?:install|add)(?=$|[\s;`])/u.test(value);
+  /(?:^|[\s;&|])(?:[^\s;&|]*\/)?bun\s+(?:--[^\s]+\s+)*(?:install|add)(?=$|[\s;`])/u.test(
+    value,
+  );
 
 export default {
   meta: { name: "folio-clean-room-install" },
@@ -39,11 +45,15 @@ export default {
       },
       create(context: RuleContext) {
         if (
-          context.getFilename().replaceAll("\\", "/").endsWith("/scripts/clean-room-install.ts")
+          context
+            .getFilename()
+            .replaceAll("\\", "/")
+            .endsWith("/scripts/clean-room-install.ts")
         ) {
           return {};
         }
-        const report = (node: unknown) => context.report({ node, messageId: "installOwner" });
+        const report = (node: unknown) =>
+          context.report({ node, messageId: "installOwner" });
         return {
           Literal: (node: AstNode) => {
             const parent = node["parent"];
@@ -59,7 +69,9 @@ export default {
                   : undefined;
             if (
               typeof name === "string" &&
-              /^(?:exec|execSync|execFile|execFileSync|spawn|spawnSync|\$)$/u.test(name) &&
+              /^(?:exec|execSync|execFile|execFileSync|spawn|spawnSync|\$)$/u.test(
+                name,
+              ) &&
               containsInstallCommand(node["value"])
             )
               report(node);
@@ -68,7 +80,8 @@ export default {
             const template = node["parent"];
             if (!isNode(template)) return;
             const parent = template["parent"];
-            if (!isNode(parent) || parent.type !== "TaggedTemplateExpression") return;
+            if (!isNode(parent) || parent.type !== "TaggedTemplateExpression")
+              return;
             const value = node["value"];
             if (
               typeof value === "object" &&
@@ -93,9 +106,14 @@ export default {
             const args = node["arguments"];
             if (!Array.isArray(args) || !isBunExecutable(args.at(0))) return;
             const argumentsArray = args.at(1);
-            if (!isNode(argumentsArray) || argumentsArray.type !== "ArrayExpression") return;
+            if (
+              !isNode(argumentsArray) ||
+              argumentsArray.type !== "ArrayExpression"
+            )
+              return;
             const elements = argumentsArray["elements"];
-            if (Array.isArray(elements) && elements.some(isInstallArgument)) report(node);
+            if (Array.isArray(elements) && elements.some(isInstallArgument))
+              report(node);
           },
         };
       },

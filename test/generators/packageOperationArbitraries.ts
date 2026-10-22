@@ -1,15 +1,26 @@
-import { freshCommentId } from "../../packages/docx-core/src/ops/comments";
 /** Package-shaped cases for the same inverse/locality laws across every operation kind. */
 import { panic } from "better-result";
 import fc from "fast-check";
+
 import type {
   BlockContent,
   Document,
   Paragraph,
   Table,
 } from "../../packages/docx-core/src/model/document";
+import {
+  GENERATED_OP_KINDS,
+  opForStory,
+  type OpSeed,
+  opSeedArbitrary,
+  textFormattingArbitrary,
+} from "../../packages/docx-core/src/ops/__tests__/documentArbitraries";
 import { applyDocumentOp } from "../../packages/docx-core/src/ops/apply";
-import { storyBody, storyParagraphs } from "../../packages/docx-core/src/ops/blocks";
+import {
+  storyBody,
+  storyParagraphs,
+} from "../../packages/docx-core/src/ops/blocks";
+import { freshCommentId } from "../../packages/docx-core/src/ops/comments";
 import { normalizeForOps } from "../../packages/docx-core/src/ops/contract";
 import { paragraphIdsIn } from "../../packages/docx-core/src/ops/ids";
 import { packageResourcesOpOf } from "../../packages/docx-core/src/ops/packageResources";
@@ -18,13 +29,6 @@ import {
   type DocumentOp,
   type OpStory,
 } from "../../packages/docx-core/src/ops/types";
-import {
-  GENERATED_OP_KINDS,
-  opForStory,
-  opSeedArbitrary,
-  textFormattingArbitrary,
-  type OpSeed,
-} from "../../packages/docx-core/src/ops/__tests__/documentArbitraries";
 
 export const GENERATED_PACKAGE_STORIES = [
   "main",
@@ -40,16 +44,25 @@ const paragraph = (id: string, text: string): Paragraph => ({
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
 
-type PackageDocumentSeed = Pick<OpSeed, "first" | "formatting" | "inherit" | "text">;
+type PackageDocumentSeed = Pick<
+  OpSeed,
+  "first" | "formatting" | "inherit" | "text"
+>;
 
 /** Only these four inputs determine package content; operation-only dimensions do not. */
 const packageDocumentFromSeed = (seed: PackageDocumentSeed): Document => {
   let nextParagraph = 1;
   const named = (text: string): Paragraph =>
-    paragraph((nextParagraph++).toString(16).toUpperCase().padStart(8, "0"), text);
+    paragraph(
+      (nextParagraph++).toString(16).toUpperCase().padStart(8, "0"),
+      text,
+    );
   const blocks = (index: number): BlockContent[] => {
     const first = named("xy" + seed.text);
-    first.formatting = { alignment: seed.inherit ? "center" : "start", keepNext: true };
+    first.formatting = {
+      alignment: seed.inherit ? "center" : "start",
+      keepNext: true,
+    };
     const second = named("follower " + seed.text);
     const reviewed = named(seed.text);
     // Derived from existing seed fields: adding review coverage does not change generation or shrinking.
@@ -79,10 +92,16 @@ const packageDocumentFromSeed = (seed: PackageDocumentSeed): Document => {
                   propertyChanges: [
                     {
                       type: "runPropertyChange" as const,
-                      info: { id: 400 + index, author: "B", date: "2026-01-02T03:04:05Z" },
+                      info: {
+                        id: 400 + index,
+                        author: "B",
+                        date: "2026-01-02T03:04:05Z",
+                      },
                       previousFormatting: {
                         italic: true,
-                        preserved: { children: [{ index: 38, xml: "<w:webHidden/>" }] },
+                        preserved: {
+                          children: [{ index: 38, xml: "<w:webHidden/>" }],
+                        },
                       },
                     },
                   ],
@@ -111,14 +130,18 @@ const packageDocumentFromSeed = (seed: PackageDocumentSeed): Document => {
       columnWidths: [2400, 2400],
       rows: [0, 1].map(() => ({
         type: "tableRow",
-        cells: [0, 1].map(() => ({ type: "tableCell", content: [named(seed.text)] })),
+        cells: [0, 1].map(() => ({
+          type: "tableCell",
+          content: [named(seed.text)],
+        })),
       })),
     };
     return [first, second, reviewed, control, table, named("tail")];
   };
   const content = blocks(0);
   const mainFirst = content.at(0);
-  if (mainFirst?.type !== "paragraph") return panic("Package fixture needs its leading paragraph.");
+  if (mainFirst?.type !== "paragraph")
+    return panic("Package fixture needs its leading paragraph.");
   mainFirst.content.push(
     { type: "commentRangeStart", id: 7 },
     { type: "run", content: [{ type: "text", text: "comment" }] },
@@ -126,7 +149,8 @@ const packageDocumentFromSeed = (seed: PackageDocumentSeed): Document => {
     { type: "commentReference", id: 7 },
   );
   const last = content.at(-1);
-  if (last?.type !== "paragraph") return panic("Package fixture needs its final paragraph.");
+  if (last?.type !== "paragraph")
+    return panic("Package fixture needs its final paragraph.");
   last.content.push({
     type: "run",
     content: [
@@ -134,8 +158,16 @@ const packageDocumentFromSeed = (seed: PackageDocumentSeed): Document => {
       { type: "endnoteRef", id: 3 },
     ],
   });
-  const header = { type: "header", hdrFtrType: "default", content: blocks(1) } as const;
-  const footer = { type: "footer", hdrFtrType: "default", content: blocks(2) } as const;
+  const header = {
+    type: "header",
+    hdrFtrType: "default",
+    content: blocks(1),
+  } as const;
+  const footer = {
+    type: "footer",
+    hdrFtrType: "default",
+    content: blocks(2),
+  } as const;
   const footnote = { type: "footnote", id: 2, content: blocks(3) } as const;
   const endnote = { type: "endnote", id: 3, content: blocks(4) } as const;
   const comment = { id: 7, author: "A", content: [named("comment body")] };
@@ -174,7 +206,10 @@ const packageDocumentFromSeed = (seed: PackageDocumentSeed): Document => {
       endnotes: [endnote],
       numbering: {
         abstractNums: [
-          { abstractNumId: 1, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+          {
+            abstractNumId: 1,
+            levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+          },
         ],
         nums: [{ numId: 1, abstractNumId: 1 }],
       },
@@ -189,7 +224,9 @@ const packageDocumentFromSeed = (seed: PackageDocumentSeed): Document => {
 };
 
 /** Every draw carries all editable stories and balanced, package-wide identities. */
-export const packageDocumentArbitrary = opSeedArbitrary.map(packageDocumentFromSeed);
+export const packageDocumentArbitrary = opSeedArbitrary.map(
+  packageDocumentFromSeed,
+);
 
 /** Capture replay has no dependency on operation-only generator dimensions. */
 export const captureDocumentArbitrary = fc
@@ -198,7 +235,10 @@ export const captureDocumentArbitrary = fc
     formatting: textFormattingArbitrary,
     inherit: fc.boolean(),
     text: fc
-      .array(fc.constantFrom("x", "y", "ü", "😀"), { minLength: 1, maxLength: 3 })
+      .array(fc.constantFrom("x", "y", "ü", "😀"), {
+        minLength: 1,
+        maxLength: 3,
+      })
       .map((parts) => parts.join("")),
   })
   .map(packageDocumentFromSeed);
@@ -209,7 +249,9 @@ type GeneratedCase = { document: Document; op: DocumentOp };
 const targetFor = ({ document, story }: CaseArgs) => {
   const target = storyParagraphs(storyBody(document, story)).at(0)?.paragraph;
   if (!target?.paraId)
-    return panic("A package fixture needs an identified paragraph in every story.");
+    return panic(
+      "A package fixture needs an identified paragraph in every story.",
+    );
   return target;
 };
 
@@ -217,12 +259,15 @@ const freshParagraph = ({ document, seed }: CaseArgs, delta = 0): Paragraph => {
   const used = new Set(paragraphIdsIn(document.package));
   let value = seed.fresh + delta;
   let id = value.toString(16).toUpperCase().padStart(8, "0");
-  while (used.has(id)) id = (++value).toString(16).toUpperCase().padStart(8, "0");
+  while (used.has(id))
+    id = (++value).toString(16).toUpperCase().padStart(8, "0");
   return paragraph(id, seed.text);
 };
 
 const tableFor = ({ document, story }: CaseArgs) => {
-  const table = storyBody(document, story).content.find((block) => block.type === "table");
+  const table = storyBody(document, story).content.find(
+    (block) => block.type === "table",
+  );
   if (!table) return panic("A package fixture needs a table in every story.");
   const blockId = table.rows.at(0)?.cells.at(0)?.content.at(0);
   if (blockId?.type !== "paragraph" || !blockId.paraId)
@@ -242,7 +287,9 @@ const direct =
         block: 0,
         third: 0,
         inherit: false,
-        content: [{ type: "run", content: [{ type: "text", text: args.seed.text }] }],
+        content: [
+          { type: "run", content: [{ type: "text", text: args.seed.text }] },
+        ],
       },
     }),
   });
@@ -254,23 +301,32 @@ const inverseCase = (
 ): GeneratedCase => {
   const applied = applyDocumentOp(args.document, forward).unwrap();
   const op = applied.inverse.find((inverse) => inverse.type === kind);
-  if (!op) return panic("The prerequisite edit must produce the requested inverse primitive.");
+  if (!op)
+    return panic(
+      "The prerequisite edit must produce the requested inverse primitive.",
+    );
   return { document: applied.document, op };
 };
 
 /** Total by the actual op union, rather than a separately maintained kind list. */
 const numberingCreation = ({ document }: CaseArgs) => {
   let numId = 1;
-  while (document.package.numbering?.nums.some((num) => num.numId === numId)) numId += 1;
+  while (document.package.numbering?.nums.some((num) => num.numId === numId))
+    numId += 1;
   let abstractNumId = 1;
   while (
-    document.package.numbering?.abstractNums.some((num) => num.abstractNumId === abstractNumId)
+    document.package.numbering?.abstractNums.some(
+      (num) => num.abstractNumId === abstractNumId,
+    )
   )
     abstractNumId += 1;
   return {
     type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
     num: { numId, abstractNumId },
-    abstractNum: { abstractNumId, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+    abstractNum: {
+      abstractNumId,
+      levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+    },
   } satisfies DocumentOp;
 };
 
@@ -284,7 +340,11 @@ const commentCreation = (args: CaseArgs) =>
     },
     anchor: {
       kind: "point",
-      at: { story: args.story, blockId: targetFor(args).paraId ?? "", offset: 0 },
+      at: {
+        story: args.story,
+        blockId: targetFor(args).paraId ?? "",
+        offset: 0,
+      },
     },
   }) as const satisfies DocumentOp;
 
@@ -319,7 +379,8 @@ export const PACKAGE_OP_CASES = {
   insertText: direct("insertText"),
   insertContent: direct("insertContent"),
   deleteRange: (args: CaseArgs): GeneratedCase => {
-    const blockId = targetFor(args).paraId ?? panic("Missing paragraph identity.");
+    const blockId =
+      targetFor(args).paraId ?? panic("Missing paragraph identity.");
     return {
       document: args.document,
       op: {
@@ -333,7 +394,11 @@ export const PACKAGE_OP_CASES = {
     document: args.document,
     op: {
       type: "splitInline",
-      at: { story: args.story, blockId: targetFor(args).paraId ?? "", offset: 1 },
+      at: {
+        story: args.story,
+        blockId: targetFor(args).paraId ?? "",
+        offset: 1,
+      },
       depth: 1,
     },
   }),
@@ -342,7 +407,11 @@ export const PACKAGE_OP_CASES = {
       args,
       {
         type: "splitInline",
-        at: { story: args.story, blockId: targetFor(args).paraId ?? "", offset: 1 },
+        at: {
+          story: args.story,
+          blockId: targetFor(args).paraId ?? "",
+          offset: 1,
+        },
         depth: 1,
       },
       "joinInline",
@@ -351,8 +420,16 @@ export const PACKAGE_OP_CASES = {
     document: args.document,
     op: {
       type: "setRunProps",
-      from: { story: args.story, blockId: targetFor(args).paraId ?? "", offset: 0 },
-      to: { story: args.story, blockId: targetFor(args).paraId ?? "", offset: 1 },
+      from: {
+        story: args.story,
+        blockId: targetFor(args).paraId ?? "",
+        offset: 0,
+      },
+      to: {
+        story: args.story,
+        blockId: targetFor(args).paraId ?? "",
+        offset: 1,
+      },
       patch: { bold: true },
     },
   }),
@@ -369,7 +446,8 @@ export const PACKAGE_OP_CASES = {
   joinBlocks: (args: CaseArgs): GeneratedCase => {
     const paragraphs = storyParagraphs(storyBody(args.document, args.story));
     const next = paragraphs.at(1)?.paragraph;
-    if (!next?.paraId) return panic("A package fixture needs adjacent leading paragraphs.");
+    if (!next?.paraId)
+      return panic("A package fixture needs adjacent leading paragraphs.");
     return {
       document: args.document,
       op: {
@@ -401,7 +479,11 @@ export const PACKAGE_OP_CASES = {
   }),
   deleteBlocks: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
-    op: { type: "deleteBlocks", story: args.story, blockIds: [targetFor(args).paraId ?? ""] },
+    op: {
+      type: "deleteBlocks",
+      story: args.story,
+      blockIds: [targetFor(args).paraId ?? ""],
+    },
   }),
   setParagraphReview: (args: CaseArgs): GeneratedCase => {
     const target = targetFor(args);
@@ -423,7 +505,9 @@ export const PACKAGE_OP_CASES = {
       story: args.story,
       blockId: targetFor(args).paraId ?? "",
       expected: targetFor(args).content,
-      content: [{ type: "run", content: [{ type: "text", text: args.seed.text }] }],
+      content: [
+        { type: "run", content: [{ type: "text", text: args.seed.text }] },
+      ],
     },
   }),
   resolveRevision: (args: CaseArgs): GeneratedCase => {
@@ -451,14 +535,21 @@ export const PACKAGE_OP_CASES = {
         type: "table",
         columnWidths: [2400],
         rows: [
-          { type: "tableRow", cells: [{ type: "tableCell", content: [freshParagraph(args)] }] },
+          {
+            type: "tableRow",
+            cells: [{ type: "tableCell", content: [freshParagraph(args)] }],
+          },
         ],
       },
     },
   }),
   deleteTable: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
-    op: { type: "deleteTable", story: args.story, blockId: tableFor(args).blockId },
+    op: {
+      type: "deleteTable",
+      story: args.story,
+      blockId: tableFor(args).blockId,
+    },
   }),
   setContainerBlocks: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
@@ -467,7 +558,10 @@ export const PACKAGE_OP_CASES = {
       story: args.story,
       blockId: targetFor(args).paraId ?? "",
       expected: storyBody(args.document, args.story).content,
-      blocks: [...storyBody(args.document, args.story).content, freshParagraph(args)],
+      blocks: [
+        ...storyBody(args.document, args.story).content,
+        freshParagraph(args),
+      ],
     },
   }),
   insertRow: (args: CaseArgs): GeneratedCase => ({
@@ -488,7 +582,11 @@ export const PACKAGE_OP_CASES = {
   }),
   deleteRow: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
-    op: { type: "deleteRow", story: args.story, blockId: tableFor(args).blockId },
+    op: {
+      type: "deleteRow",
+      story: args.story,
+      blockId: tableFor(args).blockId,
+    },
   }),
   setTableRows: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
@@ -505,7 +603,10 @@ export const PACKAGE_OP_CASES = {
     op: {
       type: "createHeaderFooter",
       sectionIndex: 0,
-      story: { kind: args.seed.inherit ? "header" : "footer", rId: "rIdGenerated" },
+      story: {
+        kind: args.seed.inherit ? "header" : "footer",
+        rId: "rIdGenerated",
+      },
       referenceType: "first",
       content: [freshParagraph(args)],
     },
@@ -542,7 +643,11 @@ export const PACKAGE_OP_CASES = {
     document: args.document,
     op: {
       type: "addNote",
-      at: { story: "main", blockId: targetFor({ ...args, story: "main" }).paraId ?? "", offset: 0 },
+      at: {
+        story: "main",
+        blockId: targetFor({ ...args, story: "main" }).paraId ?? "",
+        offset: 0,
+      },
       note: {
         type: args.seed.inherit ? "footnote" : "endnote",
         id: 19,
@@ -553,7 +658,8 @@ export const PACKAGE_OP_CASES = {
   removeNote: (args: CaseArgs): GeneratedCase => {
     const main = storyParagraphs(storyBody(args.document, "main"));
     const target = main.at(-1)?.paragraph;
-    if (!target?.paraId) return panic("Package fixture needs its note-reference paragraph.");
+    if (!target?.paraId)
+      return panic("Package fixture needs its note-reference paragraph.");
     return {
       document: args.document,
       op: {
@@ -595,14 +701,21 @@ export const PACKAGE_OP_CASES = {
           ...styles,
           styles: [
             ...styles.styles,
-            { styleId: "GeneratedPackageStyle", type: "paragraph", name: args.seed.text },
+            {
+              styleId: "GeneratedPackageStyle",
+              type: "paragraph",
+              name: args.seed.text,
+            },
           ],
         },
         relationships,
       },
     };
     // Built by the producer so the generated op always has the shape apply expects.
-    return { document: args.document, op: packageResourcesOpOf({ before: args.document, after }) };
+    return {
+      document: args.document,
+      op: packageResourcesOpOf({ before: args.document, after }),
+    };
   },
   setSectionEndpoint: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
@@ -632,7 +745,10 @@ export const PACKAGE_OP_CASES = {
       blockId: tableFor({ ...args, story: "main" }).blockId,
       column: args.seed.first % 3,
       width: 1200,
-      newBlockIds: [freshParagraph(args).paraId ?? "", freshParagraph(args, 1).paraId ?? ""],
+      newBlockIds: [
+        freshParagraph(args).paraId ?? "",
+        freshParagraph(args, 1).paraId ?? "",
+      ],
     },
   }),
   deleteColumn: (args: CaseArgs): GeneratedCase => ({
@@ -666,7 +782,9 @@ export const PACKAGE_OP_CASES = {
         type: "splitCell",
         story: "main",
         blockId: tableFor({ ...args, document: merged, story: "main" }).blockId,
-        newBlockIds: [freshParagraph({ ...args, document: merged }).paraId ?? ""],
+        newBlockIds: [
+          freshParagraph({ ...args, document: merged }).paraId ?? "",
+        ],
       },
     };
   },
@@ -713,5 +831,7 @@ export const PACKAGE_OP_CASES = {
 export const GENERATED_PACKAGE_OP_KINDS = Object.values(DOCUMENT_OP_TYPES);
 
 type GeneratedCaseArgs = CaseArgs & { kind: DocumentOp["type"] };
-export const generatedCaseFor = ({ kind, ...args }: GeneratedCaseArgs): GeneratedCase =>
-  PACKAGE_OP_CASES[kind](args);
+export const generatedCaseFor = ({
+  kind,
+  ...args
+}: GeneratedCaseArgs): GeneratedCase => PACKAGE_OP_CASES[kind](args);

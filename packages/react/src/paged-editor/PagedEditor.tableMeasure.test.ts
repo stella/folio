@@ -113,7 +113,10 @@ describe("measureBlocks floating text-box bands", () => {
       const beforeMeasure = measures.at(0);
       const afterMeasure = measures.at(2);
 
-      if (beforeMeasure?.kind !== "paragraph" || afterMeasure?.kind !== "paragraph") {
+      if (
+        beforeMeasure?.kind !== "paragraph" ||
+        afterMeasure?.kind !== "paragraph"
+      ) {
         throw new Error("Expected paragraph measures around the band");
       }
       expect(beforeMeasure.totalHeight).toBeGreaterThan(60);
@@ -157,7 +160,9 @@ describe("measureBlocks floating text-box bands", () => {
         throw new Error("Expected paragraph measure");
       }
       expect(bandMeasure.height).toBeGreaterThan(0);
-      expect(afterMeasure.lines.at(0)?.floatSkipBefore).toBeGreaterThanOrEqual(bandMeasure.height);
+      expect(afterMeasure.lines.at(0)?.floatSkipBefore).toBeGreaterThanOrEqual(
+        bandMeasure.height,
+      );
     }, fakeMeasure);
   });
 
@@ -183,7 +188,11 @@ describe("measureBlocks floating text-box bands", () => {
         runs: [{ kind: "text", text: "after" }],
       };
 
-      const measures = measureBlocks([before, band, after], [500, 500, 500], [96, 144, 144]);
+      const measures = measureBlocks(
+        [before, band, after],
+        [500, 500, 500],
+        [96, 144, 144],
+      );
       const beforeMeasure = measures.at(0);
       const afterMeasure = measures.at(2);
 
@@ -246,7 +255,10 @@ describe("measureBlocks floating text-box bands", () => {
       const midMeasure = measures.at(1);
       const afterMeasure = measures.at(3);
 
-      if (midMeasure?.kind !== "paragraph" || afterMeasure?.kind !== "paragraph") {
+      if (
+        midMeasure?.kind !== "paragraph" ||
+        afterMeasure?.kind !== "paragraph"
+      ) {
         throw new Error("Expected paragraph measures around the bands");
       }
       // `mid` clears only the first band (60), not the second band's 200; the
@@ -289,7 +301,10 @@ describe("measureBlocks floating text-box bands", () => {
       const beforeMeasure = measures.at(0);
       const afterMeasure = measures.at(3);
 
-      if (beforeMeasure?.kind !== "paragraph" || afterMeasure?.kind !== "paragraph") {
+      if (
+        beforeMeasure?.kind !== "paragraph" ||
+        afterMeasure?.kind !== "paragraph"
+      ) {
         throw new Error("Expected paragraph measures around the band");
       }
       expect(beforeMeasure.totalHeight).toBeGreaterThan(60);
@@ -325,7 +340,11 @@ describe("measureBlocks floating text-box bands", () => {
         runs: [{ kind: "text", text: "after" }],
       };
 
-      const measures = measureBlocks([before, sectionBreak, band, after], 200, 96);
+      const measures = measureBlocks(
+        [before, sectionBreak, band, after],
+        200,
+        96,
+      );
       const afterMeasure = measures.at(3);
       if (afterMeasure?.kind !== "paragraph") {
         throw new Error("Expected paragraph measure after the band");
@@ -364,10 +383,17 @@ describe("measureBlocks floating text-box bands", () => {
         runs: [{ kind: "text", text: "after" }],
       };
 
-      const measures = measureBlocks([before, sectionBreak, band, after], 200, 96);
+      const measures = measureBlocks(
+        [before, sectionBreak, band, after],
+        200,
+        96,
+      );
       const beforeMeasure = measures.at(0);
       const afterMeasure = measures.at(3);
-      if (beforeMeasure?.kind !== "paragraph" || afterMeasure?.kind !== "paragraph") {
+      if (
+        beforeMeasure?.kind !== "paragraph" ||
+        afterMeasure?.kind !== "paragraph"
+      ) {
         throw new Error("Expected paragraph measures around the band");
       }
       expect(beforeMeasure.totalHeight).toBeGreaterThan(60);
@@ -451,10 +477,17 @@ describe("measureBlocks floating text-box bands", () => {
         runs: [{ kind: "text", text: "after" }],
       };
 
-      const measures = measureBlocks([before, floatImagePara, band, after], 200, 96);
+      const measures = measureBlocks(
+        [before, floatImagePara, band, after],
+        200,
+        96,
+      );
       const beforeMeasure = measures.at(0);
       const afterMeasure = measures.at(3);
-      if (beforeMeasure?.kind !== "paragraph" || afterMeasure?.kind !== "paragraph") {
+      if (
+        beforeMeasure?.kind !== "paragraph" ||
+        afterMeasure?.kind !== "paragraph"
+      ) {
         throw new Error("Expected paragraph measures");
       }
       // `before` alone already exceeds the 60px band, so the band sits entirely

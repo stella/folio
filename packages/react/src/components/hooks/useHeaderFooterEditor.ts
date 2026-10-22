@@ -1,4 +1,6 @@
-import { CANONICAL_GAP, usesCanonicalSession } from "@stll/folio-core/types/canonicalCapabilities";
+import { useCallback, useMemo, useState } from "react";
+
+import type { Node as PMNode } from "prosemirror-model";
 /**
  * Hook encapsulating header/footer editing state, content resolution, and
  * mutation callbacks extracted from DocxEditor.
@@ -9,14 +11,23 @@ import { CANONICAL_GAP, usesCanonicalSession } from "@stll/folio-core/types/cano
  * glue — the edit-position state, the memoised resolution, the host
  * `pushDocument` routing, and reading the live hidden HF PM doc at save time.
  */
-
-import { useCallback, useMemo, useState } from "react";
-
-import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
+import {
+  createCanonicalHeaderFooterOperation,
+  removeCanonicalHeaderFooterOperations,
+} from "@stll/folio-core/controller/canonicalOperations";
+import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
-import type { Document, HeaderFooter, SectionProperties } from "@stll/folio-core/types/document";
+import {
+  CANONICAL_GAP,
+  usesCanonicalSession,
+} from "@stll/folio-core/types/canonicalCapabilities";
+import type {
+  Document,
+  HeaderFooter,
+  SectionProperties,
+} from "@stll/folio-core/types/document";
 import {
   createEmptyHeaderFooter,
   pickActiveHeaderFooterRId,
@@ -25,12 +36,8 @@ import {
   resolveHeaderFooterContent,
   saveHeaderFooterContent,
 } from "@stll/folio-core/utils/headerFooter";
+
 import type { UseHistoryReturn } from "../../hooks/useHistory";
-import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
-import {
-  createCanonicalHeaderFooterOperation,
-  removeCanonicalHeaderFooterOperations,
-} from "@stll/folio-core/controller/canonicalOperations";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -80,7 +87,10 @@ type UseHeaderFooterEditorReturn = {
   effectiveSectionProperties: SectionProperties | undefined;
 
   /** Open the inline HF editor on double-click; creates an empty HF if needed */
-  handleHeaderFooterDoubleClick: (position: "header" | "footer", pageNumber?: number) => void;
+  handleHeaderFooterDoubleClick: (
+    position: "header" | "footer",
+    pageNumber?: number,
+  ) => void;
   /**
    * Snapshot the current HF state into a new Document via pushDocument so
    * the edit session lands in undo history. Reads `content` from the
@@ -118,7 +128,9 @@ export const saveAndCloseHeaderFooterEdit = ({
     return;
   }
   const sourceParts =
-    editPosition === "header" ? document.package.headers : document.package.footers;
+    editPosition === "header"
+      ? document.package.headers
+      : document.package.footers;
   const source = sourceParts?.get(activeRId);
   if (!source) {
     setEditPosition(null);
@@ -152,7 +164,9 @@ export const useHeaderFooterEditor = ({
   // State
   // -------------------------------------------------------------------------
 
-  const [hfEditPosition, setHfEditPosition] = useState<"header" | "footer" | null>(null);
+  const [hfEditPosition, setHfEditPosition] = useState<
+    "header" | "footer" | null
+  >(null);
   const [hfEditIsFirstPage, setHfEditIsFirstPage] = useState(false);
 
   // -------------------------------------------------------------------------
@@ -172,7 +186,9 @@ export const useHeaderFooterEditor = ({
   const [lastResolution, setLastResolution] = useState(rawResolution);
   if (
     history.state?.package &&
-    Object.entries(rawResolution).some(([key, value]) => Reflect.get(lastResolution, key) !== value)
+    Object.entries(rawResolution).some(
+      ([key, value]) => Reflect.get(lastResolution, key) !== value,
+    )
   ) {
     setLastResolution(rawResolution);
   }
@@ -194,7 +210,11 @@ export const useHeaderFooterEditor = ({
   // -------------------------------------------------------------------------
 
   const effectiveSectionProperties = useMemo(
-    () => resolveEffectiveSectionProperties(history.state?.package.document, hasTitlePg),
+    () =>
+      resolveEffectiveSectionProperties(
+        history.state?.package.document,
+        hasTitlePg,
+      ),
     [history.state?.package.document, hasTitlePg],
   );
 
@@ -207,7 +227,10 @@ export const useHeaderFooterEditor = ({
       const isFirstPage = hasTitlePg && (pageNumber ?? 1) === 1;
       let hf = position === "header" ? headerContent : footerContent;
       if (isFirstPage) {
-        hf = position === "header" ? firstPageHeaderContent : firstPageFooterContent;
+        hf =
+          position === "header"
+            ? firstPageHeaderContent
+            : firstPageFooterContent;
       }
       setHfEditIsFirstPage(isFirstPage);
       if (hf) {
@@ -216,7 +239,12 @@ export const useHeaderFooterEditor = ({
       }
 
       // Create an empty header/footer for docs that don't have one yet.
-      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
+      if (
+        usesCanonicalSession(
+          experimentalSession,
+          CANONICAL_GAP.authorityRouting,
+        )
+      ) {
         const api = getCanonicalApi?.();
         api?.ensureView();
         const canonical = api?.getCanonicalDocument();
@@ -226,13 +254,18 @@ export const useHeaderFooterEditor = ({
           position,
           referenceType: isFirstPage ? "first" : "default",
         });
-        if (api.applyCanonicalOperations([operation])) setHfEditPosition(position);
+        if (api.applyCanonicalOperations([operation]))
+          setHfEditPosition(position);
         return;
       }
       if (!history.state) {
         return;
       }
-      const newDoc = createEmptyHeaderFooter(history.state, position, isFirstPage);
+      const newDoc = createEmptyHeaderFooter(
+        history.state,
+        position,
+        isFirstPage,
+      );
       if (!newDoc) {
         return;
       }
@@ -253,7 +286,9 @@ export const useHeaderFooterEditor = ({
   );
 
   const handleHeaderFooterSave = useCallback(() => {
-    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
+    if (
+      usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+    ) {
       setHfEditPosition(null);
       return;
     }
@@ -265,7 +300,11 @@ export const useHeaderFooterEditor = ({
     // Resolve the rId via the SAME resolution that picks the displayed H/F —
     // for multi-section docs (NVCA-style title-page + signature sections) this
     // is the rendered rId, not finalSectionProperties' rId. Codex PR #258.
-    const activeRId = pickActiveHeaderFooterRId(resolution, hfEditPosition, hfEditIsFirstPage);
+    const activeRId = pickActiveHeaderFooterRId(
+      resolution,
+      hfEditPosition,
+      hfEditIsFirstPage,
+    );
     const view = activeRId ? getHfView(activeRId) : null;
     // Read fresh blocks from PM state — HiddenHeaderFooterPMs no longer
     // mutates `existing.content` in place (Codex #487 P1 re-fixed), so the
@@ -307,8 +346,14 @@ export const useHeaderFooterEditor = ({
 
     // Same active-rId resolution as save: target the rId actually rendered, not
     // whatever lives in `finalSectionProperties` (Codex PR #258).
-    const activeRId = pickActiveHeaderFooterRId(resolution, hfEditPosition, hfEditIsFirstPage);
-    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
+    const activeRId = pickActiveHeaderFooterRId(
+      resolution,
+      hfEditPosition,
+      hfEditIsFirstPage,
+    );
+    if (
+      usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+    ) {
       const api = getCanonicalApi?.();
       const canonical = api?.getCanonicalDocument();
       if (api && canonical && activeRId) {
@@ -325,7 +370,11 @@ export const useHeaderFooterEditor = ({
     }
     if (activeRId) {
       pushDocument(
-        removeHeaderFooter({ document: history.state, position: hfEditPosition, activeRId }),
+        removeHeaderFooter({
+          document: history.state,
+          position: hfEditPosition,
+          activeRId,
+        }),
       );
     }
 

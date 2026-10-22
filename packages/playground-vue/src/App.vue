@@ -27,7 +27,9 @@
         :on-error="(error) => (status = error.message)"
         :on-editor-view-ready="scrollParityHost.onViewReady"
         @ready="scrollParityHost.onReady"
-        :preserve-document-while-loading="query.has('readyScroll') || query.has('readyEventScroll')"
+        :preserve-document-while-loading="
+          query.has('readyScroll') || query.has('readyEventScroll')
+        "
       />
     </main>
     <p v-if="status" class="pg-vue-status">{{ status }}</p>
@@ -36,25 +38,38 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
-import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
-import { initProseMirrorDoc, yCursorPlugin, ySyncPlugin, yUndoPlugin } from "y-prosemirror";
+import {
+  initProseMirrorDoc,
+  yCursorPlugin,
+  ySyncPlugin,
+  yUndoPlugin,
+} from "y-prosemirror";
+import {
+  applyAwarenessUpdate,
+  Awareness,
+  encodeAwarenessUpdate,
+} from "y-protocols/awareness";
 import * as Y from "yjs";
 
-import { DocxEditor, createEmptyDocument, createStellaStyleDocumentPreset } from "@stll/folio-vue";
+import {
+  createEmptyDocument,
+  createStellaStyleDocumentPreset,
+  DocxEditor,
+} from "@stll/folio-vue";
 import type {
+  Document as FolioDocument,
   DocxEditorCollaboration,
   DocxEditorRef,
   FindResult,
-  Document as FolioDocument,
 } from "@stll/folio-vue";
 
-import type { FolioParityBridge } from "./parityBridge";
-import { buildParityBridge } from "./parityBridge";
 import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
-import { buildScrollParityBridge } from "./scrollParityBridge";
-import type { ScrollParityBridge } from "./scrollParityBridge";
 import { buildFindNotificationBridge } from "./findNotificationBridge";
 import type { FindNotificationBridge } from "./findNotificationBridge";
+import type { FolioParityBridge } from "./parityBridge";
+import { buildParityBridge } from "./parityBridge";
+import { buildScrollParityBridge } from "./scrollParityBridge";
+import type { ScrollParityBridge } from "./scrollParityBridge";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -82,16 +97,21 @@ const status = ref("");
 const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
 const findResultNotifications: (FindResult | null)[] = [];
 const query = new URLSearchParams(window.location.search);
-const experimentalSession = query.get("session") === "canonical" ? "canonical" : undefined;
+const experimentalSession =
+  query.get("session") === "canonical" ? "canonical" : undefined;
 const collaborationEnabled = query.has("collaboration");
 const showMarginGuides = query.has("marginGuides");
 const marginGuideColor = query.get("marginGuideColor") ?? undefined;
 const optionalEditorProps = {
-  ...(experimentalSession === undefined ? {} : ({ experimentalSession } as const)),
+  ...(experimentalSession === undefined
+    ? {}
+    : ({ experimentalSession } as const)),
   ...(marginGuideColor === undefined ? {} : { marginGuideColor }),
 };
 const collaborationDocument = collaborationEnabled ? new Y.Doc() : null;
-const collaborationAwareness = collaborationDocument ? new Awareness(collaborationDocument) : null;
+const collaborationAwareness = collaborationDocument
+  ? new Awareness(collaborationDocument)
+  : null;
 let collaborationWasSeeded = false;
 const remoteCollaborationDocuments: Y.Doc[] = [];
 const remoteCollaborationAwareness: Awareness[] = [];
@@ -137,10 +157,14 @@ onMounted(() => {
         if (!view) {
           return "";
         }
-        return initProseMirrorDoc(collaboration.yXmlFragment, view.state.schema).doc.textContent;
+        return initProseMirrorDoc(collaboration.yXmlFragment, view.state.schema)
+          .doc.textContent;
       },
       showRemoteSelection: () => {
-        if (!globalThis.__folioParity?.selectFirstWord() || !collaborationAwareness) {
+        if (
+          !globalThis.__folioParity?.selectFirstWord() ||
+          !collaborationAwareness
+        ) {
           return false;
         }
         const localState = collaborationAwareness.getLocalState();

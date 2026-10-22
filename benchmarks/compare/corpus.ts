@@ -21,7 +21,7 @@
  * is discovered automatically.
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 export type CorpusPair = {
@@ -42,20 +42,25 @@ type PairsEntry = {
 };
 
 const readPairsFile = (directory: string): CorpusPair[] => {
-  const entries: unknown = JSON.parse(readFileSync(path.join(directory, PAIRS_FILE), "utf8"));
+  const entries: unknown = JSON.parse(
+    readFileSync(path.join(directory, PAIRS_FILE), "utf8"),
+  );
   if (!Array.isArray(entries)) {
     throw new Error(`${PAIRS_FILE} must hold an array of pairs.`);
   }
   return entries.map((entry: PairsEntry, index) => {
     const { id, base, target, expectedChanges } = entry;
     if (typeof base !== "string" || typeof target !== "string") {
-      throw new Error(`${PAIRS_FILE} entry ${String(index)} needs string base and target paths.`);
+      throw new Error(
+        `${PAIRS_FILE} entry ${String(index)} needs string base and target paths.`,
+      );
     }
     return {
       id: typeof id === "string" ? id : `${base} vs ${target}`,
       basePath: path.resolve(directory, base),
       targetPath: path.resolve(directory, target),
-      expectedChanges: typeof expectedChanges === "number" ? expectedChanges : null,
+      expectedChanges:
+        typeof expectedChanges === "number" ? expectedChanges : null,
     };
   });
 };
@@ -81,8 +86,8 @@ const findNamed = (
 
 const discoverPairedDirectories = (root: string): CorpusPair[] => {
   const pairs: CorpusPair[] = [];
-  for (const entry of readdirSync(root, { withFileTypes: true }).toSorted((left, right) =>
-    left.name.localeCompare(right.name),
+  for (const entry of readdirSync(root, { withFileTypes: true }).toSorted(
+    (left, right) => left.name.localeCompare(right.name),
   )) {
     if (!entry.isDirectory()) {
       continue;
@@ -92,7 +97,12 @@ const discoverPairedDirectories = (root: string): CorpusPair[] => {
     const basePath = findNamed(directory, BASE_NAMES, files);
     const targetPath = findNamed(directory, TARGET_NAMES, files);
     if (basePath !== null && targetPath !== null) {
-      pairs.push({ id: entry.name, basePath, targetPath, expectedChanges: null });
+      pairs.push({
+        id: entry.name,
+        basePath,
+        targetPath,
+        expectedChanges: null,
+      });
     }
   }
   return pairs;
@@ -110,7 +120,8 @@ export const loadCorpus = (directory: string): LoadCorpusResult => {
     ? readPairsFile(directory)
     : discoverPairedDirectories(directory);
   const usable = pairs.filter(
-    ({ basePath, targetPath }) => existsSync(basePath) && existsSync(targetPath),
+    ({ basePath, targetPath }) =>
+      existsSync(basePath) && existsSync(targetPath),
   );
   return usable.length === 0
     ? { status: "empty", detail: `no readable pairs under ${directory}` }
@@ -119,5 +130,8 @@ export const loadCorpus = (directory: string): LoadCorpusResult => {
 
 export const readDocument = (file: string): ArrayBuffer => {
   const bytes = readFileSync(file);
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 };

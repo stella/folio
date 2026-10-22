@@ -1,13 +1,14 @@
-import { Schema, Node } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
-import { EditorView } from "prosemirror-view";
-import { Transform } from "prosemirror-transform";
 import { history, undo } from "prosemirror-history";
 import { keymap } from "prosemirror-keymap";
-import * as yjs from "yjs";
+import { Node, Schema } from "prosemirror-model";
+import { EditorState } from "prosemirror-state";
+import { Transform } from "prosemirror-transform";
+import { EditorView } from "prosemirror-view";
 import * as yProseMirror from "y-prosemirror";
-import { schema as folioSchema } from "@stll/folio-core/prosemirror/schema";
+import * as yjs from "yjs";
+
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
+import { schema as folioSchema } from "@stll/folio-core/prosemirror/schema";
 
 const schema = new Schema({
   nodes: {
@@ -21,7 +22,9 @@ export const mountHostEditor = (element: HTMLElement) => {
   const view = new EditorView(element, {
     state: EditorState.create({
       schema,
-      doc: schema.node("doc", null, [schema.node("paragraph", null, schema.text("Host text"))]),
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, schema.text("Host text")),
+      ]),
       plugins: [history(), keymap({ "Mod-z": undo })],
     }),
   });
@@ -35,13 +38,16 @@ export const mountHostEditor = (element: HTMLElement) => {
     async identities(folioView: EditorView) {
       const modules = await loadCollaborationModules();
       return {
-        schema: folioSchema instanceof Schema && folioView.state.schema instanceof Schema,
+        schema:
+          folioSchema instanceof Schema &&
+          folioView.state.schema instanceof Schema,
         node: folioView.state.doc instanceof Node,
         state: folioView.state instanceof EditorState,
         view: folioView instanceof EditorView,
         transform: folioView.state.tr instanceof Transform,
         yjs: modules.yjs.Doc === yjs.Doc && doc instanceof modules.yjs.Doc,
-        yProseMirror: modules.yProseMirror.ySyncPlugin === yProseMirror.ySyncPlugin,
+        yProseMirror:
+          modules.yProseMirror.ySyncPlugin === yProseMirror.ySyncPlugin,
       };
     },
     text: () => view.state.doc.textContent,

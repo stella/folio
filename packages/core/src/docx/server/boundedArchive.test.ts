@@ -8,7 +8,9 @@ import {
 } from "../__tests__/archiveInflationFixtures";
 import { DocxArchiveError, loadDocxArchive } from "./boundedArchive";
 
-const makeZip = async (entries: Record<string, string | Uint8Array>): Promise<Uint8Array> => {
+const makeZip = async (
+  entries: Record<string, string | Uint8Array>,
+): Promise<Uint8Array> => {
   const zip = new JSZip();
   for (const [path, content] of Object.entries(entries)) {
     zip.file(path, content);
@@ -23,7 +25,9 @@ const NODE_STREAM_SUPPORT = "nodestream";
  * Run `work` with JSZip reporting the capabilities of a browser or web worker,
  * where `readable-stream` is absent and `nodeStream` throws.
  */
-const withoutNodeStreamSupport = async <T>(work: () => Promise<T>): Promise<T> => {
+const withoutNodeStreamSupport = async <T>(
+  work: () => Promise<T>,
+): Promise<T> => {
   const supported: unknown = Reflect.get(JSZip.support, NODE_STREAM_SUPPORT);
   Reflect.set(JSZip.support, NODE_STREAM_SUPPORT, false);
   try {
@@ -49,7 +53,9 @@ describe("loadDocxArchive", () => {
     );
 
     expect(await archive.readEntryString("word/document.xml")).toBe("content");
-    expect(await archive.readEntryUint8("media.bin")).toEqual(new Uint8Array([97, 98, 99]));
+    expect(await archive.readEntryUint8("media.bin")).toEqual(
+      new Uint8Array([97, 98, 99]),
+    );
     expect(await archive.readEntryString("missing.xml")).toBeNull();
     expect(archive.entryMetadata).toEqual([
       { path: "word/", directory: true, declaredUncompressedBytes: null },
@@ -63,7 +69,9 @@ describe("loadDocxArchive", () => {
   });
 
   test("rejects invalid archives with a tagged error", async () => {
-    const error = await rejection(loadDocxArchive(new TextEncoder().encode("not a zip")));
+    const error = await rejection(
+      loadDocxArchive(new TextEncoder().encode("not a zip")),
+    );
 
     expect(error).toBeInstanceOf(DocxArchiveError);
     expect(error).toMatchObject({
@@ -83,7 +91,9 @@ describe("loadDocxArchive", () => {
   });
 
   test("rejects excessive input size before archive parsing", async () => {
-    const error = await rejection(loadDocxArchive(new Uint8Array(5), { maxInputBytes: 4 }));
+    const error = await rejection(
+      loadDocxArchive(new Uint8Array(5), { maxInputBytes: 4 }),
+    );
 
     expect(error).toMatchObject({ reason: "input-too-large" });
   });
@@ -103,17 +113,25 @@ describe("loadDocxArchive", () => {
     );
 
     expect(archiveErrors).toEqual(
-      archiveErrors.map(() => expect.objectContaining({ reason: "invalid-options" })),
+      archiveErrors.map(() =>
+        expect.objectContaining({ reason: "invalid-options" }),
+      ),
     );
     expect(readErrors).toEqual(
-      readErrors.map(() => expect.objectContaining({ reason: "invalid-options" })),
+      readErrors.map(() =>
+        expect.objectContaining({ reason: "invalid-options" }),
+      ),
     );
   });
 
   test("rejects declared entry and cumulative sizes", async () => {
     const bytes = await makeZip({ a: "12345", b: "67890" });
-    const entryError = await rejection(loadDocxArchive(bytes, { maxEntryBytes: 4 }));
-    const totalError = await rejection(loadDocxArchive(bytes, { maxTotalBytes: 8 }));
+    const entryError = await rejection(
+      loadDocxArchive(bytes, { maxEntryBytes: 4 }),
+    );
+    const totalError = await rejection(
+      loadDocxArchive(bytes, { maxTotalBytes: 8 }),
+    );
 
     expect(entryError).toMatchObject({ reason: "entry-too-large" });
     expect(totalError).toMatchObject({ reason: "total-too-large" });
@@ -128,21 +146,28 @@ describe("loadDocxArchive", () => {
   });
 
   test("applies a stricter byte limit to an individual read", async () => {
-    const archive = await loadDocxArchive(await makeZip({ large: "12345", small: "123" }));
+    const archive = await loadDocxArchive(
+      await makeZip({ large: "12345", small: "123" }),
+    );
 
-    await expect(archive.readEntryUint8("large", { maxBytes: 4 })).rejects.toMatchObject({
+    await expect(
+      archive.readEntryUint8("large", { maxBytes: 4 }),
+    ).rejects.toMatchObject({
       reason: "entry-too-large",
     });
-    await expect(archive.readEntryUint8("small", { maxBytes: 4 })).resolves.toEqual(
-      new Uint8Array([49, 50, 51]),
-    );
+    await expect(
+      archive.readEntryUint8("small", { maxBytes: 4 }),
+    ).resolves.toEqual(new Uint8Array([49, 50, 51]));
   });
 
   test("serializes concurrent reads against the cumulative budget", async () => {
-    const archive = await loadDocxArchive(await makeZip({ a: "12345", b: "67890" }), {
-      maxEntryBytes: 5,
-      maxTotalBytes: 10,
-    });
+    const archive = await loadDocxArchive(
+      await makeZip({ a: "12345", b: "67890" }),
+      {
+        maxEntryBytes: 5,
+        maxTotalBytes: 10,
+      },
+    );
 
     const results = await Promise.allSettled([
       archive.readEntryString("a"),
@@ -150,7 +175,11 @@ describe("loadDocxArchive", () => {
       archive.readEntryString("a"),
     ]);
 
-    expect(results.map(({ status }) => status)).toEqual(["fulfilled", "fulfilled", "rejected"]);
+    expect(results.map(({ status }) => status)).toEqual([
+      "fulfilled",
+      "fulfilled",
+      "rejected",
+    ]);
     expect(results.at(2)).toMatchObject({
       reason: { reason: "total-too-large" },
     });
@@ -160,11 +189,15 @@ describe("loadDocxArchive", () => {
     // Word writes a BOM on OOXML parts. Callers splice part text and write it
     // back, so decoding must not silently drop it.
     const bytes = await makeZip({
-      "word/document.xml": new Uint8Array([0xef, 0xbb, 0xbf, 0x3c, 0x61, 0x2f, 0x3e]),
+      "word/document.xml": new Uint8Array([
+        0xef, 0xbb, 0xbf, 0x3c, 0x61, 0x2f, 0x3e,
+      ]),
     });
     const archive = await loadDocxArchive(bytes);
 
-    expect(await archive.readEntryString("word/document.xml")).toBe("\uFEFF<a/>");
+    expect(await archive.readEntryString("word/document.xml")).toBe(
+      "\uFEFF<a/>",
+    );
   });
 });
 
@@ -177,17 +210,25 @@ describe("loadDocxArchive on a platform without Node streams", () => {
     }
 
     await withoutNodeStreamSupport(async () => {
-      expect(() => entry.nodeStream()).toThrow("nodestream is not supported by this platform");
+      expect(() => entry.nodeStream()).toThrow(
+        "nodestream is not supported by this platform",
+      );
     });
   });
 
   test("reads text and bytes and still enforces the entry cap", async () => {
     await withoutNodeStreamSupport(async () => {
-      const archive = await loadDocxArchive(await makeZip({ large: "12345", small: "123" }));
+      const archive = await loadDocxArchive(
+        await makeZip({ large: "12345", small: "123" }),
+      );
 
       expect(await archive.readEntryString("large")).toBe("12345");
-      expect(await archive.readEntryUint8("small")).toEqual(new Uint8Array([49, 50, 51]));
-      await expect(archive.readEntryUint8("large", { maxBytes: 4 })).rejects.toMatchObject({
+      expect(await archive.readEntryUint8("small")).toEqual(
+        new Uint8Array([49, 50, 51]),
+      );
+      await expect(
+        archive.readEntryUint8("large", { maxBytes: 4 }),
+      ).rejects.toMatchObject({
         reason: "entry-too-large",
       });
     });
@@ -195,9 +236,12 @@ describe("loadDocxArchive on a platform without Node streams", () => {
 
   test("still enforces the cumulative cap across reads", async () => {
     await withoutNodeStreamSupport(async () => {
-      const archive = await loadDocxArchive(await makeZip({ a: "12345", b: "678" }), {
-        maxTotalBytes: 8,
-      });
+      const archive = await loadDocxArchive(
+        await makeZip({ a: "12345", b: "678" }),
+        {
+          maxTotalBytes: 8,
+        },
+      );
 
       expect(await archive.readEntryString("a")).toBe("12345");
       expect(await archive.readEntryString("b")).toBe("678");
@@ -210,7 +254,9 @@ describe("loadDocxArchive on a platform without Node streams", () => {
 
 describe("loadDocxArchive inflation limits", () => {
   test("stops a read that inflates past the entry's declared size", async () => {
-    const archive = await loadDocxArchive(await understatedEntryArchive("word/header1.xml"));
+    const archive = await loadDocxArchive(
+      await understatedEntryArchive("word/header1.xml"),
+    );
 
     const error = await rejection(archive.readEntryUint8("word/header1.xml"));
 
@@ -237,7 +283,10 @@ describe("loadDocxArchive inflation limits", () => {
     for (const index of [1, 2, 3]) {
       zip.file(`word/header${String(index)}.xml`, "x".repeat(2 * 1024 * 1024));
     }
-    const bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+    const bytes = await zip.generateAsync({
+      type: "uint8array",
+      compression: "DEFLATE",
+    });
 
     const error = await rejection(loadDocxArchive(bytes));
 
@@ -249,14 +298,22 @@ describe("loadDocxArchive inflation limits", () => {
 
   test("leaves a highly compressible binary entry to the byte and package limits", async () => {
     const zip = new JSZip();
-    zip.file("word/media/image1.bmp", new Uint8Array(5 * 1024 * 1024).fill(0xff), {
-      compression: "DEFLATE",
-    });
+    zip.file(
+      "word/media/image1.bmp",
+      new Uint8Array(5 * 1024 * 1024).fill(0xff),
+      {
+        compression: "DEFLATE",
+      },
+    );
     // Incompressible padding keeps the package as a whole under the ratio cap.
     zip.file("padding.bin", crypto.getRandomValues(new Uint8Array(64 * 1024)));
-    const archive = await loadDocxArchive(await zip.generateAsync({ type: "uint8array" }));
+    const archive = await loadDocxArchive(
+      await zip.generateAsync({ type: "uint8array" }),
+    );
 
-    expect(await archive.readEntryUint8("word/media/image1.bmp")).toHaveLength(5 * 1024 * 1024);
+    expect(await archive.readEntryUint8("word/media/image1.bmp")).toHaveLength(
+      5 * 1024 * 1024,
+    );
   });
 
   test("takes a tighter or looser ratio cap from the caller", async () => {
@@ -266,17 +323,25 @@ describe("loadDocxArchive inflation limits", () => {
     });
 
     const archive = await loadDocxArchive(bytes, { maxCompressionRatio: 2000 });
-    expect(await archive.readEntryUint8("word/header1.xml")).toHaveLength(5 * 1024 * 1024);
-    expect(await rejection(loadDocxArchive(bytes, { maxCompressionRatio: 2 }))).toMatchObject({
+    expect(await archive.readEntryUint8("word/header1.xml")).toHaveLength(
+      5 * 1024 * 1024,
+    );
+    expect(
+      await rejection(loadDocxArchive(bytes, { maxCompressionRatio: 2 })),
+    ).toMatchObject({
       reason: "compression-ratio-exceeded",
     });
-    expect(await rejection(loadDocxArchive(bytes, { maxCompressionRatio: -1 }))).toMatchObject({
+    expect(
+      await rejection(loadDocxArchive(bytes, { maxCompressionRatio: -1 })),
+    ).toMatchObject({
       reason: "invalid-options",
     });
   });
 
   test("counts archive records before the archive is parsed", async () => {
-    const error = await rejection(loadDocxArchive(await manyEntryArchive(40), { maxEntries: 10 }));
+    const error = await rejection(
+      loadDocxArchive(await manyEntryArchive(40), { maxEntries: 10 }),
+    );
 
     expect(error).toMatchObject({
       reason: "too-many-entries",

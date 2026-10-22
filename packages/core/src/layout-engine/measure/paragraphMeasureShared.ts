@@ -5,14 +5,14 @@
  */
 
 import type {
-  MeasuredLine,
-  Run,
-  TextRun,
-  TabRun,
+  FieldRun,
   ImageRun,
   LineBreakRun,
-  FieldRun,
   MathRun,
+  MeasuredLine,
+  Run,
+  TabRun,
+  TextRun,
 } from "../types";
 import { isFloatingImageRun } from "../types";
 import type { FloatingLineSegmentZone } from "./floatingZones";
@@ -98,7 +98,9 @@ export type LineState = {
  * same way; widening the parameter keeps tab-following measurement
  * (FieldRun page numbers, etc.) consistent with TextRun handling.
  */
-export function runToFontStyle(run: TextRun | TabRun | FieldRun | MathRun): FontStyle {
+export function runToFontStyle(
+  run: TextRun | TabRun | FieldRun | MathRun,
+): FontStyle {
   return buildRunFontStyle(run, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
 }
 
@@ -143,7 +145,8 @@ export function fieldMeasureText(
   run: FieldRun,
   fieldValues: ReadonlyMap<number, string> | undefined,
 ): string {
-  const resolved = run.pmStart === undefined ? undefined : fieldValues?.get(run.pmStart);
+  const resolved =
+    run.pmStart === undefined ? undefined : fieldValues?.get(run.pmStart);
   return resolved ?? (run.fallback || "1");
 }
 

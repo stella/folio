@@ -1,10 +1,14 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { MediaFile } from "../types/document";
-import { MAX_PREVIEW_POINTS, MAX_PREVIEW_SHAPES } from "./diagramPreview";
 import { parseChartPreview } from "./chartPreview";
+import { MAX_PREVIEW_POINTS, MAX_PREVIEW_SHAPES } from "./diagramPreview";
 import { parseDocx } from "./parser";
 import { parseRelationships } from "./relsParser";
 import { createEmptyDocx, repackDocx } from "./rezip";
@@ -43,7 +47,11 @@ const series = (values: readonly (string | number)[], color = "4472C4") =>
   )}${cache("val", values)}</c:ser>`;
 const chart = (kind: string, body: string, namespace = NS) =>
   `<c:chartSpace xmlns:c="${namespace}"><c:chart><c:title><c:tx><c:rich><a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:r><a:t>Sample</a:t></a:r></a:p></c:rich></c:tx></c:title><c:plotArea><c:${kind}>${body}</c:${kind}></c:plotArea></c:chart></c:chartSpace>`;
-const preview = (xml: string, namespace = NS, extra: [string, MediaFile][] = []) => {
+const preview = (
+  xml: string,
+  namespace = NS,
+  extra: [string, MediaFile][] = [],
+) => {
   const drawing = parseXmlDocument(drawingXml(namespace));
   if (!drawing) throw new Error("drawing did not parse");
   return parseChartPreview(
@@ -55,12 +63,17 @@ const preview = (xml: string, namespace = NS, extra: [string, MediaFile][] = [])
 
 describe("chart previews", () => {
   test("identifies the descriptor as a chart", () => {
-    expect(preview(chart("barChart", series([1])))?.preview?.kind).toBe("chart");
+    expect(preview(chart("barChart", series([1])))?.preview?.kind).toBe(
+      "chart",
+    );
   });
 
   test("column geometry uses a zero baseline and puts negative values below it", () => {
     const image = preview(
-      chart("barChart", `<c:barDir val="col"/><c:grouping val="clustered"/>${series([-5, 10])}`),
+      chart(
+        "barChart",
+        `<c:barDir val="col"/><c:grouping val="clustered"/>${series([-5, 10])}`,
+      ),
     );
     const shapes = image?.preview?.shapes ?? [];
     expect(shapes).toHaveLength(2);
@@ -102,7 +115,9 @@ describe("chart previews", () => {
             shape.y >= 0 &&
             shape.x + shape.width <= 1000 &&
             shape.y + shape.height <= 1000
-          : shape.points.every(({ x, y }) => x >= 0 && y >= 0 && x <= 1000 && y <= 1000),
+          : shape.points.every(
+              ({ x, y }) => x >= 0 && y >= 0 && x <= 1000 && y <= 1000,
+            ),
       ),
     ).toBe(true);
   });
@@ -134,7 +149,8 @@ describe("chart previews", () => {
     );
     const content = parsed.content.at(0);
     expect(content?.type).toBe("drawing");
-    if (content?.type !== "drawing") throw new Error("fallback was not a drawing");
+    if (content?.type !== "drawing")
+      throw new Error("fallback was not a drawing");
     expect(content.image.src).toBe(fallback.dataUrl);
     expect(content.image.size).toEqual({ width: 1000, height: 1000 });
     expect(content.rawXml).toContain("mc:AlternateContent");
@@ -161,11 +177,13 @@ describe("chart previews", () => {
   });
 
   test("connects four line points without implicit markers", () => {
-    const shapes = preview(chart("lineChart", series([1, 3, 2, 4])))?.preview?.shapes ?? [];
+    const shapes =
+      preview(chart("lineChart", series([1, 3, 2, 4])))?.preview?.shapes ?? [];
     expect(shapes).toHaveLength(1);
     const line = shapes.at(0);
     expect(line?.type).toBe("polyline");
-    if (line?.type !== "polyline") throw new Error("line chart did not produce a polyline");
+    if (line?.type !== "polyline")
+      throw new Error("line chart did not produce a polyline");
     expect(line.points).toHaveLength(4);
     for (const [index, expected] of [
       [80, 900],
@@ -183,7 +201,10 @@ describe("chart previews", () => {
     const seriesCount = Math.floor(MAX_PREVIEW_POINTS / values.length) + 1;
     expect(
       preview(
-        chart("lineChart", Array.from({ length: seriesCount }, () => series(values)).join("")),
+        chart(
+          "lineChart",
+          Array.from({ length: seriesCount }, () => series(values)).join(""),
+        ),
       ),
     ).toBeNull();
   });
@@ -197,15 +218,19 @@ describe("chart previews", () => {
       [0, 1],
       [2, 2],
     ])}`;
-    const bars = preview(chart("barChart", `<c:barDir val="col"/><c:ser>${caches}</c:ser>`))
-      ?.preview?.shapes;
+    const bars = preview(
+      chart("barChart", `<c:barDir val="col"/><c:ser>${caches}</c:ser>`),
+    )?.preview?.shapes;
     expect(bars).toHaveLength(2);
-    expect(bars?.map((shape) => (shape.type === "rect" ? shape.x : null))).toEqual([
-      108.66666666666667, 682,
-    ]);
+    expect(
+      bars?.map((shape) => (shape.type === "rect" ? shape.x : null)),
+    ).toEqual([108.66666666666667, 682]);
 
     const lines = preview(
-      chart("lineChart", `<c:ser><c:marker><c:symbol val="circle"/></c:marker>${caches}</c:ser>`),
+      chart(
+        "lineChart",
+        `<c:ser><c:marker><c:symbol val="circle"/></c:marker>${caches}</c:ser>`,
+      ),
     )?.preview?.shapes;
     expect(lines).toHaveLength(2);
     expect(lines?.every((shape) => shape.type === "rect")).toBe(true);
@@ -221,11 +246,15 @@ describe("chart previews", () => {
       [0, 1],
       [1, 2],
     ])}`;
-    const shapes = preview(chart("lineChart", `<c:ser>${caches}</c:ser>`))?.preview?.shapes;
+    const shapes = preview(chart("lineChart", `<c:ser>${caches}</c:ser>`))
+      ?.preview?.shapes;
     const line = shapes?.at(0);
     expect(line?.type).toBe("polyline");
-    if (line?.type !== "polyline") throw new Error("line chart did not produce a polyline");
-    expect(line.points.map(({ y }) => y)).toEqual([900, 500, 99.99999999999997]);
+    if (line?.type !== "polyline")
+      throw new Error("line chart did not produce a polyline");
+    expect(line.points.map(({ y }) => y)).toEqual([
+      900, 500, 99.99999999999997,
+    ]);
   });
 
   test.each([
@@ -239,12 +268,19 @@ describe("chart previews", () => {
       [0, "A"],
       [1, "B"],
     ]);
-    expect(preview(chart("barChart", `<c:ser>${categories}${values}</c:ser>`))).toBeNull();
+    expect(
+      preview(chart("barChart", `<c:ser>${categories}${values}</c:ser>`)),
+    ).toBeNull();
   });
 
   test("pie sectors start at twelve o'clock and use proportional angles", () => {
-    const shapes = preview(chart("pieChart", series([1, 1, 2])))?.preview?.shapes ?? [];
-    expect(shapes.map((shape) => (shape.type === "polygon" ? shape.points.at(0) : null))).toEqual([
+    const shapes =
+      preview(chart("pieChart", series([1, 1, 2])))?.preview?.shapes ?? [];
+    expect(
+      shapes.map((shape) =>
+        shape.type === "polygon" ? shape.points.at(0) : null,
+      ),
+    ).toEqual([
       { x: 500, y: 80 },
       { x: 920, y: 500 },
       { x: 500, y: 920 },
@@ -253,12 +289,14 @@ describe("chart previews", () => {
 
   test("doughnut geometry stays outside the authored hole", () => {
     const shapes =
-      preview(chart("doughnutChart", `${series([1, 1])}<c:holeSize val="60"/>`))?.preview?.shapes ??
-      [];
+      preview(chart("doughnutChart", `${series([1, 1])}<c:holeSize val="60"/>`))
+        ?.preview?.shapes ?? [];
     for (const shape of shapes)
       if (shape.type === "polygon")
         for (const point of shape.points) {
-          expect(Math.hypot(point.x - 500, point.y - 500)).toBeGreaterThanOrEqual(252 - 0.000001);
+          expect(
+            Math.hypot(point.x - 500, point.y - 500),
+          ).toBeGreaterThanOrEqual(252 - 0.000001);
         }
   });
 
@@ -284,14 +322,16 @@ describe("chart previews", () => {
       series(Array.from({ length: 100 }, () => index + 1)),
     ).join("");
     expect(
-      preview(chart("barChart", `<c:barDir val="col"/>${manySeries}`))?.preview?.shapes.length,
+      preview(chart("barChart", `<c:barDir val="col"/>${manySeries}`))?.preview
+        ?.shapes.length,
     ).toBe(MAX_PREVIEW_SHAPES);
   });
 
   test("recognises the strict chart namespace", () => {
     const strict = "http://purl.oclc.org/ooxml/drawingml/chart";
     expect(
-      preview(chart("lineChart", series([1, 2]), strict), strict)?.preview?.shapes.length,
+      preview(chart("lineChart", series([1, 2]), strict), strict)?.preview
+        ?.shapes.length,
     ).toBe(1);
   });
 
@@ -308,7 +348,9 @@ describe("chart previews", () => {
           const shapes = preview(chart(kind, body))?.preview?.shapes ?? [];
           return shapes.every((shape) =>
             shape.type === "rect"
-              ? [shape.x, shape.y, shape.width, shape.height].every(Number.isFinite) &&
+              ? [shape.x, shape.y, shape.width, shape.height].every(
+                  Number.isFinite,
+                ) &&
                 shape.x >= 0 &&
                 shape.y >= 0 &&
                 shape.x + shape.width <= 1000.000001 &&
@@ -344,8 +386,12 @@ describe("chart previews", () => {
         expect(
           shapes.every((shape) =>
             shape.type === "rect"
-              ? [shape.x, shape.y, shape.width, shape.height].every(Number.isFinite)
-              : shape.points.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)),
+              ? [shape.x, shape.y, shape.width, shape.height].every(
+                  Number.isFinite,
+                )
+              : shape.points.every(
+                  ({ x, y }) => Number.isFinite(x) && Number.isFinite(y),
+                ),
           ),
         ).toBe(true);
       }
@@ -370,11 +416,18 @@ describe("chart previews", () => {
     zip.file("word/charts/_rels/chart1.xml.rels", chartRels);
     zip.file("word/media/chart.png", new Uint8Array([0]));
     const source = await zip.generateAsync({ type: "arraybuffer" });
-    const saved = await repackDocx(await parseDocx(source, { preloadFonts: false }), {
-      updateModifiedDate: false,
-    });
+    const saved = await repackDocx(
+      await parseDocx(source, { preloadFonts: false }),
+      {
+        updateModifiedDate: false,
+      },
+    );
     const result = await JSZip.loadAsync(saved);
-    expect(await result.file("word/charts/chart1.xml")?.async("text")).toBe(chartXml);
-    expect(await result.file("word/charts/_rels/chart1.xml.rels")?.async("text")).toBe(chartRels);
+    expect(await result.file("word/charts/chart1.xml")?.async("text")).toBe(
+      chartXml,
+    );
+    expect(
+      await result.file("word/charts/_rels/chart1.xml.rels")?.async("text"),
+    ).toBe(chartRels);
   });
 });

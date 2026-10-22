@@ -32,4 +32,6 @@ export const tableOfContentsStyleLevel = ({
   styleName,
 }: TableOfContentsStyleIdentity): number | undefined =>
   parsedLevel(TABLE_OF_CONTENTS_STYLE_ID.exec(styleId ?? "")) ??
-  parsedLevel(TABLE_OF_CONTENTS_STYLE_NAME.exec(normalizeStyleName(styleName ?? "")));
+  parsedLevel(
+    TABLE_OF_CONTENTS_STYLE_NAME.exec(normalizeStyleName(styleName ?? "")),
+  );

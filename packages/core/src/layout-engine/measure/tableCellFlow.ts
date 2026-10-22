@@ -5,7 +5,12 @@ import {
   getParagraphSpacingBefore,
   isEmptyParagraph,
 } from "../paragraphSpacing";
-import type { FlowBlock, Measure, ParagraphBlock, ParagraphMeasure } from "../types";
+import type {
+  FlowBlock,
+  Measure,
+  ParagraphBlock,
+  ParagraphMeasure,
+} from "../types";
 import { isFloatingTextBoxBlock } from "../types";
 
 export type TableCellBlockPlacement = {
@@ -64,14 +69,17 @@ const trailingSpacingValue = (spacing: TableCellTrailingSpacing): number => {
 export const finishTableCellFlow = (state: TableCellFlowState): number => {
   // Automatic HTML paragraph spacing is suppressed at a table-cell boundary;
   // authored spacing remains part of the cell box.
-  if (state.trailingSpacing.type === TABLE_CELL_TRAILING_SPACING_TYPE.automatic) {
+  if (
+    state.trailingSpacing.type === TABLE_CELL_TRAILING_SPACING_TYPE.automatic
+  ) {
     return state.height;
   }
   return state.height + trailingSpacingValue(state.trailingSpacing);
 };
 
 const isSuppressedParagraphMeasure = (measure: ParagraphMeasure): boolean =>
-  measure.totalHeight === 0 && measure.lines.every(({ lineHeight }) => lineHeight === 0);
+  measure.totalHeight === 0 &&
+  measure.lines.every(({ lineHeight }) => lineHeight === 0);
 
 const paragraphSpacing = (
   block: ParagraphBlock,
@@ -86,7 +94,10 @@ const paragraphSpacing = (
   };
 };
 
-export const getTableCellBlockContentHeight = (block: FlowBlock, measure: Measure): number => {
+export const getTableCellBlockContentHeight = (
+  block: FlowBlock,
+  measure: Measure,
+): number => {
   if (block.kind === "textBox" && isFloatingTextBoxBlock(block)) {
     return 0;
   }
@@ -157,7 +168,13 @@ export const placeTableCellBlock = (
   state.previousParagraphWasEmpty = empty;
   state.trailingSpacing =
     block.attrs?.automaticSpacing?.after === true
-      ? { type: TABLE_CELL_TRAILING_SPACING_TYPE.automatic, value: spacing.after }
-      : { type: TABLE_CELL_TRAILING_SPACING_TYPE.authored, value: spacing.after };
+      ? {
+          type: TABLE_CELL_TRAILING_SPACING_TYPE.automatic,
+          value: spacing.after,
+        }
+      : {
+          type: TABLE_CELL_TRAILING_SPACING_TYPE.authored,
+          value: spacing.after,
+        };
   return { top, contentTop, contentHeight, leadingSpacing };
 };

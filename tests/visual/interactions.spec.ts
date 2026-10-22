@@ -15,14 +15,15 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
-import { getDocumentText } from "../../packages/core/src/docx/storyPlainText";
 import { parseDocx } from "../../packages/core/src/docx/parser";
+import { getDocumentText } from "../../packages/core/src/docx/storyPlainText";
 import { PLAYGROUND_ERROR_STATUS_SELECTOR } from "../../packages/playground/src/playgroundStatus";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import { readEditorReadinessState } from "../../parity/editorReadiness";
 
 declare global {
-  var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
+  var __folioPlayground:
+    { getEditorRef: () => DocxEditorRef | null } | undefined;
 }
 
 const isMac = process.platform === "darwin";
@@ -31,16 +32,23 @@ const MOD = isMac ? "Meta" : "Control";
 /** Mount a fixture and force the (deferred) editor view to materialise. */
 async function mountFixture(page: Page, fixture: string): Promise<void> {
   await page.goto(`/?file=${encodeURIComponent(fixture)}`);
-  await page.waitForSelector('[data-testid="folio-editor"]', { timeout: 15_000 });
-  await page.waitForFunction(() => document.querySelectorAll(".layout-page").length >= 1);
+  await page.waitForSelector('[data-testid="folio-editor"]', {
+    timeout: 15_000,
+  });
+  await page.waitForFunction(
+    () => document.querySelectorAll(".layout-page").length >= 1,
+  );
   await page.evaluate(async () => {
     await document.fonts.ready;
   });
   await page.evaluate(() => {
-    globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView({ focus: true });
+    globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.ensureEditorView({ focus: true });
   });
   await page.waitForFunction(
-    () => !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
+    () =>
+      !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
     undefined,
     { timeout: 10_000 },
   );
@@ -51,15 +59,18 @@ async function mountFixture(page: Page, fixture: string): Promise<void> {
 function docText(page: Page): Promise<string> {
   return page.evaluate(
     () =>
-      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.doc
-        .textContent ?? "",
+      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()
+        ?.state.doc.textContent ?? "",
   );
 }
 
 /** Count ProseMirror nodes by type name in the live document. */
 function countNodes(page: Page, typeName: string): Promise<number> {
   return page.evaluate((name) => {
-    const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+    const view = globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView();
     let n = 0;
     view?.state.doc.descendants((node) => {
       if (node.type.name === name) n += 1;
@@ -72,14 +83,21 @@ function countNodes(page: Page, typeName: string): Promise<number> {
 /** Cells in the first table row (column count). */
 function firstRowCellCount(page: Page): Promise<number> {
   return page.evaluate(() => {
-    const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+    const view = globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView();
     let cells = 0;
     let done = false;
     view?.state.doc.descendants((node) => {
       if (done) return false;
       if (node.type.name === "tableRow") {
         node.descendants((child) => {
-          if (child.type.name === "tableCell" || child.type.name === "tableHeader") cells += 1;
+          if (
+            child.type.name === "tableCell" ||
+            child.type.name === "tableHeader"
+          )
+            cells += 1;
           return false;
         });
         done = true;
@@ -91,11 +109,15 @@ function firstRowCellCount(page: Page): Promise<number> {
   });
 }
 
-test("showcase document loads from the recording URL and playground control", async ({ page }) => {
+test("showcase document loads from the recording URL and playground control", async ({
+  page,
+}) => {
   await page.goto("/?showcase");
   await expect(page.locator(".pg-filename")).toHaveText("folio-showcase.docx");
   await expect(page.getByRole("status")).toHaveText("1 of 5");
-  await expect(page.getByText("MASTER SERVICES AGREEMENT", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("MASTER SERVICES AGREEMENT", { exact: true }),
+  ).toBeVisible();
 
   await page.goto("/");
   await page.getByRole("button", { name: "Showcase", exact: true }).click();
@@ -103,7 +125,9 @@ test("showcase document loads from the recording URL and playground control", as
   await expect(page.getByRole("status")).toHaveText("1 of 5");
 });
 
-test("fixture load failures expose a machine-readable error state", async ({ page }) => {
+test("fixture load failures expose a machine-readable error state", async ({
+  page,
+}) => {
   await page.goto("/?file=missing-parity-fixture.docx");
 
   await expect(page.locator(PLAYGROUND_ERROR_STATUS_SELECTOR)).toHaveText(
@@ -135,13 +159,18 @@ async function openTableCellMenu(page: Page): Promise<Locator> {
 }
 
 test.describe("selection", () => {
-  test("select all repaints as virtualized pages enter the viewport", async ({ page }) => {
+  test("select all repaints as virtualized pages enter the viewport", async ({
+    page,
+  }) => {
     await mountFixture(page, "performance-1500-paragraphs.docx");
     await page.locator(".layout-paragraph").first().click();
     await page.keyboard.press(`${MOD}+a`);
 
     const selection = await page.evaluate(() => {
-      const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+      const view = globalThis.__folioPlayground
+        ?.getEditorRef()
+        ?.getEditorRef()
+        ?.getView();
       return view
         ? {
             from: view.state.selection.from,
@@ -150,7 +179,11 @@ test.describe("selection", () => {
           }
         : null;
     });
-    expect(selection).toEqual({ from: 0, to: selection?.size, size: selection?.size });
+    expect(selection).toEqual({
+      from: 0,
+      to: selection?.size,
+      size: selection?.size,
+    });
 
     const pageCount = await page.locator(".layout-page").count();
     expect(pageCount).toBeGreaterThan(7);
@@ -158,11 +191,17 @@ test.describe("selection", () => {
       globalThis.__folioPlayground?.getEditorRef()?.scrollToPage(targetPage);
     }, pageCount);
     await expect(
-      page.locator(`.layout-page[data-page-number="${pageCount}"] .layout-run`).first(),
+      page
+        .locator(`.layout-page[data-page-number="${pageCount}"] .layout-run`)
+        .first(),
     ).toBeVisible();
     await expect
       .poll(() =>
-        page.locator(`[data-folio-selection-rect][data-page-index="${pageCount - 1}"]`).count(),
+        page
+          .locator(
+            `[data-folio-selection-rect][data-page-index="${pageCount - 1}"]`,
+          )
+          .count(),
       )
       .toBeGreaterThan(0);
   });
@@ -187,7 +226,9 @@ async function firstWrappedLine(page: Page): Promise<WrappedLine> {
       const [line, nextLine] = Array.from(lines);
       if (!line || !nextLine) continue;
       const pmRange = (from: Element): [number, number] | null => {
-        const spans = Array.from(from.querySelectorAll<HTMLElement>("span[data-pm-start]"));
+        const spans = Array.from(
+          from.querySelectorAll<HTMLElement>("span[data-pm-start]"),
+        );
         if (spans.length === 0) return null;
         return [
           Math.min(...spans.map((span) => Number(span.dataset["pmStart"]))),
@@ -213,25 +254,31 @@ async function firstWrappedLine(page: Page): Promise<WrappedLine> {
 const selectionHead = (page: Page): Promise<number | null> =>
   page.evaluate(
     () =>
-      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.selection
-        .head ?? null,
+      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()
+        ?.state.selection.head ?? null,
   );
 
 test.describe("vertical caret navigation", () => {
-  test("a click between two ArrowDowns re-resolves the visual line", async ({ page }) => {
+  test("a click between two ArrowDowns re-resolves the visual line", async ({
+    page,
+  }) => {
     await mountFixture(page, "docx-editor-demo.docx");
     const wrapped = await firstWrappedLine(page);
 
     await page.mouse.click(wrapped.caretX, wrapped.caretY);
     await page.keyboard.press("ArrowDown");
-    await expect.poll(() => selectionHead(page)).toBeGreaterThanOrEqual(wrapped.nextLineFrom);
+    await expect
+      .poll(() => selectionHead(page))
+      .toBeGreaterThanOrEqual(wrapped.nextLineFrom);
     const stepped = await selectionHead(page);
     expect(stepped).toBeLessThanOrEqual(wrapped.nextLineTo);
 
     // The caret goes back with the mouse, which the editor view never sees as a
     // key: the next step must start from the line the caret is on again.
     await page.mouse.click(wrapped.caretX, wrapped.caretY);
-    await expect.poll(() => selectionHead(page)).toBeLessThanOrEqual(wrapped.nextLineFrom);
+    await expect
+      .poll(() => selectionHead(page))
+      .toBeLessThanOrEqual(wrapped.nextLineFrom);
     await page.keyboard.press("ArrowDown");
 
     await expect.poll(() => selectionHead(page)).toBe(stepped);
@@ -239,12 +286,20 @@ test.describe("vertical caret navigation", () => {
 });
 
 /** Numbering and text of the paragraph holding the caret. */
-function caretParagraph(page: Page): Promise<{ numPr: unknown; text: string } | null> {
+function caretParagraph(
+  page: Page,
+): Promise<{ numPr: unknown; text: string } | null> {
   return page.evaluate(() => {
-    const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+    const view = globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView();
     if (!view) return null;
     const paragraph = view.state.selection.$from.parent;
-    return { numPr: paragraph.attrs["numPr"] ?? null, text: paragraph.textContent };
+    return {
+      numPr: paragraph.attrs["numPr"] ?? null,
+      text: paragraph.textContent,
+    };
   });
 }
 
@@ -276,13 +331,17 @@ test.describe("list autoformat", () => {
 
     await page.keyboard.press("Backspace");
 
-    await expect.poll(async () => (await caretParagraph(page))?.numPr).toBeNull();
+    await expect
+      .poll(async () => (await caretParagraph(page))?.numPr)
+      .toBeNull();
     expect((await caretParagraph(page))?.text).toBe(`- ${before?.text ?? ""}`);
   });
 });
 
 test.describe("typing + undo", () => {
-  test("typing at a tracked insertion boundary stays outside the revision", async ({ page }) => {
+  test("typing at a tracked insertion boundary stays outside the revision", async ({
+    page,
+  }) => {
     await mountFixture(page, "tracked-insertion-boundary.docx");
 
     const run = page.locator(".paged-editor__pages .docx-insertion").first();
@@ -298,12 +357,18 @@ test.describe("typing + undo", () => {
     await expect
       .poll(() =>
         page.evaluate(() => {
-          const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+          const view = globalThis.__folioPlayground
+            ?.getEditorRef()
+            ?.getEditorRef()
+            ?.getView();
           const insertion = view?.state.schema.marks["insertion"];
           if (!view || !insertion) return null;
           const marked: string[] = [];
           view.state.doc.descendants((node) => {
-            if (node.isText && node.marks.some((mark) => mark.type === insertion)) {
+            if (
+              node.isText &&
+              node.marks.some((mark) => mark.type === insertion)
+            ) {
               marked.push(node.text ?? "");
             }
             return true;
@@ -320,7 +385,8 @@ test.describe("typing + undo", () => {
       });
 
     const rejected = await page.evaluate(
-      (id) => globalThis.__folioPlayground?.getEditorRef()?.rejectAIEditOperation(id),
+      (id) =>
+        globalThis.__folioPlayground?.getEditorRef()?.rejectAIEditOperation(id),
       revisionId,
     );
     expect(rejected).toBe(true);
@@ -328,7 +394,9 @@ test.describe("typing + undo", () => {
     await expect.poll(() => docText(page)).toBe(expected);
 
     const saved = await page.evaluate(async () => {
-      const buffer = await globalThis.__folioPlayground?.getEditorRef()?.save({ selective: false });
+      const buffer = await globalThis.__folioPlayground
+        ?.getEditorRef()
+        ?.save({ selective: false });
       return buffer ? [...new Uint8Array(buffer)] : null;
     });
     if (!saved) throw new Error("editor did not return saved DOCX bytes");
@@ -339,7 +407,9 @@ test.describe("typing + undo", () => {
     expect(getDocumentText(reopened.package.document)).toBe(expected);
   });
 
-  test("repeated trailing spaces advance the painted caret", async ({ page }) => {
+  test("repeated trailing spaces advance the painted caret", async ({
+    page,
+  }) => {
     await mountFixture(page, "sample.docx");
 
     const paragraph = page.locator(".layout-paragraph").first();
@@ -352,17 +422,21 @@ test.describe("typing + undo", () => {
     const runBox = await visibleRun.boundingBox();
     if (!runBox) throw new Error("no painted text run");
 
-    await page.mouse.click(runBox.x + runBox.width - 1, runBox.y + runBox.height / 2);
+    await page.mouse.click(
+      runBox.x + runBox.width - 1,
+      runBox.y + runBox.height / 2,
+    );
     const caret = page.getByTestId("caret");
     await expect(caret).toBeVisible();
     let previousCaret = await caret.boundingBox();
     if (!previousCaret) throw new Error("no painted caret before typing");
     let previousSelection = await page.evaluate(
       () =>
-        globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.selection
-          .from ?? null,
+        globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()
+          ?.state.selection.from ?? null,
     );
-    if (previousSelection === null) throw new Error("no editor selection before typing");
+    if (previousSelection === null)
+      throw new Error("no editor selection before typing");
 
     for (let index = 0; index < 4; index += 1) {
       await page.keyboard.press("Space");
@@ -371,8 +445,10 @@ test.describe("typing + undo", () => {
         .poll(() =>
           page.evaluate(
             () =>
-              globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state
-                .selection.from ?? null,
+              globalThis.__folioPlayground
+                ?.getEditorRef()
+                ?.getEditorRef()
+                ?.getView()?.state.selection.from ?? null,
           ),
         )
         .toBe(expectedSelection);
@@ -390,16 +466,21 @@ test.describe("typing + undo", () => {
         .toEqual({ advanced: true, sameRow: true });
 
       previousCaret = await caret.boundingBox();
-      if (!previousCaret) throw new Error("painted caret disappeared after typing");
+      if (!previousCaret)
+        throw new Error("painted caret disappeared after typing");
       previousSelection = expectedSelection;
     }
 
     await expect(
-      line.locator('[data-collapsed-trailing-spaces="true"][data-collapsed-space-advance]'),
+      line.locator(
+        '[data-collapsed-trailing-spaces="true"][data-collapsed-space-advance]',
+      ),
     ).toHaveCount(1);
   });
 
-  test("a rapid burst types as a group, and one undo reverts the whole burst", async ({ page }) => {
+  test("a rapid burst types as a group, and one undo reverts the whole burst", async ({
+    page,
+  }) => {
     await mountFixture(page, "sample.docx");
 
     // Place the caret in the first body paragraph.
@@ -483,7 +564,9 @@ test.describe("find", () => {
       const currentBefore = Number(counterText.split("/")[0]?.trim());
       await searchInput.press("Enter");
       await page.waitForTimeout(200);
-      const currentAfter = Number(((await counter.textContent()) ?? "").split("/")[0]?.trim());
+      const currentAfter = Number(
+        ((await counter.textContent()) ?? "").split("/")[0]?.trim(),
+      );
       expect(currentAfter).not.toBe(currentBefore);
     }
   });
@@ -497,7 +580,9 @@ test.describe("find", () => {
 });
 
 test.describe("table", () => {
-  test("inserting and deleting rows and columns changes the table structure", async ({ page }) => {
+  test("inserting and deleting rows and columns changes the table structure", async ({
+    page,
+  }) => {
     await mountFixture(page, "sample.docx");
 
     const rows0 = await countNodes(page, "tableRow");
@@ -527,19 +612,29 @@ test.describe("table", () => {
     expect(colsAfterInsert).toBe(cols0 + 1);
 
     // Delete a row -> row count shrinks again.
-    await (await openTableCellMenu(page)).getByRole("menuitem", { name: "Delete row" }).click();
+    await (
+      await openTableCellMenu(page)
+    )
+      .getByRole("menuitem", { name: "Delete row" })
+      .click();
     await page.waitForTimeout(250);
     expect(await countNodes(page, "tableRow")).toBeLessThan(rowsAfterInsert);
 
     // Delete a column -> the first row loses a cell again.
-    await (await openTableCellMenu(page)).getByRole("menuitem", { name: "Delete column" }).click();
+    await (
+      await openTableCellMenu(page)
+    )
+      .getByRole("menuitem", { name: "Delete column" })
+      .click();
     await page.waitForTimeout(250);
     expect(await firstRowCellCount(page)).toBeLessThan(colsAfterInsert);
   });
 });
 
 test.describe("insert toolbar", () => {
-  test("the opt-in Insert Table control adds a table to the document model", async ({ page }) => {
+  test("the opt-in Insert Table control adds a table to the document model", async ({
+    page,
+  }) => {
     await mountFixture(page, "sample.docx");
 
     // Place the caret in a body paragraph (outside any existing table) so the
@@ -585,7 +680,11 @@ test.describe("header/footer", () => {
   // Reads the header's hidden content editor (the `[data-hf-r-id]` ProseMirror
   // that backs the painted `.layout-page-header`).
   const headerContent = (page: Page) =>
-    page.evaluate(() => document.querySelector("[data-hf-r-id] .ProseMirror")?.textContent ?? "");
+    page.evaluate(
+      () =>
+        document.querySelector("[data-hf-r-id] .ProseMirror")?.textContent ??
+        "",
+    );
 
   // Text of every header in the *saved* document model. `getDocument()`
   // (buildCurrentDocument) flushes the persistent hidden header/footer views
@@ -593,7 +692,9 @@ test.describe("header/footer", () => {
   // serialise — the round-trip persistence path, independent of any UI commit.
   const savedHeaderText = (page: Page) =>
     page.evaluate(() => {
-      const doc = globalThis.__folioPlayground?.getEditorRef()?.getDocument() as {
+      const doc = globalThis.__folioPlayground
+        ?.getEditorRef()
+        ?.getDocument() as {
         package?: { headers?: unknown };
       } | null;
       const collect = (node: unknown): string => {
@@ -606,7 +707,10 @@ test.describe("header/footer", () => {
         return collect(content);
       };
       const headers = doc?.package?.headers;
-      const values = headers instanceof Map ? [...headers.values()] : Object.values(headers ?? {});
+      const values =
+        headers instanceof Map
+          ? [...headers.values()]
+          : Object.values(headers ?? {});
       return values.map((value) => collect(value)).join("");
     });
 
@@ -623,7 +727,9 @@ test.describe("header/footer", () => {
     // useHeaderFooterEditor double-click handler) and places the caret in the
     // header content editor.
     await header.dblclick();
-    await page.locator(".hf-inline-editor").waitFor({ state: "visible", timeout: 5000 });
+    await page
+      .locator(".hf-inline-editor")
+      .waitFor({ state: "visible", timeout: 5000 });
 
     await page.keyboard.type("HdrMark", { delay: 15 });
     await page.waitForTimeout(150);
@@ -651,7 +757,9 @@ test.describe("header/footer", () => {
     // header content editor, rather than falling through to the body (the nearest
     // editable text). Regression guard for the title-page / image-only header.
     await header.dblclick();
-    await page.locator(".hf-inline-editor").waitFor({ state: "visible", timeout: 5000 });
+    await page
+      .locator(".hf-inline-editor")
+      .waitFor({ state: "visible", timeout: 5000 });
 
     // Pause before typing: a real user does not type instantly, so focus must
     // stay in the header view past the brief entry-focus window, not snap back
@@ -667,7 +775,9 @@ test.describe("header/footer", () => {
             getEditorRef: () => {
               getDocument?: () => { package?: { headers?: unknown } };
               getEditorRef: () => {
-                getView?: () => { state: { doc: { textContent: string } } } | null;
+                getView?: () => {
+                  state: { doc: { textContent: string } };
+                } | null;
               };
             };
           };
@@ -679,7 +789,8 @@ test.describe("header/footer", () => {
       );
       return {
         painted:
-          document.querySelector('[data-page-number="1"] .layout-page-header')?.textContent ?? "",
+          document.querySelector('[data-page-number="1"] .layout-page-header')
+            ?.textContent ?? "",
         modelHasEdit: modelJson.includes("HdrMark"),
         body: top.getEditorRef().getView?.()?.state.doc.textContent ?? "",
       };
@@ -712,7 +823,9 @@ test.describe("image", () => {
 });
 
 test.describe("rendered page-break hints", () => {
-  test("cached hints remain advisory without duplicating structural breaks", async ({ page }) => {
+  test("cached hints remain advisory without duplicating structural breaks", async ({
+    page,
+  }) => {
     await mountFixture(page, "sample.docx");
 
     const replaceDocument = async (
@@ -723,27 +836,37 @@ test.describe("rendered page-break hints", () => {
         | "explicitAndHintAfterBreak",
     ) => {
       await page.evaluate((nextMode) => {
-        const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+        const view = globalThis.__folioPlayground
+          ?.getEditorRef()
+          ?.getEditorRef()
+          ?.getView();
         if (!view) {
           throw new Error("Editor view unavailable");
         }
         const { schema } = view.state;
-        const first = schema.node("paragraph", null, [schema.text("First page")]);
+        const first = schema.node("paragraph", null, [
+          schema.text("First page"),
+        ]);
         const attrs = {
           renderedPageBreakBefore: true,
           pageBreakBefore: nextMode.startsWith("explicit"),
         };
-        const hinted = schema.node("paragraph", attrs, [schema.text("Hinted paragraph")]);
+        const hinted = schema.node("paragraph", attrs, [
+          schema.text("Hinted paragraph"),
+        ]);
         const nodes = nextMode.endsWith("AfterContent")
           ? [first, hinted]
           : [first, schema.node("pageBreak"), hinted];
-        view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, nodes));
+        view.dispatch(
+          view.state.tr.replaceWith(0, view.state.doc.content.size, nodes),
+        );
       }, mode);
     };
 
     const waitForPages = async (count: number) => {
       await page.waitForFunction(
-        (expected) => document.querySelectorAll(".layout-page").length === expected,
+        (expected) =>
+          document.querySelectorAll(".layout-page").length === expected,
         count,
       );
     };
@@ -767,7 +890,9 @@ test.describe("rendered page-break hints", () => {
       page
         .locator(".layout-page")
         .nth(1)
-        .locator(".layout-page-content .layout-line", { hasText: "Hinted paragraph" }),
+        .locator(".layout-page-content .layout-line", {
+          hasText: "Hinted paragraph",
+        }),
     ).toHaveCount(1);
   });
 });
@@ -804,40 +929,54 @@ test.describe("document loading", () => {
       editor.loadDocument(next);
     }, marker);
 
-    await expect.poll(() => docText(page), { timeout: 10_000 }).toContain(marker);
+    await expect
+      .poll(() => docText(page), { timeout: 10_000 })
+      .toContain(marker);
     await expect(page.locator(".layout-page").first()).toContainText(marker);
   });
 });
 
 test.describe("zoom", () => {
-  test("setZoom updates getZoom and scales the rendered page", async ({ page }) => {
+  test("setZoom updates getZoom and scales the rendered page", async ({
+    page,
+  }) => {
     await mountFixture(page, "sample.docx");
 
     const pageWidth = async () =>
       (await page.locator(".layout-page").first().boundingBox())?.width ?? 0;
 
-    expect(await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.getZoom())).toBe(
-      1,
-    );
+    expect(
+      await page.evaluate(() =>
+        globalThis.__folioPlayground?.getEditorRef()?.getZoom(),
+      ),
+    ).toBe(1);
     const width1 = await pageWidth();
 
-    await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.setZoom(1.5));
+    await page.evaluate(() =>
+      globalThis.__folioPlayground?.getEditorRef()?.setZoom(1.5),
+    );
     await page.waitForTimeout(250);
 
-    expect(await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.getZoom())).toBe(
-      1.5,
-    );
+    expect(
+      await page.evaluate(() =>
+        globalThis.__folioPlayground?.getEditorRef()?.getZoom(),
+      ),
+    ).toBe(1.5);
     const ratio = (await pageWidth()) / width1;
     expect(ratio).toBeGreaterThan(1.3);
     expect(ratio).toBeLessThan(1.7);
   });
 
-  test("the in-toolbar zoom control changes the editor zoom", async ({ page }) => {
+  test("the in-toolbar zoom control changes the editor zoom", async ({
+    page,
+  }) => {
     await mountFixture(page, "sample.docx");
 
-    expect(await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.getZoom())).toBe(
-      1,
-    );
+    expect(
+      await page.evaluate(() =>
+        globalThis.__folioPlayground?.getEditorRef()?.getZoom(),
+      ),
+    ).toBe(1);
 
     // The toolbar zoom widget (a labelled "Zoom" group holding a Select) is the
     // canonical zoom UI. Open it and pick 150%; the editor zoom must follow.
@@ -846,16 +985,22 @@ test.describe("zoom", () => {
     await page.getByRole("option", { name: "150%" }).click();
     await page.waitForTimeout(200);
 
-    expect(await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.getZoom())).toBe(
-      1.5,
-    );
+    expect(
+      await page.evaluate(() =>
+        globalThis.__folioPlayground?.getEditorRef()?.getZoom(),
+      ),
+    ).toBe(1.5);
   });
 
-  test("Ctrl/Cmd+wheel pinch zooms in smoothly without slamming to the max", async ({ page }) => {
+  test("Ctrl/Cmd+wheel pinch zooms in smoothly without slamming to the max", async ({
+    page,
+  }) => {
     await mountFixture(page, "sample.docx");
-    expect(await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.getZoom())).toBe(
-      1,
-    );
+    expect(
+      await page.evaluate(() =>
+        globalThis.__folioPlayground?.getEditorRef()?.getZoom(),
+      ),
+    ).toBe(1);
 
     // Simulate a trackpad pinch-in: a burst of small-deltaY ctrlKey wheel events
     // over the scroll container. The continuous factor must nudge zoom up gently
@@ -865,13 +1010,20 @@ test.describe("zoom", () => {
       const el = document.querySelector("[data-folio-scroll]");
       for (let i = 0; i < 20; i += 1) {
         el?.dispatchEvent(
-          new WheelEvent("wheel", { deltaY: -4, ctrlKey: true, bubbles: true, cancelable: true }),
+          new WheelEvent("wheel", {
+            deltaY: -4,
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
         );
       }
     });
     await page.waitForTimeout(200);
 
-    const zoom = await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.getZoom());
+    const zoom = await page.evaluate(() =>
+      globalThis.__folioPlayground?.getEditorRef()?.getZoom(),
+    );
     expect(zoom).toBeGreaterThan(1);
     expect(zoom).toBeLessThan(1.6);
   });

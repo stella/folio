@@ -1,15 +1,21 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
-import path from "node:path";
 import { tmpdir } from "node:os";
+import path from "node:path";
 
 const pluginPath = path.resolve(import.meta.dir, "oxlint.ts");
-const oxlintPath = path.resolve(import.meta.dir, "../../../node_modules/.bin/oxlint");
+const oxlintPath = path.resolve(
+  import.meta.dir,
+  "../../../node_modules/.bin/oxlint",
+);
 
 const lint = async (
   rule: string,
   source: string,
-  { filename = "source.ts", options }: { filename?: string; options?: unknown } = {},
+  {
+    filename = "source.ts",
+    options,
+  }: { filename?: string; options?: unknown } = {},
 ) => {
   const directory = await mkdtemp(path.join(tmpdir(), "utf8-boundaries-"));
   try {
@@ -21,13 +27,23 @@ const lint = async (
         categories: { correctness: "off" },
         jsPlugins: [pluginPath],
         rules: {
-          [`utf8-boundaries/${rule}`]: options === undefined ? "error" : ["error", options],
+          [`utf8-boundaries/${rule}`]:
+            options === undefined ? "error" : ["error", options],
         },
       }),
     );
     await Bun.write(sourcePath, source);
     const child = Bun.spawn(
-      [process.execPath, "--bun", oxlintPath, "-c", configPath, "-f", "json", sourcePath],
+      [
+        process.execPath,
+        "--bun",
+        oxlintPath,
+        "-c",
+        configPath,
+        "-f",
+        "json",
+        sourcePath,
+      ],
       {
         cwd: directory,
         stdout: "pipe",
@@ -39,7 +55,8 @@ const lint = async (
       new Response(child.stderr).text(),
       child.exited,
     ]);
-    if (exitCode !== 0 && exitCode !== 1) throw new Error(`${stdout}\n${stderr}`);
+    if (exitCode !== 0 && exitCode !== 1)
+      throw new Error(`${stdout}\n${stderr}`);
     const report: unknown = JSON.parse(stdout);
     if (
       typeof report !== "object" ||
@@ -69,7 +86,9 @@ const lint = async (
           !("labels" in diagnostic) ||
           !Array.isArray(diagnostic.labels)
         ) {
-          throw new Error(`Unexpected diagnostic: ${JSON.stringify(diagnostic)}`);
+          throw new Error(
+            `Unexpected diagnostic: ${JSON.stringify(diagnostic)}`,
+          );
         }
         const label = diagnostic.labels[0];
         if (
@@ -81,7 +100,9 @@ const lint = async (
           !("line" in label.span) ||
           typeof label.span.line !== "number"
         ) {
-          throw new Error(`Unexpected diagnostic span: ${JSON.stringify(diagnostic)}`);
+          throw new Error(
+            `Unexpected diagnostic span: ${JSON.stringify(diagnostic)}`,
+          );
         }
         return label.span.line;
       })
@@ -107,13 +128,22 @@ test("no-string-zip-entry exempts only the configured owner path", async () => {
   const source = "zip.file(path, content);";
   const options = { ownerPath: "src/zip-owner.ts" };
   expect(
-    await lint("no-string-zip-entry", source, { filename: "src/zip-owner.ts", options }),
+    await lint("no-string-zip-entry", source, {
+      filename: "src/zip-owner.ts",
+      options,
+    }),
   ).toEqual([]);
   expect(
-    await lint("no-string-zip-entry", source, { filename: "src/consumer.ts", options }),
+    await lint("no-string-zip-entry", source, {
+      filename: "src/consumer.ts",
+      options,
+    }),
   ).toEqual([1]);
   expect(
-    await lint("no-string-zip-entry", source, { filename: "other-src/zip-owner.ts", options }),
+    await lint("no-string-zip-entry", source, {
+      filename: "other-src/zip-owner.ts",
+      options,
+    }),
   ).toEqual([1]);
 });
 
@@ -136,7 +166,9 @@ test("no-chunked-text-codec tracks decoder receivers across loops and stream cal
     "decoder.decode(finalChunk);",
   ].join("\n");
   expect(await lint("no-chunked-text-codec", source)).toEqual([2, 4, 4, 5, 6]);
-  expect(await lint("no-chunked-text-codec", withObjectHandlers)).toEqual([2, 3, 3]);
+  expect(await lint("no-chunked-text-codec", withObjectHandlers)).toEqual([
+    2, 3, 3,
+  ]);
 });
 
 test("fixtures exercise both rules", async () => {
@@ -146,8 +178,12 @@ test("fixtures exercise both rules", async () => {
   const codecFixture = await Bun.file(
     path.resolve(import.meta.dir, "../test/fixtures/no-chunked-text-codec.ts"),
   ).text();
-  expect(await lint("no-string-zip-entry", zipFixture)).toEqual([2, 3, 4, 5, 6, 7]);
-  expect(await lint("no-chunked-text-codec", codecFixture)).toEqual([3, 4, 5, 5, 6]);
+  expect(await lint("no-string-zip-entry", zipFixture)).toEqual([
+    2, 3, 4, 5, 6, 7,
+  ]);
+  expect(await lint("no-chunked-text-codec", codecFixture)).toEqual([
+    3, 4, 5, 5, 6,
+  ]);
 });
 
 test("stream options must remain enabled after spreads and computed keys", async () => {

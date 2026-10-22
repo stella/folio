@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
+import type {
+  ParagraphBlock,
+  ParagraphMeasure,
+  TableBlock,
+  TableMeasure,
+} from "../types";
 import { layoutTextBoxContent } from "./textBoxParagraphLayout";
-import type { ParagraphBlock, ParagraphMeasure, TableBlock, TableMeasure } from "../types";
 
 const paragraph = (
   id: string,
@@ -50,9 +55,9 @@ const tableMeasure = (height: number): TableMeasure => ({
 
 describe("text box content flow", () => {
   test("rejects mismatched block and measure counts", () => {
-    expect(() => layoutTextBoxContent([paragraph("only", "value")], [])).toThrow(
-      "block and measure counts must match",
-    );
+    expect(() =>
+      layoutTextBoxContent([paragraph("only", "value")], []),
+    ).toThrow("block and measure counts must match");
   });
 
   test("rejects mismatched block and measure kinds", () => {
@@ -67,7 +72,11 @@ describe("text box content flow", () => {
       paragraph("empty", "", { after: 30 }),
       paragraph("last", "value"),
     ];
-    const layout = layoutTextBoxContent(blocks, [measure(20), measure(20), measure(20)]);
+    const layout = layoutTextBoxContent(blocks, [
+      measure(20),
+      measure(20),
+      measure(20),
+    ]);
 
     expect(layout.placements).toEqual([
       { leadingSpacing: 0, contentHeight: 20 },
@@ -97,7 +106,11 @@ describe("text box content flow", () => {
       table("table"),
       paragraph("last", "value", { before: 8, after: 4 }),
     ];
-    const layout = layoutTextBoxContent(blocks, [measure(20), tableMeasure(40), measure(20)]);
+    const layout = layoutTextBoxContent(blocks, [
+      measure(20),
+      tableMeasure(40),
+      measure(20),
+    ]);
 
     expect(layout.placements).toEqual([
       { leadingSpacing: 0, contentHeight: 20 },

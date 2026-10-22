@@ -1,27 +1,44 @@
 /** Shared tracked construction for table rows and whole tables. */
-import { Result, panic } from "better-result";
+import { panic, Result } from "better-result";
 
 import {
-  MAX_REVISION_ID,
   type BlockContent,
   type Document,
   type DocumentBody,
+  MAX_REVISION_ID,
   type Paragraph,
   type TableRow,
   type TrackedChangeInfo,
 } from "../model/document";
-import { blockListAt, endsItsContainer, storyParagraphs, type ParagraphLocation } from "./blocks";
+import {
+  blockListAt,
+  endsItsContainer,
+  type ParagraphLocation,
+  storyParagraphs,
+} from "./blocks";
 import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
-import { IDENTITY_SPACES, identityKeysIn, idKey, packageIdentityKeys, slotKey } from "./ids";
+import {
+  IDENTITY_SPACES,
+  identityKeysIn,
+  idKey,
+  packageIdentityKeys,
+  slotKey,
+} from "./ids";
 import { childNodes, type InlineNode } from "./leaves";
 import { paragraphLength } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
-import { carriesStamp, stampInfo, wrapTracked, WRAP_KINDS, type WrapKind } from "./review";
 import {
-  DOCUMENT_OP_TYPES,
+  carriesStamp,
+  stampInfo,
+  WRAP_KINDS,
+  type WrapKind,
+  wrapTracked,
+} from "./review";
+import {
   type DeleteRowOp,
   type DeleteTableOp,
+  DOCUMENT_OP_TYPES,
   type InsertRowOp,
   type InsertTableOp,
   type NewIds,
@@ -202,13 +219,19 @@ export const trackTableRows = ({
   }
   const before = paragraphsIn(rows);
   const outside = new Set(packageIdentityKeys(document.package));
-  if (op.type === DOCUMENT_OP_TYPES.DELETE_ROW || op.type === DOCUMENT_OP_TYPES.DELETE_TABLE) {
+  if (
+    op.type === DOCUMENT_OP_TYPES.DELETE_ROW ||
+    op.type === DOCUMENT_OP_TYPES.DELETE_TABLE
+  ) {
     for (const key of identityKeysIn(rows)) outside.delete(key);
   }
   // Reserve every structural id before assigning cell marks or inline ids.
   // Existing row identities remain unavailable to the new structural records.
   const taken = new Set([...outside, ...identityKeysIn(rows)]);
-  const firstKey = slotKey({ space: IDENTITY_SPACES.REVISION, id: revision.id });
+  const firstKey = slotKey({
+    space: IDENTITY_SPACES.REVISION,
+    id: revision.id,
+  });
   outside.add(firstKey);
   taken.add(firstKey);
   const rowStamps: RevisionStamp[] = [];
@@ -253,7 +276,10 @@ export const trackTableRows = ({
     const wrapped = wrapTracked({
       items: paragraph.content,
       from: { offset: 0, zeroWidthBefore: 0 },
-      to: { offset: paragraphLength(paragraph), zeroWidthBefore: Number.MAX_SAFE_INTEGER },
+      to: {
+        offset: paragraphLength(paragraph),
+        zeroWidthBefore: Number.MAX_SAFE_INTEGER,
+      },
       kind,
       stamp: revision,
     });
@@ -264,7 +290,8 @@ export const trackTableRows = ({
         message: "The rows' content cannot record this revision.",
       });
     }
-    const content = wrapped.kind === "unchanged" ? paragraph.content : wrapped.content;
+    const content =
+      wrapped.kind === "unchanged" ? paragraph.content : wrapped.content;
     if (finals.has(paragraph)) {
       after.push({
         ...paragraph,
@@ -276,7 +303,9 @@ export const trackTableRows = ({
       });
       continue;
     }
-    after.push(content === paragraph.content ? paragraph : { ...paragraph, content });
+    after.push(
+      content === paragraph.content ? paragraph : { ...paragraph, content },
+    );
   }
   const freshened = freshenIdentities({
     before,
@@ -299,19 +328,28 @@ export const trackTableRows = ({
       });
     case "fresh": {
       const byId = new Map(
-        freshened.paragraphs.map((paragraph) => [idKey(paragraph.paraId ?? ""), paragraph]),
+        freshened.paragraphs.map((paragraph) => [
+          idKey(paragraph.paraId ?? ""),
+          paragraph,
+        ]),
       );
       return Result.ok(
         rows.map((row, index) => {
-          const stamp = rowStamps[index] ?? panic("A tracked row lost its structural stamp.");
+          const stamp =
+            rowStamps[index] ??
+            panic("A tracked row lost its structural stamp.");
           return {
             ...rowWithParagraphs(
               row,
               (paragraph) =>
-                byId.get(idKey(paragraph.paraId ?? "")) ?? panic("A tracked row lost a paragraph."),
+                byId.get(idKey(paragraph.paraId ?? "")) ??
+                panic("A tracked row lost a paragraph."),
             ),
             structuralChange: {
-              type: kind === WRAP_KINDS.INSERTION ? "tableRowInsertion" : "tableRowDeletion",
+              type:
+                kind === WRAP_KINDS.INSERTION
+                  ? "tableRowInsertion"
+                  : "tableRowDeletion",
               info: stampInfo(stamp),
             },
           } satisfies TableRow;
@@ -326,14 +364,24 @@ export const trackTableRows = ({
 };
 
 /** A cell-final mark is legal only when its innermost row owns its stamp. */
-export const permitsCellFinalMark = (body: DocumentBody, location: ParagraphLocation): boolean => {
+export const permitsCellFinalMark = (
+  body: DocumentBody,
+  location: ParagraphLocation,
+): boolean => {
   const mark = location.paragraph.pPrMark;
   if (mark === undefined || !endsItsContainer(body, location)) return false;
-  const stepIndex = location.list.findLastIndex((step) => step.kind === "tableCell");
+  const stepIndex = location.list.findLastIndex(
+    (step) => step.kind === "tableCell",
+  );
   const step = location.list[stepIndex];
   if (step?.kind !== "tableCell") return false;
-  const table = blockListAt(body.content, location.list.slice(0, stepIndex))[step.block];
-  const change = table?.type === "table" ? table.rows[step.row]?.structuralChange : undefined;
+  const table = blockListAt(body.content, location.list.slice(0, stepIndex))[
+    step.block
+  ];
+  const change =
+    table?.type === "table"
+      ? table.rows[step.row]?.structuralChange
+      : undefined;
   if (
     change === undefined ||
     mark.info.id === change.info.id ||
@@ -370,7 +418,11 @@ export const stampedTableRevisionIds = ({
   const out: number[] = [];
   const added = new Set<number>();
   const addId = (id: number) => {
-    if (known.has(slotKey({ space: IDENTITY_SPACES.REVISION, id })) || added.has(id)) return;
+    if (
+      known.has(slotKey({ space: IDENTITY_SPACES.REVISION, id })) ||
+      added.has(id)
+    )
+      return;
     added.add(id);
     out.push(id);
   };
@@ -381,15 +433,22 @@ export const stampedTableRevisionIds = ({
     for (const block of children) {
       switch (block.type) {
         case "table":
-          for (const change of block.propertyChanges ?? []) addInfo(change.info);
-          if (block.formatting?.gridChange !== undefined) addId(block.formatting.gridChange.id);
+          for (const change of block.propertyChanges ?? [])
+            addInfo(change.info);
+          if (block.formatting?.gridChange !== undefined)
+            addId(block.formatting.gridChange.id);
           for (const row of block.rows) {
-            if (row.structuralChange !== undefined) addInfo(row.structuralChange.info);
-            for (const change of row.propertyChanges ?? []) addInfo(change.info);
-            for (const change of row.tablePropertyExceptionChanges ?? []) addInfo(change.info);
+            if (row.structuralChange !== undefined)
+              addInfo(row.structuralChange.info);
+            for (const change of row.propertyChanges ?? [])
+              addInfo(change.info);
+            for (const change of row.tablePropertyExceptionChanges ?? [])
+              addInfo(change.info);
             for (const cell of row.cells) {
-              if (cell.structuralChange !== undefined) addInfo(cell.structuralChange.info);
-              for (const change of cell.propertyChanges ?? []) addInfo(change.info);
+              if (cell.structuralChange !== undefined)
+                addInfo(cell.structuralChange.info);
+              for (const change of cell.propertyChanges ?? [])
+                addInfo(change.info);
               visit(cell.content);
             }
           }

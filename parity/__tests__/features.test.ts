@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+
 import { AhoCorasick } from "@stll/aho-corasick";
 
 import {
@@ -10,7 +11,12 @@ import {
   scanDocumentXml,
 } from "../features";
 import type { DocFeatures, ParagraphFeatures } from "../features";
-import type { Divergence, DocGeom, FeatureAttributedResult, ParityResult } from "../types";
+import type {
+  Divergence,
+  DocGeom,
+  FeatureAttributedResult,
+  ParityResult,
+} from "../types";
 
 const wrapBody = (body: string): string =>
   `<?xml version="1.0"?><w:document><w:body>${body}</w:body></w:document>`;
@@ -32,10 +38,12 @@ describe("scanDocumentXml: paragraph scanning + feature tagging", () => {
       normText: "Before new",
       features: ["tracked-changes"],
     });
-    expect(scanDocumentXml(xml, { reviewView: "final" }).paragraphs[0]?.normText).toBe(
-      "Before new",
-    );
-    expect(scanDocumentXml(xml, { reviewView: "all-markup" }).paragraphs[0]).toEqual({
+    expect(
+      scanDocumentXml(xml, { reviewView: "final" }).paragraphs[0]?.normText,
+    ).toBe("Before new");
+    expect(
+      scanDocumentXml(xml, { reviewView: "all-markup" }).paragraphs[0],
+    ).toEqual({
       normText: "Before oldnew",
       features: ["tracked-changes"],
     });
@@ -46,12 +54,13 @@ describe("scanDocumentXml: paragraph scanning + feature tagging", () => {
       '<w:p><w:r><w:t>Before </w:t></w:r><w:moveFrom w:id="1"><w:r><w:t>old place</w:t></w:r></w:moveFrom><w:moveTo w:id="1"><w:r><w:t>new place</w:t></w:r></w:moveTo></w:p>',
     );
 
-    expect(scanDocumentXml(xml, { reviewView: "final" }).paragraphs[0]?.normText).toBe(
-      "Before new place",
-    );
-    expect(scanDocumentXml(xml, { reviewView: "all-markup" }).paragraphs[0]?.normText).toBe(
-      "Before old placenew place",
-    );
+    expect(
+      scanDocumentXml(xml, { reviewView: "final" }).paragraphs[0]?.normText,
+    ).toBe("Before new place");
+    expect(
+      scanDocumentXml(xml, { reviewView: "all-markup" }).paragraphs[0]
+        ?.normText,
+    ).toBe("Before old placenew place");
   });
 
   test("resolves alternate WordprocessingML prefixes in Strict and Transitional documents", () => {
@@ -66,22 +75,26 @@ describe("scanDocumentXml: paragraph scanning + feature tagging", () => {
         '<x:del x:id="2"><x:r><x:delText>old</x:delText></x:r></x:del></x:p>' +
         "</x:body></x:document>";
 
-      expect(scanDocumentXml(xml, { reviewView: "final" }).paragraphs[0]).toEqual({
+      expect(
+        scanDocumentXml(xml, { reviewView: "final" }).paragraphs[0],
+      ).toEqual({
         normText: "new",
         features: ["tracked-changes"],
       });
-      expect(scanDocumentXml(xml, { reviewView: "all-markup" }).paragraphs[0]?.normText).toBe(
-        "newold",
-      );
+      expect(
+        scanDocumentXml(xml, { reviewView: "all-markup" }).paragraphs[0]
+          ?.normText,
+      ).toBe("newold");
     }
 
     const paragraphLocal =
       '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
       '<w:body><w:p xmlns:x="http://purl.oclc.org/ooxml/wordprocessingml/main">' +
       "<x:ins><x:r><x:t>local</x:t></x:r></x:ins></w:p></w:body></w:document>";
-    expect(scanDocumentXml(paragraphLocal, { reviewView: "final" }).paragraphs[0]?.normText).toBe(
-      "local",
-    );
+    expect(
+      scanDocumentXml(paragraphLocal, { reviewView: "final" }).paragraphs[0]
+        ?.normText,
+    ).toBe("local");
   });
 
   test("does not treat a prefix bound to another namespace as WordprocessingML", () => {
@@ -89,10 +102,12 @@ describe("scanDocumentXml: paragraph scanning + feature tagging", () => {
       '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
       'xmlns:x="urn:example"><w:body><w:p><x:ins><x:t>not Word text</x:t></x:ins>' +
       "<w:r><w:t>kept</w:t></w:r></w:p></w:body></w:document>";
-    expect(scanDocumentXml(xml, { reviewView: "final" }).paragraphs[0]).toEqual({
-      normText: "kept",
-      features: [],
-    });
+    expect(scanDocumentXml(xml, { reviewView: "final" }).paragraphs[0]).toEqual(
+      {
+        normText: "kept",
+        features: [],
+      },
+    );
 
     const foreignDocument =
       '<x:document xmlns:x="urn:example"><x:body><x:p><x:r><x:t>foreign</x:t></x:r></x:p>' +
@@ -164,7 +179,9 @@ describe("scanDocumentXml: paragraph scanning + feature tagging", () => {
   test("justification variants map to justify / align-center / align-right", () => {
     const jc = (val: string) =>
       scanDocumentXml(
-        wrapBody(`<w:p><w:pPr><w:jc w:val="${val}"/></w:pPr><w:r><w:t>x</w:t></w:r></w:p>`),
+        wrapBody(
+          `<w:p><w:pPr><w:jc w:val="${val}"/></w:pPr><w:r><w:t>x</w:t></w:r></w:p>`,
+        ),
       ).paragraphs[0]?.features;
     expect(jc("both")).toEqual(["justify"]);
     expect(jc("distribute")).toEqual(["justify"]);
@@ -198,12 +215,16 @@ describe("scanDocumentXml: paragraph scanning + feature tagging", () => {
 
   test("anchored drawing is 'float-anchor', inline drawing is 'inline-image'", () => {
     const anchor = scanDocumentXml(
-      wrapBody("<w:p><w:r><w:drawing><wp:anchor>stuff</wp:anchor></w:drawing></w:r></w:p>"),
+      wrapBody(
+        "<w:p><w:r><w:drawing><wp:anchor>stuff</wp:anchor></w:drawing></w:r></w:p>",
+      ),
     ).paragraphs[0];
     expect(anchor?.features).toEqual(["float-anchor"]);
 
     const inline = scanDocumentXml(
-      wrapBody("<w:p><w:r><w:drawing><wp:inline>stuff</wp:inline></w:drawing></w:r></w:p>"),
+      wrapBody(
+        "<w:p><w:r><w:drawing><wp:inline>stuff</wp:inline></w:drawing></w:r></w:p>",
+      ),
     ).paragraphs[0];
     expect(inline?.features).toEqual(["inline-image"]);
   });
@@ -217,7 +238,9 @@ describe("scanDocumentXml: paragraph scanning + feature tagging", () => {
     expect(fldChar?.features).toEqual(["field"]);
 
     const fldSimple = scanDocumentXml(
-      wrapBody('<w:p><w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple></w:p>'),
+      wrapBody(
+        '<w:p><w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple></w:p>',
+      ),
     ).paragraphs[0];
     expect(fldSimple?.features).toEqual(["field"]);
   });
@@ -232,12 +255,14 @@ describe("scanDocumentXml: paragraph scanning + feature tagging", () => {
   });
 
   test("page-break / column-break are distinguished by w:br w:type", () => {
-    const pageBreak = scanDocumentXml(wrapBody('<w:p><w:r><w:br w:type="page"/></w:r></w:p>'))
-      .paragraphs[0];
+    const pageBreak = scanDocumentXml(
+      wrapBody('<w:p><w:r><w:br w:type="page"/></w:r></w:p>'),
+    ).paragraphs[0];
     expect(pageBreak?.features).toEqual(["page-break"]);
 
-    const columnBreak = scanDocumentXml(wrapBody('<w:p><w:r><w:br w:type="column"/></w:r></w:p>'))
-      .paragraphs[0];
+    const columnBreak = scanDocumentXml(
+      wrapBody('<w:p><w:r><w:br w:type="column"/></w:r></w:p>'),
+    ).paragraphs[0];
     expect(columnBreak?.features).toEqual(["column-break"]);
   });
 
@@ -261,8 +286,9 @@ describe("scanDocumentXml: paragraph scanning + feature tagging", () => {
   });
 
   test("CJK text is tagged 'cjk'", () => {
-    const paragraph = scanDocumentXml(wrapBody("<w:p><w:r><w:t>你好世界</w:t></w:r></w:p>"))
-      .paragraphs[0];
+    const paragraph = scanDocumentXml(
+      wrapBody("<w:p><w:r><w:t>你好世界</w:t></w:r></w:p>"),
+    ).paragraphs[0];
     expect(paragraph?.features).toEqual(["cjk"]);
     expect(paragraph?.normText).toBe("你好世界");
   });
@@ -324,7 +350,10 @@ describe("attributeDivergences", () => {
     divergences,
   });
 
-  const paragraph = (normText: string, features: string[]): ParagraphFeatures => ({
+  const paragraph = (
+    normText: string,
+    features: string[],
+  ): ParagraphFeatures => ({
     normText,
     features,
   });
@@ -344,17 +373,23 @@ describe("attributeDivergences", () => {
             {
               paragraphs: [
                 paragraph(`${text} with extra context`, ["table"]),
-                paragraph(`Unrelated paragraph for document ${index}`, ["field"]),
+                paragraph(`Unrelated paragraph for document ${index}`, [
+                  "field",
+                ]),
               ],
               docFeatures: [],
             },
           );
-          expect(result.attributed.map(({ features }) => features)).toEqual([["table"], ["table"]]);
+          expect(result.attributed.map(({ features }) => features)).toEqual([
+            ["table"],
+            ["table"],
+          ]);
         }
         // Keep only weak references; the spy's arguments and contexts own strong ones.
         return writes.mock.calls.flatMap(([, value], index) => {
           const cache = writes.mock.contexts.at(index);
-          if (!(value instanceof AhoCorasick) || !(cache instanceof Map)) return [];
+          if (!(value instanceof AhoCorasick) || !(cache instanceof Map))
+            return [];
           return [{ cache: new WeakRef(cache), matcher: new WeakRef(value) }];
         });
       } finally {
@@ -370,17 +405,24 @@ describe("attributeDivergences", () => {
     Bun.gc(true);
     expect(
       references.every(
-        ({ cache, matcher }) => cache.deref() === undefined && matcher.deref() === undefined,
+        ({ cache, matcher }) =>
+          cache.deref() === undefined && matcher.deref() === undefined,
       ),
     ).toBe(true);
   });
 
   test("matches by substring: divergence text contained in a longer paragraph normText", () => {
     const doc: DocFeatures = {
-      paragraphs: [paragraph("This is a long paragraph with a tab stop in it", ["tab-stops"])],
+      paragraphs: [
+        paragraph("This is a long paragraph with a tab stop in it", [
+          "tab-stops",
+        ]),
+      ],
       docFeatures: ["headers"],
     };
-    const result = baseResult([{ kind: "missing-line", page: 1, text: "a tab stop" }]);
+    const result = baseResult([
+      { kind: "missing-line", page: 1, text: "a tab stop" },
+    ]);
     const attributed = attributeDivergences(result, doc);
     expect(attributed.attributed[0]?.features).toEqual(["tab-stops"]);
   });
@@ -391,7 +433,11 @@ describe("attributeDivergences", () => {
       docFeatures: [],
     };
     const result = baseResult([
-      { kind: "extra-line", page: 2, text: "Short cell (folio rendered extra context)" },
+      {
+        kind: "extra-line",
+        page: 2,
+        text: "Short cell (folio rendered extra context)",
+      },
     ]);
     const attributed = attributeDivergences(result, doc);
     expect(attributed.attributed[0]?.features).toEqual(["table"]);
@@ -402,7 +448,9 @@ describe("attributeDivergences", () => {
       paragraphs: [paragraph("Before oldnew", ["tracked-changes"])],
       docFeatures: ["headers"],
     };
-    const result = baseResult([{ kind: "missing-line", page: 1, text: "Before oldnew" }]);
+    const result = baseResult([
+      { kind: "missing-line", page: 1, text: "Before oldnew" },
+    ]);
 
     const attributed = attributeDivergences(result, doc);
 
@@ -439,9 +487,10 @@ describe("attributeDivergences", () => {
           "يخضع هذا (المستند) لحقوق التأليف والنشر ولا يجوز استخدام هذا المستند أو إعادة إصداره لأغراض تجارية",
           ["rtl"],
         ),
-        paragraph("یخضع ھذا ]المستند[ لحقوق التألیف والنشر ولا یجوز استغلال ھذا المستند", [
-          "spacing-multiple",
-        ]),
+        paragraph(
+          "یخضع ھذا ]المستند[ لحقوق التألیف والنشر ولا یجوز استغلال ھذا المستند",
+          ["spacing-multiple"],
+        ),
       ],
       docFeatures: ["headers"],
     };
@@ -460,10 +509,15 @@ describe("attributeDivergences", () => {
 
   test("preserves token boundaries when canonicalizing brackets", () => {
     const doc: DocFeatures = {
-      paragraphs: [paragraph("foo(bar)", ["table"]), paragraph("foobar", ["rtl"])],
+      paragraphs: [
+        paragraph("foo(bar)", ["table"]),
+        paragraph("foobar", ["rtl"]),
+      ],
       docFeatures: ["headers"],
     };
-    const result = baseResult([{ kind: "missing-line", page: 1, text: "foobar" }]);
+    const result = baseResult([
+      { kind: "missing-line", page: 1, text: "foobar" },
+    ]);
 
     const attributed = attributeDivergences(result, doc);
 
@@ -478,7 +532,9 @@ describe("attributeDivergences", () => {
       ],
       docFeatures: ["headers"],
     };
-    const result = baseResult([{ kind: "missing-line", page: 1, text: "Shared clause" }]);
+    const result = baseResult([
+      { kind: "missing-line", page: 1, text: "Shared clause" },
+    ]);
 
     const attributed = attributeDivergences(result, doc);
 
@@ -493,7 +549,9 @@ describe("attributeDivergences", () => {
       ],
       docFeatures: ["headers"],
     };
-    const result = baseResult([{ kind: "missing-line", page: 1, text: "Shared clause" }]);
+    const result = baseResult([
+      { kind: "missing-line", page: 1, text: "Shared clause" },
+    ]);
 
     const attributed = attributeDivergences(result, doc);
 
@@ -520,9 +578,10 @@ describe("attributeDivergences", () => {
   test("rejects fuzzy candidates with substantially different lengths", () => {
     const doc: DocFeatures = {
       paragraphs: [
-        paragraph("The quick brown fox jumps over and keeps running across the entire field", [
-          "spacing-multiple",
-        ]),
+        paragraph(
+          "The quick brown fox jumps over and keeps running across the entire field",
+          ["spacing-multiple"],
+        ),
       ],
       docFeatures: ["headers"],
     };
@@ -558,15 +617,24 @@ describe("attributeDivergences", () => {
       docFeatures: ["footnotes", "landscape"],
     };
     const result = baseResult([
-      { kind: "missing-line", page: 1, text: "Totally different text entirely" },
+      {
+        kind: "missing-line",
+        page: 1,
+        text: "Totally different text entirely",
+      },
     ]);
     const attributed = attributeDivergences(result, doc);
-    expect(attributed.attributed[0]?.features).toEqual(["doc:footnotes", "doc:landscape"]);
+    expect(attributed.attributed[0]?.features).toEqual([
+      "doc:footnotes",
+      "doc:landscape",
+    ]);
   });
 
   test("falls back to ['doc:unattributed'] when doc has no docFeatures either", () => {
     const doc: DocFeatures = { paragraphs: [], docFeatures: [] };
-    const result = baseResult([{ kind: "missing-line", page: 1, text: "Anything" }]);
+    const result = baseResult([
+      { kind: "missing-line", page: 1, text: "Anything" },
+    ]);
     const attributed = attributeDivergences(result, doc);
     expect(attributed.attributed[0]?.features).toEqual(["doc:unattributed"]);
   });
@@ -606,7 +674,10 @@ describe("attributeDivergences", () => {
 });
 
 describe("clusterCorpus", () => {
-  const paragraph = (normText: string, features: string[]): ParagraphFeatures => ({
+  const paragraph = (
+    normText: string,
+    features: string[],
+  ): ParagraphFeatures => ({
     normText,
     features,
   });
@@ -629,12 +700,22 @@ describe("clusterCorpus", () => {
     docFeatures,
   });
 
-  const yDrift = (page: number, text: string, residualPt: number, features: string[]) => ({
+  const yDrift = (
+    page: number,
+    text: string,
+    residualPt: number,
+    features: string[],
+  ) => ({
     divergence: { kind: "y-drift" as const, page, text, residualPt },
     features,
   });
 
-  const xDrift = (page: number, text: string, deltaPt: number, features: string[]) => ({
+  const xDrift = (
+    page: number,
+    text: string,
+    deltaPt: number,
+    features: string[],
+  ) => ({
     divergence: { kind: "x-drift" as const, page, text, deltaPt },
     features,
   });
@@ -642,30 +723,45 @@ describe("clusterCorpus", () => {
   test("a feature rare in the corpus but common among one divergence kind gets high lift and ranks first", () => {
     // Baseline pool: 40 paragraphs total, only 2 carry "table" (5% prevalence).
     const corpusParagraphs: ParagraphFeatures[][] = [
-      Array.from({ length: 19 }, (_, i) => paragraph(`plain paragraph ${i}`, [])),
-      [paragraph("table cell one", ["table"]), paragraph("table cell two", ["table"])],
-      Array.from({ length: 19 }, (_, i) => paragraph(`other paragraph ${i}`, ["justify"])),
+      Array.from({ length: 19 }, (_, i) =>
+        paragraph(`plain paragraph ${i}`, []),
+      ),
+      [
+        paragraph("table cell one", ["table"]),
+        paragraph("table cell two", ["table"]),
+      ],
+      Array.from({ length: 19 }, (_, i) =>
+        paragraph(`other paragraph ${i}`, ["justify"]),
+      ),
     ];
 
     const results: FeatureAttributedResult[] = [
       makeResult(
         "/a.docx",
         [],
-        [yDrift(1, "table cell one", 4, ["table"]), yDrift(1, "table cell two", 5, ["table"])],
+        [
+          yDrift(1, "table cell one", 4, ["table"]),
+          yDrift(1, "table cell two", 5, ["table"]),
+        ],
       ),
       makeResult("/b.docx", [], [yDrift(1, "table cell three", 6, ["table"])]),
       makeResult("/c.docx", [], [yDrift(1, "unrelated line", 1, ["justify"])]),
       makeResult(
         "/d.docx",
         [],
-        [xDrift(1, "some line", 1, ["justify"]), xDrift(1, "another line", 1.2, ["justify"])],
+        [
+          xDrift(1, "some line", 1, ["justify"]),
+          xDrift(1, "another line", 1.2, ["justify"]),
+        ],
       ),
       makeResult("/e.docx", [], [xDrift(1, "yet another", 0.9, ["justify"])]),
       makeResult("/f.docx", [], []),
     ];
 
     const clusters = clusterCorpus(results, corpusParagraphs);
-    const tableYDrift = clusters.find((c) => c.kind === "y-drift" && c.feature === "table");
+    const tableYDrift = clusters.find(
+      (c) => c.kind === "y-drift" && c.feature === "table",
+    );
     expect(tableYDrift).toBeDefined();
     expect(tableYDrift?.count).toBe(3);
     expect(tableYDrift?.docs).toEqual(["/a.docx", "/b.docx"]);
@@ -695,7 +791,9 @@ describe("clusterCorpus", () => {
   });
 
   test("small corpus (< 5 docs) allows count === 1 clusters through", () => {
-    const corpusParagraphs: ParagraphFeatures[][] = [[paragraph("p", ["indent"])]];
+    const corpusParagraphs: ParagraphFeatures[][] = [
+      [paragraph("p", ["indent"])],
+    ];
     const results: FeatureAttributedResult[] = [
       makeResult("/a.docx", [], [yDrift(1, "x", 1, ["indent"])]),
       makeResult("/b.docx", [], []),
@@ -709,8 +807,12 @@ describe("clusterCorpus", () => {
     const corpusParagraphs: ParagraphFeatures[][] = [
       Array.from({ length: 10 }, (_, i) => paragraph(`p${i}`, ["indent"])),
     ];
-    const attributed = Array.from({ length: 7 }, (_, i) => yDrift(1, `line ${i}`, 1, ["indent"]));
-    const results: FeatureAttributedResult[] = [makeResult("/a.docx", [], attributed)];
+    const attributed = Array.from({ length: 7 }, (_, i) =>
+      yDrift(1, `line ${i}`, 1, ["indent"]),
+    );
+    const results: FeatureAttributedResult[] = [
+      makeResult("/a.docx", [], attributed),
+    ];
     const clusters = clusterCorpus(results, corpusParagraphs);
     const cluster = clusters.find((c) => c.feature === "indent");
     expect(cluster?.count).toBe(7);
@@ -775,9 +877,9 @@ describe("clusterCorpus", () => {
     const clusters = clusterCorpus([mismatched, comparable], corpusParagraphs);
 
     expect(clusters.some((cluster) => cluster.feature === "table")).toBe(false);
-    expect(clusters.find((cluster) => cluster.feature === "justify")?.docs).toEqual([
-      "/comparable.docx",
-    ]);
+    expect(
+      clusters.find((cluster) => cluster.feature === "justify")?.docs,
+    ).toEqual(["/comparable.docx"]);
   });
 });
 
@@ -793,19 +895,25 @@ describe("computeFontSubstitutionTags", () => {
 
   test("a different family sharing a prefix is a substitution", () => {
     // "Interstate-Bold" must NOT satisfy a request for "Inter".
-    expect(computeFontSubstitutionTags(["Inter"], ["Interstate-Bold"])).toEqual([
-      "font-substituted:inter",
-    ]);
+    expect(computeFontSubstitutionTags(["Inter"], ["Interstate-Bold"])).toEqual(
+      ["font-substituted:inter"],
+    );
   });
 
   test("subset prefixes are stripped and duplicates deduplicated", () => {
     expect(
-      computeFontSubstitutionTags(["Calibri", "calibri", "Missing Font"], ["ABCDEF+Calibri-Bold"]),
+      computeFontSubstitutionTags(
+        ["Calibri", "calibri", "Missing Font"],
+        ["ABCDEF+Calibri-Bold"],
+      ),
     ).toEqual(["font-substituted:missingfont"]);
   });
 });
 
-const fontGeom = (source: "word" | "folio", lines: Array<[string, string]>): DocGeom => ({
+const fontGeom = (
+  source: "word" | "folio",
+  lines: Array<[string, string]>,
+): DocGeom => ({
   source,
   file: "/font-test.docx",
   pages: [
@@ -832,8 +940,12 @@ const fontGeom = (source: "word" | "folio", lines: Array<[string, string]>): Doc
 describe("assessFontEnvironment", () => {
   test("recognizes equivalent PDF and CSS family names", () => {
     expect(fontFamiliesMatch("ArialMT", "Arial")).toBe(true);
-    expect(fontFamiliesMatch("ABCDEF+Calibri-BoldItalic", "Calibri")).toBe(true);
-    expect(fontFamiliesMatch("TimesNewRomanPS-BoldItal", "Times New Roman")).toBe(true);
+    expect(fontFamiliesMatch("ABCDEF+Calibri-BoldItalic", "Calibri")).toBe(
+      true,
+    );
+    expect(
+      fontFamiliesMatch("TimesNewRomanPS-BoldItal", "Times New Roman"),
+    ).toBe(true);
     expect(fontFamiliesMatch("ArialMT-PSIt", "ArialMT")).toBe(true);
     expect(fontFamiliesMatch("Interstate-Bold", "Inter")).toBe(false);
   });
@@ -951,10 +1063,15 @@ describe("assessFontEnvironment", () => {
       `Body line ${index}`,
       "ArialMT",
     ]);
-    const word = fontGeom("word", [["Display heading", "AptosDisplay-Bold"], ...lines]);
+    const word = fontGeom("word", [
+      ["Display heading", "AptosDisplay-Bold"],
+      ...lines,
+    ]);
     const folio = fontGeom("folio", [["Display heading", "Arial"], ...lines]);
 
-    expect(assessFontEnvironment(["Arial", "Aptos Display"], word, folio)).toEqual({
+    expect(
+      assessFontEnvironment(["Arial", "Aptos Display"], word, folio),
+    ).toEqual({
       status: "partial-mismatch",
       tags: ["font-renderer-line-mismatch"],
       comparedLines: 41,
@@ -967,10 +1084,15 @@ describe("assessFontEnvironment", () => {
       `Body line ${index}`,
       "ArialMT",
     ]);
-    const word = fontGeom("word", [["Display heading", "AptosDisplay-Bold"], ...lines]);
+    const word = fontGeom("word", [
+      ["Display heading", "AptosDisplay-Bold"],
+      ...lines,
+    ]);
     const folio = fontGeom("folio", [["Display heading", "Arial"], ...lines]);
 
-    expect(assessFontEnvironment(["Arial"], word, folio).status).toBe("mismatch");
+    expect(assessFontEnvironment(["Arial"], word, folio).status).toBe(
+      "mismatch",
+    );
   });
 
   test("reports unverified when no font-bearing text can be paired", () => {

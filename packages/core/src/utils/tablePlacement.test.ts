@@ -31,7 +31,9 @@ describe("physical table placement", () => {
   test.each(CASES)(
     "resolves $placement to $expected when rightToLeft=$rightToLeft",
     ({ placement, rightToLeft, expected }) => {
-      expect(resolveTablePlacementAlignment(placement, rightToLeft)).toBe(expected);
+      expect(resolveTablePlacementAlignment(placement, rightToLeft)).toBe(
+        expected,
+      );
     },
   );
 });

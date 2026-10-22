@@ -16,6 +16,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+import { declareCanonicalRefusalCases } from "../../../../test/canonical-conformance-refusals";
 import {
   addFeatureHit,
   emptyFeatureCoverage,
@@ -23,8 +24,7 @@ import {
   shapeFeatureSignature,
   summarizeFeatureCoverage,
 } from "../../../../test/consumer-scenarios/support/feature-coverage";
-
-import { declareCanonicalRefusalCases } from "../../../../test/canonical-conformance-refusals";
+import { createStarterKit } from "../prosemirror/extensions/StarterKit";
 import { DOCUMENT_SHAPES } from "./documentShapes";
 import {
   CONFORMANCE_OPERATIONS,
@@ -33,7 +33,6 @@ import {
   runConformanceCase,
   runLegacyConformanceCase,
 } from "./editorCommandConformance";
-import { SUGGESTION_INPUT_DRIVERS, SUGGESTION_INPUT_KINDS } from "./suggestionInputKinds";
 import type { Violation } from "./editorCommandConformance";
 import {
   gapApplies,
@@ -41,9 +40,19 @@ import {
   KNOWN_CONFORMANCE_GAPS,
   LEGACY_NODE_REPLACEMENTS,
 } from "./editorCommandConformance.known";
-import type { ConformanceCaseKey, KnownConformanceGap } from "./editorCommandConformance.known";
-import { EDITOR_MODES, harnessManager, SELECTION_PLACEMENTS } from "./editorHarness";
-import { createStarterKit } from "../prosemirror/extensions/StarterKit";
+import type {
+  ConformanceCaseKey,
+  KnownConformanceGap,
+} from "./editorCommandConformance.known";
+import {
+  EDITOR_MODES,
+  harnessManager,
+  SELECTION_PLACEMENTS,
+} from "./editorHarness";
+import {
+  SUGGESTION_INPUT_DRIVERS,
+  SUGGESTION_INPUT_KINDS,
+} from "./suggestionInputKinds";
 
 const FULL_TIER = process.env["FOLIO_CONFORMANCE"] === "full";
 const FILTER = process.env["FOLIO_CONFORMANCE_FILTER"]
@@ -53,7 +62,8 @@ const FILTER = process.env["FOLIO_CONFORMANCE_FILTER"]
 /** Append every case's result as a JSON line here, for triage. */
 const REPORT_PATH = process.env["FOLIO_CONFORMANCE_REPORT"];
 /** Set to write operation × feature × selection coverage from executed cases. */
-const FEATURE_REPORT_PATH = process.env["FOLIO_CONFORMANCE_FEATURE_COVERAGE_OUT"];
+const FEATURE_REPORT_PATH =
+  process.env["FOLIO_CONFORMANCE_FEATURE_COVERAGE_OUT"];
 const featureCoverage = emptyFeatureCoverage();
 featureCoverage.operations = CONFORMANCE_OPERATIONS.map(({ id }) => id);
 
@@ -62,11 +72,13 @@ const caseId = ({ shape, operation, placement }: ConformanceCaseKey): string =>
 
 const MATRIX_CASES: ConformanceCaseKey[] = DOCUMENT_SHAPES.flatMap((shape) =>
   CONFORMANCE_OPERATIONS.flatMap((operation) =>
-    (FULL_TIER ? SELECTION_PLACEMENTS : operation.placements).map((placement) => ({
-      shape: shape.id,
-      operation: operation.id,
-      placement,
-    })),
+    (FULL_TIER ? SELECTION_PLACEMENTS : operation.placements).map(
+      (placement) => ({
+        shape: shape.id,
+        operation: operation.id,
+        placement,
+      }),
+    ),
   ),
 ).filter((key) => FILTER === null || FILTER.test(caseId(key)));
 
@@ -75,7 +87,8 @@ const CASES = [
     [
       ...MATRIX_CASES,
       ...LEGACY_NODE_REPLACEMENTS.map(
-        ({ operation }) => ({ shape: "image", operation, placement: "node" }) as const,
+        ({ operation }) =>
+          ({ shape: "image", operation, placement: "node" }) as const,
       ),
     ]
       .filter((key) => FILTER === null || FILTER.test(caseId(key)))
@@ -89,9 +102,10 @@ const declaredRefusalCases = declareCanonicalRefusalCases(
 const exercisedRefusalCases = new Set<string>();
 const unavailableSelectionCases = new Set<string>();
 
-const gapUsage = new Map<KnownConformanceGap, { applied: number; covered: number }>(
-  KNOWN_CONFORMANCE_GAPS.map((gap) => [gap, { applied: 0, covered: 0 }]),
-);
+const gapUsage = new Map<
+  KnownConformanceGap,
+  { applied: number; covered: number }
+>(KNOWN_CONFORMANCE_GAPS.map((gap) => [gap, { applied: 0, covered: 0 }]));
 
 let executedCases = 0;
 const exercisedInputKinds = new Set<string>();
@@ -118,13 +132,19 @@ describe("editor command conformance: coverage", () => {
       }
     }
     const catalogued = Object.keys(KEY_BINDING_OPERATIONS);
-    expect([...bindings].filter((binding) => !catalogued.includes(binding)).toSorted()).toEqual([]);
+    expect(
+      [...bindings]
+        .filter((binding) => !catalogued.includes(binding))
+        .toSorted(),
+    ).toEqual([]);
     // The base keymap binds the macOS motion aliases only on macOS.
     const onThisPlatform = catalogued.filter((binding) => {
       const entry = KEY_BINDING_OPERATIONS[binding];
       return !(entry && "macOSOnly" in entry && entry.macOSOnly === true);
     });
-    expect(onThisPlatform.filter((binding) => !bindings.has(binding)).toSorted()).toEqual([]);
+    expect(
+      onThisPlatform.filter((binding) => !bindings.has(binding)).toSorted(),
+    ).toEqual([]);
   });
 
   test("operation ids are unique", () => {
@@ -166,8 +186,10 @@ describe("editor command conformance", () => {
         placement: key.placement,
         refusalCases: declaredRefusalCases,
         observeRefusalCase: (id, observation) => {
-          if (!declaredRefusalCases.has(id)) throw new TypeError(`Undeclared refusal case ${id}`);
-          if (observation === "selectionUnavailable") unavailableSelectionCases.add(id);
+          if (!declaredRefusalCases.has(id))
+            throw new TypeError(`Undeclared refusal case ${id}`);
+          if (observation === "selectionUnavailable")
+            unavailableSelectionCases.add(id);
           else exercisedRefusalCases.add(id);
         },
       });
@@ -184,7 +206,10 @@ describe("editor command conformance", () => {
       }
       for (const kind of SUGGESTION_INPUT_KINDS) {
         const driver = SUGGESTION_INPUT_DRIVERS[kind];
-        if (driver.type === "conformance" && driver.operations.some((id) => id === key.operation)) {
+        if (
+          driver.type === "conformance" &&
+          driver.operations.some((id) => id === key.operation)
+        ) {
           exercisedInputKinds.add(kind);
         }
       }
@@ -199,7 +224,11 @@ describe("editor command conformance", () => {
           LEGACY_NODE_REPLACEMENTS.some(
             ({ operation: operationId }) => operationId === key.operation,
           ))
-          ? await runLegacyConformanceCase({ shape, operation, placement: key.placement })
+          ? await runLegacyConformanceCase({
+              shape,
+              operation,
+              placement: key.placement,
+            })
           : null;
       for (const gap of KNOWN_CONFORMANCE_GAPS) {
         if (gapApplies(gap, key)) {
@@ -238,9 +267,14 @@ describe("editor command conformance", () => {
     const stale = [...gapUsage.entries()]
       .filter(
         ([gap, usage]) =>
-          usage.applied > 0 && usage.covered === 0 && (gap.tier !== "full" || FULL_TIER),
+          usage.applied > 0 &&
+          usage.covered === 0 &&
+          (gap.tier !== "full" || FULL_TIER),
       )
-      .map(([gap]) => `${gap.issue === undefined ? "" : `#${gap.issue} `}${gap.reason}`);
+      .map(
+        ([gap]) =>
+          `${gap.issue === undefined ? "" : `#${gap.issue} `}${gap.reason}`,
+      );
     expect(stale).toEqual([]);
   });
 
@@ -252,9 +286,9 @@ describe("editor command conformance", () => {
         `${JSON.stringify(summarizeFeatureCoverage(featureCoverage), null, 2)}\n`,
       );
     }
-    expect([...exercisedRefusalCases, ...unavailableSelectionCases].toSorted()).toEqual(
-      [...declaredRefusalCases.keys()].toSorted(),
-    );
+    expect(
+      [...exercisedRefusalCases, ...unavailableSelectionCases].toSorted(),
+    ).toEqual([...declaredRefusalCases.keys()].toSorted());
     expect([...exercisedRefusalCases].toSorted()).toEqual(
       [...declaredRefusalCases.keys()]
         .filter((id) => !unavailableSelectionCases.has(id))
@@ -264,10 +298,14 @@ describe("editor command conformance", () => {
       const driver = SUGGESTION_INPUT_DRIVERS[kind];
       return (
         driver.type === "conformance" &&
-        CASES.some(({ operation }) => driver.operations.some((id) => id === operation))
+        CASES.some(({ operation }) =>
+          driver.operations.some((id) => id === operation),
+        )
       );
     });
-    expect([...exercisedInputKinds].toSorted()).toEqual([...declaredInThisRun].toSorted());
+    expect([...exercisedInputKinds].toSorted()).toEqual(
+      [...declaredInThisRun].toSorted(),
+    );
     // One line for the CI log: how much of the matrix ran.
     console.info(
       `editor command conformance: ${executedCases} cases (${CONFORMANCE_OPERATIONS.length} operations × ${DOCUMENT_SHAPES.length} shapes × ${EDITOR_MODES.length} modes, ${FULL_TIER ? "full" : "default"} tier)`,

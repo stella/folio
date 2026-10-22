@@ -66,12 +66,17 @@ export function cssColorToHex(color: string): string | null {
 }
 
 /** Extract formatting from an HTML element's computed styles. */
-export function extractFormattingFromElement(element: HTMLElement): TextFormatting | undefined {
+export function extractFormattingFromElement(
+  element: HTMLElement,
+): TextFormatting | undefined {
   const style = window.getComputedStyle(element);
   const formatting: TextFormatting = {};
 
   // Bold
-  if (style.fontWeight === "bold" || Number.parseInt(style.fontWeight, 10) >= 700) {
+  if (
+    style.fontWeight === "bold" ||
+    Number.parseInt(style.fontWeight, 10) >= 700
+  ) {
     formatting.bold = true;
   }
 
@@ -99,7 +104,10 @@ export function extractFormattingFromElement(element: HTMLElement): TextFormatti
   }
 
   // Font family
-  const fontFamily = style.fontFamily.replace(/["']/gu, "").split(",")[0]?.trim();
+  const fontFamily = style.fontFamily
+    .replace(/["']/gu, "")
+    .split(",")[0]
+    ?.trim();
   if (fontFamily) {
     formatting.fontFamily = { ascii: fontFamily };
   }
@@ -163,7 +171,10 @@ function getSelectedTextFromRun(runEl: Node, range: Range): string {
 function findParagraphElement(node: Node): HTMLElement | null {
   let current: Node | null = node;
   while (current) {
-    if (current instanceof HTMLElement && current.hasAttribute("data-paragraph-index")) {
+    if (
+      current instanceof HTMLElement &&
+      current.hasAttribute("data-paragraph-index")
+    ) {
       return current;
     }
     current = current.parentNode;
@@ -182,7 +193,8 @@ export function getSelectionRuns(): Run[] {
   const range = selection.getRangeAt(0);
 
   const container = range.commonAncestorContainer;
-  const containerElement = container instanceof HTMLElement ? container : container.parentElement;
+  const containerElement =
+    container instanceof HTMLElement ? container : container.parentElement;
 
   if (!containerElement) {
     return runs;
@@ -208,7 +220,10 @@ export function getSelectionRuns(): Run[] {
   if (runs.length === 0) {
     const selectedText = selection.toString();
     if (selectedText) {
-      runs.push({ type: "run", content: [{ type: "text", text: selectedText }] });
+      runs.push({
+        type: "run",
+        content: [{ type: "text", text: selectedText }],
+      });
     }
   }
 

@@ -14,11 +14,14 @@ export const toBenchmarkRow = ({ name, result }: BenchmarkRowOptions) => {
     case "aborted-with-statistics": {
       const samples = result.latency.samples;
       if (samples === undefined || samples.length === 0) {
-        return panic("Benchmark reporting requires retained latency samples", { name });
+        return panic("Benchmark reporting requires retained latency samples", {
+          name,
+        });
       }
       const p95Index = Math.max(0, Math.ceil(samples.length * 0.95) - 1);
       const p95 = samples.at(p95Index);
-      if (p95 === undefined) return panic("Benchmark percentile has no sample", { name });
+      if (p95 === undefined)
+        return panic("Benchmark percentile has no sample", { name });
       return {
         benchmark: name,
         "median ms": round(result.latency.p50),

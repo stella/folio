@@ -8,18 +8,26 @@
  * API producing a reply that round-trips as a proper reply.
  */
 
-import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
-import fc from "fast-check";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import JSZip from "jszip";
+
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import type {
+  BlockContent,
+  Comment,
+  Document,
+  Paragraph,
+} from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
-
-import type { BlockContent, Comment, Document, Paragraph } from "../types/document";
-import { applyReplyThreadMarkers } from "./commentReplyMarkers";
 import { parseComments } from "./commentParser";
+import { applyReplyThreadMarkers } from "./commentReplyMarkers";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createReply, replyToComment } from "./replyToComment";
@@ -31,7 +39,8 @@ import {
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const BODY_PARA_ID = "30000001";
 const PARENT_PARA_ID = "2AAA0001";
@@ -73,14 +82,23 @@ const documentXmlFor = (includeReplyMarkers: boolean): string =>
   </w:body>
 </w:document>`;
 
-const comment = (id: number, paraId: string, author: string, text: string): string =>
+const comment = (
+  id: number,
+  paraId: string,
+  author: string,
+  text: string,
+): string =>
   `<w:comment w:id="${id}" w:author="${author}" w:initials="${author[0]}" w:date="2026-05-15T00:00:00Z"><w:p w14:paraId="${paraId}"><w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:annotationRef/></w:r><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p></w:comment>`;
 
 const commentsXml = `${XML_DECLARATION}
 <w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">${comment(PARENT_ID, PARENT_PARA_ID, "Alice", "parent question")}${comment(REPLY1_ID, REPLY1_PARA_ID, "Bob", "first reply")}${comment(REPLY2_ID, REPLY2_PARA_ID, "Cara", "second reply")}</w:comments>`;
 
-const commentsExtendedXmlFor = (parentDone: boolean, omitDone = false): string => {
-  const done = (value: "0" | "1"): string => (omitDone ? "" : ` w15:done="${value}"`);
+const commentsExtendedXmlFor = (
+  parentDone: boolean,
+  omitDone = false,
+): string => {
+  const done = (value: "0" | "1"): string =>
+    omitDone ? "" : ` w15:done="${value}"`;
   return `${XML_DECLARATION}
 <w15:commentsEx xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="${PARENT_PARA_ID}"${done(parentDone ? "1" : "0")}/><w15:commentEx w15:paraId="${REPLY1_PARA_ID}" w15:paraIdParent="${PARENT_PARA_ID}"${done("0")}/><w15:commentEx w15:paraId="${REPLY2_PARA_ID}" w15:paraIdParent="${PARENT_PARA_ID}"${done("0")}/></w15:commentsEx>`;
 };
@@ -176,7 +194,10 @@ type MarkerIds = {
   reference: Set<number>;
 };
 
-const eachParagraph = (blocks: readonly BlockContent[], visit: (p: Paragraph) => void): void => {
+const eachParagraph = (
+  blocks: readonly BlockContent[],
+  visit: (p: Paragraph) => void,
+): void => {
   for (const block of blocks) {
     if (block.type === "paragraph") {
       visit(block);
@@ -193,7 +214,11 @@ const eachParagraph = (blocks: readonly BlockContent[], visit: (p: Paragraph) =>
 };
 
 const collectMarkerIds = (doc: Document): MarkerIds => {
-  const ids: MarkerIds = { rangeStart: new Set(), rangeEnd: new Set(), reference: new Set() };
+  const ids: MarkerIds = {
+    rangeStart: new Set(),
+    rangeEnd: new Set(),
+    reference: new Set(),
+  };
   eachParagraph(doc.package.document.content, (paragraph) => {
     for (const item of paragraph.content) {
       if (item.type === "commentRangeStart") {
@@ -267,7 +292,10 @@ describe("comment reply threads — parse", () => {
 
 describe("comment reply threads — round-trip", () => {
   test("full repack keeps replies threaded and anchored", async () => {
-    const buffer = await buildThreadedDocx({ includeReplyMarkers: true, parentDone: true });
+    const buffer = await buildThreadedDocx({
+      includeReplyMarkers: true,
+      parentDone: true,
+    });
     const doc = await parse(buffer);
 
     const saved = await repackDocx({ ...doc, originalBuffer: buffer });
@@ -278,7 +306,10 @@ describe("comment reply threads — round-trip", () => {
   });
 
   test("selective save keeps replies threaded (commentsExtended byte-exact)", async () => {
-    const buffer = await buildThreadedDocx({ includeReplyMarkers: true, parentDone: false });
+    const buffer = await buildThreadedDocx({
+      includeReplyMarkers: true,
+      parentDone: false,
+    });
     const doc = await parse(buffer);
 
     const saved = await attemptSelectiveSave(doc, buffer, {
@@ -291,7 +322,10 @@ describe("comment reply threads — round-trip", () => {
       return;
     }
 
-    const originalExtended = await readPart(buffer, "word/commentsExtended.xml");
+    const originalExtended = await readPart(
+      buffer,
+      "word/commentsExtended.xml",
+    );
     const savedExtended = await readPart(saved, "word/commentsExtended.xml");
     expect(savedExtended).toBe(originalExtended);
 
@@ -321,7 +355,9 @@ describe("comment reply threads — round-trip", () => {
     }
 
     // The edit landed, but commentsExtended.xml is untouched (byte-exact).
-    expect(await readPart(saved, "word/document.xml")).toContain("anchored text (edited)");
+    expect(await readPart(saved, "word/document.xml")).toContain(
+      "anchored text (edited)",
+    );
     expect(await readPart(saved, "word/commentsExtended.xml")).toBe(
       await readPart(buffer, "word/commentsExtended.xml"),
     );
@@ -329,7 +365,10 @@ describe("comment reply threads — round-trip", () => {
   });
 
   test("full repack synthesizes reply markers when only the parent is anchored", async () => {
-    const buffer = await buildThreadedDocx({ includeReplyMarkers: false, parentDone: false });
+    const buffer = await buildThreadedDocx({
+      includeReplyMarkers: false,
+      parentDone: false,
+    });
     const doc = await parse(buffer);
 
     // The parsed model has the replies threaded but WITHOUT their own markers.
@@ -342,7 +381,10 @@ describe("comment reply threads — round-trip", () => {
   });
 
   test("selective save bails when a reply lacks its own anchor", async () => {
-    const buffer = await buildThreadedDocx({ includeReplyMarkers: false, parentDone: false });
+    const buffer = await buildThreadedDocx({
+      includeReplyMarkers: false,
+      parentDone: false,
+    });
     const doc = await parse(buffer);
     const saved = await attemptSelectiveSave(doc, buffer, {
       changedParaIds: new Set(),
@@ -359,14 +401,22 @@ describe("comment reply threads — create-reply API", () => {
   test("standalone replies to the maximum loaded ID remain bounded", () => {
     const document = createEmptyDocument();
     document.package.document.comments = [
-      { id: MAX_REVISION_ID, author: "Reviewer", content: [textParagraph("Root")] },
+      {
+        id: MAX_REVISION_ID,
+        author: "Reviewer",
+        content: [textParagraph("Root")],
+      },
     ];
     const first =
-      replyToComment(document, MAX_REVISION_ID, { author: "Reviewer", text: "First" }) ??
-      panic("Expected a reply");
+      replyToComment(document, MAX_REVISION_ID, {
+        author: "Reviewer",
+        text: "First",
+      }) ?? panic("Expected a reply");
     const second =
-      replyToComment(document, MAX_REVISION_ID, { author: "Reviewer", text: "Second" }) ??
-      panic("Expected a reply");
+      replyToComment(document, MAX_REVISION_ID, {
+        author: "Reviewer",
+        text: "Second",
+      }) ?? panic("Expected a reply");
     for (const id of [first.id, second.id]) {
       expect(Number.isInteger(id)).toBe(true);
       expect(id).toBeGreaterThan(0);
@@ -385,7 +435,10 @@ describe("comment reply threads — create-reply API", () => {
       fc.assert(
         fc.property(
           fc.uniqueArray(
-            fc.oneof(fc.integer({ min: 1, max: MAX_REVISION_ID }), fc.constant(MAX_REVISION_ID)),
+            fc.oneof(
+              fc.integer({ min: 1, max: MAX_REVISION_ID }),
+              fc.constant(MAX_REVISION_ID),
+            ),
             { minLength: 1, maxLength: 8 },
           ),
           (ids) => {
@@ -398,8 +451,10 @@ describe("comment reply threads — create-reply API", () => {
             const issued = new Set(ids);
             for (let batch = 0; batch < 4; batch += 1) {
               const reply =
-                createReply(comments, parentId, { author: "Reviewer", text: "Reply" }) ??
-                panic("Expected a reply");
+                createReply(comments, parentId, {
+                  author: "Reviewer",
+                  text: "Reply",
+                }) ?? panic("Expected a reply");
               expect(Number.isInteger(reply.id)).toBe(true);
               expect(reply.id).toBeGreaterThan(0);
               expect(reply.id).toBeLessThanOrEqual(MAX_REVISION_ID);
@@ -417,7 +472,10 @@ describe("comment reply threads — create-reply API", () => {
     const buffer = await buildSingleCommentDocx();
     const doc = await parse(buffer);
 
-    const reply = replyToComment(doc, PARENT_ID, { author: "Reviewer", text: "a fresh reply" });
+    const reply = replyToComment(doc, PARENT_ID, {
+      author: "Reviewer",
+      text: "a fresh reply",
+    });
     expect(reply).not.toBeNull();
     if (!reply) {
       return;
@@ -445,8 +503,12 @@ describe("comment reply threads — create-reply API", () => {
       },
     };
     // Unknown parent id, and a parent with no paragraphs to anchor the thread.
-    expect(replyToComment(parentless, 9999, { author: "R", text: "x" })).toBeNull();
-    expect(replyToComment(parentless, PARENT_ID, { author: "R", text: "x" })).toBeNull();
+    expect(
+      replyToComment(parentless, 9999, { author: "R", text: "x" }),
+    ).toBeNull();
+    expect(
+      replyToComment(parentless, PARENT_ID, { author: "R", text: "x" }),
+    ).toBeNull();
   });
 
   test("serializeCommentsExtended is null for a document with no threads or resolved state", () => {
@@ -465,8 +527,15 @@ describe("comment reply threads — package lifecycle + deterministic ids", () =
   test("removing a thread drops commentsExtended.xml + its content-type + rel", async () => {
     // No reply markers in the body, so removing the reply comments leaves no
     // dangling references (only the parent's anchor, which survives).
-    const buffer = await buildThreadedDocx({ includeReplyMarkers: false, parentDone: true });
-    expect(await validateDocx(buffer)).toEqual({ valid: true, errors: [], warnings: [] });
+    const buffer = await buildThreadedDocx({
+      includeReplyMarkers: false,
+      parentDone: true,
+    });
+    expect(await validateDocx(buffer)).toEqual({
+      valid: true,
+      errors: [],
+      warnings: [],
+    });
     const doc = await parse(buffer);
 
     // Simulate the whole thread being removed from the model: keep only the
@@ -495,7 +564,10 @@ describe("comment reply threads — package lifecycle + deterministic ids", () =
   });
 
   test("selective save bails to full repack when a thread must be removed", async () => {
-    const buffer = await buildThreadedDocx({ includeReplyMarkers: false, parentDone: true });
+    const buffer = await buildThreadedDocx({
+      includeReplyMarkers: false,
+      parentDone: true,
+    });
     const doc = await parse(buffer);
     const parent = commentById(doc, PARENT_ID);
     if (!parent) {
@@ -518,7 +590,11 @@ describe("comment reply threads — package lifecycle + deterministic ids", () =
         document: {
           content: [{ type: "paragraph", formatting: {} } as Paragraph],
           comments: [
-            { id: 1, author: "A", content: [{ type: "paragraph", formatting: {}, content: [] }] },
+            {
+              id: 1,
+              author: "A",
+              content: [{ type: "paragraph", formatting: {}, content: [] }],
+            },
             {
               id: 2,
               author: "B",

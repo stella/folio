@@ -28,7 +28,10 @@ import {
   removeUnpairedMoveRangeBoundaries,
 } from "./pasteCleanup";
 import { retargetPastedHeadingStyles } from "./pastedHeadingStyles";
-import { flattenPastedHtmlLists, numberPastedHtmlLists } from "./pastedHtmlLists";
+import {
+  flattenPastedHtmlLists,
+  numberPastedHtmlLists,
+} from "./pastedHtmlLists";
 
 type PasteCleanupOptions = {
   getInternalClipboardToken?: () => string;
@@ -51,7 +54,9 @@ export const PasteCleanupExtension = createExtension<PasteCleanupOptions>({
         transformPasted: (slice, view) =>
           numberPastedHtmlLists(
             retargetPastedHeadingStyles(
-              removeUnpairedMoveRangeBoundaries(removeUnpairedBookmarkBoundaries(slice)),
+              removeUnpairedMoveRangeBoundaries(
+                removeUnpairedBookmarkBoundaries(slice),
+              ),
               view,
             ),
             view,

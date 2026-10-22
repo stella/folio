@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { computeListRendering, parseNumbering } from "../../docx/numberingParser";
+import {
+  computeListRendering,
+  parseNumbering,
+} from "../../docx/numberingParser";
 import { parseSettings } from "../../docx/settingsParser";
 import {
-  withFakeTextMeasure,
   fixedCharWidth,
+  withFakeTextMeasure,
 } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
 import { getListMarkerInlineWidth } from "../../layout-engine/measure/listMarkerWidth";
 import type { ParagraphBlock } from "../../layout-engine/types";
@@ -48,7 +51,9 @@ const listDocument = (settings?: DocumentSettings): Document => {
               indentFirstLine: -720,
             },
             listRendering: { ...rendering, marker: "1." },
-            content: [{ type: "run", content: [{ type: "text", text: "Item" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "Item" }] },
+            ],
           },
         ],
       },
@@ -80,7 +85,10 @@ describe("numbering level tab stops (w:lvl/w:pPr/w:tabs)", () => {
   test("place the text after the number when the stop lies inside the hanging slot", () => {
     withFakeTextMeasure(() => {
       // Number "1." is 20 px wide: it ends at 68 px, before the 72 px stop.
-      expect(getListMarkerInlineWidth(listBlock(listDocument()))).toBeCloseTo(72 - 48, 5);
+      expect(getListMarkerInlineWidth(listBlock(listDocument()))).toBeCloseTo(
+        72 - 48,
+        5,
+      );
     }, fakeMeasure);
   });
 
@@ -91,6 +99,8 @@ describe("numbering level tab stops (w:lvl/w:pPr/w:tabs)", () => {
     const block = listBlock(listDocument(settings));
 
     expect(block.attrs?.listNumberingTabIgnoresIndent).toBe(true);
-    expect(listBlock(listDocument()).attrs?.listNumberingTabIgnoresIndent).toBeUndefined();
+    expect(
+      listBlock(listDocument()).attrs?.listNumberingTabIgnoresIndent,
+    ).toBeUndefined();
   });
 });

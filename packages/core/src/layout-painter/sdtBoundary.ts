@@ -81,7 +81,11 @@ export function applySdtDataAttrs(
  * `$pos.before(d)` — which is exactly that PM position — keeping the returned
  * ids in lockstep with what `applySdtFocus` hit-tests against.
  */
-export function enclosingSdtGroupIds(doc: PMNode, from: number, to: number): Set<string> {
+export function enclosingSdtGroupIds(
+  doc: PMNode,
+  from: number,
+  to: number,
+): Set<string> {
   const ids = new Set<string>();
   const max = doc.content.size;
   const collect = (pos: number): void => {
@@ -106,7 +110,10 @@ export function enclosingSdtGroupIds(doc: PMNode, from: number, to: number): Set
  * `data-sdt-pm-pos` stamping (upstream matched `.layout-block-sdt-box`'s
  * `data-sdt-group-id`, which this fork does not paint).
  */
-export function applySdtFocus(container: HTMLElement, focusedIds: Set<string>): void {
+export function applySdtFocus(
+  container: HTMLElement,
+  focusedIds: Set<string>,
+): void {
   const boxes = container.querySelectorAll<HTMLElement>("[data-sdt-boundary]");
   for (const box of boxes) {
     const id = box.dataset["sdtPmPos"];

@@ -27,7 +27,11 @@
         </label>
         <label class="field">
           <span class="field__label">Color</span>
-          <input v-model="color" class="field__input field__input--color" type="color" />
+          <input
+            v-model="color"
+            class="field__input field__input--color"
+            type="color"
+          />
         </label>
         <label class="field">
           <span class="field__label">Opacity</span>
@@ -84,7 +88,11 @@
     </div>
     <div class="dialog__footer">
       <button class="dialog__btn" @click="$emit('close')">Cancel</button>
-      <button class="dialog__btn dialog__btn--primary" :disabled="!canApply" @click="apply">
+      <button
+        class="dialog__btn dialog__btn--primary"
+        :disabled="!canApply"
+        @click="apply"
+      >
         Apply
       </button>
     </div>
@@ -93,7 +101,12 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { isAllowedExternalWatermarkImageUrl, type Watermark } from "@stll/folio-core/watermark";
+
+import {
+  isAllowedExternalWatermarkImageUrl,
+  type Watermark,
+} from "@stll/folio-core/watermark";
+
 import { useFolioUI } from "../../ui/folio-ui";
 
 const { Dialog: FolioDialog } = useFolioUI();
@@ -128,7 +141,9 @@ const washout = ref(true);
 // saved package verbatim (see `docx/rezip.ts`); restrict it to http(s) so a
 // `file:` URL or UNC path can't ride along in the exported `.docx`.
 const imageTargetError = computed(() =>
-  mode.value === "picture" && imageTargetExternal.value && imageTarget.value.trim().length > 0
+  mode.value === "picture" &&
+  imageTargetExternal.value &&
+  imageTarget.value.trim().length > 0
     ? getExternalImageTargetError(imageTarget.value.trim())
     : "",
 );
@@ -200,8 +215,12 @@ function apply() {
   emit("apply", {
     kind: "picture",
     imageRId: imageRId.value.trim(),
-    ...(imageTarget.value.trim() ? { imageTarget: imageTarget.value.trim() } : {}),
-    ...(imageTarget.value.trim() ? { imageTargetExternal: imageTargetExternal.value } : {}),
+    ...(imageTarget.value.trim()
+      ? { imageTarget: imageTarget.value.trim() }
+      : {}),
+    ...(imageTarget.value.trim()
+      ? { imageTargetExternal: imageTargetExternal.value }
+      : {}),
     scale: clampScalePercent(scalePercent.value) / 100,
     washout: washout.value,
   });
@@ -221,7 +240,9 @@ function stripHash(value: string): string {
 }
 
 function getExternalImageTargetError(value: string): string {
-  return isAllowedExternalWatermarkImageUrl(value) ? "" : "Use a web address (http/https).";
+  return isAllowedExternalWatermarkImageUrl(value)
+    ? ""
+    : "Use a web address (http/https).";
 }
 
 function toColorInputValue(value: string | undefined): string {

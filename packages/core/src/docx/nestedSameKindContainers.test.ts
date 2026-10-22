@@ -19,11 +19,13 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph } from "../types/document";
-
 import { getParagraphText, parseParagraph } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
@@ -130,7 +132,8 @@ const parseParagraphXml = (xml: string): Paragraph => {
   return parseParagraph(root, null, null, null, null, null);
 };
 
-const paragraphXml = (body: string): string => `<w:p xmlns:w="${W}">${body}</w:p>`;
+const paragraphXml = (body: string): string =>
+  `<w:p xmlns:w="${W}">${body}</w:p>`;
 
 /** The paragraph as it comes back from the editor, with nothing edited. */
 const throughTheEditor = (paragraph: Paragraph): Paragraph => {
@@ -147,10 +150,15 @@ const throughTheEditor = (paragraph: Paragraph): Paragraph => {
 describe("a container nested in one of its own kind", () => {
   test("comes back under the container it was written into", () => {
     fc.assert(
-      fc.property(fc.constantFrom(...NESTINGS), ({ body, parent, child, expected }) => {
-        const saved = serializeParagraph(parseParagraphXml(paragraphXml(body)));
-        expect(childrenOf(saved, parent, child)).toBe(expected);
-      }),
+      fc.property(
+        fc.constantFrom(...NESTINGS),
+        ({ body, parent, child, expected }) => {
+          const saved = serializeParagraph(
+            parseParagraphXml(paragraphXml(body)),
+          );
+          expect(childrenOf(saved, parent, child)).toBe(expected);
+        },
+      ),
       propertyConfig({ numRuns: 50 }),
     );
   });
@@ -160,7 +168,9 @@ describe("a container nested in one of its own kind", () => {
       fc.property(fc.constantFrom(...NESTINGS), ({ body }) => {
         const first = serializeParagraph(parseParagraphXml(paragraphXml(body)));
         const second = serializeParagraph(
-          parseParagraphXml(`<w:p xmlns:w="${W}">${first.slice(first.indexOf(">") + 1)}`),
+          parseParagraphXml(
+            `<w:p xmlns:w="${W}">${first.slice(first.indexOf(">") + 1)}`,
+          ),
         );
         expect(second).toBe(first);
       }),
@@ -174,7 +184,9 @@ describe("a container nested in one of its own kind", () => {
   test("carries the words the wrapper shows", () => {
     fc.assert(
       fc.property(fc.constantFrom(...NESTINGS), ({ body, text }) => {
-        expect(getParagraphText(parseParagraphXml(paragraphXml(body)))).toContain(text);
+        expect(
+          getParagraphText(parseParagraphXml(paragraphXml(body))),
+        ).toContain(text);
       }),
       propertyConfig({ numRuns: 50 }),
     );
@@ -182,10 +194,17 @@ describe("a container nested in one of its own kind", () => {
 
   test("survives the editor under the same container", () => {
     fc.assert(
-      fc.property(fc.constantFrom(...NESTINGS), ({ body, parent, child, expected }) => {
-        const reopened = throughTheEditor(parseParagraphXml(paragraphXml(body)));
-        expect(childrenOf(serializeParagraph(reopened), parent, child)).toBe(expected);
-      }),
+      fc.property(
+        fc.constantFrom(...NESTINGS),
+        ({ body, parent, child, expected }) => {
+          const reopened = throughTheEditor(
+            parseParagraphXml(paragraphXml(body)),
+          );
+          expect(childrenOf(serializeParagraph(reopened), parent, child)).toBe(
+            expected,
+          );
+        },
+      ),
       propertyConfig({ numRuns: 50 }),
     );
   });

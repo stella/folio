@@ -1,15 +1,28 @@
-import { scanTestTimeout } from "../test/scan-timeout";
-
-import { setDefaultTimeout, describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 import ts from "typescript";
+
+import { scanTestTimeout } from "../test/scan-timeout";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
 const PACKAGES = path.resolve(import.meta.dir, "../packages");
 const OWNER = "utf8-boundaries/src/encoding.ts";
-const GENERATED = ["docx-core/src/generated/docx_kernel.js", "core/src/generated/text_shaper.js"];
-const EXTENSIONS = ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs", "vue"];
+const GENERATED = [
+  "docx-core/src/generated/docx_kernel.js",
+  "core/src/generated/text_shaper.js",
+];
+const EXTENSIONS = [
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "mts",
+  "cts",
+  "mjs",
+  "cjs",
+  "vue",
+];
 const SOURCE_GLOB = `*/src/**/*.{${EXTENSIONS.join(",")}}`;
 const SOURCE_FILES = [...new Bun.Glob(SOURCE_GLOB).scanSync({ cwd: PACKAGES })];
 
@@ -39,7 +52,9 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
     scriptText(text, file),
     ts.ScriptTarget.Latest,
     true,
-    file.endsWith(".tsx") || file.endsWith(".jsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    file.endsWith(".tsx") || file.endsWith(".jsx")
+      ? ts.ScriptKind.TSX
+      : ts.ScriptKind.TS,
   );
   const violations: Violation[] = [];
   const codecs = new Set(["TextEncoder", "TextDecoder"]);
@@ -92,7 +107,14 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
           ? node.initializer.text
           : property(node.initializer);
         if (target)
-          for (const set of [decoders, encoders, buffers, bufferFactories, binaryCodecs, textNames])
+          for (const set of [
+            decoders,
+            encoders,
+            buffers,
+            bufferFactories,
+            binaryCodecs,
+            textNames,
+          ])
             if (set.has(target)) alias(set, node.name.text);
         if (
           property(node.initializer) === "from" &&
@@ -106,7 +128,8 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
       for (const element of node.name.elements) {
         if (!ts.isIdentifier(element.name)) continue;
         const target =
-          element.propertyName?.getText(source).replace(/["']/gu, "") ?? element.name.text;
+          element.propertyName?.getText(source).replace(/["']/gu, "") ??
+          element.name.text;
         for (const set of [decoders, encoders, buffers, binaryCodecs])
           if (set.has(target)) alias(set, element.name.text);
         if (
@@ -120,7 +143,8 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
   }
   const add = (node: ts.Node, reason: string): void => {
     violations.push({
-      line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
+      line:
+        source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
       reason,
     });
   };
@@ -180,7 +204,10 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
     }
     return undefined;
   };
-  const chunkOrigin = (expression: ts.Expression, seen = new Set<ts.Node>()): boolean => {
+  const chunkOrigin = (
+    expression: ts.Expression,
+    seen = new Set<ts.Node>(),
+  ): boolean => {
     if (seen.has(expression)) return false;
     seen.add(expression);
     if (
@@ -199,12 +226,23 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
           ts.isForOfStatement(declaration.parent.parent)
         )
           return true;
-        return declaration.initializer !== undefined && chunkOrigin(declaration.initializer, seen);
+        return (
+          declaration.initializer !== undefined &&
+          chunkOrigin(declaration.initializer, seen)
+        );
       }
       const callback = declaration.parent.parent;
-      if (!ts.isCallExpression(callback) || property(callback.expression) !== "on") return false;
+      if (
+        !ts.isCallExpression(callback) ||
+        property(callback.expression) !== "on"
+      )
+        return false;
       const event = callback.arguments.at(0);
-      return event !== undefined && ts.isStringLiteral(event) && event.text === "data";
+      return (
+        event !== undefined &&
+        ts.isStringLiteral(event) &&
+        event.text === "data"
+      );
     }
     if (ts.isCallExpression(expression)) {
       const method = property(expression.expression);
@@ -217,30 +255,44 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
         const declaration = localDeclaration(expression.expression.expression);
         if (
           declaration &&
-          ((declaration.type && /^(?:Readonly)?Map\s*</u.test(declaration.type.getText(source))) ||
+          ((declaration.type &&
+            /^(?:Readonly)?Map\s*</u.test(declaration.type.getText(source))) ||
             (ts.isVariableDeclaration(declaration) &&
               declaration.initializer &&
               ts.isNewExpression(declaration.initializer) &&
               ts.isIdentifier(declaration.initializer.expression) &&
               declaration.initializer.expression.text === "Map" &&
-              localDeclaration(declaration.initializer.expression) === undefined))
+              localDeclaration(declaration.initializer.expression) ===
+                undefined))
         )
           return false;
       }
-      if ((method === "slice" || method === "subarray") && loopAncestor(expression)) return true;
+      if (
+        (method === "slice" || method === "subarray") &&
+        loopAncestor(expression)
+      )
+        return true;
       if (
         ts.isPropertyAccessExpression(expression.expression) ||
         ts.isElementAccessExpression(expression.expression)
       ) {
         if (chunkOrigin(expression.expression.expression, seen)) return true;
       }
-      return expression.arguments.some((argument) => chunkOrigin(argument, seen));
+      return expression.arguments.some((argument) =>
+        chunkOrigin(argument, seen),
+      );
     }
     if (ts.isConditionalExpression(expression))
-      return chunkOrigin(expression.whenTrue, seen) || chunkOrigin(expression.whenFalse, seen);
+      return (
+        chunkOrigin(expression.whenTrue, seen) ||
+        chunkOrigin(expression.whenFalse, seen)
+      );
     return false;
   };
-  const chunkConsumer = (node: ts.Node, first: ts.Expression | undefined): boolean => {
+  const chunkConsumer = (
+    node: ts.Node,
+    first: ts.Expression | undefined,
+  ): boolean => {
     if (first && chunkOrigin(first)) return true;
     for (let parent = node.parent; parent; parent = parent.parent) {
       if (
@@ -255,22 +307,27 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
         return true;
       if (ts.isCallExpression(parent) && property(parent.expression) === "on") {
         const event = parent.arguments.at(0);
-        if (event && ts.isStringLiteral(event) && event.text === "data") return true;
+        if (event && ts.isStringLiteral(event) && event.text === "data")
+          return true;
       }
     }
     return false;
   };
   for (const node of nodes) {
-    if (ts.isIdentifier(node) && codecs.has(node.text)) add(node, "raw text codec reference");
+    if (ts.isIdentifier(node) && codecs.has(node.text))
+      add(node, "raw text codec reference");
     if (
-      (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+      (ts.isPropertyAccessExpression(node) ||
+        ts.isElementAccessExpression(node)) &&
       codecs.has(property(node) ?? "")
     )
       add(node, "raw text codec property");
     if (!ts.isCallExpression(node)) continue;
     const method = property(node.expression);
     const first = node.arguments.at(0);
-    const name = ts.isIdentifier(node.expression) ? node.expression.text : method;
+    const name = ts.isIdentifier(node.expression)
+      ? node.expression.text
+      : method;
     const argument = first?.getText(source) ?? "";
     const options = node.arguments.at(1);
     const binaryField =
@@ -295,7 +352,9 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
           ts.isCallExpression(parent) &&
           ((property(parent.expression) === "from" &&
             /Uint8Array/u.test(parent.expression.getText(source))) ||
-            /^set(?:Int|Uint)(?:8|16|32)$/u.test(property(parent.expression) ?? ""))
+            /^set(?:Int|Uint)(?:8|16|32)$/u.test(
+              property(parent.expression) ?? "",
+            ))
         ) {
           add(node, "manual binary string-to-byte codec");
           break;
@@ -304,7 +363,9 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
           ts.isBinaryExpression(parent) &&
           parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
           ts.isElementAccessExpression(parent.left) &&
-          /bytes|buffer|view|encoded/iu.test(parent.left.expression.getText(source))
+          /bytes|buffer|view|encoded/iu.test(
+            parent.left.expression.getText(source),
+          )
         ) {
           add(node, "manual binary string-to-byte codec");
           break;
@@ -369,18 +430,27 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
 
 /** wasm-bindgen decodes one complete allocation, never independent transport chunks. */
 const generatedViolations = (text: string, file: string): string[] => {
-  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const source = ts.createSourceFile(
+    file,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
   const problems: string[] = [];
   let decoderConstructions = 0;
   let encoderConstructions = 0;
   let decodes = 0;
   let encodes = 0;
   let encodeInto = 0;
-  const compact = (node: ts.Node): string => node.getText(source).replace(/\s+/gu, "");
+  const compact = (node: ts.Node): string =>
+    node.getText(source).replace(/\s+/gu, "");
   const visit = (node: ts.Node): void => {
     if (ts.isNewExpression(node)) {
-      if (node.expression.getText(source) === "TextDecoder") decoderConstructions++;
-      if (node.expression.getText(source) === "TextEncoder") encoderConstructions++;
+      if (node.expression.getText(source) === "TextDecoder")
+        decoderConstructions++;
+      if (node.expression.getText(source) === "TextEncoder")
+        encoderConstructions++;
     }
     if (ts.isCallExpression(node)) {
       const method = property(node.expression);
@@ -389,13 +459,19 @@ const generatedViolations = (text: string, file: string): string[] => {
         const args = node.arguments.map(compact);
         if (
           args.length !== 0 &&
-          (args.length !== 1 || args[0] !== "getUint8ArrayMemory0().subarray(ptr,ptr+len)")
+          (args.length !== 1 ||
+            args[0] !== "getUint8ArrayMemory0().subarray(ptr,ptr+len)")
         )
-          problems.push("decoder no longer reads one complete memory allocation");
+          problems.push(
+            "decoder no longer reads one complete memory allocation",
+          );
       }
       if (method === "encode") {
         encodes++;
-        if (node.arguments.length !== 1 || compact(node.arguments[0]!) !== "arg")
+        if (
+          node.arguments.length !== 1 ||
+          compact(node.arguments[0]!) !== "arg"
+        )
           problems.push("encoder does not receive the complete argument");
       }
       if (method === "encodeInto") {
@@ -412,12 +488,17 @@ const generatedViolations = (text: string, file: string): string[] => {
   };
   visit(source);
   const detected = findViolations(text, file);
-  const rawReferences = detected.filter(({ reason }) => reason.startsWith("raw text codec"));
+  const rawReferences = detected.filter(({ reason }) =>
+    reason.startsWith("raw text codec"),
+  );
   if (rawReferences.length !== (file === GENERATED[0] ? 2 : 3))
     problems.push("generated codec references changed");
   if (detected.some(({ reason }) => !reason.startsWith("raw text codec")))
-    problems.push("additional encoding escaped the generated whole-buffer codecs");
-  if (decoderConstructions !== 2 || decodes !== 3) problems.push("generated decoder shape changed");
+    problems.push(
+      "additional encoding escaped the generated whole-buffer codecs",
+    );
+  if (decoderConstructions !== 2 || decodes !== 3)
+    problems.push("generated decoder shape changed");
   if (file === GENERATED[0]) {
     if (encoderConstructions !== 0 || encodes !== 0 || encodeInto !== 0)
       problems.push("unexpected kernel encoder");
@@ -426,7 +507,8 @@ const generatedViolations = (text: string, file: string): string[] => {
   if (encoderConstructions !== 1 || encodes !== 2 || encodeInto !== 1)
     problems.push("generated shaper encoder shape changed");
   const passString = source.statements.find(
-    (node) => ts.isFunctionDeclaration(node) && node.name?.text === "passStringToWasm0",
+    (node) =>
+      ts.isFunctionDeclaration(node) && node.name?.text === "passStringToWasm0",
   );
   const body = passString ? compact(passString) : "";
   // The ASCII-only prefix stops before any surrogate. The remainder is encoded
@@ -452,7 +534,9 @@ const excluded = (file: string): boolean =>
 const sourceViolations = (file: string, source: string): string[] => {
   if (file === OWNER || excluded(file)) return [];
   if (GENERATED.includes(file)) return generatedViolations(source, file);
-  return findViolations(source, file).map(({ line, reason }) => `${line}: ${reason}`);
+  return findViolations(source, file).map(
+    ({ line, reason }) => `${line}: ${reason}`,
+  );
 };
 
 describe("production text encoding boundaries", () => {
@@ -491,8 +575,13 @@ describe("production text encoding boundaries", () => {
       for (const extension of EXTENSIONS)
         for (const fixture of bad) {
           const file = `${packageName}/src/boundary-fixture.${extension}`;
-          const source = extension === "vue" ? `<script setup>${fixture}</script>` : fixture;
-          expect({ file, fixture, rejected: sourceViolations(file, source).length > 0 }).toEqual({
+          const source =
+            extension === "vue" ? `<script setup>${fixture}</script>` : fixture;
+          expect({
+            file,
+            fixture,
+            rejected: sourceViolations(file, source).length > 0,
+          }).toEqual({
             file,
             fixture,
             rejected: true,
@@ -528,17 +617,22 @@ describe("production text encoding boundaries", () => {
       const source = await Bun.file(path.join(PACKAGES, file)).text();
       expect(sourceViolations(file, source)).toEqual([]);
       expect(
-        sourceViolations(file, source + "\nnew TextDecoder().decode(chunk);").length,
+        sourceViolations(file, source + "\nnew TextDecoder().decode(chunk);")
+          .length,
       ).toBeGreaterThan(0);
       expect(
         sourceViolations(
           file,
-          source.replace("subarray(ptr, ptr + len)", "subarray(ptr, ptr + len - 1)"),
+          source.replace(
+            "subarray(ptr, ptr + len)",
+            "subarray(ptr, ptr + len - 1)",
+          ),
         ).length,
       ).toBeGreaterThan(0);
       if (file === GENERATED[1])
         expect(
-          sourceViolations(file, source.replace("code > 0x7F", "code > 0xFFFF")).length,
+          sourceViolations(file, source.replace("code > 0x7F", "code > 0xFFFF"))
+            .length,
         ).toBeGreaterThan(0);
     }
   });
@@ -549,7 +643,8 @@ describe("production text encoding boundaries", () => {
       const offenders: string[] = [];
       for (const file of SOURCE_FILES) {
         const source = await Bun.file(path.join(PACKAGES, file)).text();
-        for (const reason of sourceViolations(file, source)) offenders.push(`${file}:${reason}`);
+        for (const reason of sourceViolations(file, source))
+          offenders.push(`${file}:${reason}`);
       }
       expect(offenders).toEqual([]);
     },

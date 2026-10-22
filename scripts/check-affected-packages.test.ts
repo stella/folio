@@ -2,16 +2,21 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
 import { affectedPackagePlan, changedWorkingTreePaths } from "./ci-api-plan";
 
 const fixtures = new Set<string>();
 afterEach(() => {
-  for (const directory of fixtures) rmSync(directory, { recursive: true, force: true });
+  for (const directory of fixtures)
+    rmSync(directory, { recursive: true, force: true });
   fixtures.clear();
 });
 
 const plan = (changedPaths: string[]) =>
-  affectedPackagePlan({ changedPaths, publishedPackagePaths: ["packages/public"] });
+  affectedPackagePlan({
+    changedPaths,
+    publishedPackagePaths: ["packages/public"],
+  });
 
 test("published sources, consumer scenarios, and docs select the expected checks", () => {
   expect(plan(["packages/public/src/index.ts"])).toEqual({
@@ -22,7 +27,10 @@ test("published sources, consumer scenarios, and docs select the expected checks
     apiRequired: false,
     packagedConsumerRequired: true,
   });
-  expect(plan(["docs/guide.md"])).toEqual({ apiRequired: false, packagedConsumerRequired: false });
+  expect(plan(["docs/guide.md"])).toEqual({
+    apiRequired: false,
+    packagedConsumerRequired: false,
+  });
 });
 
 test("working-tree paths include committed, staged, unstaged, and untracked files", () => {

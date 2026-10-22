@@ -12,20 +12,24 @@
  */
 
 import { isNumberingLevel } from "@stll/docx-core/model";
+
 import type {
-  NumberingDefinitions,
   AbstractNumbering,
+  CounterFormat,
   LevelLegacy,
   LevelOverride,
-  NumberingInstance,
   ListLevel,
+  ListMarkerFormatting,
   ListRendering,
-  CounterFormat,
+  NumberingDefinitions,
+  NumberingInstance,
   ParagraphAlignment,
   TextFormatting,
-  ListMarkerFormatting,
 } from "../types/document";
-import { attributeRemainder, DERIVED_PART_ROOT_ATTRIBUTES } from "./attributeRemainder";
+import {
+  attributeRemainder,
+  DERIVED_PART_ROOT_ATTRIBUTES,
+} from "./attributeRemainder";
 import {
   CAPTURE,
   type ChildHandlers,
@@ -44,16 +48,19 @@ import {
 } from "./parserEnums";
 import { parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import {
-  parseXmlDocument,
   findChild,
   getAttribute,
   parseBooleanElement,
   parseNumericAttribute,
   parseOnOffAttribute,
+  parseXmlDocument,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
-export { formatOoxmlCounter as formatNumber, padDecimal } from "./ooxmlCounterFormatter";
+export {
+  formatOoxmlCounter as formatNumber,
+  padDecimal,
+} from "./ooxmlCounterFormatter";
 
 /**
  * Map of rId to numbering definitions
@@ -73,10 +80,16 @@ export type NumberingMap = {
 };
 
 /** `w:abstractNum` reads its id; everything else it carries is the remainder's. */
-const MODELLED_ABSTRACT_NUM_ATTRIBUTES: ReadonlySet<string> = new Set(["abstractNumId"]);
+const MODELLED_ABSTRACT_NUM_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "abstractNumId",
+]);
 
 /** `w:lvl` reads the level it defines and Word's two template markers. */
-const MODELLED_LVL_ATTRIBUTES: ReadonlySet<string> = new Set(["ilvl", "tplc", "tentative"]);
+const MODELLED_LVL_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "ilvl",
+  "tplc",
+  "tentative",
+]);
 
 /** `w:num` reads the id paragraphs reference it by. */
 const MODELLED_NUM_ATTRIBUTES: ReadonlySet<string> = new Set(["numId"]);
@@ -177,12 +190,20 @@ export function parseNumbering(numberingXml: string | null): NumberingMap {
 }
 
 const ABSTRACT_NUM_HANDLERS = {
-  nsid: (child, abstractNum) => assignDefined(abstractNum, "nsid", attributeValue(child)),
+  nsid: (child, abstractNum) =>
+    assignDefined(abstractNum, "nsid", attributeValue(child)),
   multiLevelType: (child, abstractNum) =>
-    assignDefined(abstractNum, "multiLevelType", narrow(attributeValue(child), MULTI_LEVEL_TYPES)),
-  tmpl: (child, abstractNum) => assignDefined(abstractNum, "tmpl", attributeValue(child)),
-  name: (child, abstractNum) => assignDefined(abstractNum, "name", attributeValue(child)),
-  styleLink: (child, abstractNum) => assignDefined(abstractNum, "styleLink", attributeValue(child)),
+    assignDefined(
+      abstractNum,
+      "multiLevelType",
+      narrow(attributeValue(child), MULTI_LEVEL_TYPES),
+    ),
+  tmpl: (child, abstractNum) =>
+    assignDefined(abstractNum, "tmpl", attributeValue(child)),
+  name: (child, abstractNum) =>
+    assignDefined(abstractNum, "name", attributeValue(child)),
+  styleLink: (child, abstractNum) =>
+    assignDefined(abstractNum, "styleLink", attributeValue(child)),
   numStyleLink: (child, abstractNum) =>
     assignDefined(abstractNum, "numStyleLink", attributeValue(child)),
   lvl: (child, abstractNum) => {
@@ -238,7 +259,11 @@ function parseAbstractNumbering(element: XmlElement): AbstractNumbering | null {
 
 /** ECMA-376 §17.9.1: a `w:abstractNum` defines levels 0 through 8 and no more. */
 
-const MULTI_LEVEL_TYPES = ["hybridMultilevel", "multilevel", "singleLevel"] as const;
+const MULTI_LEVEL_TYPES = [
+  "hybridMultilevel",
+  "multilevel",
+  "singleLevel",
+] as const;
 
 const narrow = <Member extends string>(
   carried: string | undefined,
@@ -280,7 +305,10 @@ function parseNumberingInstance(element: XmlElement): NumberingInstance | null {
     return null;
   }
 
-  const walk: NumberingInstanceWalk = { abstractNumId: undefined, levelOverrides: [] };
+  const walk: NumberingInstanceWalk = {
+    abstractNumId: undefined,
+    levelOverrides: [],
+  };
 
   const preserved = dispatchChildrenWithContext({
     element,
@@ -372,11 +400,18 @@ const LIST_LEVEL_HANDLERS = {
     Object.assign(level, resolved);
     return undefined;
   },
-  lvlRestart: (child, level) => assignDefined(level, "lvlRestart", integerValue(child)),
-  pStyle: (child, level) => assignDefined(level, "pStyle", attributeValue(child)),
-  isLgl: (child, level) => assignDefined(level, "isLgl", parseBooleanElement(child)),
+  lvlRestart: (child, level) =>
+    assignDefined(level, "lvlRestart", integerValue(child)),
+  pStyle: (child, level) =>
+    assignDefined(level, "pStyle", attributeValue(child)),
+  isLgl: (child, level) =>
+    assignDefined(level, "isLgl", parseBooleanElement(child)),
   suff: (child, level) =>
-    assignDefined(level, "suffix", narrowEnum(attributeValue(child), LevelSuffixSchema)),
+    assignDefined(
+      level,
+      "suffix",
+      narrowEnum(attributeValue(child), LevelSuffixSchema),
+    ),
   lvlText: (child, level) => {
     assignDefined(level, "lvlText", attributeValue(child) ?? "");
     const isNull = parseOnOffAttribute(child, "w", "null");
@@ -384,13 +419,19 @@ const LIST_LEVEL_HANDLERS = {
       level.lvlTextNull = isNull;
     }
   },
-  lvlPicBulletId: (child, level) => assignDefined(level, "lvlPicBulletId", integerValue(child)),
+  lvlPicBulletId: (child, level) =>
+    assignDefined(level, "lvlPicBulletId", integerValue(child)),
   legacy: (child, level) => assignDefined(level, "legacy", legacyOf(child)),
   lvlJc: (child, level) =>
-    assignDefined(level, "lvlJc", narrowEnum(attributeValue(child), ParagraphAlignmentSchema)),
+    assignDefined(
+      level,
+      "lvlJc",
+      narrowEnum(attributeValue(child), ParagraphAlignmentSchema),
+    ),
   // An empty `<w:pPr/>` is not an absent one: both of `CT_PPrGeneral`'s
   // children are optional, so the record is what carries the presence.
-  pPr: (child, level) => assignDefined(level, "pPr", parseParagraphProperties(child, null) ?? {}),
+  pPr: (child, level) =>
+    assignDefined(level, "pPr", parseParagraphProperties(child, null) ?? {}),
   rPr: (child, level) =>
     assignDefined(
       level,
@@ -478,7 +519,9 @@ function parseListLevel(element: XmlElement): ListLevel | null {
     // unrenderable Choice defers to the Fallback. The Choice is not lost by
     // that: the whole `mc:AlternateContent` replays verbatim on save.
     const resolved =
-      choiceFmt && counterFormatOf(choiceFmt) !== "custom" ? choiceFmt : (fallbackFmt ?? choiceFmt);
+      choiceFmt && counterFormatOf(choiceFmt) !== "custom"
+        ? choiceFmt
+        : (fallbackFmt ?? choiceFmt);
     if (resolved) {
       Object.assign(level, resolved);
     }
@@ -504,7 +547,10 @@ function resolveNumFmt(numFmtEl: XmlElement | null): ResolvedNumFmt | null {
   if (!numFmtEl) {
     return null;
   }
-  const numFmt = narrowEnum(getAttribute(numFmtEl, "w", "val"), NumberFormatSchema);
+  const numFmt = narrowEnum(
+    getAttribute(numFmtEl, "w", "val"),
+    NumberFormatSchema,
+  );
   if (numFmt === undefined) {
     return null;
   }
@@ -537,7 +583,9 @@ function legacyOf(element: XmlElement): LevelLegacy {
  * "0001, 0002, 0003, ...". Word only emits zero-padded decimal customs this
  * way; the width is the digit count of the first token, clamped to five.
  */
-export const customNumberFormatPadWidth = (format: string | undefined): number | undefined => {
+export const customNumberFormatPadWidth = (
+  format: string | undefined,
+): number | undefined => {
   const firstToken = format?.split(",")[0]?.trim() ?? "";
   if (!/^0+1$/u.test(firstToken)) {
     return undefined;
@@ -586,12 +634,16 @@ const MARKER_ALIGNMENT = {
   lowKashida: undefined,
   numTab: undefined,
   thaiDistribute: undefined,
-} as const satisfies Record<ParagraphAlignment, ListRendering["markerAlignment"]>;
+} as const satisfies Record<
+  ParagraphAlignment,
+  ListRendering["markerAlignment"]
+>;
 
 /** {@link MARKER_ALIGNMENT} for a level that may not state a justification. */
 export const markerAlignmentForLevel = (
   lvlJc: ParagraphAlignment | undefined,
-): ListRendering["markerAlignment"] => (lvlJc === undefined ? undefined : MARKER_ALIGNMENT[lvlJc]);
+): ListRendering["markerAlignment"] =>
+  lvlJc === undefined ? undefined : MARKER_ALIGNMENT[lvlJc];
 
 export const markerFormattingFromLevel = (
   formatting: TextFormatting | undefined,
@@ -600,18 +652,28 @@ export const markerFormattingFromLevel = (
     return undefined;
   }
   const markerFormatting: ListMarkerFormatting = {
-    ...(formatting.fontFamily !== undefined ? { fontFamily: formatting.fontFamily } : {}),
-    ...(formatting.fontSize !== undefined ? { fontSize: formatting.fontSize } : {}),
-    ...(formatting.fontSizeCs !== undefined ? { fontSizeCs: formatting.fontSizeCs } : {}),
+    ...(formatting.fontFamily !== undefined
+      ? { fontFamily: formatting.fontFamily }
+      : {}),
+    ...(formatting.fontSize !== undefined
+      ? { fontSize: formatting.fontSize }
+      : {}),
+    ...(formatting.fontSizeCs !== undefined
+      ? { fontSizeCs: formatting.fontSizeCs }
+      : {}),
     ...(formatting.bold !== undefined ? { bold: formatting.bold } : {}),
     ...(formatting.boldCs !== undefined ? { boldCs: formatting.boldCs } : {}),
     ...(formatting.italic !== undefined ? { italic: formatting.italic } : {}),
-    ...(formatting.italicCs !== undefined ? { italicCs: formatting.italicCs } : {}),
+    ...(formatting.italicCs !== undefined
+      ? { italicCs: formatting.italicCs }
+      : {}),
     ...(formatting.rtl !== undefined ? { rtl: formatting.rtl } : {}),
     ...(formatting.cs !== undefined ? { cs: formatting.cs } : {}),
     ...(formatting.color !== undefined ? { color: formatting.color } : {}),
   };
-  return Object.keys(markerFormatting).length > 0 ? markerFormatting : undefined;
+  return Object.keys(markerFormatting).length > 0
+    ? markerFormatting
+    : undefined;
 };
 
 /**
@@ -621,7 +683,9 @@ export const markerFormattingFromLevel = (
  */
 const numberingMapCache = new WeakMap<NumberingDefinitions, NumberingMap>();
 
-export function getCachedNumberingMap(definitions: NumberingDefinitions): NumberingMap {
+export function getCachedNumberingMap(
+  definitions: NumberingDefinitions,
+): NumberingMap {
   let map = numberingMapCache.get(definitions);
   if (!map) {
     map = createNumberingMap(definitions);
@@ -633,11 +697,14 @@ export function getCachedNumberingMap(definitions: NumberingDefinitions): Number
 /**
  * Create a NumberingMap with helper functions
  */
-export function createNumberingMap(definitions: NumberingDefinitions): NumberingMap {
+export function createNumberingMap(
+  definitions: NumberingDefinitions,
+): NumberingMap {
   // Build lookup maps for efficient access
   const abstractMap = new Map<number, AbstractNumbering>();
   for (const abs of definitions.abstractNums) {
-    if (!abstractMap.has(abs.abstractNumId)) abstractMap.set(abs.abstractNumId, abs);
+    if (!abstractMap.has(abs.abstractNumId))
+      abstractMap.set(abs.abstractNumId, abs);
   }
 
   const numMap = new Map<number, NumberingInstance>();
@@ -694,7 +761,10 @@ export function createNumberingMap(definitions: NumberingDefinitions): Numbering
       // (has matching styleLink) and use its levels. Per ECMA-376 §17.9.21/22.
       if (abstractNum.numStyleLink && abstractNum.levels.length === 0) {
         for (const candidate of abstractMap.values()) {
-          if (candidate.styleLink === abstractNum.numStyleLink && candidate.levels.length > 0) {
+          if (
+            candidate.styleLink === abstractNum.numStyleLink &&
+            candidate.levels.length > 0
+          ) {
             abstractNum = candidate;
             break;
           }
@@ -754,12 +824,16 @@ export function computeListRendering(
   const levelStarts: number[] = [];
   for (let i = 0; i <= ilvl; i += 1) {
     const listLevel = numbering.getLevel(numId, i);
-    levelNumFmts.push(level.isLgl || !listLevel ? "decimal" : counterFormatOf(listLevel));
+    levelNumFmts.push(
+      level.isLgl || !listLevel ? "decimal" : counterFormatOf(listLevel),
+    );
     levelStarts.push(listLevel?.start ?? 1);
   }
 
   const instance = numbering.getInstance(numId);
-  const overrideForLevel = instance?.levelOverrides?.find((override) => override.ilvl === ilvl);
+  const overrideForLevel = instance?.levelOverrides?.find(
+    (override) => override.ilvl === ilvl,
+  );
 
   const rendering: ListRendering = {
     level: ilvl,
@@ -846,7 +920,8 @@ export function getBulletCharacter(level: ListLevel): string {
   }
 
   // Check font for common bullet font mappings
-  const fontFamily = level.rPr?.fontFamily?.ascii || level.rPr?.fontFamily?.hAnsi;
+  const fontFamily =
+    level.rPr?.fontFamily?.ascii || level.rPr?.fontFamily?.hAnsi;
 
   if (fontFamily) {
     const fontLower = fontFamily.toLowerCase();
@@ -879,5 +954,6 @@ export const numberingLevelUsesBulletMarker = (
 ): boolean => level?.numFmt === "bullet";
 
 /** Whether a numbering level reserves horizontal space for a visible marker. */
-export const numberingLevelHasMarkerSlot = (level: Pick<ListLevel, "numFmt">): boolean =>
-  level.numFmt !== "none";
+export const numberingLevelHasMarkerSlot = (
+  level: Pick<ListLevel, "numFmt">,
+): boolean => level.numFmt !== "none";

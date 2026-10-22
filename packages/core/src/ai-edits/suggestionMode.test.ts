@@ -17,6 +17,7 @@ import type { Mark } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
+import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
 import {
   acceptAllChanges,
   acceptSuggestion,
@@ -26,13 +27,17 @@ import {
 } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { schema } from "../prosemirror/schema";
-import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
 import type { Document, Paragraph } from "../types/document";
 import { applyFolioAIEditOperations } from "./apply";
-import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
+import {
+  createFolioAIEditSnapshot,
+  createFolioAITextRangeHandle,
+} from "./snapshot";
 
 const makeView = (text: string) => {
-  const doc = schema.node("doc", null, [schema.node("paragraph", {}, [schema.text(text)])]);
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", {}, [schema.text(text)]),
+  ]);
   const view = {
     state: EditorState.create({ schema, doc }),
     dispatch(transaction: Transaction) {
@@ -102,7 +107,9 @@ const applySuggestedReplace = (
     undefinedReferences: "refuse",
     view,
     snapshot,
-    operations: [{ id: "op-1", type: "replaceInBlock", blockId: block.id, find, replace }],
+    operations: [
+      { id: "op-1", type: "replaceInBlock", blockId: block.id, find, replace },
+    ],
     mode: "suggested",
     author: "AI",
   });
@@ -152,7 +159,9 @@ describe("suggested apply mode", () => {
     expect(result.applied.at(0)?.suggestionId).toBe("group-A");
     expect(
       marksInDoc(view.state)
-        .filter((m) => m.type.name === "insertion" || m.type.name === "deletion")
+        .filter(
+          (m) => m.type.name === "insertion" || m.type.name === "deletion",
+        )
         .every((m) => m.attrs["suggestionId"] === "group-A"),
     ).toBe(true);
   });
@@ -161,7 +170,9 @@ describe("suggested apply mode", () => {
     // Real 2x1 table so the operation resolves and the skip provably comes
     // from the suggested-mode allowlist, not a failed table resolution.
     const cellNode = (text: string, attrs: Record<string, unknown> = {}) =>
-      schema.nodes["tableCell"]!.create(attrs, [schema.node("paragraph", {}, [schema.text(text)])]);
+      schema.nodes["tableCell"]!.create(attrs, [
+        schema.node("paragraph", {}, [schema.text(text)]),
+      ]);
     const doc = schema.node("doc", null, [
       schema.nodes["table"]!.create({}, [
         schema.nodes["tableRow"]!.create({}, [cellNode("top")]),
@@ -183,19 +194,30 @@ describe("suggested apply mode", () => {
       undefinedReferences: "refuse",
       view,
       snapshot,
-      operations: [{ id: "merge", type: "mergeTableCells", blockId: anchor.id, rowCount: 2 }],
+      operations: [
+        {
+          id: "merge",
+          type: "mergeTableCells",
+          blockId: anchor.id,
+          rowCount: 2,
+        },
+      ],
       mode: "suggested",
       author: "AI",
     });
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([{ id: "merge", reason: "unsupportedMode" }]);
+    expect(result.skipped).toEqual([
+      { id: "merge", reason: "unsupportedMode" },
+    ]);
   });
 
   test("cell split reports unsupportedMode under suggested mode", () => {
     // A rowspan-2 cell so splitTableCell resolves (a 1x1 cell would skip as a
     // no-op before reaching the suggested-mode allowlist).
     const cellNode = (text: string, attrs: Record<string, unknown> = {}) =>
-      schema.nodes["tableCell"]!.create(attrs, [schema.node("paragraph", {}, [schema.text(text)])]);
+      schema.nodes["tableCell"]!.create(attrs, [
+        schema.node("paragraph", {}, [schema.text(text)]),
+      ]);
     const doc = schema.node("doc", null, [
       schema.nodes["table"]!.create({}, [
         schema.nodes["tableRow"]!.create({}, [
@@ -225,7 +247,9 @@ describe("suggested apply mode", () => {
       author: "AI",
     });
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([{ id: "split", reason: "unsupportedMode" }]);
+    expect(result.skipped).toEqual([
+      { id: "split", reason: "unsupportedMode" },
+    ]);
   });
 
   test("insertAfterBlock in suggested mode flags the block and strips it", () => {
@@ -237,7 +261,12 @@ describe("suggested apply mode", () => {
       view,
       snapshot,
       operations: [
-        { id: "ins", type: "insertAfterBlock", blockId: block.id, text: "proposed new block" },
+        {
+          id: "ins",
+          type: "insertAfterBlock",
+          blockId: block.id,
+          text: "proposed new block",
+        },
       ],
       mode: "suggested",
       author: "AI",
@@ -256,7 +285,9 @@ describe("suggested apply mode", () => {
     const model = fromProseDoc(view.state.doc, undefined, {
       stylesheetSource: { type: "package" },
     });
-    expect(JSON.stringify(model.package.document.content)).not.toContain("proposed new block");
+    expect(JSON.stringify(model.package.document.content)).not.toContain(
+      "proposed new block",
+    );
   });
 
   test("deleteBlock in suggested mode keeps the text after the serialization strip", () => {
@@ -275,7 +306,9 @@ describe("suggested apply mode", () => {
 
     const xml = serializeParagraph(
       firstParagraph(
-        fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(view.state.doc, undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     );
     expect(xml).toContain("delete me please");
@@ -299,21 +332,29 @@ describe("suggested apply mode", () => {
       undefinedReferences: "refuse",
       view,
       snapshot,
-      operations: [{ id: "fmt", type: "formatRange", range, formatting: { bold: true } }],
+      operations: [
+        { id: "fmt", type: "formatRange", range, formatting: { bold: true } },
+      ],
       mode: "suggested",
       author: "AI",
     });
     expect(result.applied.at(0)?.suggestionId).toBe("fmt");
 
-    const rpc = marksInDoc(view.state).find((m) => m.type.name === "runPropertyChange");
+    const rpc = marksInDoc(view.state).find(
+      (m) => m.type.name === "runPropertyChange",
+    );
     expect(rpc?.attrs["provenance"]).toBe("suggested");
     expect(rpc?.attrs["suggestionId"]).toBe("fmt");
     // The live doc shows the proposed bold; the strip reverts it on serialize.
-    expect(marksInDoc(view.state).some((m) => m.type.name === "bold")).toBe(true);
+    expect(marksInDoc(view.state).some((m) => m.type.name === "bold")).toBe(
+      true,
+    );
 
     const xml = serializeParagraph(
       firstParagraph(
-        fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(view.state.doc, undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     );
     expect(xml).not.toContain("<w:rPrChange");
@@ -435,7 +476,9 @@ describe("suggested apply mode", () => {
       ]);
       expect(view.state.doc.textContent).toBe(originalText);
       expect(
-        marksInDoc(view.state).filter((mark) => mark.type.name === "runPropertyChange"),
+        marksInDoc(view.state).filter(
+          (mark) => mark.type.name === "runPropertyChange",
+        ),
       ).toHaveLength(1);
     },
   );
@@ -444,7 +487,9 @@ describe("suggested apply mode", () => {
     const view = makeView("the quick brown fox");
     applySuggestedReplace(view, "quick", "swift");
     const paragraph = firstParagraph(
-      fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(view.state.doc, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     );
     const xml = serializeParagraph(paragraph);
     expect(xml).not.toContain("swift");
@@ -461,10 +506,14 @@ describe("suggestion commands", () => {
 
     expect(acceptAllChanges()(view.state, view.dispatch)).toBe(false);
     expect(view.state.doc.toJSON()).toEqual(before);
-    expect(getSuggestions(view.state).map(({ suggestionId }) => suggestionId)).toEqual(["op-1"]);
+    expect(
+      getSuggestions(view.state).map(({ suggestionId }) => suggestionId),
+    ).toEqual(["op-1"]);
     const xml = serializeParagraph(
       firstParagraph(
-        fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(view.state.doc, undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     );
     expect(xml).not.toContain("swift");
@@ -509,7 +558,9 @@ describe("suggestion commands", () => {
     // The accepted change now serializes as a real tracked change.
     const xml = serializeParagraph(
       firstParagraph(
-        fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(view.state.doc, undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     );
     expect(xml).toContain("<w:ins");
@@ -552,7 +603,9 @@ describe("suggestion commands", () => {
       [" CZK", false, false, false],
     ]);
     expect(
-      marksInDoc(accepting.state).filter((mark) => mark.type.name === "runPropertyChange"),
+      marksInDoc(accepting.state).filter(
+        (mark) => mark.type.name === "runPropertyChange",
+      ),
     ).toHaveLength(0);
     expect(
       acceptSuggestion("op-1", {
@@ -560,11 +613,18 @@ describe("suggestion commands", () => {
         date: "2026-07-17T12:00:00.000Z",
       })(accepting.state, accepting.dispatch),
     ).toBe(true);
-    const accepted = resolveAllChangesInHeadlessState(accepting.state, "accept");
-    expect(textRuns(accepted)).toEqual([["Penalty 3000 CZK", false, false, false]]);
+    const accepted = resolveAllChangesInHeadlessState(
+      accepting.state,
+      "accept",
+    );
+    expect(textRuns(accepted)).toEqual([
+      ["Penalty 3000 CZK", false, false, false],
+    ]);
 
     const rejecting = applyAmountReplacement();
-    expect(rejectSuggestion("op-1")(rejecting.state, rejecting.dispatch)).toBe(true);
+    expect(rejectSuggestion("op-1")(rejecting.state, rejecting.dispatch)).toBe(
+      true,
+    );
     expect(rejecting.state.doc.textContent).toBe("Penalty 2000 CZK");
     expect(
       marksInDoc(rejecting.state)
@@ -586,7 +646,9 @@ describe("suggestion commands", () => {
     expect(getSuggestions(view.state)).toEqual([]);
     const xml = serializeParagraph(
       firstParagraph(
-        fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(view.state.doc, undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     );
     expect(xml).not.toContain("swift");

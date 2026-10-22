@@ -69,7 +69,8 @@ export function PanelToggles({
           "flex h-8 min-w-8 shrink-0 items-center justify-center gap-1 rounded-md px-1.5",
           "transition-colors duration-100",
           "text-[var(--doc-text-muted)] hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)]",
-          commentsShown && "bg-[var(--doc-primary-light)] text-[var(--doc-text)]",
+          commentsShown &&
+            "bg-[var(--doc-primary-light)] text-[var(--doc-text)]",
         )}
         data-testid="toolbar-comments-toggle"
         onClick={onToggleComments}

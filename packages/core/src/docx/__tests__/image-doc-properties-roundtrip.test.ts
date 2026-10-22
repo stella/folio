@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Document, Image, Run } from "../../types/document";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import type { Document, Image, Run } from "../../types/document";
 import { parseDrawing } from "../imageParser";
 import { serializeRun } from "../serializer/runSerializer";
 import { parseXml, type XmlElement } from "../xmlParser";
@@ -136,7 +136,10 @@ describe("wp:docPr image metadata round-trip", () => {
 
   test("does not synthesize title from name or description", () => {
     const image = parseDrawingXml(
-      drawingXml("inline", 'name="Authored name" descr="Accessibility description"'),
+      drawingXml(
+        "inline",
+        'name="Authored name" descr="Accessibility description"',
+      ),
     );
     expect(image?.title).toBeUndefined();
     if (!image) {
@@ -144,7 +147,9 @@ describe("wp:docPr image metadata round-trip", () => {
     }
 
     const serialized = serializeImage(image);
-    expect(serialized).toContain('name="Authored name" descr="Accessibility description"');
+    expect(serialized).toContain(
+      'name="Authored name" descr="Accessibility description"',
+    );
     expect(serialized).not.toContain(" title=");
     expect(reparseSerializedImage(serialized)?.title).toBeUndefined();
   });

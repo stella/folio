@@ -15,7 +15,9 @@ import { TaggedError } from "better-result";
 import { diffFileSignatures, renderFamilyDeltas } from "./lib/corpus-diff";
 import type { CorpusFileSignatures } from "./lib/corpus-file-signatures";
 
-class CorpusDiffError extends TaggedError("CorpusDiffError")<{ message: string }> {}
+class CorpusDiffError extends TaggedError("CorpusDiffError")<{
+  message: string;
+}> {}
 
 const flagValues = (args: readonly string[], flag: string): string[] => {
   const values: string[] = [];
@@ -46,7 +48,9 @@ const loadSide = async (
   paths: readonly string[],
 ): Promise<CorpusFileSignatures[]> => {
   if (paths.length === 0) {
-    throw new CorpusDiffError({ message: `${flag} needs at least one census file` });
+    throw new CorpusDiffError({
+      message: `${flag} needs at least one census file`,
+    });
   }
   const rows: CorpusFileSignatures[] = [];
   for (const file of paths) {
@@ -67,12 +71,16 @@ const main = async (args: readonly string[]): Promise<void> => {
     loadSide("--before", flagValues(args, "--before")),
     loadSide("--after", flagValues(args, "--after")),
   ]);
-  process.stdout.write(`${renderFamilyDeltas(diffFileSignatures(before, after))}\n`);
+  process.stdout.write(
+    `${renderFamilyDeltas(diffFileSignatures(before, after))}\n`,
+  );
 };
 
 if (import.meta.main) {
   main(process.argv.slice(2)).catch((cause: unknown) => {
-    process.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+    process.stderr.write(
+      `${cause instanceof Error ? cause.message : String(cause)}\n`,
+    );
     process.exitCode = 1;
   });
 }

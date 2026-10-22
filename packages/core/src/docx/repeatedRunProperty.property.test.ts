@@ -25,8 +25,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseParagraph } from "./paragraphParser";
 import { parseRun, parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
@@ -46,9 +48,27 @@ const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
  * corpus are of that harmless kind.
  */
 const DISAGREEING_REPEATS = [
-  { name: "b", field: "bold", first: "<w:b/>", last: '<w:b w:val="0"/>', value: false },
-  { name: "b", field: "bold", first: '<w:b w:val="0"/>', last: "<w:b/>", value: true },
-  { name: "i", field: "italic", first: "<w:i/>", last: '<w:i w:val="false"/>', value: false },
+  {
+    name: "b",
+    field: "bold",
+    first: "<w:b/>",
+    last: '<w:b w:val="0"/>',
+    value: false,
+  },
+  {
+    name: "b",
+    field: "bold",
+    first: '<w:b w:val="0"/>',
+    last: "<w:b/>",
+    value: true,
+  },
+  {
+    name: "i",
+    field: "italic",
+    first: "<w:i/>",
+    last: '<w:i w:val="false"/>',
+    value: false,
+  },
   {
     name: "sz",
     field: "fontSize",
@@ -105,7 +125,9 @@ const parseOne = (xml: string): XmlElement => {
 const rebuildRun = (properties: string): string =>
   serializeRun(
     parseRun(
-      parseOne(`<w:r xmlns:w="${W}"><w:rPr>${properties}</w:rPr><w:t>x</w:t></w:r>`),
+      parseOne(
+        `<w:r xmlns:w="${W}"><w:rPr>${properties}</w:rPr><w:t>x</w:t></w:r>`,
+      ),
       null,
       null,
     ),
@@ -114,7 +136,9 @@ const rebuildRun = (properties: string): string =>
 /** The paragraph mark's `w:rPr`, parsed and written back from the model alone. */
 const rebuildParagraphMark = (properties: string): string => {
   const paragraph = parseParagraph(
-    parseOne(`<w:p xmlns:w="${W}"><w:pPr><w:rPr>${properties}</w:rPr></w:pPr></w:p>`),
+    parseOne(
+      `<w:p xmlns:w="${W}"><w:pPr><w:rPr>${properties}</w:rPr></w:pPr></w:p>`,
+    ),
     null,
     null,
     null,
@@ -132,7 +156,10 @@ const occurrences = (saved: string, name: string): number =>
 
 /** The outer `w:rPr`'s own children: a `w:rPrChange` nests a second one. */
 const propertiesOf = (saved: string): string =>
-  saved.slice(saved.indexOf("<w:rPr>") + "<w:rPr>".length, saved.lastIndexOf("</w:rPr>"));
+  saved.slice(
+    saved.indexOf("<w:rPr>") + "<w:rPr>".length,
+    saved.lastIndexOf("</w:rPr>"),
+  );
 
 const repeat = fc.constantFrom(...DISAGREEING_REPEATS);
 
@@ -187,7 +214,9 @@ describe("a property stated twice in one w:rPr", () => {
   test("a repeat beside a captured child leaves the capture where it stood", () => {
     // The sink records a schema ordinal, and the winner takes the slot its
     // name owns; a capture between the two statements keeps its own.
-    const saved = rebuildRun('<w:b/><w:bdr w:val="single" w:sz="4"/><w:b w:val="0"/>');
+    const saved = rebuildRun(
+      '<w:b/><w:bdr w:val="single" w:sz="4"/><w:b w:val="0"/>',
+    );
 
     expect(saved).toContain('<w:b w:val="0"/><w:bdr w:val="single" w:sz="4"/>');
     expect(occurrences(saved, "b")).toBe(1);
@@ -196,7 +225,9 @@ describe("a property stated twice in one w:rPr", () => {
   test("the paragraph mark projects only the last run-in marker", () => {
     const parseMark = (properties: string) =>
       parseParagraph(
-        parseOne(`<w:p xmlns:w="${W}"><w:pPr><w:rPr>${properties}</w:rPr></w:pPr></w:p>`),
+        parseOne(
+          `<w:p xmlns:w="${W}"><w:pPr><w:rPr>${properties}</w:rPr></w:pPr></w:p>`,
+        ),
         null,
         null,
         null,

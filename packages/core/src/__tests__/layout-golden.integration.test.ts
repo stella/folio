@@ -86,15 +86,24 @@ describe("golden layout: measure -> paginate", () => {
       // Two pages: everything before the break, then the trailing paragraph.
       expect(layout.pages).toHaveLength(2);
 
-      const idsOn = (pageIndex: number) => layout.pages[pageIndex]!.fragments.map((f) => f.blockId);
+      const idsOn = (pageIndex: number) =>
+        layout.pages[pageIndex]!.fragments.map((f) => f.blockId);
 
       expect(idsOn(0)).toEqual(["title", "body-1", "schedule", "body-2"]);
       expect(idsOn(1)).toEqual(["after"]);
 
       // The page-break block itself produces no fragment, and every other
       // block produces exactly one fragment across all pages, order preserved.
-      const allFragmentIds = layout.pages.flatMap((p) => p.fragments.map((f) => f.blockId));
-      expect(allFragmentIds).toEqual(["title", "body-1", "schedule", "body-2", "after"]);
+      const allFragmentIds = layout.pages.flatMap((p) =>
+        p.fragments.map((f) => f.blockId),
+      );
+      expect(allFragmentIds).toEqual([
+        "title",
+        "body-1",
+        "schedule",
+        "body-2",
+        "after",
+      ]);
     }, fakeMeasure);
   });
 
@@ -131,13 +140,17 @@ describe("golden layout: measure -> paginate", () => {
       const layout = layoutOf(blocks);
       expect(layout.pages).toHaveLength(1);
 
-      const tableFragment = layout.pages[0]!.fragments.find((f) => f.blockId === "t");
+      const tableFragment = layout.pages[0]!.fragments.find(
+        (f) => f.blockId === "t",
+      );
       expect(tableFragment?.kind).toBe("table");
       if (tableFragment?.kind === "table") {
         expect(tableFragment.fromRow).toBe(0);
         expect(tableFragment.toRow).toBe(4);
         // The table is positioned below the intro paragraph.
-        const intro = layout.pages[0]!.fragments.find((f) => f.blockId === "intro");
+        const intro = layout.pages[0]!.fragments.find(
+          (f) => f.blockId === "intro",
+        );
         expect(tableFragment.y).toBeGreaterThan(intro!.y);
       }
     }, fakeMeasure);

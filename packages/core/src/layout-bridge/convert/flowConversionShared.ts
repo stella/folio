@@ -5,11 +5,16 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+
 import type { FontAlternates } from "../../fonts/fontAlternates";
-import type { ParagraphBlock, TableBlock, ParagraphAttrs } from "../../layout-engine/types";
-import type { RunStyleResolver } from "../../prosemirror/runStyleFormatting";
+import type {
+  ParagraphAttrs,
+  ParagraphBlock,
+  TableBlock,
+} from "../../layout-engine/types";
 import type { ListCounterStreams } from "../../prosemirror/listMarker";
-import type { Theme, StyleDefinitions } from "../../types/document";
+import type { RunStyleResolver } from "../../prosemirror/runStyleFormatting";
+import type { StyleDefinitions, Theme } from "../../types/document";
 
 /**
  * Options for the conversion.
@@ -66,7 +71,9 @@ export type ToFlowBlocksOptions = {
     useLegacyEthiopicAmharicRules?: boolean;
   };
   /** Document-generation policy for justified line fitting. */
-  justificationCompatibility?: NonNullable<ParagraphAttrs["justificationCompatibility"]>;
+  justificationCompatibility?: NonNullable<
+    ParagraphAttrs["justificationCompatibility"]
+  >;
   /** Document-generation policy for where `w:tblInd` is measured from. */
   tableIndentCompatibility?: NonNullable<TableBlock["indentCompatibility"]>;
   /**

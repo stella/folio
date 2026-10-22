@@ -9,7 +9,9 @@ import type { FlowBlock } from "../layout-engine/types";
  * advancing); every other SEQ advances its counter by one. Independent of
  * pagination, so it runs once per document, not per layout pass.
  */
-export function buildSeqValues(blocks: readonly FlowBlock[]): Map<number, number> {
+export function buildSeqValues(
+  blocks: readonly FlowBlock[],
+): Map<number, number> {
   const counters = new Map<string, number>();
   const values = new Map<number, number>();
   walkBlocks(blocks, counters, values);
@@ -32,8 +34,12 @@ function walkBlocks(
           continue;
         }
         const id = parsed.argument ?? "";
-        const reset = parsed.switches.find((s) => s.switch.toLowerCase() === "r")?.value;
-        const repeat = parsed.switches.some((s) => s.switch.toLowerCase() === "c");
+        const reset = parsed.switches.find(
+          (s) => s.switch.toLowerCase() === "r",
+        )?.value;
+        const repeat = parsed.switches.some(
+          (s) => s.switch.toLowerCase() === "c",
+        );
 
         let value: number;
         if (reset !== undefined) {

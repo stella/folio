@@ -86,7 +86,9 @@ export const BlockSdtExtension = createNodeExtension({
             id: id !== null && !Number.isNaN(id) ? id : null,
             lock: dom.dataset["lock"] ?? null,
             placeholder: dom.dataset["placeholder"] ?? null,
-            showingPlaceholder: onOffFromDataset(dom.dataset["showingPlaceholder"]),
+            showingPlaceholder: onOffFromDataset(
+              dom.dataset["showingPlaceholder"],
+            ),
             dateFormat: dom.dataset["dateFormat"] ?? null,
             dateValueISO: dom.dataset["dateValueIso"] ?? null,
             listItems: dom.dataset["listItems"] ?? null,
@@ -125,7 +127,10 @@ export const BlockSdtExtension = createNodeExtension({
       if (attrs["placeholder"]) {
         data["data-placeholder"] = String(attrs["placeholder"]);
       }
-      if (attrs["showingPlaceholder"] !== null && attrs["showingPlaceholder"] !== undefined) {
+      if (
+        attrs["showingPlaceholder"] !== null &&
+        attrs["showingPlaceholder"] !== undefined
+      ) {
         data["data-showing-placeholder"] = String(attrs["showingPlaceholder"]);
       }
       if (attrs["dateFormat"]) {

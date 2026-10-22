@@ -26,8 +26,10 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, ParagraphFormatting, Style } from "../types/document";
@@ -138,8 +140,13 @@ const withParagraph = (document: Document, testCase: ToggleCase): Document => {
         content: [
           {
             type: "paragraph",
-            formatting: { styleId: STYLE_ID, ...formattingFrom(testCase.paragraph) },
-            content: [{ type: "run", content: [{ type: "text", text: "kept" }] }],
+            formatting: {
+              styleId: STYLE_ID,
+              ...formattingFrom(testCase.paragraph),
+            },
+            content: [
+              { type: "run", content: [{ type: "text", text: "kept" }] },
+            ],
           },
         ],
       },
@@ -165,16 +172,25 @@ const save = (document: Document): Promise<ArrayBuffer> =>
   repackDocx(document, { updateModifiedDate: false });
 
 /** Set the toggles the way an editor command would: on the paragraph node. */
-const setTogglesThroughTheEditor = (document: Document, toggles: Toggles): Document => {
+const setTogglesThroughTheEditor = (
+  document: Document,
+  toggles: Toggles,
+): Document => {
   const proseDoc = toProseDoc(document);
   const paragraph = proseDoc.child(0);
   const next = proseDoc.copy(
     proseDoc.content.replaceChild(
       0,
-      paragraph.type.create({ ...paragraph.attrs, ...toggles }, paragraph.content, paragraph.marks),
+      paragraph.type.create(
+        { ...paragraph.attrs, ...toggles },
+        paragraph.content,
+        paragraph.marks,
+      ),
     ),
   );
-  return fromProseDoc(next, document, { stylesheetSource: { type: "package" } });
+  return fromProseDoc(next, document, {
+    stylesheetSource: { type: "package" },
+  });
 };
 
 describe("keep toggles a command sets reach w:pPr", () => {
@@ -190,7 +206,9 @@ describe("keep toggles a command sets reach w:pPr", () => {
             content: [
               {
                 type: "paragraph",
-                content: [{ type: "run", content: [{ type: "text", text: "p" }] }],
+                content: [
+                  { type: "run", content: [{ type: "text", text: "p" }] },
+                ],
               },
             ],
           },
@@ -222,14 +240,18 @@ describe("keep toggles a command sets reach w:pPr", () => {
 
       await fc.assert(
         fc.asyncProperty(toggleCase, async (testCase) => {
-          const opened = await parse(await save(withParagraph(template, testCase)));
+          const opened = await parse(
+            await save(withParagraph(template, testCase)),
+          );
           expect(readDirect(opened)).toEqual(testCase.paragraph);
 
           // Untouched: the editor round trip keeps the paragraph's own values
           // and does not materialise the style's.
           const roundTripped = await parse(
             await save(
-              fromProseDoc(toProseDoc(opened), opened, { stylesheetSource: { type: "package" } }),
+              fromProseDoc(toProseDoc(opened), opened, {
+                stylesheetSource: { type: "package" },
+              }),
             ),
           );
           expect(readDirect(roundTripped)).toEqual(testCase.paragraph);

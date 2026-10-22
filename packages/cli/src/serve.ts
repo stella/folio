@@ -1,4 +1,4 @@
-import { bytesToBase64, bytesToBase64Url, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
+import { Result } from "better-result";
 /**
  * `folio serve`: a read-only live preview of one document on 127.0.0.1.
  *
@@ -13,15 +13,22 @@ import { bytesToBase64, bytesToBase64Url, encodeUtf8 } from "@stll/folio-core/ut
  * is not the loopback address it bound are refused (so a web page cannot reach
  * it through a rebound name), and only GET and HEAD are answered.
  */
-
-import { Result } from "better-result";
 import { randomBytes } from "node:crypto";
-import { watch, type FSWatcher } from "node:fs";
+import { type FSWatcher, watch } from "node:fs";
 import { stat } from "node:fs/promises";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import path from "node:path";
 
 import { escapeHtmlText } from "@stll/folio-core/display-list/html/renderDisplayListToHtml";
+import {
+  bytesToBase64,
+  bytesToBase64Url,
+  encodeUtf8,
+} from "@stll/folio-core/utils/textEncoding";
 
 import { readDocumentFile } from "./document";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
@@ -49,7 +56,13 @@ export type PreviewServer = {
 type FileStamp = { size: number; modifiedMs: number; ino: number };
 
 type Rendered =
-  | { type: "page"; fileVersion: string; html: string; pageCount: number; pageWidthPx: number }
+  | {
+      type: "page";
+      fileVersion: string;
+      html: string;
+      pageCount: number;
+      pageWidthPx: number;
+    }
   | { type: "error"; fileVersion: string | null; message: string };
 
 const SHELL_STYLE =
@@ -62,7 +75,11 @@ const SHELL_STYLE =
  * widest page, keeping it centered and fully visible; `fit` reruns on resize
  * and whenever a live reload reports a new page width.
  */
-const shellHtml = (title: string, nonce: string, pageWidthPx: number | null): string =>
+const shellHtml = (
+  title: string,
+  nonce: string,
+  pageWidthPx: number | null,
+): string =>
   [
     "<!doctype html>",
     `<html><head><meta charset="utf-8"><title>${escapeHtmlText(title)}</title>`,
@@ -109,7 +126,8 @@ const SECURITY_HEADERS = {
 } as const;
 
 /** The rendered document may contain inline styles and data URLs, and nothing that runs. */
-const DOCUMENT_CSP = "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'";
+const DOCUMENT_CSP =
+  "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'";
 
 /** Serve the preview until {@link PreviewServer.close}. */
 export const startPreviewServer = async ({
@@ -132,7 +150,11 @@ export const startPreviewServer = async ({
   const current = async (): Promise<Rendered> => {
     const info = await Result.tryPromise(() => stat(realPath));
     const next = info.isOk()
-      ? { size: info.value.size, modifiedMs: info.value.mtimeMs, ino: info.value.ino }
+      ? {
+          size: info.value.size,
+          modifiedMs: info.value.mtimeMs,
+          ino: info.value.ino,
+        }
       : null;
     const unchanged =
       rendered !== null &&
@@ -144,16 +166,27 @@ export const startPreviewServer = async ({
     if (unchanged && rendered !== null) return rendered;
     rendering ??= (async (): Promise<Rendered> => {
       const file = await readDocumentFile(realPath);
-      if (file.isErr()) return { type: "error", fileVersion: null, message: file.error.message };
-      if (rendered !== null && rendered.fileVersion === file.value.fileVersion) return rendered;
+      if (file.isErr())
+        return {
+          type: "error",
+          fileVersion: null,
+          message: file.error.message,
+        };
+      if (rendered !== null && rendered.fileVersion === file.value.fileVersion)
+        return rendered;
       const list = await buildDisplayList(file.value);
       if (list.isErr()) {
-        return { type: "error", fileVersion: file.value.fileVersion, message: list.error.message };
+        return {
+          type: "error",
+          fileVersion: file.value.fileVersion,
+          message: list.error.message,
+        };
       }
       // The widest page, so the shell page can scale the iframe to fit a
       // narrower viewport without cutting off any page's margin.
       let pageWidthPx = 0;
-      for (const page of list.value.pages) pageWidthPx = Math.max(pageWidthPx, page.widthPx);
+      for (const page of list.value.pages)
+        pageWidthPx = Math.max(pageWidthPx, page.widthPx);
       return {
         type: "page",
         fileVersion: file.value.fileVersion,
@@ -164,7 +197,8 @@ export const startPreviewServer = async ({
     })();
     const result = await rendering;
     rendering = null;
-    const changed = rendered === null || rendered.fileVersion !== result.fileVersion;
+    const changed =
+      rendered === null || rendered.fileVersion !== result.fileVersion;
     rendered = result;
     stamp = next;
     if (changed) {
@@ -182,7 +216,10 @@ export const startPreviewServer = async ({
 
   let boundPort = port;
   const allowedHosts = () =>
-    new Set([`${PREVIEW_HOST}:${String(boundPort)}`, `localhost:${String(boundPort)}`]);
+    new Set([
+      `${PREVIEW_HOST}:${String(boundPort)}`,
+      `localhost:${String(boundPort)}`,
+    ]);
 
   const respond = (
     response: ServerResponse,
@@ -194,7 +231,10 @@ export const startPreviewServer = async ({
     response.end(encodeUtf8(body));
   };
 
-  const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+  const handle = async (
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> => {
     if (!allowedHosts().has(request.headers.host ?? "")) {
       respond(response, 403, "forbidden", { "Content-Type": "text/plain" });
       return;
@@ -228,10 +268,15 @@ export const startPreviewServer = async ({
     }
     if (route === "document.html") {
       const page = await current();
-      respond(response, 200, page.type === "page" ? page.html : errorHtml(page.message), {
-        "Content-Type": "text/html; charset=utf-8",
-        "Content-Security-Policy": DOCUMENT_CSP,
-      });
+      respond(
+        response,
+        200,
+        page.type === "page" ? page.html : errorHtml(page.message),
+        {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Security-Policy": DOCUMENT_CSP,
+        },
+      );
       return;
     }
     if (route === "version") {
@@ -242,7 +287,8 @@ export const startPreviewServer = async ({
         JSON.stringify({
           path: realPath,
           fileVersion: page.fileVersion,
-          journalToVersion: (await latestCommitFor(realPath))?.toVersion ?? null,
+          journalToVersion:
+            (await latestCommitFor(realPath))?.toVersion ?? null,
           ...(page.type === "page"
             ? { pageCount: page.pageCount, pageWidthPx: page.pageWidthPx }
             : { error: page.message }),
@@ -260,7 +306,11 @@ export const startPreviewServer = async ({
       listeners.add(response);
       request.on("close", () => listeners.delete(response));
       const page = await current();
-      response.write(encodeUtf8(`data: ${JSON.stringify({ fileVersion: page.fileVersion })}\n\n`));
+      response.write(
+        encodeUtf8(
+          `data: ${JSON.stringify({ fileVersion: page.fileVersion })}\n\n`,
+        ),
+      );
       return;
     }
     respond(response, 404, "not found", { "Content-Type": "text/plain" });
@@ -289,13 +339,18 @@ export const startPreviewServer = async ({
     );
   }
   const address = server.address();
-  boundPort = typeof address === "object" && address !== null ? address.port : port;
+  boundPort =
+    typeof address === "object" && address !== null ? address.port : port;
 
   // Watch the directory rather than the file: a folio write replaces the file
   // by rename, which ends a watch on the old inode.
   const watchers: FSWatcher[] = [];
   const directory = path.dirname(realPath);
-  const watched = new Set([path.basename(realPath), SIDECAR_DIRECTORY, "journal.jsonl"]);
+  const watched = new Set([
+    path.basename(realPath),
+    SIDECAR_DIRECTORY,
+    "journal.jsonl",
+  ]);
   for (const target of [directory, path.join(directory, SIDECAR_DIRECTORY)]) {
     const watcher = Result.try(() =>
       watch(target, (_event, name) => {

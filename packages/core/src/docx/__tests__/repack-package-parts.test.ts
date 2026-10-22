@@ -16,8 +16,10 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import {
   checkPackageIntegrity,
   isUnsafePackagePath,
@@ -30,8 +32,10 @@ import { extractFile, getFileList, unzipDocx } from "../unzip";
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
-const RELATIONSHIP_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships";
-const OFFICE_RELATIONSHIP = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const RELATIONSHIP_NAMESPACE =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
+const OFFICE_RELATIONSHIP =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 const DOCUMENT_XML = `${XML_DECL}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="${OFFICE_RELATIONSHIP}">
@@ -65,7 +69,8 @@ const EMBEDDED_WORKBOOK: ExtraPart = {
   path: "word/embeddings/Microsoft_Excel_Worksheet.xlsx",
   bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0x11, 0x22, 0x33]),
   relationshipType: `${OFFICE_RELATIONSHIP}/package`,
-  contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  contentType:
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 
 const OLE_MEDIA: ExtraPart = {
@@ -82,7 +87,8 @@ const OLE_MEDIA: ExtraPart = {
 const DOCX_MAIN_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
 /** A `.docm`'s main part. Word decides a document is macro-enabled by this. */
-const DOCM_MAIN_CONTENT_TYPE = "application/vnd.ms-word.document.macroEnabled.main+xml";
+const DOCM_MAIN_CONTENT_TYPE =
+  "application/vnd.ms-word.document.macroEnabled.main+xml";
 
 type BuildPackageOptions = {
   extras?: readonly ExtraPart[];
@@ -106,10 +112,15 @@ const buildPackage = async ({
 
   extras.forEach((extra, index) => {
     if (extra.defaultExtension) {
-      defaults.set(extra.defaultExtension.extension, extra.defaultExtension.contentType);
+      defaults.set(
+        extra.defaultExtension.extension,
+        extra.defaultExtension.contentType,
+      );
     }
     if (extra.contentType) {
-      overrides.push(`<Override PartName="/${extra.path}" ContentType="${extra.contentType}"/>`);
+      overrides.push(
+        `<Override PartName="/${extra.path}" ContentType="${extra.contentType}"/>`,
+      );
     }
     if (extra.relationshipType) {
       relationships.push(
@@ -144,11 +155,19 @@ const buildPackage = async ({
 };
 
 const repack = async (buffer: ArrayBuffer): Promise<JSZip> => {
-  const document = await parseDocx(buffer, { detectVariables: false, preloadFonts: false });
-  return JSZip.loadAsync(await repackDocx(document, { updateModifiedDate: false }));
+  const document = await parseDocx(buffer, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
+  return JSZip.loadAsync(
+    await repackDocx(document, { updateModifiedDate: false }),
+  );
 };
 
-const partBytes = async (zip: JSZip, path: string): Promise<Uint8Array | null> => {
+const partBytes = async (
+  zip: JSZip,
+  path: string,
+): Promise<Uint8Array | null> => {
   const entry = zip.file(path);
   return entry ? entry.async("uint8array") : null;
 };
@@ -156,13 +175,16 @@ const partBytes = async (zip: JSZip, path: string): Promise<Uint8Array | null> =
 const MACRO_PROJECT: ExtraPart = {
   path: "word/vbaProject.bin",
   bytes: new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0x5a, 0x5a, 0x5a, 0x5a]),
-  relationshipType: "http://schemas.microsoft.com/office/2006/relationships/vbaProject",
+  relationshipType:
+    "http://schemas.microsoft.com/office/2006/relationships/vbaProject",
   contentType: "application/vnd.ms-office.vbaProject",
 };
 
 const ACTIVEX_CONTROL: ExtraPart = {
   path: "word/activeX/activeX1.xml",
-  bytes: new TextEncoder().encode('<ax:ocx xmlns:ax="urn:activex" ax:classid="{0002}"/>'),
+  bytes: new TextEncoder().encode(
+    '<ax:ocx xmlns:ax="urn:activex" ax:classid="{0002}"/>',
+  ),
   relationshipType: `${OFFICE_RELATIONSHIP}/control`,
   contentType: "application/vnd.ms-office.activeX+xml",
 };
@@ -176,12 +198,20 @@ describe("the repack carries the parts the model does not represent", () => {
       expect(await partBytes(output, extra.path)).toEqual(extra.bytes);
     }
 
-    const rels = await output.file("word/_rels/document.xml.rels")?.async("text");
-    expect(rels).toContain('Target="embeddings/Microsoft_Excel_Worksheet.xlsx"');
+    const rels = await output
+      .file("word/_rels/document.xml.rels")
+      ?.async("text");
+    expect(rels).toContain(
+      'Target="embeddings/Microsoft_Excel_Worksheet.xlsx"',
+    );
     expect(rels).toContain('Target="media/image9.bin"');
 
-    const contentTypes = await output.file("[Content_Types].xml")?.async("text");
-    expect(contentTypes).toContain('PartName="/word/embeddings/Microsoft_Excel_Worksheet.xlsx"');
+    const contentTypes = await output
+      .file("[Content_Types].xml")
+      ?.async("text");
+    expect(contentTypes).toContain(
+      'PartName="/word/embeddings/Microsoft_Excel_Worksheet.xlsx"',
+    );
     expect(contentTypes).toContain('Extension="bin"');
   });
 
@@ -209,11 +239,15 @@ describe("the repack carries the parts the model does not represent", () => {
       expect(await partBytes(output, extra.path)).toEqual(extra.bytes);
     }
 
-    const rels = await output.file("word/_rels/document.xml.rels")?.async("text");
+    const rels = await output
+      .file("word/_rels/document.xml.rels")
+      ?.async("text");
     expect(rels).toContain('Target="vbaProject.bin"');
     expect(rels).toContain('Target="activeX/activeX1.xml"');
 
-    const contentTypes = await output.file("[Content_Types].xml")?.async("text");
+    const contentTypes = await output
+      .file("[Content_Types].xml")
+      ?.async("text");
     expect(contentTypes).toContain('PartName="/word/vbaProject.bin"');
     expect(contentTypes).toContain('PartName="/word/activeX/activeX1.xml"');
   });
@@ -226,7 +260,9 @@ describe("the repack carries the parts the model does not represent", () => {
       }),
     );
 
-    const contentTypes = await output.file("[Content_Types].xml")?.async("text");
+    const contentTypes = await output
+      .file("[Content_Types].xml")
+      ?.async("text");
     expect(contentTypes).toContain(DOCM_MAIN_CONTENT_TYPE);
     expect(contentTypes).not.toContain(DOCX_MAIN_CONTENT_TYPE);
   });
@@ -239,7 +275,12 @@ describe("folio reads document content, it does not interpret it", () => {
     });
     const content = await unzipDocx(buffer);
 
-    for (const extra of [MACRO_PROJECT, ACTIVEX_CONTROL, EMBEDDED_WORKBOOK, OLE_MEDIA]) {
+    for (const extra of [
+      MACRO_PROJECT,
+      ACTIVEX_CONTROL,
+      EMBEDDED_WORKBOOK,
+      OLE_MEDIA,
+    ]) {
       expect(content.allXml.has(extra.path)).toBe(false);
       expect(content.media.has(extra.path)).toBe(false);
       expect(await extractFile(content, extra.path)).toBeNull();
@@ -247,27 +288,34 @@ describe("folio reads document content, it does not interpret it", () => {
     }
 
     // The archive still holds them, byte for byte, for the save path to carry.
-    expect(await partBytes(content.originalZip, MACRO_PROJECT.path)).toEqual(MACRO_PROJECT.bytes);
+    expect(await partBytes(content.originalZip, MACRO_PROJECT.path)).toEqual(
+      MACRO_PROJECT.bytes,
+    );
   });
 });
 
 describe("a path that would escape the package is refused", () => {
-  test.each(["../outside.xml", "/absolute.xml", "word\\backslash.xml", "word/../../escape.bin"])(
-    "%s is unsafe",
-    (path) => {
-      expect(isUnsafePackagePath(path)).toBe(true);
-    },
-  );
+  test.each([
+    "../outside.xml",
+    "/absolute.xml",
+    "word\\backslash.xml",
+    "word/../../escape.bin",
+  ])("%s is unsafe", (path) => {
+    expect(isUnsafePackagePath(path)).toBe(true);
+  });
 
-  test.each(["word/document.xml", "[Content_Types].xml", "word/embeddings/book.xlsx"])(
-    "%s is safe",
-    (path) => {
-      expect(isUnsafePackagePath(path)).toBe(false);
-    },
-  );
+  test.each([
+    "word/document.xml",
+    "[Content_Types].xml",
+    "word/embeddings/book.xlsx",
+  ])("%s is safe", (path) => {
+    expect(isUnsafePackagePath(path)).toBe(false);
+  });
 
   test("an escaping entry leaves with its relationship and its override", async () => {
-    const zip = await JSZip.loadAsync(await buildPackage({ extras: [EMBEDDED_WORKBOOK] }));
+    const zip = await JSZip.loadAsync(
+      await buildPackage({ extras: [EMBEDDED_WORKBOOK] }),
+    );
     zip.file("../escape.bin", new Uint8Array([1, 2, 3]));
     zip.file("escape.bin", new Uint8Array([4]));
     zip.file(
@@ -277,7 +325,9 @@ describe("a path that would escape the package is refused", () => {
 
     removeUnsafeEntries(zip);
     expect(zip.file("../escape.bin")).toBeNull();
-    expect(zip.file("word/embeddings/Microsoft_Excel_Worksheet.xlsx")).not.toBeNull();
+    expect(
+      zip.file("word/embeddings/Microsoft_Excel_Worksheet.xlsx"),
+    ).not.toBeNull();
 
     const repair = await reconcilePackageReferences(zip, 6);
     expect(repair.danglingRelationships).toEqual(["../../escape.bin"]);
@@ -306,7 +356,9 @@ const OLE_OBJECT_XML = `${XML_DECL}
 
 describe("a relationship pruned for a missing target loses its r:id reference too", () => {
   test("the owning part's r:id attribute is scrubbed alongside the dangling relationship", async () => {
-    const zip = await JSZip.loadAsync(await buildPackage({ extras: [OLE_MEDIA] }));
+    const zip = await JSZip.loadAsync(
+      await buildPackage({ extras: [OLE_MEDIA] }),
+    );
     // The embedded binary never made it into this package — the shape under
     // test in the corpus defect this reproduces (the media the header's own
     // `.rels` still declares is simply absent from the package it was found
@@ -316,12 +368,16 @@ describe("a relationship pruned for a missing target loses its r:id reference to
 
     expect(await checkPackageIntegrity(zip)).toEqual({
       unresolvedReferences: [],
-      danglingRelationshipTargets: ["word/_rels/document.xml.rels|word/media/image9.bin"],
+      danglingRelationshipTargets: [
+        "word/_rels/document.xml.rels|word/media/image9.bin",
+      ],
     });
 
     const repair = await reconcilePackageReferences(zip, 6);
     expect(repair.danglingRelationships).toEqual(["word/media/image9.bin"]);
-    expect(repair.orphanedIdReferences).toEqual(["word/document.xml|rIdExtra0"]);
+    expect(repair.orphanedIdReferences).toEqual([
+      "word/document.xml|rIdExtra0",
+    ]);
 
     const documentXml = await zip.file("word/document.xml")?.async("text");
     expect(documentXml).not.toContain("rIdExtra0");
@@ -337,7 +393,9 @@ describe("a relationship pruned for a missing target loses its r:id reference to
   });
 
   test("checkPackageIntegrity reports an r:id a part's own .rels never declared", async () => {
-    const zip = await JSZip.loadAsync(await buildPackage({ extras: [OLE_MEDIA] }));
+    const zip = await JSZip.loadAsync(
+      await buildPackage({ extras: [OLE_MEDIA] }),
+    );
     zip.file("word/document.xml", OLE_OBJECT_XML);
     // Drop the relationship by hand, without going through reconciliation, so
     // this test exercises the checker on its own rather than on its repair.
@@ -379,20 +437,26 @@ describe("internal relationship fragments", () => {
         danglingOverrides: [],
         orphanedIdReferences: [],
       });
-      expect(await zip.file("word/document.xml")?.async("text")).toContain('r:id="rIdBookmark"');
-      expect(await zip.file("word/_rels/document.xml.rels")?.async("text")).toContain(
-        `Target="${target}"`,
+      expect(await zip.file("word/document.xml")?.async("text")).toContain(
+        'r:id="rIdBookmark"',
       );
+      expect(
+        await zip.file("word/_rels/document.xml.rels")?.async("text"),
+      ).toContain(`Target="${target}"`);
 
-      const saved = await repack(await zip.generateAsync({ type: "arraybuffer" }));
+      const saved = await repack(
+        await zip.generateAsync({ type: "arraybuffer" }),
+      );
       expect(await checkPackageIntegrity(saved)).toEqual({
         unresolvedReferences: [],
         danglingRelationshipTargets: [],
       });
-      expect(await saved.file("word/document.xml")?.async("text")).toContain('r:id="rIdBookmark"');
-      expect(await saved.file("word/_rels/document.xml.rels")?.async("text")).toContain(
-        `Target="${target}"`,
+      expect(await saved.file("word/document.xml")?.async("text")).toContain(
+        'r:id="rIdBookmark"',
       );
+      expect(
+        await saved.file("word/_rels/document.xml.rels")?.async("text"),
+      ).toContain(`Target="${target}"`);
     },
   );
 
@@ -405,19 +469,34 @@ describe("internal relationship fragments", () => {
 
     expect(await checkPackageIntegrity(zip)).toEqual({
       unresolvedReferences: [],
-      danglingRelationshipTargets: ["word/_rels/document.xml.rels|word/missing.xml"],
+      danglingRelationshipTargets: [
+        "word/_rels/document.xml.rels|word/missing.xml",
+      ],
     });
-    expect((await reconcilePackageReferences(zip, 6)).danglingRelationships).toEqual([
-      "word/missing.xml",
-    ]);
+    expect(
+      (await reconcilePackageReferences(zip, 6)).danglingRelationships,
+    ).toEqual(["word/missing.xml"]);
   });
 });
 
 describe("a repacked package needs no further repair", () => {
-  const extensionArb = fc.constantFrom("bin", "xlsx", "docx", "emf", "dat", "vml");
+  const extensionArb = fc.constantFrom(
+    "bin",
+    "xlsx",
+    "docx",
+    "emf",
+    "dat",
+    "vml",
+  );
   const partArb = fc
     .tuple(
-      fc.constantFrom("word/embeddings", "word/media", "customXml", "word/charts", "word/unknown"),
+      fc.constantFrom(
+        "word/embeddings",
+        "word/media",
+        "customXml",
+        "word/charts",
+        "word/unknown",
+      ),
       fc.stringMatching(/^[a-z][a-z0-9]{0,7}$/u),
       extensionArb,
       fc.uint8Array({ minLength: 1, maxLength: 24 }),
@@ -447,9 +526,13 @@ describe("a repacked package needs no further repair", () => {
             // under it can be referenced from `document.xml.rels`.
             const referenceable = extras.map((extra) => ({
               ...extra,
-              relationshipType: extra.path.startsWith("word/") ? extra.relationshipType : null,
+              relationshipType: extra.path.startsWith("word/")
+                ? extra.relationshipType
+                : null,
             }));
-            const output = await repack(await buildPackage({ extras: referenceable }));
+            const output = await repack(
+              await buildPackage({ extras: referenceable }),
+            );
 
             for (const extra of referenceable) {
               expect(await partBytes(output, extra.path)).toEqual(extra.bytes);

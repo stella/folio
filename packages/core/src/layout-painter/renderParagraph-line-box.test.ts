@@ -70,11 +70,15 @@ const fakeDocument = {
 } as unknown as Document;
 
 function findTabEl(lineEl: FakeElement): FakeElement | undefined {
-  return lineEl.children.find((child) => child.className.includes("layout-run-tab"));
+  return lineEl.children.find((child) =>
+    child.className.includes("layout-run-tab"),
+  );
 }
 
 function findTabEls(lineEl: FakeElement): FakeElement[] {
-  return lineEl.children.filter((child) => child.className.includes("layout-run-tab"));
+  return lineEl.children.filter((child) =>
+    child.className.includes("layout-run-tab"),
+  );
 }
 
 describe("renderLine box model", () => {
@@ -158,7 +162,9 @@ describe("renderLine box model", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
       id: "no-break-hyphen",
-      runs: [{ kind: "text", text: "non\u2011breaking", pmStart: 10, pmEnd: 22 }],
+      runs: [
+        { kind: "text", text: "non\u2011breaking", pmStart: 10, pmEnd: 22 },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -375,8 +381,16 @@ describe("renderLine box model", () => {
       leftIndentPx: 0,
     }) as unknown as FakeElement;
 
-    expect(lineEl.children.map((child) => child.textContent)).toEqual(["Reference", " ", "  "]);
-    expect(lineEl.children.map((child) => child.style["fontSize"])).toEqual([undefined, "0", "0"]);
+    expect(lineEl.children.map((child) => child.textContent)).toEqual([
+      "Reference",
+      " ",
+      "  ",
+    ]);
+    expect(lineEl.children.map((child) => child.style["fontSize"])).toEqual([
+      undefined,
+      "0",
+      "0",
+    ]);
   });
 
   test("keeps decorated trailing spaces paintable", () => {
@@ -416,7 +430,9 @@ describe("renderLine box model", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
       id: "soft-wrapped-leading-spaces",
-      runs: [{ kind: "text", text: "alpha   Reference", pmStart: 10, pmEnd: 27 }],
+      runs: [
+        { kind: "text", text: "alpha   Reference", pmStart: 10, pmEnd: 27 },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -634,7 +650,10 @@ describe("renderLine box model", () => {
     expect(noteMarker?.style["textDecorationLine"]).toBeUndefined();
     expect(noteMarker?.dataset["noteKind"]).toBe("footnote");
     expect(noteMarker?.dataset["noteId"]).toBe("9");
-    expect(lineEl.children.at(1)?.dataset).toMatchObject({ noteKind: "endnote", noteId: "4" });
+    expect(lineEl.children.at(1)?.dataset).toMatchObject({
+      noteKind: "endnote",
+      noteId: "4",
+    });
   });
 
   test("sizes superscript markers from the run font instead of the parent line", () => {

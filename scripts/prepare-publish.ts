@@ -26,7 +26,9 @@ import path from "node:path";
 
 type JsEntry = { types: string; import: string; default: string };
 
-const pkgDir = process.argv[2] ?? panic("usage: bun scripts/prepare-publish.ts <package-dir>");
+const pkgDir =
+  process.argv[2] ??
+  panic("usage: bun scripts/prepare-publish.ts <package-dir>");
 
 const pkgPath = path.resolve(pkgDir, "package.json");
 const pkg = await Bun.file(pkgPath).json();
@@ -34,7 +36,8 @@ const pkg = await Bun.file(pkgPath).json();
 // Drop the trailing extension so a base can be re-suffixed with the built one
 // (`.js` / `.d.ts` / `.css`). `editor.css` -> `editor`, `model/document.ts` ->
 // `model/document`, `core` -> `core`.
-const stripExt = (file: string): string => file.slice(0, file.length - path.extname(file).length);
+const stripExt = (file: string): string =>
+  file.slice(0, file.length - path.extname(file).length);
 
 // Candidate dist bases for a source export, most-specific first:
 //  - flat: the export subpath's own name (`./core` -> `core`, `.` -> `index`,
@@ -43,7 +46,8 @@ const stripExt = (file: string): string => file.slice(0, file.length - path.extn
 //    `model/document`)
 // The first whose built file exists is used.
 const distBases = (subpath: string, srcPath: string): string[] => {
-  const flat = subpath === "." ? "index" : stripExt(subpath.replace(/^\.\//u, ""));
+  const flat =
+    subpath === "." ? "index" : stripExt(subpath.replace(/^\.\//u, ""));
   const nested = stripExt(srcPath.replace(/^\.\/src\//u, ""));
   return flat === nested ? [flat] : [flat, nested];
 };
@@ -86,8 +90,14 @@ for (const [subpath, target] of Object.entries(pkg.exports)) {
   // without a per-file existence check (the `*` cannot be globbed against one
   // built artifact). @stll/folio-core exposes its source-mirrored dist this way.
   if (subpath.includes("*")) {
-    const base = target.replace(/^\.\/src\//u, "./dist/").replace(/\.[cm]?tsx?$/u, "");
-    distExports[subpath] = { types: `${base}.d.ts`, import: `${base}.js`, default: `${base}.js` };
+    const base = target
+      .replace(/^\.\/src\//u, "./dist/")
+      .replace(/\.[cm]?tsx?$/u, "");
+    distExports[subpath] = {
+      types: `${base}.d.ts`,
+      import: `${base}.js`,
+      default: `${base}.js`,
+    };
     continue;
   }
 
@@ -138,4 +148,6 @@ pkg.types = root.types;
 pkg.files = ["dist", "skills", "README.md", "LICENSE", "NOTICE.md"];
 
 await Bun.write(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
-console.log(`prepared ${pkg.name}@${pkg.version} for publish (exports -> dist)`);
+console.log(
+  `prepared ${pkg.name}@${pkg.version} for publish (exports -> dist)`,
+);

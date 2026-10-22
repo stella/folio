@@ -27,11 +27,16 @@ export const SUGGESTION_INPUT_DRIVERS = {
   pasteWordHtml: { type: "browser" },
   pasteListHtml: { type: "browser" },
   pasteTable: { type: "conformance", operations: ["paste:table"] },
-  pasteMultiBlock: { type: "conformance", operations: ["paste:paragraphs", "paste:list"] },
+  pasteMultiBlock: {
+    type: "conformance",
+    operations: ["paste:paragraphs", "paste:list"],
+  },
   imeReplacement: { type: "browser" },
   cut: { type: "conformance", operations: ["host:cut"] },
   dragCellDelete: { type: "focused" },
 } as const satisfies Record<
   SuggestionInputKind,
-  { type: "conformance"; operations: readonly string[] } | { type: "browser" } | { type: "focused" }
+  | { type: "conformance"; operations: readonly string[] }
+  | { type: "browser" }
+  | { type: "focused" }
 >;

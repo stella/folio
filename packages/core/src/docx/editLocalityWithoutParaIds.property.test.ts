@@ -30,8 +30,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock, FolioAIEditOperation } from "../ai-edits/types";
 import { parseDocx } from "./parser";
@@ -96,7 +98,10 @@ const carriesId = (coverage: IdCoverage, ordinal: number): boolean => {
 const authoredId = (ordinal: number): string =>
   (0x11110000 + ordinal * 0x1111).toString(16).toUpperCase().padStart(8, "0");
 
-const buildDocumentXml = (texts: readonly string[], coverage: IdCoverage): string => {
+const buildDocumentXml = (
+  texts: readonly string[],
+  coverage: IdCoverage,
+): string => {
   const declaresW14 = coverage !== ID_COVERAGE.none;
   const body = texts
     .map((text, ordinal) => {
@@ -120,7 +125,10 @@ const buildPackage = async (
   zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
   zip.file("word/document.xml", buildDocumentXml(texts, coverage));
   const bytes = await zip.generateAsync({ type: "uint8array" });
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 };
 
 const documentPartOf = async (docx: ArrayBuffer): Promise<string> => {
@@ -140,9 +148,9 @@ const documentPartOf = async (docx: ArrayBuffer): Promise<string> => {
  * whole of what this needs.
  */
 const paragraphBytes = (xml: string): string[] =>
-  [...xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>|<w:p(?:\s[^>]*)?\/>/gu)].map(
-    (match) => match[0],
-  );
+  [
+    ...xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>|<w:p(?:\s[^>]*)?\/>/gu),
+  ].map((match) => match[0]);
 
 const paragraphTexts = (xml: string): string[] =>
   paragraphBytes(xml).map((paragraph) =>
@@ -151,13 +159,17 @@ const paragraphTexts = (xml: string): string[] =>
       .join(""),
   );
 
-const paraIdCount = (xml: string): number => [...xml.matchAll(/\sw14:paraId="/gu)].length;
+const paraIdCount = (xml: string): number =>
+  [...xml.matchAll(/\sw14:paraId="/gu)].length;
 
 /** Every id the part writes must resolve, or the part is not a valid package. */
 const declaresEveryIdNamespace = (xml: string): boolean =>
   paraIdCount(xml) === 0 || xml.includes(`xmlns:w14="${W14_NS}"`);
 
-const isSubsequence = (needles: readonly string[], haystack: readonly string[]): boolean => {
+const isSubsequence = (
+  needles: readonly string[],
+  haystack: readonly string[],
+): boolean => {
   let cursor = 0;
   for (const needle of needles) {
     cursor = haystack.indexOf(needle, cursor) + 1;
@@ -171,10 +183,15 @@ const isSubsequence = (needles: readonly string[], haystack: readonly string[]):
 type EditPlan = { operation: FolioAIEditOperation; untouched: string[] };
 
 /** The operation for `kind`, and the texts it must leave standing. */
-const planEdit = (kind: EditKind, blocks: readonly FolioAIBlock[]): EditPlan => {
+const planEdit = (
+  kind: EditKind,
+  blocks: readonly FolioAIBlock[],
+): EditPlan => {
   // SAFETY: the generator produces at least three paragraphs.
   const target = blocks[1]!;
-  const others = blocks.filter((block) => block.id !== target.id).map((block) => block.text);
+  const others = blocks
+    .filter((block) => block.id !== target.id)
+    .map((block) => block.text);
   switch (kind) {
     case EDIT_KIND.replace:
       return {
@@ -199,7 +216,11 @@ const planEdit = (kind: EditKind, blocks: readonly FolioAIBlock[]): EditPlan => 
       };
     case EDIT_KIND.merge:
       return {
-        operation: { id: "edit", type: "mergeBlockWithNext", blockId: target.id },
+        operation: {
+          id: "edit",
+          type: "mergeBlockWithNext",
+          blockId: target.id,
+        },
         untouched: blocks
           .filter((block, index) => index !== 1 && index !== 2)
           .map((block) => block.text),
@@ -226,7 +247,12 @@ const planEdit = (kind: EditKind, blocks: readonly FolioAIBlock[]): EditPlan => 
   }
 };
 
-type SavedEdit = { buffer: ArrayBuffer; control: string; edited: string; untouched: string[] };
+type SavedEdit = {
+  buffer: ArrayBuffer;
+  control: string;
+  edited: string;
+  untouched: string[];
+};
 
 const saveEdited = async (
   texts: readonly string[],
@@ -256,19 +282,28 @@ describe("an edit to one paragraph stays local without authored paraIds", () => 
     async () => {
       await fc.assert(
         fc.asyncProperty(documentArb, async ({ texts, coverage }) => {
-          const { control, edited } = await saveEdited(texts, coverage, EDIT_KIND.replace);
+          const { control, edited } = await saveEdited(
+            texts,
+            coverage,
+            EDIT_KIND.replace,
+          );
 
           const before = paragraphBytes(control);
           const after = paragraphBytes(edited);
           expect(after.length).toBe(before.length);
           for (const [ordinal, paragraph] of before.entries()) {
-            if (paragraph.includes(MARKER) || after[ordinal]?.includes(MARKER)) {
+            if (
+              paragraph.includes(MARKER) ||
+              after[ordinal]?.includes(MARKER)
+            ) {
               continue;
             }
             expect(after[ordinal]).toBe(paragraph);
           }
           // The edit landed, and it landed in exactly one paragraph.
-          expect(after.filter((paragraph) => paragraph.includes(MARKER))).toHaveLength(1);
+          expect(
+            after.filter((paragraph) => paragraph.includes(MARKER)),
+          ).toHaveLength(1);
           // An id the author never wrote is a model address, not a package fact:
           // saving must not promote it into the file.
           expect(paraIdCount(edited)).toBe(paraIdCount(control));
@@ -287,7 +322,11 @@ describe("an edit to one paragraph stays local without authored paraIds", () => 
           documentArb,
           fc.constantFrom(...Object.values(EDIT_KIND)),
           async ({ texts, coverage }, kind) => {
-            const { buffer, edited, untouched } = await saveEdited(texts, coverage, kind);
+            const { buffer, edited, untouched } = await saveEdited(
+              texts,
+              coverage,
+              kind,
+            );
 
             expect(parseXmlDocument(edited)).not.toBeNull();
             expect(declaresEveryIdNamespace(edited)).toBe(true);
@@ -295,7 +334,9 @@ describe("an edit to one paragraph stays local without authored paraIds", () => 
 
             const reparsed = await parseDocx(buffer, { preloadFonts: false });
             expect(
-              reparsed.package.document.content.filter((block) => block.type === "paragraph"),
+              reparsed.package.document.content.filter(
+                (block) => block.type === "paragraph",
+              ),
             ).not.toHaveLength(0);
           },
         ),

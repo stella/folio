@@ -9,8 +9,8 @@ import { describe, expect, test } from "bun:test";
 import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 import {
-  parseFolioDocumentOperationBatch,
   type FolioDocumentOperation,
+  parseFolioDocumentOperationBatch,
 } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { parseDocx } from "../docx/parser";
@@ -19,12 +19,16 @@ import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 
 const reviewerOf = async (markdown: string): Promise<FolioDocxReviewer> => {
-  const { docx } = await ensureParaIds(await createDocx(fromMarkdown(markdown)));
+  const { docx } = await ensureParaIds(
+    await createDocx(fromMarkdown(markdown)),
+  );
   return FolioDocxReviewer.fromBuffer(docx, { author: "Agent" });
 };
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
-  const block = reviewer.getContent().find((candidate) => candidate.text === text);
+  const block = reviewer
+    .getContent()
+    .find((candidate) => candidate.text === text);
   if (!block) {
     throw new Error(`no block reads "${text}"`);
   }
@@ -45,7 +49,9 @@ const listInstancesByText = async (
     const text = block.content
       .flatMap((item) =>
         item.type === "run"
-          ? item.content.flatMap((part) => (part.type === "text" ? [part.text] : []))
+          ? item.content.flatMap((part) =>
+              part.type === "text" ? [part.text] : [],
+            )
           : [],
       )
       .join("");
@@ -88,8 +94,13 @@ const savedLabels = async (
   expect(result.issues).toEqual([]);
 
   const saved = await reviewer.toBuffer();
-  const reparsed = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
-  const defined = new Set((reparsed.package.numbering?.nums ?? []).map(({ numId }) => numId));
+  const reparsed = await parseDocx(saved, {
+    preloadFonts: false,
+    detectVariables: false,
+  });
+  const defined = new Set(
+    (reparsed.package.numbering?.nums ?? []).map(({ numId }) => numId),
+  );
   for (const block of reparsed.package.document.content) {
     if (block.type !== "paragraph") continue;
     const numId = paragraphNumberingReferenceId(block.formatting?.numPr);
@@ -130,7 +141,13 @@ describe("an operation that starts a new list", () => {
       },
     ]);
 
-    expect(labels).toEqual(["1. Alpha", "2. Beta", "Tail.", "1. Gamma", "2. Delta"]);
+    expect(labels).toEqual([
+      "1. Alpha",
+      "2. Beta",
+      "Tail.",
+      "1. Gamma",
+      "2. Delta",
+    ]);
   });
 
   test("starts a bullet list", async () => {
@@ -153,14 +170,22 @@ describe("an operation that starts a new list", () => {
     const batch = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
     const replay = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
     const operations = twoNewLists(batch);
-    batch.applyDocumentOperations({ version: 1, mode: "direct", operations }, {});
+    batch.applyDocumentOperations(
+      { version: 1, mode: "direct", operations },
+      {},
+    );
 
     const replayOperations = twoNewLists(replay);
     for (const operation of [...replayOperations].reverse()) {
-      replay.applyDocumentOperations({ version: 1, mode: "direct", operations: [operation] }, {});
+      replay.applyDocumentOperations(
+        { version: 1, mode: "direct", operations: [operation] },
+        {},
+      );
     }
 
-    expect(await listInstancesByText(batch)).toEqual(await listInstancesByText(replay));
+    expect(await listInstancesByText(batch)).toEqual(
+      await listInstancesByText(replay),
+    );
   });
 
   test("allocates direct and accepted tracked batches alike after save and reopen", async () => {
@@ -180,8 +205,12 @@ describe("an operation that starts a new list", () => {
     );
     tracked.acceptAll();
 
-    const reopenedDirect = await FolioDocxReviewer.fromBuffer(await direct.toBuffer());
-    const reopenedTracked = await FolioDocxReviewer.fromBuffer(await tracked.toBuffer());
+    const reopenedDirect = await FolioDocxReviewer.fromBuffer(
+      await direct.toBuffer(),
+    );
+    const reopenedTracked = await FolioDocxReviewer.fromBuffer(
+      await tracked.toBuffer(),
+    );
     expect(await listInstancesByText(reopenedTracked)).toEqual(
       await listInstancesByText(reopenedDirect),
     );
@@ -200,7 +229,9 @@ describe("an operation that starts a new list", () => {
         id: "second",
         type: "setBlockParagraphProperties",
         blockId: blockId(reviewer, "Two"),
-        properties: { numbering: { kind: "newList", format: "numbered", level: 0 } },
+        properties: {
+          numbering: { kind: "newList", format: "numbered", level: 0 },
+        },
       },
     ]);
 
@@ -228,8 +259,12 @@ describe("an operation that starts a new list", () => {
     expect(deletion.status).toBe("committed");
 
     const source = await prepared.toBuffer();
-    const batch = await FolioDocxReviewer.fromBuffer(source, { author: "Agent" });
-    const sequential = await FolioDocxReviewer.fromBuffer(source, { author: "Agent" });
+    const batch = await FolioDocxReviewer.fromBuffer(source, {
+      author: "Agent",
+    });
+    const sequential = await FolioDocxReviewer.fromBuffer(source, {
+      author: "Agent",
+    });
     const operations: FolioDocumentOperation[] = [
       {
         id: "refused-list",
@@ -260,20 +295,31 @@ describe("an operation that starts a new list", () => {
     );
 
     expect(batchResult.skipped).toEqual([
-      expect.objectContaining({ id: "refused-list", reason: "pendingParagraphMarkDeletion" }),
+      expect.objectContaining({
+        id: "refused-list",
+        reason: "pendingParagraphMarkDeletion",
+      }),
     ]);
     expect(refusedResult.skipped).toEqual(batchResult.skipped);
     expect((await listInstancesByText(batch))["Refused."]).toBeUndefined();
-    expect(await listInstancesByText(batch)).toEqual(await listInstancesByText(sequential));
+    expect(await listInstancesByText(batch)).toEqual(
+      await listInstancesByText(sequential),
+    );
   });
 
   test.each([
-    [{ kind: "newList", format: "roman" }, "$.operations[0].properties.numbering.format"],
+    [
+      { kind: "newList", format: "roman" },
+      "$.operations[0].properties.numbering.format",
+    ],
     [
       { kind: "newList", format: "numbered", level: 9 },
       "$.operations[0].properties.numbering.level",
     ],
-    [{ kind: "newList", format: "bullet", numId: 3 }, "$.operations[0].properties.numbering.numId"],
+    [
+      { kind: "newList", format: "bullet", numId: 3 },
+      "$.operations[0].properties.numbering.numId",
+    ],
     [
       { kind: "newList", format: "bullet", start: "old" },
       "$.operations[0].properties.numbering.start",
@@ -283,9 +329,19 @@ describe("an operation that starts a new list", () => {
       parseFolioDocumentOperationBatch({
         version: 1,
         operations: [
-          { id: "1", type: "setBlockParagraphProperties", blockId: "a", properties: { numbering } },
+          {
+            id: "1",
+            type: "setBlockParagraphProperties",
+            blockId: "a",
+            properties: { numbering },
+          },
         ],
       }),
-    ).toThrow(expect.objectContaining({ _tag: "InvalidFolioDocumentOperationBatchError", path }));
+    ).toThrow(
+      expect.objectContaining({
+        _tag: "InvalidFolioDocumentOperationBatchError",
+        path,
+      }),
+    );
   });
 });

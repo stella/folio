@@ -2,9 +2,14 @@ import { parseDocx } from "../docx/parser";
 import { createEmptyDocx, repackDocx } from "../docx/rezip";
 import type { Document, Shape } from "../types/document";
 
-export const buildTextBoxTableDocument = async (cellText = "Cell value"): Promise<ArrayBuffer> => {
+export const buildTextBoxTableDocument = async (
+  cellText = "Cell value",
+): Promise<ArrayBuffer> => {
   const source = await createEmptyDocx();
-  const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+  const document = await parseDocx(source, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
   document.package.document.content = [
     {
       type: "paragraph",
@@ -21,12 +26,22 @@ export const buildTextBoxTableDocument = async (cellText = "Cell value"): Promis
                 id: "42",
                 size: { width: 1_828_800, height: 914_400 },
                 textBody: {
-                  margins: { top: 45_720, bottom: 45_720, left: 91_440, right: 91_440 },
+                  margins: {
+                    top: 45_720,
+                    bottom: 45_720,
+                    left: 91_440,
+                    right: 91_440,
+                  },
                   content: [
                     {
                       type: "paragraph",
                       paraId: "22000002",
-                      content: [{ type: "run", content: [{ type: "text", text: "Before table" }] }],
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "Before table" }],
+                        },
+                      ],
                     },
                     {
                       type: "table",
@@ -43,7 +58,9 @@ export const buildTextBoxTableDocument = async (cellText = "Cell value"): Promis
                                   content: [
                                     {
                                       type: "run",
-                                      content: [{ type: "text", text: cellText }],
+                                      content: [
+                                        { type: "text", text: cellText },
+                                      ],
                                     },
                                   ],
                                 },
@@ -56,7 +73,12 @@ export const buildTextBoxTableDocument = async (cellText = "Cell value"): Promis
                     {
                       type: "paragraph",
                       paraId: "22000004",
-                      content: [{ type: "run", content: [{ type: "text", text: "After table" }] }],
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "After table" }],
+                        },
+                      ],
                     },
                   ],
                 },

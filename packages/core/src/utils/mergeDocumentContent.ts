@@ -6,6 +6,9 @@
  * never collide with numbering the target already defines.
  */
 
+import { createNumberingIdAllocator } from "../docx/numberingIds";
+import { paragraphNumberingReferenceId } from "../docx/numberingReference";
+import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 import type {
   AbstractNumbering,
   BlockContent,
@@ -16,9 +19,6 @@ import type {
   Paragraph,
   Table,
 } from "../types/document";
-import { paragraphNumberingReferenceId } from "../docx/numberingReference";
-import { createNumberingIdAllocator } from "../docx/numberingIds";
-import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 
 /**
  * Append `source`'s body content onto `target`'s. Both documents keep their
@@ -43,13 +43,17 @@ import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySo
  * const bytes = await createDocx(merged);
  * ```
  */
-export function mergeDocumentContent(target: Document, source: Document): Document {
+export function mergeDocumentContent(
+  target: Document,
+  source: Document,
+): Document {
   const targetNumbering = target.package.numbering;
   const sourceNumbering = source.package.numbering;
 
   if (
     sourceNumbering === undefined ||
-    (sourceNumbering.abstractNums.length === 0 && sourceNumbering.nums.length === 0)
+    (sourceNumbering.abstractNums.length === 0 &&
+      sourceNumbering.nums.length === 0)
   ) {
     return {
       ...target,
@@ -57,13 +61,19 @@ export function mergeDocumentContent(target: Document, source: Document): Docume
         ...target.package,
         document: {
           ...target.package.document,
-          content: [...target.package.document.content, ...source.package.document.content],
+          content: [
+            ...target.package.document.content,
+            ...source.package.document.content,
+          ],
         },
       },
     };
   }
 
-  const remappedSource = remapContentNumbering(source.package.document.content, sourceNumbering);
+  const remappedSource = remapContentNumbering(
+    source.package.document.content,
+    sourceNumbering,
+  );
 
   return {
     ...target,
@@ -71,14 +81,20 @@ export function mergeDocumentContent(target: Document, source: Document): Docume
       ...target.package,
       document: {
         ...target.package.document,
-        content: [...target.package.document.content, ...remappedSource.content],
+        content: [
+          ...target.package.document.content,
+          ...remappedSource.content,
+        ],
       },
       numbering: {
         abstractNums: [
           ...(targetNumbering?.abstractNums ?? []),
           ...remappedSource.numbering.abstractNums,
         ],
-        nums: [...(targetNumbering?.nums ?? []), ...remappedSource.numbering.nums],
+        nums: [
+          ...(targetNumbering?.nums ?? []),
+          ...remappedSource.numbering.nums,
+        ],
       },
     },
   };
@@ -88,22 +104,31 @@ export function mergeDocumentContent(target: Document, source: Document): Docume
     numbering: NumberingDefinitions,
   ): { content: BlockContent[]; numbering: NumberingDefinitions } {
     const existingAbstractIds = [
-      ...(targetNumbering?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
+      ...(targetNumbering?.abstractNums ?? []).map(
+        ({ abstractNumId }) => abstractNumId,
+      ),
       ...numbering.abstractNums.map(({ abstractNumId }) => abstractNumId),
     ];
     const existingNumIds = [
       ...(targetNumbering?.nums ?? []).map(({ numId }) => numId),
       ...numbering.nums.map(({ numId }) => numId),
     ];
-    const abstractIds = createNumberingIdAllocator("abstract", existingAbstractIds);
+    const abstractIds = createNumberingIdAllocator(
+      "abstract",
+      existingAbstractIds,
+    );
     const numIds = createNumberingIdAllocator("num", existingNumIds);
 
     const abstractNumIdRemap = new Map<number, number>();
-    const remappedAbstractNums: AbstractNumbering[] = numbering.abstractNums.map((abstractNum) => {
-      const remappedAbstractNumId = abstractIds.next();
-      abstractNumIdRemap.set(abstractNum.abstractNumId, remappedAbstractNumId);
-      return { ...abstractNum, abstractNumId: remappedAbstractNumId };
-    });
+    const remappedAbstractNums: AbstractNumbering[] =
+      numbering.abstractNums.map((abstractNum) => {
+        const remappedAbstractNumId = abstractIds.next();
+        abstractNumIdRemap.set(
+          abstractNum.abstractNumId,
+          remappedAbstractNumId,
+        );
+        return { ...abstractNum, abstractNumId: remappedAbstractNumId };
+      });
 
     const numIdRemap = new Map<number, number>();
     const remappedNums: NumberingInstance[] = numbering.nums.map((num) => {
@@ -112,12 +137,15 @@ export function mergeDocumentContent(target: Document, source: Document): Docume
       return {
         ...num,
         numId: remappedNumId,
-        abstractNumId: abstractNumIdRemap.get(num.abstractNumId) ?? num.abstractNumId,
+        abstractNumId:
+          abstractNumIdRemap.get(num.abstractNumId) ?? num.abstractNumId,
       };
     });
 
     return {
-      content: content.map((block) => remapBlock(block, numIdRemap, abstractNumIdRemap)),
+      content: content.map((block) =>
+        remapBlock(block, numIdRemap, abstractNumIdRemap),
+      ),
       numbering: { abstractNums: remappedAbstractNums, nums: remappedNums },
     };
   }
@@ -144,7 +172,9 @@ function remapBlock(
   ) {
     return {
       ...block,
-      content: block.content.map((child) => remapBlock(child, numIdRemap, abstractNumIdRemap)),
+      content: block.content.map((child) =>
+        remapBlock(child, numIdRemap, abstractNumIdRemap),
+      ),
     };
   }
   return block;
@@ -161,7 +191,9 @@ function remapTable(
       ...row,
       cells: row.cells.map((cell) => ({
         ...cell,
-        content: cell.content.map((item) => remapBlock(item, numIdRemap, abstractNumIdRemap)),
+        content: cell.content.map((item) =>
+          remapBlock(item, numIdRemap, abstractNumIdRemap),
+        ),
       })),
     })),
   };
@@ -185,7 +217,11 @@ function remapParagraph(
       numPr: { ...numPr, numId: remappedNumId },
     },
     ...(paragraph.listRendering && {
-      listRendering: remapListRendering(paragraph.listRendering, remappedNumId, abstractNumIdRemap),
+      listRendering: remapListRendering(
+        paragraph.listRendering,
+        remappedNumId,
+        abstractNumIdRemap,
+      ),
     }),
   });
 }
@@ -199,7 +235,9 @@ function remapListRendering(
     ...rendering,
     numId: remappedNumId,
     ...(rendering.abstractNumId !== undefined && {
-      abstractNumId: abstractNumIdRemap.get(rendering.abstractNumId) ?? rendering.abstractNumId,
+      abstractNumId:
+        abstractNumIdRemap.get(rendering.abstractNumId) ??
+        rendering.abstractNumId,
     }),
   };
 }

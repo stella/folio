@@ -8,6 +8,8 @@
  * ProseMirror, no DOM, no React.
  */
 
+import { finalizeParagraphFormatting } from "@stll/docx-core/model";
+
 import type {
   BorderStyle,
   Table,
@@ -16,7 +18,6 @@ import type {
   TableRow,
   TableWidthType,
 } from "../types/document";
-import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 import { TABLE_JUSTIFICATION_VALUES } from "../types/documentEnumValues";
 
 export type TablePropertiesCommand = {
@@ -35,12 +36,14 @@ const TABLE_PROPERTY_JUSTIFICATION_ORDER = {
 
 // Keep the public declaration on the named domain type. Inferred inline unions
 // can be emitted in a different member order across otherwise identical builds.
-export const TABLE_PROPERTY_JUSTIFICATIONS: readonly TableAlignment[] = Object.freeze(
-  TABLE_JUSTIFICATION_VALUES.toSorted(
-    (left, right) =>
-      TABLE_PROPERTY_JUSTIFICATION_ORDER[left] - TABLE_PROPERTY_JUSTIFICATION_ORDER[right],
-  ),
-);
+export const TABLE_PROPERTY_JUSTIFICATIONS: readonly TableAlignment[] =
+  Object.freeze(
+    TABLE_JUSTIFICATION_VALUES.toSorted(
+      (left, right) =>
+        TABLE_PROPERTY_JUSTIFICATION_ORDER[left] -
+        TABLE_PROPERTY_JUSTIFICATION_ORDER[right],
+    ),
+  );
 
 export const toTablePropertyJustification = (
   value: string | null | undefined,
@@ -168,7 +171,10 @@ export const getCellAt = (
   return null;
 };
 
-export const createTableContext = (table: Table, selection: TableSelection): TableContext => {
+export const createTableContext = (
+  table: Table,
+  selection: TableSelection,
+): TableContext => {
   const rowCount = table.rows.length;
   const columnCount = getColumnCount(table);
   const hasMultiCellSelection = !!(
@@ -176,10 +182,15 @@ export const createTableContext = (table: Table, selection: TableSelection): Tab
     (selection.selectedCells.startRow !== selection.selectedCells.endRow ||
       selection.selectedCells.startCol !== selection.selectedCells.endCol)
   );
-  const currentCell = getCellAt(table, selection.rowIndex, selection.columnIndex);
+  const currentCell = getCellAt(
+    table,
+    selection.rowIndex,
+    selection.columnIndex,
+  );
   const canSplitCell = !!(
     currentCell &&
-    ((currentCell.formatting?.gridSpan ?? 1) > 1 || currentCell.formatting?.vMerge === "restart")
+    ((currentCell.formatting?.gridSpan ?? 1) > 1 ||
+      currentCell.formatting?.vMerge === "restart")
   );
   return {
     table,
@@ -206,7 +217,10 @@ const createEmptyCell = (): TableCell => ({
   formatting: {},
 });
 
-const createEmptyRow = (templateRow: TableRow, columnCount: number): TableRow => {
+const createEmptyRow = (
+  templateRow: TableRow,
+  columnCount: number,
+): TableRow => {
   const cells: TableCell[] = [];
   let colIndex = 0;
   for (const templateCell of templateRow.cells) {
@@ -245,7 +259,11 @@ export const addRow = (
   if (!templateRow) {
     return table;
   }
-  newRows.splice(insertIndex, 0, createEmptyRow(templateRow, getColumnCount(table)));
+  newRows.splice(
+    insertIndex,
+    0,
+    createEmptyRow(templateRow, getColumnCount(table)),
+  );
   return { ...table, rows: newRows };
 };
 
@@ -281,7 +299,8 @@ export const addColumn = (
   let newColumnWidths = table.columnWidths;
   if (table.columnWidths && table.columnWidths.length > 0) {
     newColumnWidths = [...table.columnWidths];
-    const templateWidth = table.columnWidths[atIndex] ?? table.columnWidths[0] ?? 1440;
+    const templateWidth =
+      table.columnWidths[atIndex] ?? table.columnWidths[0] ?? 1440;
     newColumnWidths.splice(insertIndex, 0, templateWidth);
   }
   return {
@@ -370,7 +389,11 @@ export const mergeCells = (table: Table, selection: TableSelection): Table => {
   return { ...table, rows: newRows };
 };
 
-export const splitCell = (table: Table, rowIndex: number, columnIndex: number): Table => {
+export const splitCell = (
+  table: Table,
+  rowIndex: number,
+  columnIndex: number,
+): Table => {
   const cell = getCellAt(table, rowIndex, columnIndex);
   if (!cell) {
     return table;
@@ -401,7 +424,11 @@ export const splitCell = (table: Table, rowIndex: number, columnIndex: number): 
                 if (!rowCell.formatting) {
                   return {};
                 }
-                const { gridSpan: _gs, vMerge: _vm, ...rest } = rowCell.formatting;
+                const {
+                  gridSpan: _gs,
+                  vMerge: _vm,
+                  ...rest
+                } = rowCell.formatting;
                 return rest;
               })(),
             });

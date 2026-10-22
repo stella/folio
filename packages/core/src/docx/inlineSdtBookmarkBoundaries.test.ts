@@ -20,13 +20,15 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, type Plugin } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { BookmarkBoundaryExtension } from "../prosemirror/extensions/nodes/BookmarkBoundaryExtension";
 import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph, ParagraphContent } from "../types/document";
-
 import { parseParagraph } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
@@ -87,7 +89,12 @@ const runTexts = (runs: number): string[] =>
  * unpaired boundary is an orphan the editor's integrity pass deletes, and a
  * fixture built from one would measure that pass rather than the wrapper.
  */
-const paragraphXml = (wrapper: Wrapper, marker: Marker, runs: number, ordinal: number): string => {
+const paragraphXml = (
+  wrapper: Wrapper,
+  marker: Marker,
+  runs: number,
+  ordinal: number,
+): string => {
   const children = runTexts(runs).map(runXml);
   children.splice(ordinal, 0, markerXml(marker));
   const partner = marker.type === "bookmarkStart" ? END_XML : START_XML;
@@ -119,7 +126,9 @@ const insideWrapper = (savedXml: string, innerTag: string): string | null => {
 };
 
 const textOf = (xml: string): string =>
-  [...xml.matchAll(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/gu)].map(([, text]) => text ?? "").join("");
+  [...xml.matchAll(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/gu)]
+    .map(([, text]) => text ?? "")
+    .join("");
 
 /**
  * The text on each side of the marker inside the wrapper.
@@ -131,7 +140,11 @@ const textOf = (xml: string): string =>
  */
 type Split = { before: string; after: string };
 
-const splitSavedMarkup = (savedXml: string, wrapper: Wrapper, marker: Marker): Split | null => {
+const splitSavedMarkup = (
+  savedXml: string,
+  wrapper: Wrapper,
+  marker: Marker,
+): Split | null => {
   const inside = insideWrapper(savedXml, wrapper.innerTag);
   if (inside === null) {
     return null;
@@ -140,11 +153,18 @@ const splitSavedMarkup = (savedXml: string, wrapper: Wrapper, marker: Marker): S
   if (at === -1) {
     return null;
   }
-  return { before: textOf(inside.slice(0, at)), after: textOf(inside.slice(at)) };
+  return {
+    before: textOf(inside.slice(0, at)),
+    after: textOf(inside.slice(at)),
+  };
 };
 
 /** The same split over the model, or `null` when the wrapper no longer holds it. */
-const splitModel = (paragraph: Paragraph, wrapper: Wrapper, marker: Marker): Split | null => {
+const splitModel = (
+  paragraph: Paragraph,
+  wrapper: Wrapper,
+  marker: Marker,
+): Split | null => {
   const held = paragraph.content.find((item) => item.type === wrapper.type);
   if (held?.type !== wrapper.type) {
     return null;
@@ -170,7 +190,11 @@ const modelText = (content: readonly ParagraphContent[]): string => {
       }
       continue;
     }
-    if (item.type === "inlineSdt" || item.type === "insertion" || item.type === "deletion") {
+    if (
+      item.type === "inlineSdt" ||
+      item.type === "insertion" ||
+      item.type === "deletion"
+    ) {
       text += modelText(item.content);
     }
   }
@@ -206,13 +230,23 @@ describe("a bookmark marker inside an inline wrapper keeps its parent and its pl
           fc.property(
             fc
               .integer({ min: 0, max: 3 })
-              .chain((runs) => fc.tuple(fc.constant(runs), fc.integer({ min: 0, max: runs }))),
+              .chain((runs) =>
+                fc.tuple(fc.constant(runs), fc.integer({ min: 0, max: runs })),
+              ),
             ([runs, ordinal]) => {
-              const paragraph = parseParagraphXml(paragraphXml(wrapper, marker, runs, ordinal));
-              expect(splitModel(paragraph, wrapper, marker)).toEqual(expectedSplit(runs, ordinal));
-              expect(splitSavedMarkup(serializeParagraph(paragraph), wrapper, marker)).toEqual(
+              const paragraph = parseParagraphXml(
+                paragraphXml(wrapper, marker, runs, ordinal),
+              );
+              expect(splitModel(paragraph, wrapper, marker)).toEqual(
                 expectedSplit(runs, ordinal),
               );
+              expect(
+                splitSavedMarkup(
+                  serializeParagraph(paragraph),
+                  wrapper,
+                  marker,
+                ),
+              ).toEqual(expectedSplit(runs, ordinal));
             },
           ),
           propertyConfig(),
@@ -224,12 +258,16 @@ describe("a bookmark marker inside an inline wrapper keeps its parent and its pl
           fc.property(
             fc
               .integer({ min: 0, max: 3 })
-              .chain((runs) => fc.tuple(fc.constant(runs), fc.integer({ min: 0, max: runs }))),
+              .chain((runs) =>
+                fc.tuple(fc.constant(runs), fc.integer({ min: 0, max: runs })),
+              ),
             ([runs, ordinal]) => {
               const rebuilt = throughTheEditor(
                 parseParagraphXml(paragraphXml(wrapper, marker, runs, ordinal)),
               );
-              expect(splitModel(rebuilt, wrapper, marker)).toEqual(expectedSplit(runs, ordinal));
+              expect(splitModel(rebuilt, wrapper, marker)).toEqual(
+                expectedSplit(runs, ordinal),
+              );
             },
           ),
           propertyConfig(),
@@ -258,14 +296,20 @@ const CROSSING_PARAGRAPH =
   "</w:p>";
 
 const boundaryIntegrityPlugin = (): Plugin => {
-  const plugin = BookmarkBoundaryExtension().onSchemaReady({ schema }).plugins?.at(0);
+  const plugin = BookmarkBoundaryExtension()
+    .onSchemaReady({ schema })
+    .plugins?.at(0);
   if (!plugin) {
-    throw new Error("BookmarkBoundaryExtension must enforce boundary integrity");
+    throw new Error(
+      "BookmarkBoundaryExtension must enforce boundary integrity",
+    );
   }
   return plugin;
 };
 
-const controlContentOf = (paragraph: Paragraph): readonly ParagraphContent[] => {
+const controlContentOf = (
+  paragraph: Paragraph,
+): readonly ParagraphContent[] => {
   const control = paragraph.content.find((item) => item.type === "inlineSdt");
   if (control?.type !== "inlineSdt") {
     throw new Error("The rebuilt paragraph lost its content control");
@@ -294,8 +338,12 @@ describe("a bookmark that starts inside the control and ends outside it", () => 
     if (first?.type !== "paragraph") {
       throw new Error("Expected a paragraph");
     }
-    expect(controlContentOf(first).some((item) => item.type === "bookmarkStart")).toBe(true);
-    expect(first.content.some((item) => item.type === "bookmarkEnd")).toBe(true);
+    expect(
+      controlContentOf(first).some((item) => item.type === "bookmarkStart"),
+    ).toBe(true);
+    expect(first.content.some((item) => item.type === "bookmarkEnd")).toBe(
+      true,
+    );
   });
 });
 
@@ -322,12 +370,17 @@ describe("a revision around a whole control that holds a marker", () => {
     const rebuilt = throughTheEditor(paragraph);
     const revision = rebuilt.content.at(0);
     if (revision?.type !== "insertion") {
-      throw new Error(`Expected an insertion, got ${revision?.type ?? "nothing"}`);
+      throw new Error(
+        `Expected an insertion, got ${revision?.type ?? "nothing"}`,
+      );
     }
     const control = revision.content.at(0);
     if (control?.type !== "inlineSdt") {
       throw new Error("The revision should hold the control");
     }
-    expect(control.content.map((item) => item.type)).toEqual(["bookmarkStart", "run"]);
+    expect(control.content.map((item) => item.type)).toEqual([
+      "bookmarkStart",
+      "run",
+    ]);
   });
 });

@@ -1,12 +1,13 @@
-import { getDocumentText } from "./storyPlainText";
 import { describe, expect, test } from "bun:test";
 
 import type { Paragraph, Run } from "../types/document";
 import { parseDocumentBody } from "./documentParser";
 import { parseNumbering } from "./numberingParser";
 import { serializeDocumentBody } from "./serializer/documentSerializer";
+import { getDocumentText } from "./storyPlainText";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const numberingXml = `${XML_DECLARATION}
 <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -50,10 +51,18 @@ const repeatedPlaceholderNumberingXml = `${XML_DECLARATION}
   </w:num>
 </w:numbering>`;
 
-const numberedParagraphXml = (paraId: string, ilvl: number, text: string, numId = 9) =>
+const numberedParagraphXml = (
+  paraId: string,
+  ilvl: number,
+  text: string,
+  numId = 9,
+) =>
   `<w:p w14:paraId="${paraId}"><w:pPr><w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`;
 
-const textBoxDrawingContentXml = (content: string, bodyProperties = "<wps:bodyPr/>") => `
+const textBoxDrawingContentXml = (
+  content: string,
+  bodyProperties = "<wps:bodyPr/>",
+) => `
   <w:drawing>
     <wp:inline>
       <wp:extent cx="914400" cy="457200"/>
@@ -78,7 +87,10 @@ const textBoxDrawingContentXml = (content: string, bodyProperties = "<wps:bodyPr
   </w:drawing>`;
 
 const textBoxDrawingXml = (text: string, bodyProperties = "<wps:bodyPr/>") =>
-  textBoxDrawingContentXml(`<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`, bodyProperties);
+  textBoxDrawingContentXml(
+    `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`,
+    bodyProperties,
+  );
 
 describe("parseDocumentBody section ordering", () => {
   test("canonicalizes a leading body sectPr without reversing effective section formats", () => {
@@ -108,7 +120,9 @@ describe("parseDocumentBody section ordering", () => {
     expect(body.finalSectionProperties?.pageHeight).toBeUndefined();
 
     const serialized = serializeDocumentBody(body);
-    expect(serialized.indexOf('w:w="11906"')).toBeLessThan(serialized.lastIndexOf("<w:sectPr/>"));
+    expect(serialized.indexOf('w:w="11906"')).toBeLessThan(
+      serialized.lastIndexOf("<w:sectPr/>"),
+    );
   });
 });
 
@@ -161,7 +175,9 @@ describe("parseDocumentBody list numbering", () => {
       paragraphs.push(numberedParagraphXml(`L0${index}`, 0, `Level ${index}`));
     }
     for (let index = 1; index <= 5; index += 1) {
-      paragraphs.push(numberedParagraphXml(`L1${index}`, 1, `Level 7.${index}`));
+      paragraphs.push(
+        numberedParagraphXml(`L1${index}`, 1, `Level 7.${index}`),
+      );
     }
     paragraphs.push(numberedParagraphXml("L201", 2, "Level 7.5.1"));
 
@@ -194,7 +210,9 @@ describe("parseDocumentBody list numbering", () => {
       paragraphs.push(numberedParagraphXml(`L0${index}`, 0, `Level ${index}`));
     }
     for (let index = 1; index <= 5; index += 1) {
-      paragraphs.push(numberedParagraphXml(`L1${index}`, 1, `Level 7.${index}`));
+      paragraphs.push(
+        numberedParagraphXml(`L1${index}`, 1, `Level 7.${index}`),
+      );
     }
     paragraphs.push(numberedParagraphXml("L201", 2, "Level 7.5.1", 10));
 
@@ -217,7 +235,12 @@ describe("parseDocumentBody list numbering", () => {
   test("renders repeated placeholders and repeated-letter counters after z", () => {
     const numbering = parseNumbering(repeatedPlaceholderNumberingXml);
     const paragraphs = Array.from({ length: 28 }, (_unused, index) =>
-      numberedParagraphXml(`R${String(index + 1).padStart(2, "0")}`, 0, `Item ${index + 1}`, 11),
+      numberedParagraphXml(
+        `R${String(index + 1).padStart(2, "0")}`,
+        0,
+        `Item ${index + 1}`,
+        11,
+      ),
     );
 
     const body = parseDocumentBody(
@@ -354,8 +377,14 @@ describe("parseDocumentBody text box enrichment", () => {
     if (!sourceRun || sourceRun.type !== "run") {
       return;
     }
-    expect(sourceRun.content.map((content) => content.type)).toEqual(["text", "shape"]);
-    expect(sourceRun.content.at(0)).toMatchObject({ type: "text", text: "merged" });
+    expect(sourceRun.content.map((content) => content.type)).toEqual([
+      "text",
+      "shape",
+    ]);
+    expect(sourceRun.content.at(0)).toMatchObject({
+      type: "text",
+      text: "merged",
+    });
 
     const shapeContent = sourceRun.content.at(1);
     expect(shapeContent?.type).toBe("shape");
@@ -377,7 +406,9 @@ describe("parseDocumentBody text box enrichment", () => {
       if (content.type !== "run") {
         continue;
       }
-      hasShapeAfterBoundary ||= content.content.some((runContent) => runContent.type === "shape");
+      hasShapeAfterBoundary ||= content.content.some(
+        (runContent) => runContent.type === "shape",
+      );
     }
     expect(hasShapeAfterBoundary).toBe(false);
   });
@@ -405,7 +436,11 @@ describe("parseDocumentBody text box enrichment", () => {
       return;
     }
 
-    expect(paragraph.content.map((content) => content.type)).toEqual(["run", "run", "run"]);
+    expect(paragraph.content.map((content) => content.type)).toEqual([
+      "run",
+      "run",
+      "run",
+    ]);
 
     const middleRun = paragraph.content.at(1);
     expect(middleRun?.type).toBe("run");
@@ -420,8 +455,10 @@ describe("parseDocumentBody text box enrichment", () => {
     ["del", "deletion"],
     ["moveFrom", "moveFrom"],
     ["moveTo", "moveTo"],
-  ] as const)("enriches text boxes inside w:%s wrappers", (elementName, contentType) => {
-    const body = parseDocumentBody(`${XML_DECLARATION}
+  ] as const)(
+    "enriches text boxes inside w:%s wrappers",
+    (elementName, contentType) => {
+      const body = parseDocumentBody(`${XML_DECLARATION}
 <w:document
   xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
   xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
@@ -437,39 +474,45 @@ describe("parseDocumentBody text box enrichment", () => {
   </w:body>
 </w:document>`);
 
-    const paragraph = body.content.at(0);
-    if (paragraph?.type !== "paragraph") {
-      throw new Error("Expected paragraph");
-    }
-    const trackedChange = paragraph.content.at(0);
-    expect(trackedChange?.type).toBe(contentType);
-    if (
-      trackedChange?.type !== "insertion" &&
-      trackedChange?.type !== "deletion" &&
-      trackedChange?.type !== "moveFrom" &&
-      trackedChange?.type !== "moveTo"
-    ) {
-      throw new Error("Expected tracked change wrapper");
-    }
-    expect(trackedChange.info).toEqual({
-      id: 41,
-      author: "Reviewer",
-      date: "2026-07-15T12:00:00Z",
-    });
+      const paragraph = body.content.at(0);
+      if (paragraph?.type !== "paragraph") {
+        throw new Error("Expected paragraph");
+      }
+      const trackedChange = paragraph.content.at(0);
+      expect(trackedChange?.type).toBe(contentType);
+      if (
+        trackedChange?.type !== "insertion" &&
+        trackedChange?.type !== "deletion" &&
+        trackedChange?.type !== "moveFrom" &&
+        trackedChange?.type !== "moveTo"
+      ) {
+        throw new Error("Expected tracked change wrapper");
+      }
+      expect(trackedChange.info).toEqual({
+        id: 41,
+        author: "Reviewer",
+        date: "2026-07-15T12:00:00Z",
+      });
 
-    const run = trackedChange.content.at(0);
-    if (run?.type !== "run") {
-      throw new Error("Expected tracked run");
-    }
-    const shape = run.content.at(0);
-    if (shape?.type !== "shape") {
-      throw new Error("Expected text-box shape");
-    }
-    expect(shape.shape.textBody?.content.at(0)).toMatchObject({
-      type: "paragraph",
-      content: [{ type: "run", content: [{ type: "text", text: "Tracked text box" }] }],
-    });
-  });
+      const run = trackedChange.content.at(0);
+      if (run?.type !== "run") {
+        throw new Error("Expected tracked run");
+      }
+      const shape = run.content.at(0);
+      if (shape?.type !== "shape") {
+        throw new Error("Expected text-box shape");
+      }
+      expect(shape.shape.textBody?.content.at(0)).toMatchObject({
+        type: "paragraph",
+        content: [
+          {
+            type: "run",
+            content: [{ type: "text", text: "Tracked text box" }],
+          },
+        ],
+      });
+    },
+  );
 
   test("enriches text boxes across inline content-control segments", () => {
     const body = parseDocumentBody(`${XML_DECLARATION}
@@ -511,7 +554,12 @@ describe("parseDocumentBody text box enrichment", () => {
     expect(shapes).toHaveLength(1);
     expect(shapes.at(0)?.shape.textBody?.content.at(0)).toMatchObject({
       type: "paragraph",
-      content: [{ type: "run", content: [{ type: "text", text: "Controlled text box" }] }],
+      content: [
+        {
+          type: "run",
+          content: [{ type: "text", text: "Controlled text box" }],
+        },
+      ],
     });
   });
 
@@ -661,6 +709,9 @@ describe("parseDocumentBody bookmark placement", () => {
     if (firstParagraph?.type !== "paragraph") {
       return;
     }
-    expect(firstParagraph.content.at(-1)).toMatchObject({ type: "bookmarkStart", id: 2 });
+    expect(firstParagraph.content.at(-1)).toMatchObject({
+      type: "bookmarkStart",
+      id: 2,
+    });
   });
 });

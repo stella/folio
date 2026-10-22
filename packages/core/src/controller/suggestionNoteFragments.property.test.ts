@@ -1,10 +1,12 @@
-import { expect, test, setDefaultTimeout } from "bun:test";
+import { panic } from "better-result";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
-import { panic } from "better-result";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { createDocx } from "../docx/rezip";
-import { createEmptyDocument } from "../utils/createDocument";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   createHarnessState,
   HARNESS_AUTHOR,
@@ -13,12 +15,19 @@ import {
   resolveAllChanges,
   saveHarnessState,
 } from "../__tests__/editorHarness";
-import { deletionRange } from "./canonicalSession";
+import { createDocx } from "../docx/rezip";
 import { noteReferenceStates } from "../prosemirror/noteReferenceReview";
+import { createEmptyDocument } from "../utils/createDocument";
+import { deletionRange } from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 
-const OWNERSHIPS = ["live", "ownInsertion", "otherDeletion", "ownDeletion"] as const;
+const OWNERSHIPS = [
+  "live",
+  "ownInsertion",
+  "otherDeletion",
+  "ownDeletion",
+] as const;
 type Ownership = (typeof OWNERSHIPS)[number];
 const NOTE_TYPES = ["footnote", "endnote"] as const;
 type NoteType = (typeof NOTE_TYPES)[number];
@@ -42,7 +51,10 @@ const sourceDocument = async (kind: NoteType) => {
           formatting: index % 2 === 0 ? { bold: true } : { italic: true },
           content: [
             {
-              type: kind === "footnote" ? ("footnoteRef" as const) : ("endnoteRef" as const),
+              type:
+                kind === "footnote"
+                  ? ("footnoteRef" as const)
+                  : ("endnoteRef" as const),
               id: REFERENCE_ID,
             },
           ],
@@ -51,10 +63,14 @@ const sourceDocument = async (kind: NoteType) => {
       ],
     },
   ];
-  const content = createEmptyDocument({ initialText: "Note body" }).package.document.content;
+  const content = createEmptyDocument({ initialText: "Note body" }).package
+    .document.content;
   if (kind === "footnote")
-    source.package.footnotes = [{ type: "footnote", id: REFERENCE_ID, content }];
-  else source.package.endnotes = [{ type: "endnote", id: REFERENCE_ID, content }];
+    source.package.footnotes = [
+      { type: "footnote", id: REFERENCE_ID, content },
+    ];
+  else
+    source.package.endnotes = [{ type: "endnote", id: REFERENCE_ID, content }];
   return parseShapeDocument(new Uint8Array(await createDocx(source)));
 };
 
@@ -70,7 +86,9 @@ const deleteOccurrences = ({ base, ownerships, direction }: OccurrenceCase) => {
   const label = state.doc.nodeAt(REFERENCE_FROM);
   if (!label?.isText) panic("Parser did not produce a text note reference.");
   expect(label.text).toBe(LABEL);
-  expect(label.marks.some((mark) => mark.type.name === "footnoteRef")).toBe(true);
+  expect(label.marks.some((mark) => mark.type.name === "footnoteRef")).toBe(
+    true,
+  );
   const transaction = state.tr;
   for (const [index, ownership] of ownerships.entries()) {
     const from = REFERENCE_FROM + index * LABEL.length;
@@ -84,7 +102,11 @@ const deleteOccurrences = ({ base, ownerships, direction }: OccurrenceCase) => {
       case "live":
         break;
       case "ownInsertion":
-        transaction.addMark(from, from + LABEL.length, schema.mark("insertion", revision));
+        transaction.addMark(
+          from,
+          from + LABEL.length,
+          schema.mark("insertion", revision),
+        );
         break;
       case "otherDeletion":
         transaction.addMark(
@@ -94,7 +116,11 @@ const deleteOccurrences = ({ base, ownerships, direction }: OccurrenceCase) => {
         );
         break;
       case "ownDeletion":
-        transaction.addMark(from, from + LABEL.length, schema.mark("deletion", revision));
+        transaction.addMark(
+          from,
+          from + LABEL.length,
+          schema.mark("deletion", revision),
+        );
         break;
       default: {
         const impossible: never = ownership;
@@ -106,34 +132,62 @@ const deleteOccurrences = ({ base, ownerships, direction }: OccurrenceCase) => {
   const splitDoc = state.doc;
   state = state.apply(
     state.tr.setSelection(
-      TextSelection.create(state.doc, direction === "forward" ? REFERENCE_FROM : REFERENCE_TO),
+      TextSelection.create(
+        state.doc,
+        direction === "forward" ? REFERENCE_FROM : REFERENCE_TO,
+      ),
     ),
   );
   const canonical = deletionRange(state, direction).unwrap();
   const visibleFragments = ownerships.flatMap((ownership, index) =>
     ownership === "live" || ownership === "ownInsertion" ? [index] : [],
   );
-  const adjacent = direction === "forward" ? visibleFragments.at(0) : visibleFragments.at(-1);
-  let canonicalFrom = direction === "forward" ? REFERENCE_TO : REFERENCE_FROM - 1;
+  const adjacent =
+    direction === "forward" ? visibleFragments.at(0) : visibleFragments.at(-1);
+  let canonicalFrom =
+    direction === "forward" ? REFERENCE_TO : REFERENCE_FROM - 1;
   let canonicalSize = 1;
   if (adjacent !== undefined) {
     canonicalFrom = REFERENCE_FROM + adjacent * LABEL.length;
     canonicalSize = LABEL.length;
   }
-  expect(canonical).toEqual({ from: canonicalFrom, to: canonicalFrom + canonicalSize });
+  expect(canonical).toEqual({
+    from: canonicalFrom,
+    to: canonicalFrom + canonicalSize,
+  });
   expect(state.doc.eq(splitDoc)).toBe(true);
   const view = new HeadlessEditorView(state);
-  expect(view.pressKey(direction === "forward" ? "Delete" : "Backspace")).toBe(true);
+  expect(view.pressKey(direction === "forward" ? "Delete" : "Backspace")).toBe(
+    true,
+  );
 
-  const targetsReference = ownerships.some((value) => value === "live" || value === "ownInsertion");
+  const targetsReference = ownerships.some(
+    (value) => value === "live" || value === "ownInsertion",
+  );
   const remaining = ownerships.flatMap((ownership, index) =>
     index === adjacent && ownership === "ownInsertion"
       ? []
-      : [{ ownership, text: LABEL, revisionId: 200 + index, targeted: index === adjacent }],
+      : [
+          {
+            ownership,
+            text: LABEL,
+            revisionId: 200 + index,
+            targeted: index === adjacent,
+          },
+        ],
   );
-  const fragments: { text: string; deletion: boolean; author: unknown; revisionId: unknown }[] = [];
+  const fragments: {
+    text: string;
+    deletion: boolean;
+    author: unknown;
+    revisionId: unknown;
+  }[] = [];
   view.state.doc.descendants((node) => {
-    if (!node.isText || !node.marks.some((mark) => mark.type.name === "footnoteRef")) return;
+    if (
+      !node.isText ||
+      !node.marks.some((mark) => mark.type.name === "footnoteRef")
+    )
+      return;
     const deletion = node.marks.find((mark) => mark.type.name === "deletion");
     for (const text of node.text ?? "")
       fragments.push({
@@ -157,12 +211,17 @@ const deleteOccurrences = ({ base, ownerships, direction }: OccurrenceCase) => {
       expected.ownership === "otherDeletion" ||
       expected.ownership === "ownDeletion";
     expect(fragment.deletion).toBe(deleted);
-    const author = expected.ownership === "otherDeletion" ? "Other" : HARNESS_AUTHOR;
+    const author =
+      expected.ownership === "otherDeletion" ? "Other" : HARNESS_AUTHOR;
     expect(fragment.author).toBe(deleted ? author : undefined);
-    if (expected.ownership === "otherDeletion" || expected.ownership === "ownDeletion")
+    if (
+      expected.ownership === "otherDeletion" ||
+      expected.ownership === "ownDeletion"
+    )
       expect(fragment.revisionId).toBe(expected.revisionId);
   }
-  let expectedCaret = direction === "forward" ? REFERENCE_TO + 1 : REFERENCE_FROM - 1;
+  let expectedCaret =
+    direction === "forward" ? REFERENCE_TO + 1 : REFERENCE_FROM - 1;
   if (adjacent !== undefined) {
     const targetedFrom = REFERENCE_FROM + adjacent * LABEL.length;
     expectedCaret =
@@ -183,8 +242,12 @@ const deleteOccurrences = ({ base, ownerships, direction }: OccurrenceCase) => {
     `${leftText}${acceptedLabels.map(({ text }) => text).join("")}${rightText}`,
   );
   const rejected = resolveAllChanges(view.state, "reject");
-  const rejectedLabels = remaining.filter(({ ownership }) => ownership !== "ownInsertion");
-  expect(rejected.doc.textContent).toBe(`L${rejectedLabels.map(({ text }) => text).join("")}R`);
+  const rejectedLabels = remaining.filter(
+    ({ ownership }) => ownership !== "ownInsertion",
+  );
+  expect(rejected.doc.textContent).toBe(
+    `L${rejectedLabels.map(({ text }) => text).join("")}R`,
+  );
   return { accepted, rejected, remaining };
 };
 
@@ -192,14 +255,19 @@ const noteTokens = (state: ReturnType<typeof createHarnessState>) => {
   const tokens: unknown[] = [];
   state.doc.descendants((node) => {
     if (!node.isText) return;
-    const reference = node.marks.find((mark) => mark.type.name === "footnoteRef");
+    const reference = node.marks.find(
+      (mark) => mark.type.name === "footnoteRef",
+    );
     for (const text of node.text ?? "")
       tokens.push({
         text,
         reference:
           reference === undefined
             ? null
-            : { id: reference.attrs["id"], noteType: reference.attrs["noteType"] },
+            : {
+                id: reference.attrs["id"],
+                noteType: reference.attrs["noteType"],
+              },
         bold: node.marks.some((mark) => mark.type.name === "bold"),
         italic: node.marks.some((mark) => mark.type.name === "italic"),
       });
@@ -214,7 +282,11 @@ test("note deletion preserves exact occurrence ownership for every mix and direc
       for (const first of OWNERSHIPS)
         for (const second of OWNERSHIPS)
           for (const third of OWNERSHIPS)
-            deleteOccurrences({ base, direction, ownerships: [first, second, third] });
+            deleteOccurrences({
+              base,
+              direction,
+              ownerships: [first, second, third],
+            });
     }
   }
 });
@@ -235,12 +307,21 @@ test("resolved note-occurrence deletion preserves text, references, and formatti
       ),
       async (kind, direction, ownerships) => {
         const base = bases[kind];
-        const { accepted, rejected } = deleteOccurrences({ base, direction, ownerships });
+        const { accepted, rejected } = deleteOccurrences({
+          base,
+          direction,
+          ownerships,
+        });
         for (const resolved of [accepted, rejected]) {
           const saved = await saveHarnessState(resolved, base);
-          const reopened = createHarnessState(await parseShapeDocument(saved.bytes), "editing");
+          const reopened = createHarnessState(
+            await parseShapeDocument(saved.bytes),
+            "editing",
+          );
           const expectedKeys = [...noteReferenceStates(resolved.doc).keys()];
-          expect([...noteReferenceStates(reopened.doc).keys()]).toEqual(expectedKeys);
+          expect([...noteReferenceStates(reopened.doc).keys()]).toEqual(
+            expectedKeys,
+          );
           expect(reopened.doc.textContent).toBe(resolved.doc.textContent);
           expect(noteTokens(reopened)).toEqual(noteTokens(resolved));
         }
@@ -264,17 +345,25 @@ test("canonical partial-label refusal preserves the document for both note kinds
         state.schema.mark("italic"),
       );
       // Local edits cannot produce this state; exercise canonical refusal at its raw boundary.
-      state = EditorState.create({ doc: malformed.doc, plugins: state.plugins });
+      state = EditorState.create({
+        doc: malformed.doc,
+        plugins: state.plugins,
+      });
       state = state.apply(
         state.tr.setSelection(
-          TextSelection.create(state.doc, direction === "forward" ? REFERENCE_FROM : REFERENCE_TO),
+          TextSelection.create(
+            state.doc,
+            direction === "forward" ? REFERENCE_FROM : REFERENCE_TO,
+          ),
         ),
       );
       const before = state.doc;
       const range = deletionRange(state, direction);
       expect(range.isErr()).toBe(true);
       if (range.isErr())
-        expect(range.error.message).toContain("cannot map the rendered note-reference labels");
+        expect(range.error.message).toContain(
+          "cannot map the rendered note-reference labels",
+        );
       expect(state.doc.eq(before)).toBe(true);
     }
   }

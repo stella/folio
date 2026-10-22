@@ -11,12 +11,14 @@ import type {
   EditorMode,
   EditorReadOnlyReason,
 } from "@stll/folio-core/managers/EditorModeManager";
-
 import { reviewDisplayModeToDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
 import type { ReviewDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
 
 export { DISPLAY_MODES } from "@stll/folio-core/managers/EditorModeManager";
-export type { DisplayMode, EditorMode } from "@stll/folio-core/managers/EditorModeManager";
+export type {
+  DisplayMode,
+  EditorMode,
+} from "@stll/folio-core/managers/EditorModeManager";
 
 export type UseEditorModeArgs = {
   /** Controlled mode prop, or undefined when uncontrolled. */
@@ -68,11 +70,11 @@ export function useEditorMode({
   readOnlyProp,
   reviewDisplayMode,
 }: UseEditorModeArgs): UseEditorModeReturn {
-  const [manager] = useState(() => new EditorModeManager(modeProp ?? "editing"));
-  const { editingMode: editingModeInternal, displayMode } = useSyncExternalStore(
-    manager.subscribe,
-    manager.getSnapshot,
+  const [manager] = useState(
+    () => new EditorModeManager(modeProp ?? "editing"),
   );
+  const { editingMode: editingModeInternal, displayMode } =
+    useSyncExternalStore(manager.subscribe, manager.getSnapshot);
   const editingMode = modeProp ?? editingModeInternal;
 
   const setEditingMode = useCallback(

@@ -8,11 +8,15 @@ import {
 
 describe("find and replace dialog placement", () => {
   test("starts below the host editor chrome by default", () => {
-    expect(getFindReplaceOverlayStyle(undefined).top).toBe(FIND_REPLACE_DIALOG_TOP);
+    expect(getFindReplaceOverlayStyle(undefined).top).toBe(
+      FIND_REPLACE_DIALOG_TOP,
+    );
   });
 
   test("stays inside the document viewer rail by default", () => {
-    expect(getFindReplaceOverlayStyle(undefined).left).toBe(FIND_REPLACE_DIALOG_LEFT);
+    expect(getFindReplaceOverlayStyle(undefined).left).toBe(
+      FIND_REPLACE_DIALOG_LEFT,
+    );
   });
 
   test("allows hosts to override the top offset", () => {

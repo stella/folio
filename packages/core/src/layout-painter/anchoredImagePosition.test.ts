@@ -215,8 +215,14 @@ describe("resolveAnchoredImagePosition — vertical align (eigenpal #424)", () =
       marginBottom: 160,
       authoredMargins: { top: 72, right: 72, bottom: 72, left: 72 },
     };
-    const result = resolveAnchoredImagePosition(run, fragmentY, footerExpandedGeometry);
-    expect(result.y).toBe(PAGE.pageHeight - footerExpandedGeometry.marginTop - 72);
+    const result = resolveAnchoredImagePosition(
+      run,
+      fragmentY,
+      footerExpandedGeometry,
+    );
+    expect(result.y).toBe(
+      PAGE.pageHeight - footerExpandedGeometry.marginTop - 72,
+    );
     expect(result.y).not.toBe(footerExpandedGeometry.contentHeight);
   });
 
@@ -373,7 +379,11 @@ describe("resolveAnchoredImagePosition — zero-margin / zero-band edge cases (e
       horizontal: { relativeTo: "margin" },
       vertical: { relativeTo: "topMargin", align: "top" },
     });
-    const result = resolveAnchoredImagePosition(run, fragmentY, ZERO_MARGIN_PAGE);
+    const result = resolveAnchoredImagePosition(
+      run,
+      fragmentY,
+      ZERO_MARGIN_PAGE,
+    );
     // Previously a `bandHeight ? ... : fragmentY` ternary would have
     // silently fallen back to `fragmentY` when `marginTop === 0`. We use
     // `Math.abs` to normalize away signed-zero noise from `-marginTop`.
@@ -385,7 +395,11 @@ describe("resolveAnchoredImagePosition — zero-margin / zero-band edge cases (e
       horizontal: { relativeTo: "margin" },
       vertical: { relativeTo: "bottomMargin", align: "bottom" },
     });
-    const result = resolveAnchoredImagePosition(run, fragmentY, ZERO_MARGIN_PAGE);
+    const result = resolveAnchoredImagePosition(
+      run,
+      fragmentY,
+      ZERO_MARGIN_PAGE,
+    );
     // baseY = contentHeight = 1056, bandHeight = 0; bottom = 1056 + 0 - 150
     expect(result.y).toBe(ZERO_MARGIN_PAGE.contentHeight - IMG_H);
   });
@@ -395,7 +409,11 @@ describe("resolveAnchoredImagePosition — zero-margin / zero-band edge cases (e
       horizontal: { relativeTo: "margin" },
       vertical: { relativeTo: "topMargin", align: "center" },
     });
-    const result = resolveAnchoredImagePosition(run, fragmentY, ZERO_MARGIN_PAGE);
+    const result = resolveAnchoredImagePosition(
+      run,
+      fragmentY,
+      ZERO_MARGIN_PAGE,
+    );
     // baseY = 0, bandHeight = 0 → center at (0 - IMG_H) / 2
     expect(result.y).toBe(-IMG_H / 2);
   });
@@ -405,7 +423,11 @@ describe("resolveAnchoredImagePosition — zero-margin / zero-band edge cases (e
       horizontal: { relativeTo: "leftMargin", align: "right" },
       vertical: { relativeTo: "paragraph" },
     });
-    const result = resolveAnchoredImagePosition(run, fragmentY, ZERO_MARGIN_PAGE);
+    const result = resolveAnchoredImagePosition(
+      run,
+      fragmentY,
+      ZERO_MARGIN_PAGE,
+    );
     // baseX = -marginLeft = 0, bandWidth = 0 → 0 + 0 - 200 = -200
     expect(result.x).toBe(-IMG_W);
     expect(result.side).toBe("right");

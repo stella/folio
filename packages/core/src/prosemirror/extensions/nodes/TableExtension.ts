@@ -6,16 +6,16 @@
  */
 
 import { panic } from "better-result";
-import type { NodeSpec, Node as PMNode, Schema } from "prosemirror-model";
-import { Plugin, PluginKey, TextSelection, Selection } from "prosemirror-state";
-import type { EditorState, Transaction, Command } from "prosemirror-state";
+import type { Node as PMNode, NodeSpec, Schema } from "prosemirror-model";
+import { Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
+import type { Command, EditorState, Transaction } from "prosemirror-state";
 import {
-  columnResizing,
-  tableEditing,
-  mergeCells as pmMergeCells,
-  splitCell as pmSplitCell,
   CellSelection,
+  columnResizing,
+  mergeCells as pmMergeCells,
   selectedRect,
+  splitCell as pmSplitCell,
+  tableEditing,
   TableMap,
   tableNodeTypes,
 } from "prosemirror-tables";
@@ -23,13 +23,22 @@ import { Decoration, DecorationSet } from "prosemirror-view";
 
 import { statesNoBorder } from "@stll/docx-core/model";
 
-import type { BorderStyleValue, ColorValue, BorderSpec } from "../../../types/colors";
+import { setTableLookFlags } from "../../../docx/tableLook";
+import type {
+  BorderSpec,
+  BorderStyleValue,
+  ColorValue,
+} from "../../../types/colors";
 import {
   TABLE_JUSTIFICATION_VALUES,
   TABLE_WIDTH_TYPE_VALUES,
   TEXT_DIRECTION_VALUES,
 } from "../../../types/documentEnumValues";
-import type { TableBorders, TableWidthType, TextDirection } from "../../../types/formatting";
+import type {
+  TableBorders,
+  TableWidthType,
+  TextDirection,
+} from "../../../types/formatting";
 import { cssBorderStyle } from "../../../utils/borderCss";
 import { isValidHexColor, resolveColor } from "../../../utils/colorResolver";
 import { resolveTablePlacementAlignment } from "../../../utils/tablePlacement";
@@ -42,12 +51,18 @@ import {
   mergeTableCellAttrs,
   mergeTableRowAttrs,
 } from "../../attrs";
-import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
 import { makeRevisionInfo } from "../../plugins/suggestionMode";
-import { insertTableColumn, removeTableColumns, removeTableRow } from "../../tableGridMutation";
-import { pastedSliceWithNewTableCells, pasteTableCells } from "../../tableCellPaste";
-import { setTableLookFlags } from "../../../docx/tableLook";
-import { createNodeExtension, createExtension } from "../create";
+import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
+import {
+  pastedSliceWithNewTableCells,
+  pasteTableCells,
+} from "../../tableCellPaste";
+import {
+  insertTableColumn,
+  removeTableColumns,
+  removeTableRow,
+} from "../../tableGridMutation";
+import { createExtension, createNodeExtension } from "../create";
 import type {
   AnyExtension,
   ExtensionContext,
@@ -117,7 +132,9 @@ const preserveSourceCellIdentity =
     }
 
     const rect = selectedRect(state);
-    const sourceRelativePosition = rect.map.map.at(rect.top * rect.map.width + rect.left);
+    const sourceRelativePosition = rect.map.map.at(
+      rect.top * rect.map.width + rect.left,
+    );
     if (sourceRelativePosition === undefined) {
       return panic("The selected table cell is absent from its table map");
     }
@@ -142,7 +159,9 @@ const preserveSourceCellIdentity =
         }
         const tableStart = mappedTablePosition + 1;
         const map = TableMap.get(table);
-        const survivingRelativePosition = map.map.at(rect.top * map.width + rect.left);
+        const survivingRelativePosition = map.map.at(
+          rect.top * map.width + rect.left,
+        );
         if (survivingRelativePosition === undefined) {
           return panic("The surviving table cell is absent from its table map");
         }
@@ -154,7 +173,10 @@ const preserveSourceCellIdentity =
             if (relativePosition === undefined) {
               return panic("A split table cell is absent from its table map");
             }
-            if (relativePosition === survivingRelativePosition || cleared.has(relativePosition)) {
+            if (
+              relativePosition === survivingRelativePosition ||
+              cleared.has(relativePosition)
+            ) {
               continue;
             }
             cleared.add(relativePosition);
@@ -182,7 +204,9 @@ const isOneOf = <T extends string>(
   value: string | null | undefined,
   values: readonly T[],
 ): value is T =>
-  value !== null && value !== undefined && values.some((allowed) => allowed === value);
+  value !== null &&
+  value !== undefined &&
+  values.some((allowed) => allowed === value);
 
 /** Map CSS border-style to OOXML border style. */
 function cssBorderStyleToOoxml(cssStyle: string): BorderSpec["style"] {
@@ -256,7 +280,8 @@ function parseCssColorToColorValue(cssColor: string): ColorValue | null {
     const b = hex3[2] ?? "";
     return { rgb: (r + r + g + g + b + b).toUpperCase() };
   }
-  const rgbMatch = /rgb\(\s*(?<r>\d+)\s*,\s*(?<g>\d+)\s*,\s*(?<b>\d+)\s*\)/u.exec(cssColor);
+  const rgbMatch =
+    /rgb\(\s*(?<r>\d+)\s*,\s*(?<g>\d+)\s*,\s*(?<b>\d+)\s*\)/u.exec(cssColor);
   if (rgbMatch) {
     // SAFETY: capture groups exist when the rgb() regex matches
     const hex = [
@@ -273,7 +298,9 @@ function parseCssColorToColorValue(cssColor: string): ColorValue | null {
 }
 
 /** Extract cell borders from inline CSS (Google Docs: "border-left:solid #000000 1pt"). */
-function extractCellBordersFromCSS(style: CSSStyleDeclaration): TableCellAttrs["borders"] | null {
+function extractCellBordersFromCSS(
+  style: CSSStyleDeclaration,
+): TableCellAttrs["borders"] | null {
   const parseSide = (
     cssStyle: string,
     cssColor: string,
@@ -289,14 +316,26 @@ function extractCellBordersFromCSS(style: CSSStyleDeclaration): TableCellAttrs["
       size: cssBorderWidthToEighths(cssWidth),
     };
   };
-  const top = parseSide(style.borderTopStyle, style.borderTopColor, style.borderTopWidth);
+  const top = parseSide(
+    style.borderTopStyle,
+    style.borderTopColor,
+    style.borderTopWidth,
+  );
   const bottom = parseSide(
     style.borderBottomStyle,
     style.borderBottomColor,
     style.borderBottomWidth,
   );
-  const left = parseSide(style.borderLeftStyle, style.borderLeftColor, style.borderLeftWidth);
-  const right = parseSide(style.borderRightStyle, style.borderRightColor, style.borderRightWidth);
+  const left = parseSide(
+    style.borderLeftStyle,
+    style.borderLeftColor,
+    style.borderLeftWidth,
+  );
+  const right = parseSide(
+    style.borderRightStyle,
+    style.borderRightColor,
+    style.borderRightWidth,
+  );
   if (!top && !bottom && !left && !right) {
     return null;
   }
@@ -309,7 +348,9 @@ function extractCellBordersFromCSS(style: CSSStyleDeclaration): TableCellAttrs["
 }
 
 /** Extract cell padding from inline CSS and convert to twips. */
-function extractCellMarginsFromCSS(style: CSSStyleDeclaration): TableCellAttrs["margins"] | null {
+function extractCellMarginsFromCSS(
+  style: CSSStyleDeclaration,
+): TableCellAttrs["margins"] | null {
   const toTwips = (cssValue: string): number | undefined => {
     if (!cssValue || cssValue === "0px") {
       return undefined;
@@ -327,7 +368,12 @@ function extractCellMarginsFromCSS(style: CSSStyleDeclaration): TableCellAttrs["
   const right = toTwips(style.paddingRight);
   const bottom = toTwips(style.paddingBottom);
   const left = toTwips(style.paddingLeft);
-  if (top === undefined && right === undefined && bottom === undefined && left === undefined) {
+  if (
+    top === undefined &&
+    right === undefined &&
+    bottom === undefined &&
+    left === undefined
+  ) {
     return null;
   }
   return {
@@ -339,7 +385,9 @@ function extractCellMarginsFromCSS(style: CSSStyleDeclaration): TableCellAttrs["
 }
 
 /** Map CSS vertical-align to editor's verticalAlign attr. */
-function mapCssVerticalAlign(cssValue: string): "top" | "center" | "bottom" | undefined {
+function mapCssVerticalAlign(
+  cssValue: string,
+): "top" | "center" | "bottom" | undefined {
   if (!cssValue) {
     return undefined;
   }
@@ -368,7 +416,9 @@ const isEmptyOmittedGridSlotDOM = (element: HTMLElement): boolean => {
   if (paragraph?.localName !== "p" || paragraph.textContent !== "") {
     return false;
   }
-  return Array.from(paragraph.children).every((child) => child.localName === "br");
+  return Array.from(paragraph.children).every(
+    (child) => child.localName === "br",
+  );
 };
 
 /** Shared parseDOM getAttrs for td/th — extracts borders, padding, alignment from CSS. */
@@ -378,8 +428,11 @@ function parseCellAttrsFromDOM(element: HTMLElement): TableCellAttrs {
   const margins = extractCellMarginsFromCSS(style);
   const rawValign = element.dataset["valign"];
   const valignFromData: TableCellAttrs["verticalAlign"] =
-    rawValign === "top" || rawValign === "center" || rawValign === "bottom" ? rawValign : undefined;
-  const verticalAlign = valignFromData ?? mapCssVerticalAlign(style.verticalAlign) ?? undefined;
+    rawValign === "top" || rawValign === "center" || rawValign === "bottom"
+      ? rawValign
+      : undefined;
+  const verticalAlign =
+    valignFromData ?? mapCssVerticalAlign(style.verticalAlign) ?? undefined;
   // `dataset["bgcolor"]` is our own round-trip marker (see toDOM below), but
   // it is read back from arbitrary pasted HTML — unlike `style.backgroundColor`,
   // which the browser's CSSOM already normalizes to a real color, a raw
@@ -406,7 +459,9 @@ function parseCellAttrsFromDOM(element: HTMLElement): TableCellAttrs {
     ...(backgroundColor !== undefined ? { backgroundColor } : {}),
     ...(borders ? { borders } : {}),
     ...(margins ? { margins } : {}),
-    ...(omittedGridSlot !== undefined ? { _omittedGridSlot: omittedGridSlot } : {}),
+    ...(omittedGridSlot !== undefined
+      ? { _omittedGridSlot: omittedGridSlot }
+      : {}),
   };
 }
 
@@ -447,7 +502,8 @@ const tableSpec: NodeSpec = {
         const styleId = dom.dataset["styleId"];
         const rawJustification = dom.dataset["justification"];
         const justification: TableAttrs["justification"] =
-          rawJustification !== undefined && isOneOf(rawJustification, TABLE_JUSTIFICATION_VALUES)
+          rawJustification !== undefined &&
+          isOneOf(rawJustification, TABLE_JUSTIFICATION_VALUES)
             ? rawJustification
             : undefined;
         return {
@@ -521,7 +577,8 @@ const tableRowSpec: NodeSpec = {
       domAttrs["style"] = `height: ${heightPx}px`;
     }
     if (attrs.hidden) {
-      domAttrs["style"] = `${domAttrs["style"] ? `${domAttrs["style"]}; ` : ""}display: none`;
+      domAttrs["style"] =
+        `${domAttrs["style"] ? `${domAttrs["style"]}; ` : ""}display: none`;
     }
 
     return ["tr", domAttrs, 0];
@@ -594,7 +651,9 @@ const tablePlacementStyles = (attrs: TableAttrs): string[] => {
   return alignment === "right" ? ["margin-left: auto"] : [];
 };
 
-function buildTextDirectionStyles(textDirection?: TextDirection | null): string[] {
+function buildTextDirectionStyles(
+  textDirection?: TextDirection | null,
+): string[] {
   if (!textDirection) {
     return [];
   }
@@ -680,7 +739,8 @@ const tableCellSpec: NodeSpec = {
     const attrs = expectTableCellAttrs(node);
     const domAttrs: Record<string, string> = { class: "docx-table-cell" };
     const omittedGridSlot =
-      isEmptyOmittedGridSlotNode(node) && isOmittedGridSlot(attrs._omittedGridSlot)
+      isEmptyOmittedGridSlotNode(node) &&
+      isOmittedGridSlot(attrs._omittedGridSlot)
         ? attrs._omittedGridSlot
         : undefined;
 
@@ -700,7 +760,12 @@ const tableCellSpec: NodeSpec = {
       // Keep the slot in the browser table grid while suppressing its visual
       // box. `display: none` would collapse the grid and reintroduce the
       // non-rectangular DOM that prosemirror-tables repairs with a real cell.
-      styles.push("visibility: hidden", "pointer-events: none", "padding: 0", "border: none");
+      styles.push(
+        "visibility: hidden",
+        "pointer-events: none",
+        "padding: 0",
+        "border: none",
+      );
     } else {
       styles.push(...buildCellPaddingStyles(attrs));
     }
@@ -708,7 +773,11 @@ const tableCellSpec: NodeSpec = {
     if (attrs.noWrap) {
       styles.push("white-space: nowrap");
     } else {
-      styles.push("word-wrap: break-word", "overflow-wrap: break-word", "overflow: hidden");
+      styles.push(
+        "word-wrap: break-word",
+        "overflow-wrap: break-word",
+        "overflow: hidden",
+      );
     }
 
     styles.push(...buildCellWidthStyles(attrs));
@@ -771,7 +840,8 @@ const tableHeaderSpec: NodeSpec = {
     const attrs = expectTableCellAttrs(node);
     const domAttrs: Record<string, string> = { class: "docx-table-header" };
     const omittedGridSlot =
-      isEmptyOmittedGridSlotNode(node) && isOmittedGridSlot(attrs._omittedGridSlot)
+      isEmptyOmittedGridSlotNode(node) &&
+      isOmittedGridSlot(attrs._omittedGridSlot)
         ? attrs._omittedGridSlot
         : undefined;
 
@@ -788,7 +858,12 @@ const tableHeaderSpec: NodeSpec = {
       domAttrs["class"] = "docx-table-omitted-grid-slot";
       domAttrs["contenteditable"] = "false";
       domAttrs["data-omitted-grid-slot"] = omittedGridSlot;
-      styles.push("visibility: hidden", "pointer-events: none", "padding: 0", "border: none");
+      styles.push(
+        "visibility: hidden",
+        "pointer-events: none",
+        "padding: 0",
+        "border: none",
+      );
     } else {
       styles.push(...buildCellPaddingStyles(attrs));
     }
@@ -796,7 +871,11 @@ const tableHeaderSpec: NodeSpec = {
     if (attrs.noWrap) {
       styles.push("white-space: nowrap");
     } else {
-      styles.push("word-wrap: break-word", "overflow-wrap: break-word", "overflow: hidden");
+      styles.push(
+        "word-wrap: break-word",
+        "overflow-wrap: break-word",
+        "overflow: hidden",
+      );
     }
 
     styles.push(...buildCellWidthStyles(attrs));
@@ -887,24 +966,35 @@ function getTableContext(state: EditorState): TableContextInfo {
 
   const canSplitCell =
     cellNode !== undefined &&
-    ((Number(cellNode.attrs["colspan"]) || 1) > 1 || (Number(cellNode.attrs["rowspan"]) || 1) > 1);
+    ((Number(cellNode.attrs["colspan"]) || 1) > 1 ||
+      (Number(cellNode.attrs["rowspan"]) || 1) > 1);
 
   // Extract border color and background color from current cell
   let cellBorderColor: TableContextInfo["cellBorderColor"];
   let cellBackgroundColor: string | undefined;
   if (cellNode) {
     const attrs = cellNode.attrs as Record<string, unknown>;
-    if (typeof attrs["backgroundColor"] === "string" && attrs["backgroundColor"]) {
+    if (
+      typeof attrs["backgroundColor"] === "string" &&
+      attrs["backgroundColor"]
+    ) {
       cellBackgroundColor = attrs["backgroundColor"];
     }
     const borders = attrs["borders"] as
-      | Record<string, { style?: BorderStyleValue; color?: ColorValue } | undefined>
+      | Record<
+          string,
+          { style?: BorderStyleValue; color?: ColorValue } | undefined
+        >
       | undefined;
     if (borders) {
       // Pick the first non-none border's color (prefer top → right → bottom → left)
       for (const side of ["top", "right", "bottom", "left"] as const) {
         const border = borders[side];
-        if (border?.color && border.style !== undefined && !statesNoBorder(border.style)) {
+        if (
+          border?.color &&
+          border.style !== undefined &&
+          !statesNoBorder(border.style)
+        ) {
           cellBorderColor = border.color;
           break;
         }
@@ -1012,8 +1102,13 @@ const goToAdjacentAuthoredCell = (direction: 1 | -1): Command => {
         : cells[targetIndex];
     if (!target) return false;
     if (dispatch) {
-      const textPos = direction === 1 ? target.pos + 2 : target.pos + target.node.nodeSize - 2;
-      const tr = state.tr.setSelection(Selection.near(state.doc.resolve(textPos), direction));
+      const textPos =
+        direction === 1
+          ? target.pos + 2
+          : target.pos + target.node.nodeSize - 2;
+      const tr = state.tr.setSelection(
+        Selection.near(state.doc.resolve(textPos), direction),
+      );
       dispatch(tr.scrollIntoView());
     }
     return true;
@@ -1089,9 +1184,15 @@ export const TablePluginExtension = createExtension({
     // Commands build from the document's own node types, resolved per call:
     // the document may be of another schema instance than this runtime's.
     const documentTableTypes = (documentSchema: Schema) => ({
-      paragraph: documentSchema.nodes["paragraph"] ?? panic("Missing node type: paragraph"),
-      tableCell: documentSchema.nodes["tableCell"] ?? panic("Missing node type: tableCell"),
-      tableRow: documentSchema.nodes["tableRow"] ?? panic("Missing node type: tableRow"),
+      paragraph:
+        documentSchema.nodes["paragraph"] ??
+        panic("Missing node type: paragraph"),
+      tableCell:
+        documentSchema.nodes["tableCell"] ??
+        panic("Missing node type: tableCell"),
+      tableRow:
+        documentSchema.nodes["tableRow"] ??
+        panic("Missing node type: tableRow"),
       table: documentSchema.nodes["table"] ?? panic("Missing node type: table"),
     });
 
@@ -1195,7 +1296,10 @@ export const TablePluginExtension = createExtension({
         let borderColor = "000000";
         const marks = state.storedMarks ?? $from.marks();
         for (const mark of marks) {
-          if (mark.type.name === "textColor" && typeof mark.attrs["rgb"] === "string") {
+          if (
+            mark.type.name === "textColor" &&
+            typeof mark.attrs["rgb"] === "string"
+          ) {
             borderColor = mark.attrs["rgb"];
             break;
           }
@@ -1219,7 +1323,10 @@ export const TablePluginExtension = createExtension({
           let contentWidthTwips = 9360; // default: full page width
           for (let d = $from.depth; d > 0; d--) {
             const node = $from.node(d);
-            if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+            if (
+              node.type.name === "tableCell" ||
+              node.type.name === "tableHeader"
+            ) {
               const cellWidth = Number(node.attrs["width"]);
               if (cellWidth > 0) {
                 // Subtract cell padding (~216 twips = 108 left + 108 right)
@@ -1228,8 +1335,16 @@ export const TablePluginExtension = createExtension({
               break;
             }
           }
-          let table = createTable(state.schema, rows, cols, borderColor, contentWidthTwips);
-          let emptyParagraph = documentTableTypes(state.schema).paragraph.create();
+          let table = createTable(
+            state.schema,
+            rows,
+            cols,
+            borderColor,
+            contentWidthTwips,
+          );
+          let emptyParagraph = documentTableTypes(
+            state.schema,
+          ).paragraph.create();
           // Suggesting, the table's rows and the paragraphs it brings are
           // tracked insertions, so rejecting them leaves the document as it was.
           const revision = makeRevisionInfo(state);
@@ -1243,7 +1358,10 @@ export const TablePluginExtension = createExtension({
             // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
             table.forEach((row) => {
               rowsWithRevision.push(
-                row.type.create({ ...row.attrs, trIns: rowRevision }, row.content),
+                row.type.create(
+                  { ...row.attrs, trIns: rowRevision },
+                  row.content,
+                ),
               );
             });
             table = table.type.create(table.attrs, rowsWithRevision);
@@ -1254,7 +1372,8 @@ export const TablePluginExtension = createExtension({
           }
 
           const $insert = state.doc.resolve(insertPos);
-          const needsLeadingParagraph = $insert.nodeBefore?.type.name === "table";
+          const needsLeadingParagraph =
+            $insert.nodeBefore?.type.name === "table";
           const insertContent = needsLeadingParagraph
             ? [emptyParagraph, table, emptyParagraph]
             : [table, emptyParagraph];
@@ -1327,8 +1446,13 @@ export const TablePluginExtension = createExtension({
       let lastTemplatePos = -1;
       for (let column = 0; column < map.width; column += 1) {
         const below =
-          boundaryRow < map.height ? map.map[boundaryRow * map.width + column] : undefined;
-        const above = boundaryRow > 0 ? map.map[(boundaryRow - 1) * map.width + column] : undefined;
+          boundaryRow < map.height
+            ? map.map[boundaryRow * map.width + column]
+            : undefined;
+        const above =
+          boundaryRow > 0
+            ? map.map[(boundaryRow - 1) * map.width + column]
+            : undefined;
         if (below !== undefined && below === above) {
           // One cell covers both sides of the boundary: grow it by a row.
           if (!extended.has(below)) {
@@ -1358,7 +1482,9 @@ export const TablePluginExtension = createExtension({
         );
       }
 
-      const rowNode = table.child(boundaryOffset === 0 ? rect.top : rect.bottom - 1);
+      const rowNode = table.child(
+        boundaryOffset === 0 ? rect.top : rect.bottom - 1,
+      );
       const newRow = rowNode.type.create(
         {
           height: rowNode.attrs["height"] ?? 360,
@@ -1377,15 +1503,24 @@ export const TablePluginExtension = createExtension({
       return true;
     }
 
-    function addRowAbove(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+    function addRowAbove(
+      state: EditorState,
+      dispatch?: (tr: Transaction) => void,
+    ): boolean {
       return insertTableRow(state, dispatch, 0);
     }
 
-    function addRowBelow(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+    function addRowBelow(
+      state: EditorState,
+      dispatch?: (tr: Transaction) => void,
+    ): boolean {
       return insertTableRow(state, dispatch, 1);
     }
 
-    function deleteRow(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+    function deleteRow(
+      state: EditorState,
+      dispatch?: (tr: Transaction) => void,
+    ): boolean {
       const context = getTableContext(state);
       if (
         !context.isInTable ||
@@ -1431,7 +1566,9 @@ export const TablePluginExtension = createExtension({
           const tableEnd = tablePos + table.nodeSize;
           const parent = state.doc.resolve(tablePos).parent;
           const emptyParagraph =
-            parent.childCount === 1 ? state.schema.nodes["paragraph"]?.createAndFill() : null;
+            parent.childCount === 1
+              ? state.schema.nodes["paragraph"]?.createAndFill()
+              : null;
           if (emptyParagraph) {
             tr.replaceWith(tablePos, tableEnd, emptyParagraph);
             tr.setSelection(TextSelection.near(tr.doc.resolve(tablePos + 1)));
@@ -1495,10 +1632,13 @@ export const TablePluginExtension = createExtension({
           column: side === "left" ? rect.left : rect.right,
           templateColumn: side === "left" ? rect.left : rect.right - 1,
           createCell: (template) => {
-            const cellType = template?.type ?? tableNodeTypes(state.schema).cell;
+            const cellType =
+              template?.type ?? tableNodeTypes(state.schema).cell;
             // A merged template states the width of all its columns.
             const attrs = buildCellAttrsFromTemplate(
-              template && (Number(template.attrs["colspan"]) || 1) === 1 ? template : null,
+              template && (Number(template.attrs["colspan"]) || 1) === 1
+                ? template
+                : null,
               { colspan: 1, rowspan: 1 },
             );
             return cellType.create(attrs, paragraphType?.create() ?? null);
@@ -1509,11 +1649,17 @@ export const TablePluginExtension = createExtension({
       return true;
     }
 
-    function addColumnLeft(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+    function addColumnLeft(
+      state: EditorState,
+      dispatch?: (tr: Transaction) => void,
+    ): boolean {
       return insertColumnBeside(state, dispatch, "left");
     }
 
-    function addColumnRight(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+    function addColumnRight(
+      state: EditorState,
+      dispatch?: (tr: Transaction) => void,
+    ): boolean {
       return insertColumnBeside(state, dispatch, "right");
     }
 
@@ -1523,7 +1669,10 @@ export const TablePluginExtension = createExtension({
      * left with no cell of its own goes, and `w:tblGrid` loses exactly those
      * columns.
      */
-    function deleteColumn(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+    function deleteColumn(
+      state: EditorState,
+      dispatch?: (tr: Transaction) => void,
+    ): boolean {
       const context = getTableContext(state);
       if (
         !context.isInTable ||
@@ -1547,9 +1696,16 @@ export const TablePluginExtension = createExtension({
       return true;
     }
 
-    function deleteTable(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+    function deleteTable(
+      state: EditorState,
+      dispatch?: (tr: Transaction) => void,
+    ): boolean {
       const context = getTableContext(state);
-      if (!context.isInTable || context.tablePos === undefined || !context.table) {
+      if (
+        !context.isInTable ||
+        context.tablePos === undefined ||
+        !context.table
+      ) {
         return false;
       }
 
@@ -1561,9 +1717,16 @@ export const TablePluginExtension = createExtension({
       return true;
     }
 
-    function selectTable(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+    function selectTable(
+      state: EditorState,
+      dispatch?: (tr: Transaction) => void,
+    ): boolean {
       const context = getTableContext(state);
-      if (!context.isInTable || context.tablePos === undefined || !context.table) {
+      if (
+        !context.isInTable ||
+        context.tablePos === undefined ||
+        !context.table
+      ) {
         return false;
       }
 
@@ -1579,14 +1742,21 @@ export const TablePluginExtension = createExtension({
         }
         dispatch(
           state.tr.setSelection(
-            CellSelection.create(state.doc, tableStart + first, tableStart + last),
+            CellSelection.create(
+              state.doc,
+              tableStart + first,
+              tableStart + last,
+            ),
           ),
         );
       }
       return true;
     }
 
-    function selectRow(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+    function selectRow(
+      state: EditorState,
+      dispatch?: (tr: Transaction) => void,
+    ): boolean {
       const context = getTableContext(state);
       if (
         !context.isInTable ||
@@ -1608,14 +1778,19 @@ export const TablePluginExtension = createExtension({
         }
         dispatch(
           state.tr.setSelection(
-            CellSelection.rowSelection(state.doc.resolve(tableStart + firstCell)),
+            CellSelection.rowSelection(
+              state.doc.resolve(tableStart + firstCell),
+            ),
           ),
         );
       }
       return true;
     }
 
-    function selectColumn(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+    function selectColumn(
+      state: EditorState,
+      dispatch?: (tr: Transaction) => void,
+    ): boolean {
       const context = getTableContext(state);
       if (
         !context.isInTable ||
@@ -1637,7 +1812,9 @@ export const TablePluginExtension = createExtension({
         }
         dispatch(
           state.tr.setSelection(
-            CellSelection.colSelection(state.doc.resolve(tableStart + firstCell)),
+            CellSelection.colSelection(
+              state.doc.resolve(tableStart + firstCell),
+            ),
           ),
         );
       }
@@ -1648,7 +1825,9 @@ export const TablePluginExtension = createExtension({
      * Get cell positions to operate on: all cells from CellSelection, or
      * all cells in the table if a single cursor is inside a cell.
      */
-    function getTargetCellPositions(state: EditorState): { pos: number; node: PMNode }[] {
+    function getTargetCellPositions(
+      state: EditorState,
+    ): { pos: number; node: PMNode }[] {
       const sel = state.selection;
       const cells: { pos: number; node: PMNode }[] = [];
 
@@ -1664,7 +1843,10 @@ export const TablePluginExtension = createExtension({
       const { $from } = sel;
       for (let d = $from.depth; d > 0; d--) {
         const node = $from.node(d);
-        if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+        if (
+          node.type.name === "tableCell" ||
+          node.type.name === "tableHeader"
+        ) {
           cells.push({ pos: $from.before(d), node });
           break;
         }
@@ -1711,10 +1893,17 @@ export const TablePluginExtension = createExtension({
       return { cellByPos, cellByRC, totalRows, totalCols };
     }
 
-    function setTableBorders(preset: BorderPreset, borderSpec?: TableBorderCommandSpec): Command {
+    function setTableBorders(
+      preset: BorderPreset,
+      borderSpec?: TableBorderCommandSpec,
+    ): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -1869,7 +2058,9 @@ export const TablePluginExtension = createExtension({
             }
             // Right edge → adjacent cell to the right needs matching left
             if (cellBorders.right) {
-              const adjPos = cellByRC.get(`${info.rowIdx},${info.colIdx + info.colspan}`);
+              const adjPos = cellByRC.get(
+                `${info.rowIdx},${info.colIdx + info.colspan}`,
+              );
               if (adjPos !== undefined) {
                 const adj = cellByPos.get(adjPos);
                 if (!adj) {
@@ -1905,7 +2096,11 @@ export const TablePluginExtension = createExtension({
     function setTableBorderPreset(preset: TableBorderPreset): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -1961,7 +2156,11 @@ export const TablePluginExtension = createExtension({
     function setCellFillColor(color: string | null): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -1991,7 +2190,11 @@ export const TablePluginExtension = createExtension({
     ): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -2001,10 +2204,14 @@ export const TablePluginExtension = createExtension({
           const borderValue: BorderSpec = spec ?? { style: "none" };
           const noBorder: BorderSpec = { style: "none" };
           const allSides = ["top", "bottom", "left", "right"] as const;
-          const { cellByPos, cellByRC } = buildTableGrid(context.table, context.tablePos);
+          const { cellByPos, cellByRC } = buildTableGrid(
+            context.table,
+            context.tablePos,
+          );
 
           const modified = new Map<number, TableCellAttrs>();
-          const getAttrs = (p: number, n: PMNode) => modified.get(p) ?? expectTableCellAttrs(n);
+          const getAttrs = (p: number, n: PMNode) =>
+            modified.get(p) ?? expectTableCellAttrs(n);
           const setAttrs = (p: number, a: TableCellAttrs) => modified.set(p, a);
 
           // Map of side → adjacent side + row/col offset
@@ -2023,7 +2230,8 @@ export const TablePluginExtension = createExtension({
             const attrs = getAttrs(pos, node);
             const currentBorders = attrs.borders ?? {};
 
-            const sides: readonly TableCellBorderSide[] = side === "all" ? allSides : [side];
+            const sides: readonly TableCellBorderSide[] =
+              side === "all" ? allSides : [side];
             // When clearOthers is true, start with all sides cleared (preset behavior)
             const newBorders: TableCellBorders = clearOthers
               ? {
@@ -2044,8 +2252,12 @@ export const TablePluginExtension = createExtension({
                 const syncValue = newBorders[s];
                 const adj = adjacentMap[s];
                 const adjColIdx =
-                  s === "right" ? info.colIdx + info.colspan : info.colIdx + adj.dCol;
-                const adjPos = cellByRC.get(`${info.rowIdx + adj.dRow},${adjColIdx}`);
+                  s === "right"
+                    ? info.colIdx + info.colspan
+                    : info.colIdx + adj.dCol;
+                const adjPos = cellByRC.get(
+                  `${info.rowIdx + adj.dRow},${adjColIdx}`,
+                );
                 if (adjPos !== undefined) {
                   const adjInfo = cellByPos.get(adjPos);
                   if (!adjInfo) {
@@ -2076,7 +2288,11 @@ export const TablePluginExtension = createExtension({
     function setCellVerticalAlign(align: "top" | "center" | "bottom"): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -2105,7 +2321,11 @@ export const TablePluginExtension = createExtension({
     }): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -2131,12 +2351,19 @@ export const TablePluginExtension = createExtension({
     function setCellTextDirection(direction: string | null): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
         if (dispatch) {
-          if (direction !== null && !isOneOf(direction, TEXT_DIRECTION_VALUES)) {
+          if (
+            direction !== null &&
+            !isOneOf(direction, TEXT_DIRECTION_VALUES)
+          ) {
             return false;
           }
 
@@ -2161,7 +2388,11 @@ export const TablePluginExtension = createExtension({
     function toggleNoWrap(): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -2183,10 +2414,17 @@ export const TablePluginExtension = createExtension({
       };
     }
 
-    function setRowHeight(height: number | null, rule?: "auto" | "atLeast" | "exact"): Command {
+    function setRowHeight(
+      height: number | null,
+      rule?: "auto" | "atLeast" | "exact",
+    ): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -2249,7 +2487,10 @@ export const TablePluginExtension = createExtension({
               let cellPos = rowPos + 1;
               // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
               row.forEach((cell) => {
-                if (cell.type.name === "tableCell" || cell.type.name === "tableHeader") {
+                if (
+                  cell.type.name === "tableCell" ||
+                  cell.type.name === "tableHeader"
+                ) {
                   tr = tr.setNodeMarkup(
                     cellPos,
                     undefined,
@@ -2267,7 +2508,10 @@ export const TablePluginExtension = createExtension({
           });
 
           // Update table-level column widths
-          const newColumnWidths = Array.from({ length: colCount }, () => equalWidth);
+          const newColumnWidths = Array.from(
+            { length: colCount },
+            () => equalWidth,
+          );
           tr = tr.setNodeMarkup(
             context.tablePos,
             undefined,
@@ -2284,7 +2528,11 @@ export const TablePluginExtension = createExtension({
     function autoFitContents(): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -2300,7 +2548,10 @@ export const TablePluginExtension = createExtension({
               let cellPos = rowPos + 1;
               // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
               row.forEach((cell) => {
-                if (cell.type.name === "tableCell" || cell.type.name === "tableHeader") {
+                if (
+                  cell.type.name === "tableCell" ||
+                  cell.type.name === "tableHeader"
+                ) {
                   tr = tr.setNodeMarkup(
                     cellPos,
                     undefined,
@@ -2342,7 +2593,11 @@ export const TablePluginExtension = createExtension({
     function applyTableStyle(styleData: TableStyleCommand): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -2438,7 +2693,9 @@ export const TablePluginExtension = createExtension({
               }
 
               // Resolve conditional style for this cell
-              const cond = cellCondType ? conditionals[cellCondType] : undefined;
+              const cond = cellCondType
+                ? conditionals[cellCondType]
+                : undefined;
 
               // Apply borders: conditional borders override table borders
               const cellBorders: TableCellBorders = {};
@@ -2476,7 +2733,10 @@ export const TablePluginExtension = createExtension({
                 undefined,
                 mergeTableCellAttrs(cell, {
                   backgroundColor: cond?.backgroundColor,
-                  borders: Object.keys(cellBorders).length > 0 ? cellBorders : undefined,
+                  borders:
+                    Object.keys(cellBorders).length > 0
+                      ? cellBorders
+                      : undefined,
                 }),
               );
               cellOffset += cell.nodeSize;
@@ -2503,7 +2763,11 @@ export const TablePluginExtension = createExtension({
         }
 
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -2514,7 +2778,9 @@ export const TablePluginExtension = createExtension({
             undefined,
             mergeTableAttrs(context.table, {
               ...("width" in props ? { width: props.width ?? undefined } : {}),
-              ...("widthType" in props ? { widthType: props.widthType ?? undefined } : {}),
+              ...("widthType" in props
+                ? { widthType: props.widthType ?? undefined }
+                : {}),
               ...("justification" in props
                 ? { justification: props.justification ?? undefined }
                 : {}),
@@ -2530,7 +2796,11 @@ export const TablePluginExtension = createExtension({
     function toggleHeaderRow(): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -2561,7 +2831,11 @@ export const TablePluginExtension = createExtension({
     function setTableBorderColor(color: string): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -2570,10 +2844,14 @@ export const TablePluginExtension = createExtension({
           const cells = getTargetCellPositions(state);
           const rgb = color.replace(/^#/u, "");
           const defaultBorder: BorderSpec = { style: "single", size: 4 };
-          const { cellByPos, cellByRC } = buildTableGrid(context.table, context.tablePos);
+          const { cellByPos, cellByRC } = buildTableGrid(
+            context.table,
+            context.tablePos,
+          );
 
           const modified = new Map<number, TableCellAttrs>();
-          const getAttrs = (p: number, n: PMNode) => modified.get(p) ?? expectTableCellAttrs(n);
+          const getAttrs = (p: number, n: PMNode) =>
+            modified.get(p) ?? expectTableCellAttrs(n);
           const setAttrs = (p: number, a: TableCellAttrs) => modified.set(p, a);
 
           const adjacentMap: Record<
@@ -2604,8 +2882,12 @@ export const TablePluginExtension = createExtension({
               if (info) {
                 const adj = adjacentMap[side];
                 const adjColIdx =
-                  side === "right" ? info.colIdx + info.colspan : info.colIdx + adj.dCol;
-                const adjPos = cellByRC.get(`${info.rowIdx + adj.dRow},${adjColIdx}`);
+                  side === "right"
+                    ? info.colIdx + info.colspan
+                    : info.colIdx + adj.dCol;
+                const adjPos = cellByRC.get(
+                  `${info.rowIdx + adj.dRow},${adjColIdx}`,
+                );
                 if (adjPos !== undefined) {
                   const adjInfo = cellByPos.get(adjPos);
                   if (!adjInfo) {
@@ -2639,7 +2921,11 @@ export const TablePluginExtension = createExtension({
     function setTableBorderWidth(size: number): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
@@ -2650,10 +2936,14 @@ export const TablePluginExtension = createExtension({
             style: "single",
             color: { rgb: "000000" },
           };
-          const { cellByPos, cellByRC } = buildTableGrid(context.table, context.tablePos);
+          const { cellByPos, cellByRC } = buildTableGrid(
+            context.table,
+            context.tablePos,
+          );
 
           const modified = new Map<number, TableCellAttrs>();
-          const getAttrs = (p: number, n: PMNode) => modified.get(p) ?? expectTableCellAttrs(n);
+          const getAttrs = (p: number, n: PMNode) =>
+            modified.get(p) ?? expectTableCellAttrs(n);
           const setAttrs = (p: number, a: TableCellAttrs) => modified.set(p, a);
 
           const adjacentMap: Record<
@@ -2684,8 +2974,12 @@ export const TablePluginExtension = createExtension({
               if (info) {
                 const adj = adjacentMap[side];
                 const adjColIdx =
-                  side === "right" ? info.colIdx + info.colspan : info.colIdx + adj.dCol;
-                const adjPos = cellByRC.get(`${info.rowIdx + adj.dRow},${adjColIdx}`);
+                  side === "right"
+                    ? info.colIdx + info.colspan
+                    : info.colIdx + adj.dCol;
+                const adjPos = cellByRC.get(
+                  `${info.rowIdx + adj.dRow},${adjColIdx}`,
+                );
                 if (adjPos !== undefined) {
                   const adjInfo = cellByPos.get(adjPos);
                   if (!adjInfo) {
@@ -2719,19 +3013,28 @@ export const TablePluginExtension = createExtension({
     function deleteTableIfSelected(): Command {
       return (state, dispatch) => {
         const selection = state.selection as CellSelection;
-        const isCellSel = "$anchorCell" in selection && typeof selection.forEachCell === "function";
+        const isCellSel =
+          "$anchorCell" in selection &&
+          typeof selection.forEachCell === "function";
         if (!isCellSel) {
           return false;
         }
 
         const context = getTableContext(state);
-        if (!context.isInTable || context.tablePos === undefined || !context.table) {
+        if (
+          !context.isInTable ||
+          context.tablePos === undefined ||
+          !context.table
+        ) {
           return false;
         }
 
         let totalCells = 0;
         context.table.descendants((node) => {
-          if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+          if (
+            node.type.name === "tableCell" ||
+            node.type.name === "tableHeader"
+          ) {
             totalCells += 1;
           }
         });
@@ -2748,7 +3051,10 @@ export const TablePluginExtension = createExtension({
         }
 
         if (dispatch) {
-          const tr = state.tr.delete(context.tablePos, context.tablePos + context.table.nodeSize);
+          const tr = state.tr.delete(
+            context.tablePos,
+            context.tablePos + context.table.nodeSize,
+          );
           dispatch(tr.scrollIntoView());
         }
         return true;
@@ -2777,7 +3083,8 @@ export const TablePluginExtension = createExtension({
         const container = $from.node(depth - 1);
         const index = $from.index(depth - 1);
         const before = index > 0 ? container.child(index - 1) : null;
-        const after = index + 1 < container.childCount ? container.child(index + 1) : null;
+        const after =
+          index + 1 < container.childCount ? container.child(index + 1) : null;
         const beforeIsTable = before?.type.name === "table";
         const afterIsTable = after?.type.name === "table";
         if (beforeIsTable || afterIsTable) {
@@ -2804,7 +3111,10 @@ export const TablePluginExtension = createExtension({
           const { $from } = selection;
           for (let d = $from.depth; d > 0; d--) {
             const node = $from.node(d);
-            if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+            if (
+              node.type.name === "tableCell" ||
+              node.type.name === "tableHeader"
+            ) {
               const pos = $from.before(d);
               return DecorationSet.create(state.doc, [
                 Decoration.node(pos, pos + node.nodeSize, {
@@ -2824,7 +3134,8 @@ export const TablePluginExtension = createExtension({
       key: new PluginKey("tableCellPaste"),
       props: {
         transformPasted: (slice) => pastedSliceWithNewTableCells(slice),
-        handlePaste: (view, _event, slice) => pasteTableCells(view.state, slice, view.dispatch),
+        handlePaste: (view, _event, slice) =>
+          pasteTableCells(view.state, slice, view.dispatch),
       },
     });
 
@@ -2842,8 +3153,14 @@ export const TablePluginExtension = createExtension({
         activeCellPlugin,
       ],
       keyboardShortcuts: {
-        Backspace: chainCommands(deleteTableIfSelected(), preventTableMergeAtGap()),
-        Delete: chainCommands(deleteTableIfSelected(), preventTableMergeAtGap()),
+        Backspace: chainCommands(
+          deleteTableIfSelected(),
+          preventTableMergeAtGap(),
+        ),
+        Delete: chainCommands(
+          deleteTableIfSelected(),
+          preventTableMergeAtGap(),
+        ),
       },
       commands: {
         insertTable: (rows: number, cols: number) => insertTable(rows, cols),
@@ -2858,26 +3175,37 @@ export const TablePluginExtension = createExtension({
         selectRow: () => selectRow,
         selectColumn: () => selectColumn,
         mergeCells: () => preserveOmittedGridSlots(pmMergeCells),
-        splitCell: () => preserveOmittedGridSlots(preserveSourceCellIdentity(pmSplitCell)),
+        splitCell: () =>
+          preserveOmittedGridSlots(preserveSourceCellIdentity(pmSplitCell)),
         setCellBorder: (
           side: "top" | "bottom" | "left" | "right" | "all",
           spec: TableCellBorderCommandSpec | null,
           clearOthers?: boolean,
         ) => setCellBorder(side, spec, clearOthers),
-        setTableBorders: (preset: BorderPreset, borderSpec?: TableBorderCommandSpec) =>
-          setTableBorders(preset, borderSpec),
-        setTableBorderPreset: (preset: TableBorderPreset) => setTableBorderPreset(preset),
-        setCellVerticalAlign: (align: "top" | "center" | "bottom") => setCellVerticalAlign(align),
-        setCellMargins: (margins: TableCellMarginsCommand) => setCellMargins(margins),
-        setCellTextDirection: (direction: string | null) => setCellTextDirection(direction),
+        setTableBorders: (
+          preset: BorderPreset,
+          borderSpec?: TableBorderCommandSpec,
+        ) => setTableBorders(preset, borderSpec),
+        setTableBorderPreset: (preset: TableBorderPreset) =>
+          setTableBorderPreset(preset),
+        setCellVerticalAlign: (align: "top" | "center" | "bottom") =>
+          setCellVerticalAlign(align),
+        setCellMargins: (margins: TableCellMarginsCommand) =>
+          setCellMargins(margins),
+        setCellTextDirection: (direction: string | null) =>
+          setCellTextDirection(direction),
         toggleNoWrap: () => toggleNoWrap(),
-        setRowHeight: (height: number | null, rule?: "auto" | "atLeast" | "exact") =>
-          setRowHeight(height, rule),
+        setRowHeight: (
+          height: number | null,
+          rule?: "auto" | "atLeast" | "exact",
+        ) => setRowHeight(height, rule),
         toggleHeaderRow: () => toggleHeaderRow(),
         distributeColumns: () => distributeColumns(),
         autoFitContents: () => autoFitContents(),
-        setTableProperties: (props: TablePropertiesCommand) => setTableProperties(props),
-        applyTableStyle: (styleData: TableStyleCommand) => applyTableStyle(styleData),
+        setTableProperties: (props: TablePropertiesCommand) =>
+          setTableProperties(props),
+        applyTableStyle: (styleData: TableStyleCommand) =>
+          applyTableStyle(styleData),
         setCellFillColor: (color: string | null) => setCellFillColor(color),
         setTableBorderColor: (color: string) => setTableBorderColor(color),
         setTableBorderWidth: (size: number) => setTableBorderWidth(size),
@@ -2908,4 +3236,9 @@ export function createTableExtensions(): AnyExtension[] {
 }
 
 // Re-export for backward compat
-export { getTableContext, isInTableCell as isInTable, goToNextCell, goToPrevCell };
+export {
+  getTableContext,
+  isInTableCell as isInTable,
+  goToNextCell,
+  goToPrevCell,
+};

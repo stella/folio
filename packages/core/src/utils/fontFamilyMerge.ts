@@ -19,12 +19,18 @@ const isFontFamilyPairKey = (key: string): boolean =>
   key === "cs" ||
   key === "csTheme";
 
-export function mergeFontFamily(target: FontFamily | undefined, source: FontFamily): FontFamily {
+export function mergeFontFamily(
+  target: FontFamily | undefined,
+  source: FontFamily,
+): FontFamily {
   const result: Record<string, unknown> = {};
   const src = source as Record<string, unknown>;
-  const replacesAscii = source.ascii !== undefined || source.asciiTheme !== undefined;
-  const replacesHAnsi = source.hAnsi !== undefined || source.hAnsiTheme !== undefined;
-  const replacesEastAsia = source.eastAsia !== undefined || source.eastAsiaTheme !== undefined;
+  const replacesAscii =
+    source.ascii !== undefined || source.asciiTheme !== undefined;
+  const replacesHAnsi =
+    source.hAnsi !== undefined || source.hAnsiTheme !== undefined;
+  const replacesEastAsia =
+    source.eastAsia !== undefined || source.eastAsiaTheme !== undefined;
   const replacesCs = source.cs !== undefined || source.csTheme !== undefined;
 
   if (target) {

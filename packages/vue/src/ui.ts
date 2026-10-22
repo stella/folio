@@ -84,7 +84,10 @@ export { default as HorizontalRuler } from "./components/ui/HorizontalRuler.vue"
 export { default as VerticalRuler } from "./components/ui/VerticalRuler.vue";
 
 // ─── CARDS / STYLES ─────────────────────────────────────────────────────────
-export { CARD_STYLE_COLLAPSED, CARD_STYLE_EXPANDED } from "./components/sidebar/cardStyles";
+export {
+  CARD_STYLE_COLLAPSED,
+  CARD_STYLE_EXPANDED,
+} from "./components/sidebar/cardStyles";
 
 // ─── UI-INJECTION DEFAULTS + CONTRACT ───────────────────────────────────────
 // The default primitives `DocxEditor`'s `components` prop resolves to when a

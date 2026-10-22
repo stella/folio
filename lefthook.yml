@@ -11,13 +11,18 @@ pre-commit:
   parallel: false
   commands:
     lint:
-      glob: "**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"
+      # The roots of the lint script, so a commit is held to what CI lints.
+      glob:
+        - "packages/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"
+        - "scripts/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"
+        - "test/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"
+        - "benchmarks/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"
+        - "parity/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"
+        - "specifications/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"
       run: bun --bun oxlint -c oxlint.config.ts --threads=2 --no-error-on-unmatched-pattern --fix {staged_files}
       stage_fixed: true
     format:
-      glob: "**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs,json,css}"
-      run: bun --bun oxfmt -c .oxfmtrc.json --no-error-on-unmatched-pattern {staged_files}
-      stage_fixed: true
+      run: bun fmt --staged
     i18n:
       glob: "packages/core/src/i18n/messages/*.{json,ts}"
       run: bun run i18n:sync

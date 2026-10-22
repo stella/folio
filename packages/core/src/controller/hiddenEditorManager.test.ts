@@ -1,46 +1,56 @@
-import * as Y from "yjs";
-import { FolioYjsNoteReferenceSchemaError } from "../prosemirror/yjsDocumentMetadata";
-import { loadCollaborationModules } from "./collaborationModules";
-import * as documentOps from "@stll/docx-core/ops";
-import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
-import { assertExactModel } from "../../../../test/exactModel";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import { describe, expect, spyOn, test } from "bun:test";
-import { Fragment, Slice } from "prosemirror-model";
-import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { TextSelection, type Command } from "prosemirror-state";
 import { panic } from "better-result";
-import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
-import { resolveCanonicalReviewRange } from "./canonicalReview";
-import { createEmptyDocument } from "../utils/createDocument";
-import { AllSelection, EditorState, NodeSelection, Plugin } from "prosemirror-state";
+import { describe, expect, spyOn, test } from "bun:test";
+import fc from "fast-check";
+import { Fragment, Slice } from "prosemirror-model";
+import {
+  AllSelection,
+  type Command,
+  EditorState,
+  NodeSelection,
+  Plugin,
+  TextSelection,
+} from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
+import * as Y from "yjs";
+
+import * as documentOps from "@stll/docx-core/ops";
 import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
-import type { Paragraph } from "../types/document";
-import type { CanonicalCommentRequest } from "../types/canonicalComments";
-import type { FolioDocumentOperationStory } from "../document-operations";
-import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
-import { createNoteEditorManager } from "./noteEditorManager";
-import { createDocx } from "../docx/rezip";
+
+import { assertExactModel } from "../../../../test/exactModel";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseShapeDocument } from "../__tests__/editorHarness";
-import { singletonManager } from "../prosemirror/schema";
+import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import type { FolioDocumentOperationStory } from "../document-operations";
+import { createDocx } from "../docx/rezip";
+import { withCanonicalCommand } from "../prosemirror/canonicalCommands";
+import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
+import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
+import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
 import {
   NoteReferenceEditRefusal,
   NoteReferenceReplayDefect,
 } from "../prosemirror/noteReferenceOccurrences";
-import { withCanonicalCommand } from "../prosemirror/canonicalCommands";
-import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
-
+import { singletonManager } from "../prosemirror/schema";
+import { FolioYjsNoteReferenceSchemaError } from "../prosemirror/yjsDocumentMetadata";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import type { CanonicalCommentRequest } from "../types/canonicalComments";
+import type { Paragraph } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
+import { resolveCanonicalReviewRange } from "./canonicalReview";
+import { loadCollaborationModules } from "./collaborationModules";
+import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
 import {
+  createHiddenEditorClipboardHandlers,
   createHiddenEditorManager,
   createHiddenEditorState,
-  createHiddenEditorClipboardHandlers,
   type HiddenEditorManagerDeps,
   type HiddenProseMirrorRemoteSelection,
 } from "./hiddenEditorManager";
+import { createNoteEditorManager } from "./noteEditorManager";
 
 // A real DOM-backed EditorView cannot be constructed in this headless test
 // environment (repo convention; see hiddenEditorApi.test.ts). These tests cover
@@ -107,7 +117,9 @@ const makeDeps = (
     onEditorViewDestroy: () => {
       spies["onEditorViewDestroy"].calls += 1;
     },
-    onRemoteSelectionsChange: (_selections: HiddenProseMirrorRemoteSelection[]) => {
+    onRemoteSelectionsChange: (
+      _selections: HiddenProseMirrorRemoteSelection[],
+    ) => {
       spies["onRemoteSelectionsChange"].calls += 1;
     },
     ...overrides,
@@ -118,19 +130,26 @@ const makeDeps = (
 
 const sourceWithNoteReference = async () => {
   const source = createEmptyDocument({ initialText: "LR" });
-  const noteContent = createEmptyDocument({ initialText: "Note" }).package.document.content;
+  const noteContent = createEmptyDocument({ initialText: "Note" }).package
+    .document.content;
   source.package.document.content = [
     {
       type: "paragraph",
       paraId: "12345678",
       content: [
         { type: "run", content: [{ type: "text", text: "L" }] },
-        { type: "run", formatting: { bold: true }, content: [{ type: "footnoteRef", id: 123 }] },
+        {
+          type: "run",
+          formatting: { bold: true },
+          content: [{ type: "footnoteRef", id: 123 }],
+        },
         { type: "run", content: [{ type: "text", text: "R" }] },
       ],
     },
   ];
-  source.package.footnotes = [{ type: "footnote", id: 123, content: noteContent }];
+  source.package.footnotes = [
+    { type: "footnote", id: 123, content: noteContent },
+  ];
   return parseShapeDocument(new Uint8Array(await createDocx(source)));
 };
 
@@ -195,10 +214,17 @@ describe("createHiddenEditorManager", () => {
 });
 
 type NotePasteRefusalOptions = { noteType?: string; occurrenceId: string };
-const assertNotePasteRefusal = ({ noteType, occurrenceId }: NotePasteRefusalOptions) => {
+const assertNotePasteRefusal = ({
+  noteType,
+  occurrenceId,
+}: NotePasteRefusalOptions) => {
   const cases = (["legacy", "canonical"] as const).flatMap((session) =>
     (["sup", "span"] as const).flatMap((tag) =>
-      (["footnote", "endnote"] as const).map((kind) => ({ session, tag, kind })),
+      (["footnote", "endnote"] as const).map((kind) => ({
+        session,
+        tag,
+        kind,
+      })),
     ),
   );
   for (const { session, tag, kind } of cases) {
@@ -206,7 +232,8 @@ const assertNotePasteRefusal = ({ noteType, occurrenceId }: NotePasteRefusalOpti
     document.body.append(host);
     const source = createEmptyDocument({ initialText: "Before" });
     const paragraph = source.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") panic("Missing paste fixture paragraph");
+    if (paragraph?.type !== "paragraph")
+      panic("Missing paste fixture paragraph");
     paragraph.paraId = "74000000";
     const refusals: { reason: string; gap: unknown }[] = [];
     const { deps } = makeDeps({
@@ -222,7 +249,8 @@ const assertNotePasteRefusal = ({ noteType, occurrenceId }: NotePasteRefusalOpti
       manager.ensureView();
       const view = manager.getView() ?? panic("Missing paste fixture view");
       expect(refusals).toEqual([]);
-      if (session === "canonical") expect(manager.api.getCanonicalDocument()).not.toBeNull();
+      if (session === "canonical")
+        expect(manager.api.getCanonicalDocument()).not.toBeNull();
       const before = view.state;
       const reference = document.createElement(tag);
       reference.className = `docx-${kind}-ref`;
@@ -279,8 +307,11 @@ test(
     try {
       assertProperty(
         fc.property(
-          fc.array(fc.constantFrom(" ", "\t", "\r", "\n", "\u00a0", "\u2028"), { maxLength: 16 }),
-          (characters) => assertNotePasteRefusal({ occurrenceId: characters.join("") }),
+          fc.array(fc.constantFrom(" ", "\t", "\r", "\n", "\u00a0", "\u2028"), {
+            maxLength: 16,
+          }),
+          (characters) =>
+            assertNotePasteRefusal({ occurrenceId: characters.join("") }),
         ),
         {
           numRuns: 20,
@@ -299,13 +330,15 @@ test("hidden manager refuses a local partial note-reference edit before committi
   const host = document.createElement("div");
   document.body.append(host);
   const source = await sourceWithNoteReference();
-  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] = [];
+  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] =
+    [];
   const { deps } = makeDeps({
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
     getExtensionManager: () => singletonManager,
-    onSessionRefusal: (reason, gap, error) => refusals.push({ reason, gap, error }),
+    onSessionRefusal: (reason, gap, error) =>
+      refusals.push({ reason, gap, error }),
   });
   const manager = createHiddenEditorManager(deps);
   try {
@@ -339,14 +372,16 @@ test("hidden manager accepts an invalid remote note-reference replay and reports
   document.body.append(host);
   const source = await sourceWithNoteReference();
   const modules = await loadCollaborationModules();
-  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] = [];
+  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] =
+    [];
   const { deps } = makeDeps({
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
     getExtensionManager: () => singletonManager,
     getCollaborationModules: () => modules,
-    onSessionRefusal: (reason, gap, error) => refusals.push({ reason, gap, error }),
+    onSessionRefusal: (reason, gap, error) =>
+      refusals.push({ reason, gap, error }),
   });
   const manager = createHiddenEditorManager(deps);
   try {
@@ -355,7 +390,11 @@ test("hidden manager accepts an invalid remote note-reference replay and reports
     if (!view) panic("Expected note-reference editor view");
     const before = view.state;
     const remotePartialFormatting = before.tr
-      .addMark(3, 4, before.schema.marks.italic?.create() ?? panic("Expected italic mark"))
+      .addMark(
+        3,
+        4,
+        before.schema.marks.italic?.create() ?? panic("Expected italic mark"),
+      )
       .setMeta(modules.yProseMirror.ySyncPluginKey, { isChangeOrigin: true });
 
     expect(() => view.dispatch(remotePartialFormatting)).not.toThrow();
@@ -377,13 +416,15 @@ test("hidden manager history remains usable around a refused partial note-refere
   const host = document.createElement("div");
   document.body.append(host);
   const source = await sourceWithNoteReference();
-  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] = [];
+  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] =
+    [];
   const { deps } = makeDeps({
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
     getExtensionManager: () => singletonManager,
-    onSessionRefusal: (reason, gap, error) => refusals.push({ reason, gap, error }),
+    onSessionRefusal: (reason, gap, error) =>
+      refusals.push({ reason, gap, error }),
   });
   const manager = createHiddenEditorManager(deps);
   try {
@@ -554,10 +595,13 @@ test("canonical public batches publish the saved document and share human undo",
     expect(result?.applied).toEqual([{ id: "public" }]);
     expect(view.state.doc.textContent).toBe("End");
     expect(spies["onTransaction"].calls).toBe(1);
-    expect(manager.api.getDocument()).toEqual(manager.api.getCanonicalDocument());
+    expect(manager.api.getDocument()).toEqual(
+      manager.api.getCanonicalDocument(),
+    );
     expect(
-      manager.api.undoCanonicalDocumentOperations(result?.undoHandle ?? panic("Missing handle"))
-        ?.status,
+      manager.api.undoCanonicalDocumentOperations(
+        result?.undoHandle ?? panic("Missing handle"),
+      )?.status,
     ).toBe("undone");
     expect(manager.api.getDocument()).toEqual(before);
     expect(manager.api.canUndo()).toBe(false);
@@ -597,11 +641,16 @@ test("canonical keyboard formatting and breaks publish journalled intents", () =
       expect(view.state.selection.to).toBe(to);
     };
     const expectProjection = () => {
-      const projection = manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN);
+      const projection = manager.api.getCanonicalStoryProjection(
+        OP_STORIES.MAIN,
+      );
       if (!projection) panic("Expected canonical body projection");
       expect(view.state.doc.eq(projection)).toBe(true);
     };
-    const dispatchKey = (key: string, modifiers: { ctrlKey?: boolean; metaKey?: boolean }) => {
+    const dispatchKey = (
+      key: string,
+      modifiers: { ctrlKey?: boolean; metaKey?: boolean },
+    ) => {
       const event = new KeyboardEvent("keydown", {
         key,
         bubbles: true,
@@ -674,13 +723,18 @@ test("canonical keyboard formatting and breaks publish journalled intents", () =
         view.dom.dispatchEvent(event);
         expect(event.defaultPrevented).toBe(true);
 
-        const inserted = manager.api.getCanonicalDocument()?.package.document.content.at(0);
+        const inserted = manager.api
+          .getCanonicalDocument()
+          ?.package.document.content.at(0);
         expect(
           inserted?.type === "paragraph" &&
             inserted.content.some(
               (run) =>
                 run.type === "run" &&
-                run.content.some((leaf) => leaf.type === "break" && leaf.breakType === breakType),
+                run.content.some(
+                  (leaf) =>
+                    leaf.type === "break" && leaf.breakType === breakType,
+                ),
             ),
         ).toBe(true);
         expect(reasons).toEqual([]);
@@ -733,7 +787,8 @@ test("canonical comment mutation results isolate committed snapshots and history
         command = { type: "update", id, content };
       } else if (request.type !== "create") command = { ...request, id };
       const result = manager.api.applyCanonicalComment(command);
-      if (result?.status !== "applied") panic("Expected applied comment mutation");
+      if (result?.status !== "applied")
+        panic("Expected applied comment mutation");
       if (result.commentId !== undefined) id = result.commentId;
       const committed = manager.api.getCanonicalDocument();
       const snapshot = manager.api.captureCanonicalSave();
@@ -802,31 +857,51 @@ test.each(["body", "story"] as const)(
       const exposed = comments?.at(0);
       if (!exposed) panic("Expected committed comment projection");
       exposed.content = [];
-      expect(manager.api.getCanonicalComments()?.at(0)?.content).not.toEqual([]);
+      expect(manager.api.getCanonicalComments()?.at(0)?.content).not.toEqual(
+        [],
+      );
       for (const synchronizer of synchronizers) synchronizer.sync();
       if (owner === "body") {
-        view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+        view.dom.dispatchEvent(
+          new CompositionEvent("compositionstart", { bubbles: true }),
+        );
       } else {
         expect(manager.isCanonicalComposing()).toBe(false);
-        expect(manager.api.updateCanonicalInputLifecycle("beginComposition")).toBe(true);
+        expect(
+          manager.api.updateCanonicalInputLifecycle("beginComposition"),
+        ).toBe(true);
         expect(manager.isCanonicalComposing()).toBe(true);
       }
-      for (const read of [manager.api.getDocument, manager.api.getCanonicalDocument])
-        expect(read).toThrow("Composition must finish before taking a snapshot.");
-      expect(manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN)).toBeNull();
-      expect(manager.api.getCanonicalComments()).toEqual(initial?.package.document.comments);
-      for (const synchronizer of synchronizers) expect(() => synchronizer.sync()).not.toThrow();
+      for (const read of [
+        manager.api.getDocument,
+        manager.api.getCanonicalDocument,
+      ])
+        expect(read).toThrow(
+          "Composition must finish before taking a snapshot.",
+        );
+      expect(
+        manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN),
+      ).toBeNull();
+      expect(manager.api.getCanonicalComments()).toEqual(
+        initial?.package.document.comments,
+      );
+      for (const synchronizer of synchronizers)
+        expect(() => synchronizer.sync()).not.toThrow();
       // Synchronization cannot clear the shared pending boundary.
       expect(manager.api.getCanonicalDocument).toThrow();
       if (owner === "body") {
-        view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+        view.dom.dispatchEvent(
+          new CompositionEvent("compositionend", { bubbles: true }),
+        );
         await new Promise<void>((resolve) => setTimeout(resolve, 40));
       } else {
         manager.api.updateCanonicalInputLifecycle("endComposition");
         expect(manager.isCanonicalComposing()).toBe(false);
       }
       expect(manager.api.getCanonicalDocument()).toEqual(initial);
-      expect(manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN)).not.toBeNull();
+      expect(
+        manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN),
+      ).not.toBeNull();
       for (const synchronizer of synchronizers) synchronizer.sync();
     } finally {
       for (const synchronizer of synchronizers) synchronizer.destroy();
@@ -908,15 +983,24 @@ test("canonical suggesting uses the current author and preserves explicit mode a
     type("?");
     const inserted = view.state.doc.nodeAt(6);
     const second = view.state.doc.nodeAt(7);
-    expect(inserted?.marks.some((mark) => mark.attrs["author"] === "First author")).toBe(true);
-    expect(second?.marks.some((mark) => mark.attrs["author"] === "Second author")).toBe(true);
-    expect(manager.api.setCanonicalMode({ type: "suggesting", author: "Explicit author" })).toBe(
-      true,
-    );
+    expect(
+      inserted?.marks.some((mark) => mark.attrs["author"] === "First author"),
+    ).toBe(true);
+    expect(
+      second?.marks.some((mark) => mark.attrs["author"] === "Second author"),
+    ).toBe(true);
+    expect(
+      manager.api.setCanonicalMode({
+        type: "suggesting",
+        author: "Explicit author",
+      }),
+    ).toBe(true);
     mode = "editing";
     type("+");
     expect(
-      view.state.doc.nodeAt(8)?.marks.some((mark) => mark.attrs["author"] === "Explicit author"),
+      view.state.doc
+        .nodeAt(8)
+        ?.marks.some((mark) => mark.attrs["author"] === "Explicit author"),
     ).toBe(true);
     expect(reasons).toEqual([]);
     expect(manager.api.undo()).toBe(true);
@@ -931,7 +1015,12 @@ test("canonical suggesting uses the current author and preserves explicit mode a
     });
     expect(revisionIds.size).toBe(2);
     expect(
-      resolveCanonicalReviewRange({ editor: manager.api, from: 6, to: 8, resolution: "reject" }),
+      resolveCanonicalReviewRange({
+        editor: manager.api,
+        from: 6,
+        to: 8,
+        resolution: "reject",
+      }),
     ).toBe(true);
     expect(view.state.doc.textContent).toBe("Start");
     expect(manager.api.undo()).toBe(true);
@@ -950,129 +1039,151 @@ test.each([
   { kind: "footer", rId: "rIdFooterEven", hdrFtrType: "even" },
   { kind: "footnote", id: 12 },
   { kind: "endnote", id: 13 },
-] as const)("a host mode change tracks secondary commits and shared history in %s", (story) => {
-  GlobalRegistrator.register();
-  const host = document.createElement("div");
-  const storyHost = document.createElement("div");
-  document.body.append(host, storyHost);
-  const source = createEmptyDocument({ initialText: "Body" });
-  const bodyParagraph = source.package.document.content.at(0);
-  if (bodyParagraph?.type !== "paragraph") panic("Expected body paragraph fixture");
-  bodyParagraph.paraId = "12345678";
-  const content = [
-    {
-      ...bodyParagraph,
-      paraId: "34567890",
-      content: [{ type: "run", content: [{ type: "text", text: "Story" }] }],
-    },
-  ] satisfies typeof source.package.document.content;
-  if (story.kind === "header")
-    source.package.headers = new Map([
-      [story.rId, { type: "header", hdrFtrType: "default", content }],
-    ]);
-  else if (story.kind === "footer")
-    source.package.footers = new Map([
-      [story.rId, { type: "footer", hdrFtrType: story.hdrFtrType, content }],
-    ]);
-  else if (story.kind === "footnote")
-    source.package.footnotes = [{ type: "footnote", id: story.id, content }];
-  else source.package.endnotes = [{ type: "endnote", id: story.id, content }];
-  let mode: "editing" | "suggesting" = "editing";
-  const reasons: string[] = [];
-  let readOnly = false;
-  const { deps } = makeDeps({
-    getHost: () => host,
-    getDocument: () => source,
-    getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
-    getReadOnly: () => readOnly,
-    getSuggestionAuthor: () => "Story author",
-    getEditingMode: () => mode,
-    onSessionRefusal: (reason) => reasons.push(reason),
-  });
-  const manager = createHiddenEditorManager(deps);
-  let storyView: EditorView | undefined;
-  const compilation = spyOn(documentOps, "compileEditorIntent");
-  try {
-    manager.ensureView();
-    const projection = manager.api.getCanonicalStoryProjection(story);
-    if (!projection) panic("Expected secondary projection");
-    storyView = new EditorView(storyHost, { state: EditorState.create({ doc: projection }) });
-    const initialEnd = storyView.state.doc.content.size - 1;
-    expect(
-      manager.api.replaceCanonicalStoryText({
-        view: storyView,
-        story,
-        intent: { from: initialEnd, to: initialEnd, text: "!" },
-      }),
-    ).toBe(true);
-    const accepted = manager.api.getCanonicalDocument();
-    const committedState = storyView.state;
-    expect(committedState.doc.textContent).toBe("Story!");
-    expect(manager.api.canUndo()).toBe(true);
-    mode = "suggesting";
-    compilation.mockClear();
-    const committedEnd = storyView.state.doc.content.size - 1;
-    expect(
-      manager.api.replaceCanonicalStoryText({
-        view: storyView,
-        story,
-        intent: { from: committedEnd, to: committedEnd, text: "😀 tracked" },
-      }),
-    ).toBe(true);
-    expect(compilation.mock.calls.at(-1)?.[1].mode.type).toBe("suggesting");
-    expect(storyView.state.doc.textContent).toBe("Story!😀 tracked");
-    expect(storyView.state.doc.nodeAt(committedEnd)?.marks).toContainEqual(
-      expect.objectContaining({ attrs: expect.objectContaining({ author: "Story author" }) }),
-    );
-    const tracked = manager.api.getCanonicalDocument();
-    expect(tracked?.package.document.content).toEqual(accepted?.package.document.content);
-    expect(
-      manager.api.applyCanonicalStoryHistory({ view: storyView, story, direction: "undo" }),
-    ).toBe(true);
-    expect(manager.api.getCanonicalDocument()).toEqual(accepted);
-    expect(storyView.state.doc).toEqual(committedState.doc);
-    expect(manager.api.canUndo()).toBe(true);
-    expect(manager.api.canRedo()).toBe(true);
-    expect(
-      manager.api.applyCanonicalStoryHistory({ view: storyView, story, direction: "redo" }),
-    ).toBe(true);
-    expect(manager.api.getCanonicalDocument()).toEqual(tracked);
-    const trackedState = storyView.state;
-    // Admission failures must not publish a partial story or journal entry.
-    readOnly = true;
-    expect(
-      manager.api.replaceCanonicalStoryText({
-        view: storyView,
-        story,
-        intent: { from: committedEnd, to: committedEnd, text: "blocked" },
-      }),
-    ).toBe(false);
-    expect(
-      manager.api.applyCanonicalStoryHistory({ view: storyView, story, direction: "undo" }),
-    ).toBe(false);
-    readOnly = false;
-    expect(
-      manager.api.replaceCanonicalStoryText({
-        view: storyView,
-        story,
-        intent: { from: committedEnd, to: committedEnd, text: "\n" },
-      }),
-    ).toBe(false);
-    expect(manager.api.getCanonicalDocument()).toEqual(tracked);
-    expect(storyView.state).toBe(trackedState);
-    expect(manager.api.canUndo()).toBe(true);
-    expect(manager.api.canRedo()).toBe(false);
-    expect(reasons).toHaveLength(1);
-  } finally {
-    compilation.mockRestore();
-    storyView?.destroy();
-    manager.destroyView();
-    host.remove();
-    storyHost.remove();
-    GlobalRegistrator.unregister();
-  }
-});
+] as const)(
+  "a host mode change tracks secondary commits and shared history in %s",
+  (story) => {
+    GlobalRegistrator.register();
+    const host = document.createElement("div");
+    const storyHost = document.createElement("div");
+    document.body.append(host, storyHost);
+    const source = createEmptyDocument({ initialText: "Body" });
+    const bodyParagraph = source.package.document.content.at(0);
+    if (bodyParagraph?.type !== "paragraph")
+      panic("Expected body paragraph fixture");
+    bodyParagraph.paraId = "12345678";
+    const content = [
+      {
+        ...bodyParagraph,
+        paraId: "34567890",
+        content: [{ type: "run", content: [{ type: "text", text: "Story" }] }],
+      },
+    ] satisfies typeof source.package.document.content;
+    if (story.kind === "header")
+      source.package.headers = new Map([
+        [story.rId, { type: "header", hdrFtrType: "default", content }],
+      ]);
+    else if (story.kind === "footer")
+      source.package.footers = new Map([
+        [story.rId, { type: "footer", hdrFtrType: story.hdrFtrType, content }],
+      ]);
+    else if (story.kind === "footnote")
+      source.package.footnotes = [{ type: "footnote", id: story.id, content }];
+    else source.package.endnotes = [{ type: "endnote", id: story.id, content }];
+    let mode: "editing" | "suggesting" = "editing";
+    const reasons: string[] = [];
+    let readOnly = false;
+    const { deps } = makeDeps({
+      getHost: () => host,
+      getDocument: () => source,
+      getDocumentContext: () => source,
+      getExperimentalSession: () => "canonical",
+      getReadOnly: () => readOnly,
+      getSuggestionAuthor: () => "Story author",
+      getEditingMode: () => mode,
+      onSessionRefusal: (reason) => reasons.push(reason),
+    });
+    const manager = createHiddenEditorManager(deps);
+    let storyView: EditorView | undefined;
+    const compilation = spyOn(documentOps, "compileEditorIntent");
+    try {
+      manager.ensureView();
+      const projection = manager.api.getCanonicalStoryProjection(story);
+      if (!projection) panic("Expected secondary projection");
+      storyView = new EditorView(storyHost, {
+        state: EditorState.create({ doc: projection }),
+      });
+      const initialEnd = storyView.state.doc.content.size - 1;
+      expect(
+        manager.api.replaceCanonicalStoryText({
+          view: storyView,
+          story,
+          intent: { from: initialEnd, to: initialEnd, text: "!" },
+        }),
+      ).toBe(true);
+      const accepted = manager.api.getCanonicalDocument();
+      const committedState = storyView.state;
+      expect(committedState.doc.textContent).toBe("Story!");
+      expect(manager.api.canUndo()).toBe(true);
+      mode = "suggesting";
+      compilation.mockClear();
+      const committedEnd = storyView.state.doc.content.size - 1;
+      expect(
+        manager.api.replaceCanonicalStoryText({
+          view: storyView,
+          story,
+          intent: { from: committedEnd, to: committedEnd, text: "😀 tracked" },
+        }),
+      ).toBe(true);
+      expect(compilation.mock.calls.at(-1)?.[1].mode.type).toBe("suggesting");
+      expect(storyView.state.doc.textContent).toBe("Story!😀 tracked");
+      expect(storyView.state.doc.nodeAt(committedEnd)?.marks).toContainEqual(
+        expect.objectContaining({
+          attrs: expect.objectContaining({ author: "Story author" }),
+        }),
+      );
+      const tracked = manager.api.getCanonicalDocument();
+      expect(tracked?.package.document.content).toEqual(
+        accepted?.package.document.content,
+      );
+      expect(
+        manager.api.applyCanonicalStoryHistory({
+          view: storyView,
+          story,
+          direction: "undo",
+        }),
+      ).toBe(true);
+      expect(manager.api.getCanonicalDocument()).toEqual(accepted);
+      expect(storyView.state.doc).toEqual(committedState.doc);
+      expect(manager.api.canUndo()).toBe(true);
+      expect(manager.api.canRedo()).toBe(true);
+      expect(
+        manager.api.applyCanonicalStoryHistory({
+          view: storyView,
+          story,
+          direction: "redo",
+        }),
+      ).toBe(true);
+      expect(manager.api.getCanonicalDocument()).toEqual(tracked);
+      const trackedState = storyView.state;
+      // Admission failures must not publish a partial story or journal entry.
+      readOnly = true;
+      expect(
+        manager.api.replaceCanonicalStoryText({
+          view: storyView,
+          story,
+          intent: { from: committedEnd, to: committedEnd, text: "blocked" },
+        }),
+      ).toBe(false);
+      expect(
+        manager.api.applyCanonicalStoryHistory({
+          view: storyView,
+          story,
+          direction: "undo",
+        }),
+      ).toBe(false);
+      readOnly = false;
+      expect(
+        manager.api.replaceCanonicalStoryText({
+          view: storyView,
+          story,
+          intent: { from: committedEnd, to: committedEnd, text: "\n" },
+        }),
+      ).toBe(false);
+      expect(manager.api.getCanonicalDocument()).toEqual(tracked);
+      expect(storyView.state).toBe(trackedState);
+      expect(manager.api.canUndo()).toBe(true);
+      expect(manager.api.canRedo()).toBe(false);
+      expect(reasons).toHaveLength(1);
+    } finally {
+      compilation.mockRestore();
+      storyView?.destroy();
+      manager.destroyView();
+      host.remove();
+      storyHost.remove();
+      GlobalRegistrator.unregister();
+    }
+  },
+);
 
 test("canonical native paste and cut share one journal and clipboard failures cannot delete", () => {
   GlobalRegistrator.register();
@@ -1093,7 +1204,9 @@ test("canonical native paste and cut share one journal and clipboard failures ca
             view.state.schema.node(
               "paragraph",
               null,
-              view.state.schema.text("copiedX", [view.state.schema.marks["bold"].create()]),
+              view.state.schema.text("copiedX", [
+                view.state.schema.marks["bold"].create(),
+              ]),
             ),
           ),
           1,
@@ -1123,14 +1236,18 @@ test("canonical native paste and cut share one journal and clipboard failures ca
         view.state.schema.node(
           "paragraph",
           { paraId: "4AFE0001" },
-          view.state.schema.text("X", [view.state.schema.marks["bold"].create()]),
+          view.state.schema.text("X", [
+            view.state.schema.marks["bold"].create(),
+          ]),
         ),
       ),
       1,
       1,
     );
     expect(
-      view.someProp("handlePaste", (handler) => handler(view, new ClipboardEvent("paste"), pasted)),
+      view.someProp("handlePaste", (handler) =>
+        handler(view, new ClipboardEvent("paste"), pasted),
+      ),
     ).toBe(true);
     expect(view.state.doc.textContent).toBe("aXd");
     const afterPaste = manager.api.getCanonicalDocument();
@@ -1145,7 +1262,10 @@ test("canonical native paste and cut share one journal and clipboard failures ca
     const beforeCut = manager.api.getCanonicalDocument();
     const stateBeforeCut = view.state;
     const clipboard = new Map<string, string>();
-    const rejected = new ClipboardEvent("cut", { cancelable: true, bubbles: true });
+    const rejected = new ClipboardEvent("cut", {
+      cancelable: true,
+      bubbles: true,
+    });
     Object.defineProperty(rejected, "clipboardData", {
       value: {
         setData: () => {
@@ -1159,9 +1279,14 @@ test("canonical native paste and cut share one journal and clipboard failures ca
     expect(view.state).toBe(stateBeforeCut);
     expect(reasons).toHaveLength(1);
 
-    const accepted = new ClipboardEvent("cut", { cancelable: true, bubbles: true });
+    const accepted = new ClipboardEvent("cut", {
+      cancelable: true,
+      bubbles: true,
+    });
     Object.defineProperty(accepted, "clipboardData", {
-      value: { setData: (type: string, value: string) => clipboard.set(type, value) },
+      value: {
+        setData: (type: string, value: string) => clipboard.set(type, value),
+      },
     });
     view.dom.dispatchEvent(accepted);
     expect(accepted.defaultPrevented).toBe(true);
@@ -1208,7 +1333,9 @@ test.each(["selection", "edit", "uncaptured"] as const)(
       manager.api.setSelection(2, 4);
       const slice = view.state.selection.content();
       if (change !== "uncaptured")
-        view.dom.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true }));
+        view.dom.dispatchEvent(
+          new DragEvent("dragstart", { bubbles: true, cancelable: true }),
+        );
       manager.api.setSelection(5);
       if (change === "edit")
         view.dom.dispatchEvent(
@@ -1228,7 +1355,12 @@ test.each(["selection", "edit", "uncaptured"] as const)(
       });
       expect(
         view.someProp("handleDrop", (handler) =>
-          handler(view, new DragEvent("drop", { clientX: 10, clientY: 10 }), slice, true),
+          handler(
+            view,
+            new DragEvent("drop", { clientX: 10, clientY: 10 }),
+            slice,
+            true,
+          ),
         ),
       ).toBe(true);
       coordinates.mockRestore();
@@ -1287,7 +1419,10 @@ test("canonical drop moves atomically and pending clipboard reads respect read-o
     getReadOnly: () => readOnly,
   });
   const manager = createHiddenEditorManager(deps);
-  const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const navigatorDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "navigator",
+  );
   try {
     manager.ensureView();
     const view = manager.getView();
@@ -1296,11 +1431,21 @@ test("canonical drop moves atomically and pending clipboard reads respect read-o
     const initial = manager.api.getCanonicalDocument();
     const initialSelection = view.state.selection.toJSON();
     const slice = view.state.selection.content();
-    view.dom.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true }));
-    const coordinates = spyOn(view, "posAtCoords").mockReturnValue({ pos: 5, inside: 0 });
+    view.dom.dispatchEvent(
+      new DragEvent("dragstart", { bubbles: true, cancelable: true }),
+    );
+    const coordinates = spyOn(view, "posAtCoords").mockReturnValue({
+      pos: 5,
+      inside: 0,
+    });
     expect(
       view.someProp("handleDrop", (handler) =>
-        handler(view, new DragEvent("drop", { clientX: 10, clientY: 10 }), slice, true),
+        handler(
+          view,
+          new DragEvent("drop", { clientX: 10, clientY: 10 }),
+          slice,
+          true,
+        ),
       ),
     ).toBe(true);
     coordinates.mockRestore();
@@ -1329,7 +1474,8 @@ test("canonical drop moves atomically and pending clipboard reads respect read-o
     expect(view.state).toBe(stateBeforeResolution);
     expect(spies["onReadOnlyEditAttempt"].calls).toBe(1);
   } finally {
-    if (navigatorDescriptor) Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
+    if (navigatorDescriptor)
+      Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
     else Reflect.deleteProperty(globalThis, "navigator");
     manager.destroyView();
     host.remove();
@@ -1361,7 +1507,10 @@ test.each(["editing", "suggesting"] as const)(
     try {
       manager.ensureView();
       expect(
-        manager.api.setCanonicalMode({ type: "suggesting", author: "Previous session author" }),
+        manager.api.setCanonicalMode({
+          type: "suggesting",
+          author: "Previous session author",
+        }),
       ).toBe(true);
       identity = "second";
       manager.syncExternalDocument();
@@ -1377,10 +1526,14 @@ test.each(["editing", "suggesting"] as const)(
         }),
       );
       const marks = view.state.doc.nodeAt(6)?.marks ?? [];
-      expect(marks.some((mark) => mark.attrs["author"] === "Previous session author")).toBe(false);
-      expect(marks.some((mark) => mark.attrs["author"] === "Current host author")).toBe(
-        hostMode === "suggesting",
-      );
+      expect(
+        marks.some(
+          (mark) => mark.attrs["author"] === "Previous session author",
+        ),
+      ).toBe(false);
+      expect(
+        marks.some((mark) => mark.attrs["author"] === "Current host author"),
+      ).toBe(hostMode === "suggesting");
       expect(view.state.doc.textContent).toBe("Start!");
     } finally {
       manager.destroyView();
@@ -1398,13 +1551,17 @@ test(
     try {
       assertProperty(
         fc.property(
-          fc.record({ text: fc.string({ minLength: 1, maxLength: 16 }), position: fc.nat() }),
+          fc.record({
+            text: fc.string({ minLength: 1, maxLength: 16 }),
+            position: fc.nat(),
+          }),
           ({ text, position }) => {
             const host = document.createElement("div");
             document.body.append(host);
             const source = createEmptyDocument({ initialText: text });
             const paragraph = source.package.document.content.at(0);
-            if (paragraph?.type !== "paragraph") panic("Expected generated paragraph");
+            if (paragraph?.type !== "paragraph")
+              panic("Expected generated paragraph");
             paragraph.paraId = "12345678";
             const reasons: string[] = [];
             const { deps } = makeDeps({
@@ -1430,7 +1587,11 @@ test(
                   calls++;
                   switch (kind) {
                     case "selection":
-                      dispatch?.(state.tr.setSelection(TextSelection.create(state.doc, target)));
+                      dispatch?.(
+                        state.tr.setSelection(
+                          TextSelection.create(state.doc, target),
+                        ),
+                      );
                       return true;
                     case "probe":
                       return false;
@@ -1441,12 +1602,16 @@ test(
                 };
                 const beforeState = view.state;
                 const beforeRefusals = reasons.length;
-                expect(manager.api.executeCommand(command)).toBe(kind !== "probe");
+                expect(manager.api.executeCommand(command)).toBe(
+                  kind !== "probe",
+                );
                 expect(calls).toBe(1);
                 counts[kind]++;
                 expect(manager.api.getCanonicalDocument()).toEqual(baseline);
-                const projection = manager.api.getCanonicalStoryProjection("main");
-                if (!projection) panic("Expected generated canonical projection");
+                const projection =
+                  manager.api.getCanonicalStoryProjection("main");
+                if (!projection)
+                  panic("Expected generated canonical projection");
                 expect(view.state.doc.eq(projection)).toBe(true);
                 expect(manager.api.canUndo()).toBe(false);
                 expect(manager.api.canRedo()).toBe(false);
@@ -1470,7 +1635,8 @@ test(
           id: "canonical undescribed commands preserve non-document effects and refuse raw mutations",
         },
       );
-      for (const count of Object.values(counts)) expect(count).toBeGreaterThan(0);
+      for (const count of Object.values(counts))
+        expect(count).toBeGreaterThan(0);
     } finally {
       GlobalRegistrator.unregister();
     }
@@ -1484,7 +1650,8 @@ test("canonical command execution reports descriptor refusals without mutation",
   document.body.append(host);
   const source = createEmptyDocument({ initialText: "result" });
   const paragraph = source.package.document.content.at(0);
-  if (paragraph?.type !== "paragraph") panic("Expected refusal fixture paragraph");
+  if (paragraph?.type !== "paragraph")
+    panic("Expected refusal fixture paragraph");
   paragraph.paraId = "12345678";
   const reasons: { message: string; gap: string }[] = [];
   const { deps } = makeDeps({
@@ -1499,7 +1666,8 @@ test("canonical command execution reports descriptor refusals without mutation",
     manager.ensureView();
     const view = manager.getView();
     if (!view) panic("Expected canonical refusal view");
-    const message = "Hyperlink removal cannot split an indivisible inline element.";
+    const message =
+      "Hyperlink removal cannot split an indivisible inline element.";
     const command = withCanonicalCommand(
       () => panic("A refused descriptor must not execute its command"),
       () => {
@@ -1508,7 +1676,11 @@ test("canonical command execution reports descriptor refusals without mutation",
     );
     const baseline = manager.api.getCanonicalDocument();
     for (let offset = 1; offset <= 7; offset++) {
-      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, offset)));
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, offset),
+        ),
+      );
       const before = view.state;
       expect(manager.api.executeCommand(command)).toBe(false);
       expect(view.state).toBe(before);
@@ -1516,7 +1688,10 @@ test("canonical command execution reports descriptor refusals without mutation",
       expect(manager.api.canUndo()).toBe(false);
     }
     expect(reasons).toEqual(
-      Array.from({ length: 7 }, () => ({ message, gap: CANONICAL_GAP.commands })),
+      Array.from({ length: 7 }, () => ({
+        message,
+        gap: CANONICAL_GAP.commands,
+      })),
     );
     const unexpected = new TypeError("Unexpected descriptor failure");
     const failingCommand = withCanonicalCommand(
@@ -1525,7 +1700,9 @@ test("canonical command execution reports descriptor refusals without mutation",
         throw unexpected;
       },
     );
-    expect(() => manager.api.executeCommand(failingCommand)).toThrow(unexpected);
+    expect(() => manager.api.executeCommand(failingCommand)).toThrow(
+      unexpected,
+    );
     expect(reasons).toHaveLength(7);
   } finally {
     manager.destroyView();
@@ -1565,9 +1742,13 @@ test("TOC view helper publishes through the controller and keeps handled refusal
     expect(manager.api.getCanonicalDocument()).toEqual(before);
     expect(manager.api.redo()).toBe(true);
     expect(manager.api.getCanonicalDocument()).toEqual(accepted);
-    expect(manager.api.setCanonicalMode({ type: "suggesting", author: "Reviewer" })).toBe(true);
+    expect(
+      manager.api.setCanonicalMode({ type: "suggesting", author: "Reviewer" }),
+    ).toBe(true);
     const state = view.state;
-    expect(insertTableOfContentsInView(view, { title: "Contents" })).toBe(false);
+    expect(insertTableOfContentsInView(view, { title: "Contents" })).toBe(
+      false,
+    );
     expect(view.state).toBe(state);
     expect(manager.api.getCanonicalDocument()).toEqual(accepted);
     expect(gaps).toEqual([CANONICAL_GAP.trackedHyperlinkResolution]);
@@ -1582,7 +1763,10 @@ const SECONDARY_PUBLIC_STORIES = {
   footer: { kind: "footer", rId: "rIdSecondary" },
   footnote: { kind: "footnote", id: 21 },
   endnote: { kind: "endnote", id: 22 },
-} as const satisfies Record<Exclude<OpStory, "main">["kind"], Exclude<OpStory, "main">>;
+} as const satisfies Record<
+  Exclude<OpStory, "main">["kind"],
+  Exclude<OpStory, "main">
+>;
 const secondaryParagraph = (paraId: string): Paragraph => ({
   type: "paragraph",
   paraId,
@@ -1607,7 +1791,10 @@ test.each([
         const main = source.package.document.content.at(0);
         if (main?.type !== "paragraph") panic("Missing body fixture");
         main.paraId = "74000000";
-        const content = [secondaryParagraph("74000001"), secondaryParagraph("74000002")];
+        const content = [
+          secondaryParagraph("74000001"),
+          secondaryParagraph("74000002"),
+        ];
         let publicStory: FolioDocumentOperationStory;
         switch (story.kind) {
           case "header":
@@ -1625,13 +1812,23 @@ test.each([
           }
           case "footnote":
             publicStory = { type: story.kind, noteId: story.id };
-            source.package.footnotes = [{ type: story.kind, id: story.id, content }];
-            main.content.push({ type: "run", content: [{ type: "footnoteRef", id: story.id }] });
+            source.package.footnotes = [
+              { type: story.kind, id: story.id, content },
+            ];
+            main.content.push({
+              type: "run",
+              content: [{ type: "footnoteRef", id: story.id }],
+            });
             break;
           case "endnote":
             publicStory = { type: story.kind, noteId: story.id };
-            source.package.endnotes = [{ type: story.kind, id: story.id, content }];
-            main.content.push({ type: "run", content: [{ type: "endnoteRef", id: story.id }] });
+            source.package.endnotes = [
+              { type: story.kind, id: story.id, content },
+            ];
+            main.content.push({
+              type: "run",
+              content: [{ type: "endnoteRef", id: story.id }],
+            });
             break;
         }
         const { deps } = makeDeps({
@@ -1643,8 +1840,11 @@ test.each([
         const manager = createHiddenEditorManager(deps);
         try {
           manager.ensureView();
-          const view = manager.getView() ?? panic("Missing canonical body view");
-          const before = manager.api.getCanonicalDocument() ?? panic("Missing canonical model");
+          const view =
+            manager.getView() ?? panic("Missing canonical body view");
+          const before =
+            manager.api.getCanonicalDocument() ??
+            panic("Missing canonical model");
           const bodyState = view.state;
           const projection =
             manager.api.getCanonicalStoryProjection(story) ??
@@ -1677,7 +1877,9 @@ test.each([
           );
           expect(result?.undoHandle).toBeNull();
           expect(view.state).toBe(bodyState);
-          expect(manager.api.getCanonicalStoryProjection(story)?.eq(projection)).toBe(true);
+          expect(
+            manager.api.getCanonicalStoryProjection(story)?.eq(projection),
+          ).toBe(true);
           assertExactModel(manager.api.getCanonicalDocument(), before);
           assertExactModel(manager.api.getDocument(), before);
           expect(manager.api.canUndo()).toBe(false);
@@ -1687,7 +1889,9 @@ test.each([
           host.remove();
         }
       }
-      expect([...exercised].sort()).toEqual(Object.keys(SECONDARY_PUBLIC_STORIES).sort());
+      expect([...exercised].sort()).toEqual(
+        Object.keys(SECONDARY_PUBLIC_STORIES).sort(),
+      );
     } finally {
       GlobalRegistrator.unregister();
     }
@@ -1699,7 +1903,9 @@ test("legacy note snapshot refuses before the collaboration builder runs", async
   const source = await sourceWithNoteReference();
   const ydoc = new Y.Doc();
   const text = new Y.XmlText();
-  text.insert(0, "123123", { footnoteRef: { id: "123", noteType: "footnote" } });
+  text.insert(0, "123123", {
+    footnoteRef: { id: "123", noteType: "footnote" },
+  });
   const paragraph = new Y.XmlElement("paragraph");
   paragraph.insert(0, [text]);
   const fragment = ydoc.getXmlFragment("prosemirror");
@@ -1719,11 +1925,15 @@ test("legacy note snapshot refuses before the collaboration builder runs", async
   expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
   build.mockRestore();
   ydoc.destroy();
-  const fresh = createHiddenEditorState({ document: source, manager: singletonManager });
+  const fresh = createHiddenEditorState({
+    document: source,
+    manager: singletonManager,
+  });
   const ids: string[] = [];
   fresh.doc.descendants((node) => {
     for (const mark of node.marks) {
-      if (mark.type.name === "footnoteRef") ids.push(mark.attrs["occurrenceId"]);
+      if (mark.type.name === "footnoteRef")
+        ids.push(mark.attrs["occurrenceId"]);
     }
   });
   expect(ids).toHaveLength(1);
@@ -1767,7 +1977,9 @@ test.each([
     });
     try {
       manager.ensureView();
-      const view = notes.activate({ kind: "footnote", noteId: 1 }) ?? panic("Missing note view.");
+      const view =
+        notes.activate({ kind: "footnote", noteId: 1 }) ??
+        panic("Missing note view.");
       const initialSelection =
         selectionType === "all"
           ? new AllSelection(view.state.doc)
@@ -1789,7 +2001,9 @@ test.each([
           cancelable: true,
         }),
       );
-      expect(view.state.doc.textContent).toBe(key === "Home" ? "xSource" : "Sourcex");
+      expect(view.state.doc.textContent).toBe(
+        key === "Home" ? "xSource" : "Sourcex",
+      );
       const accepted = manager.api.getCanonicalDocument();
       expect(
         manager.api.applyCanonicalStoryHistory({
@@ -1840,7 +2054,9 @@ test("committed version keys survive composition and distinguish document loads"
     expect(initial).not.toBeNull();
     manager.api.setSelection(2);
     expect(manager.api.getCanonicalCommittedVersion()).toBe(initial);
-    expect(manager.api.updateCanonicalInputLifecycle("beginComposition")).toBe(true);
+    expect(manager.api.updateCanonicalInputLifecycle("beginComposition")).toBe(
+      true,
+    );
     expect(manager.api.getCanonicalCommittedVersion()).toBe(initial);
     expect(manager.api.getCanonicalDocument).toThrow(
       "Composition must finish before taking a snapshot.",

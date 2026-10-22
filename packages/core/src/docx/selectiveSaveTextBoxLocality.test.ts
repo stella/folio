@@ -17,7 +17,8 @@ import JSZip from "jszip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const CONTENT_TYPES = `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
 
@@ -70,7 +71,11 @@ const textBoxRun = (coverage: Coverage, text: string): string => {
 const documentXml = (coverage: Coverage): string =>
   `${XML_DECLARATION}<w:document ${ROOT_NAMESPACES}><w:body>` +
   paragraph(coverage, "10000001", textRun("Before the box")) +
-  paragraph(coverage, "10000002", textRun("Host ") + textBoxRun(coverage, "Box text")) +
+  paragraph(
+    coverage,
+    "10000002",
+    textRun("Host ") + textBoxRun(coverage, "Box text"),
+  ) +
   paragraph(coverage, "10000004", textRun("After the box")) +
   "<w:sectPr/></w:body></w:document>";
 
@@ -81,7 +86,10 @@ const buildPackage = async (xml: string): Promise<ArrayBuffer> => {
   zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
   zip.file("word/document.xml", xml);
   const bytes = await zip.generateAsync({ type: "uint8array" });
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 };
 
 const documentPartOf = async (docx: ArrayBuffer): Promise<string> => {
@@ -96,7 +104,9 @@ describe("a body edit beside a text box with a Fallback", () => {
   for (const coverage of ["authored", "none"] as const) {
     test(`keeps every other paragraph byte-exact (paraIds: ${coverage})`, async () => {
       const source = documentXml(coverage);
-      const reviewer = await FolioDocxReviewer.fromBuffer(await buildPackage(source));
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildPackage(source),
+      );
       const target = reviewer.snapshot().blocks[0];
       if (!target) {
         throw new Error("fixture has no first block");

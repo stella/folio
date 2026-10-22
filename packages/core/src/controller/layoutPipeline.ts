@@ -1,9 +1,16 @@
 import type { EditorState } from "prosemirror-state";
+
 import { survivingComments } from "@stll/docx-core/ops";
 
+import { displayCommentsFrom } from "../display-list/build/commentAnnotations";
+import { createDisplayListPagePainter } from "../display-list/editor/displayListPagePainter";
+import {
+  displayListFurnitureFrom,
+  PAGE_RENDERER,
+  type PageRendererName,
+} from "../display-list/editor/pageRenderer";
 import { resolveDocumentGridLinePitch } from "../docx/documentGrid";
 import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
-import { displayCommentsFrom } from "../display-list/build/commentAnnotations";
 import { buildBookmarkPageMap } from "../fields/bookmarkPages";
 import { buildBookmarkText } from "../fields/bookmarkText";
 import {
@@ -16,36 +23,37 @@ import { buildSectionPageCounts } from "../fields/sectionPageCounts";
 import { buildSeqValues } from "../fields/seqValues";
 import { buildFontAlternates } from "../fonts/fontAlternates";
 import {
-  FOOTNOTE_ENTRY_MARGIN_BOTTOM,
-  buildFootnoteContentMap,
-  collectEndnoteRefs,
-  collectFootnoteRefs,
-  computeNoteDisplayNumbers,
-  remapNoteMarkerText,
-} from "../layout-bridge/convert/footnoteLayout";
-import type { MeasureBlocksFn } from "../layout-bridge/convert/footnoteLayout";
-import { markupViewNotes } from "../prosemirror/markupViewNotes";
-import {
   prepareEndnoteAreas,
   resolveEndnotePosition,
   spliceEndnoteAreas,
   trailingEndnoteIds,
 } from "../layout-bridge/convert/endnoteLayout";
 import type { PreparedEndnoteAreas } from "../layout-bridge/convert/endnoteLayout";
+import {
+  buildFootnoteContentMap,
+  collectEndnoteRefs,
+  collectFootnoteRefs,
+  computeNoteDisplayNumbers,
+  FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+  remapNoteMarkerText,
+} from "../layout-bridge/convert/footnoteLayout";
+import type { MeasureBlocksFn } from "../layout-bridge/convert/footnoteLayout";
 import type {
   ConvertHeaderFooterOptions,
   HeaderFooterMetrics,
 } from "../layout-bridge/convert/headerFooterLayout";
 import { remapMarkupViewBlocks } from "../layout-bridge/convert/markupViewFlow";
 import { applyTemplatePreviewToBlocks } from "../layout-bridge/convert/templatePreviewFlow";
-import { toFlowBlocks, WORD_UNSPECIFIED_FONT_SIZE } from "../layout-bridge/convert/toFlowBlocks";
+import {
+  toFlowBlocks,
+  WORD_UNSPECIFIED_FONT_SIZE,
+} from "../layout-bridge/convert/toFlowBlocks";
 import type { ToFlowBlocksOptions } from "../layout-bridge/convert/toFlowBlocks";
 import { getColumns } from "../layout-bridge/sectionColumns";
 import { layoutDocument } from "../layout-engine";
 import type { ColumnLayout, SectionLayoutConfig } from "../layout-engine";
 import { resolveAnchorLayoutInCellCompatibility } from "../layout-engine/anchorLayoutInCellCompatibility";
 import { resolveJustificationCompatibility } from "../layout-engine/justificationCompatibility";
-import { resolveTableIndentCompatibility } from "../layout-engine/tableIndentCompatibility";
 import {
   recordLayoutComplete,
   recordLayoutError,
@@ -55,19 +63,20 @@ import {
 } from "../layout-engine/layoutInstrumentation";
 import type { LayoutPhase } from "../layout-engine/layoutInstrumentation";
 import {
-  measureBlocks,
-  measureSingleBlockWithoutFloatingZones,
-} from "../layout-engine/measure/measureBlocks";
-import { collectRequestedHyphenationDictionaries } from "../layout-engine/measure/hyphenationDictionaries";
-import {
   labelMeasureCachesFontSet,
   syncMeasureCachesToFontSet,
 } from "../layout-engine/measure/cache";
+import { collectRequestedHyphenationDictionaries } from "../layout-engine/measure/hyphenationDictionaries";
+import {
+  measureBlocks,
+  measureSingleBlockWithoutFloatingZones,
+} from "../layout-engine/measure/measureBlocks";
 import {
   installCanvasMeasureProvider,
   resetCanvasContext,
 } from "../layout-engine/measure/measureContainer";
 import { resolveEffectiveParagraphSpacingTree } from "../layout-engine/paragraphSpacing";
+import { resolveTableIndentCompatibility } from "../layout-engine/tableIndentCompatibility";
 import type {
   FlowBlock,
   FootnoteContent,
@@ -78,17 +87,12 @@ import type {
 } from "../layout-engine/types";
 import type { BlockLookup, LayoutPainter } from "../layout-painter";
 import { renderPages } from "../layout-painter/renderPage";
-import { createDisplayListPagePainter } from "../display-list/editor/displayListPagePainter";
-import {
-  PAGE_RENDERER,
-  displayListFurnitureFrom,
-  type PageRendererName,
-} from "../display-list/editor/pageRenderer";
 import type {
   FootnoteRenderItem,
   HeaderFooterContent,
   RenderPageOptions,
 } from "../layout-painter/renderPage";
+import type { DisplayMode } from "../managers/EditorModeManager";
 import { tryBuildIncrementalMeasures } from "../paged-layout/incrementalMeasure";
 import type { DirtyRange } from "../paged-layout/incrementalMeasure";
 import type { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
@@ -99,7 +103,7 @@ import {
   getPageSize,
   twipsToPixels,
 } from "../paged-layout/sectionGeometry";
-import type { DisplayMode } from "../managers/EditorModeManager";
+import { markupViewNotes } from "../prosemirror/markupViewNotes";
 import { projectMarkupView } from "../prosemirror/markupViewProjection";
 import { templatePreviewValuesKey } from "../prosemirror/plugins/templatePreviewValues";
 import type {
@@ -136,7 +140,10 @@ const formatEndnoteTexts = (
   return texts;
 };
 
-const sameMeasureInputs = (left: LayoutMeasureInputs, right: LayoutMeasureInputs): boolean =>
+const sameMeasureInputs = (
+  left: LayoutMeasureInputs,
+  right: LayoutMeasureInputs,
+): boolean =>
   left.embeddedFontFamilyMap === right.embeddedFontFamilyMap &&
   left.styles === right.styles &&
   left.theme === right.theme &&
@@ -169,7 +176,11 @@ const incrementalDirtyRange = ({
   measureInputs,
 }: IncrementalDirtyRangeOptions): DirtyRange | null => {
   const { lastPmDoc, lastMeasureInputs } = session;
-  if (!lastPmDoc || !lastMeasureInputs || !sameMeasureInputs(lastMeasureInputs, measureInputs)) {
+  if (
+    !lastPmDoc ||
+    !lastMeasureInputs ||
+    !sameMeasureInputs(lastMeasureInputs, measureInputs)
+  ) {
     return null;
   }
   const diff = diffAgainstCommittedLayout(
@@ -206,7 +217,9 @@ const resolveWatermarkImageSrc = (
     return undefined;
   }
   const target = watermark.imageTarget;
-  return target === undefined ? undefined : document.package.media?.get(target)?.dataUrl;
+  return target === undefined
+    ? undefined
+    : document.package.media?.get(target)?.dataUrl;
 };
 
 // Everything the compute reads from the React adapter's scope. The adapter
@@ -308,10 +321,12 @@ function bodyMarginsClearHeaderFooter({
   preparedFooter,
 }: BodyMarginClearanceOptions): PageMargins {
   const headerBottom = preparedHeader
-    ? (authoredMargins.header ?? 0) + (preparedHeader.marginPushBottom ?? preparedHeader.height)
+    ? (authoredMargins.header ?? 0) +
+      (preparedHeader.marginPushBottom ?? preparedHeader.height)
     : authoredMargins.top;
   const footerClearance = preparedFooter
-    ? (authoredMargins.footer ?? 0) + (preparedFooter.marginPushBottom ?? preparedFooter.height)
+    ? (authoredMargins.footer ?? 0) +
+      (preparedFooter.marginPushBottom ?? preparedFooter.height)
     : authoredMargins.bottom;
   const top = Math.max(authoredMargins.top, headerBottom);
   const clearedTop = Math.max(top, preparedHeader?.bodyTopClearance ?? 0);
@@ -338,7 +353,10 @@ function bodyBlocksClearSectionHeaderFooter(
     footerContentByRId,
   }: SectionHeaderFooterClearanceOptions,
 ): FlowBlock[] {
-  if (!sectionHeaderFooterRefs || (!headerContentByRId && !footerContentByRId)) {
+  if (
+    !sectionHeaderFooterRefs ||
+    (!headerContentByRId && !footerContentByRId)
+  ) {
     return blocks;
   }
 
@@ -355,10 +373,17 @@ function bodyBlocksClearSectionHeaderFooter(
     sectionIndex += 1;
     const effectiveMargins = bodyMarginsClearHeaderFooter({
       authoredMargins: currentAuthoredMargins,
-      preparedHeader: refs?.headerDefault ? headerContentByRId?.get(refs.headerDefault) : undefined,
-      preparedFooter: refs?.footerDefault ? footerContentByRId?.get(refs.footerDefault) : undefined,
+      preparedHeader: refs?.headerDefault
+        ? headerContentByRId?.get(refs.headerDefault)
+        : undefined,
+      preparedFooter: refs?.footerDefault
+        ? footerContentByRId?.get(refs.footerDefault)
+        : undefined,
     });
-    if (effectiveMargins === currentAuthoredMargins && block.margins === currentAuthoredMargins) {
+    if (
+      effectiveMargins === currentAuthoredMargins &&
+      block.margins === currentAuthoredMargins
+    ) {
       return block;
     }
 
@@ -383,7 +408,11 @@ const mirrorPageMarginsIfNeeded = (
   mirrorMargins: boolean,
 ): PageMargins =>
   mirrorMargins && pageNumber % 2 === 0
-    ? { ...authoredMargins, left: authoredMargins.right, right: authoredMargins.left }
+    ? {
+        ...authoredMargins,
+        left: authoredMargins.right,
+        right: authoredMargins.left,
+      }
     : authoredMargins;
 
 function attachAuthoredMarginsToLayoutPages(
@@ -396,13 +425,19 @@ function attachAuthoredMarginsToLayoutPages(
 ): Layout {
   let changed = false;
   const pages = layout.pages.map((page) => {
-    const sectionProperties = options.sectionPropertiesForMargins[page.sectionIndex ?? 0];
+    const sectionProperties =
+      options.sectionPropertiesForMargins[page.sectionIndex ?? 0];
     const authoredMargins = mirrorPageMarginsIfNeeded(
-      sectionProperties ? getMargins(sectionProperties) : options.authoredMargins,
+      sectionProperties
+        ? getMargins(sectionProperties)
+        : options.authoredMargins,
       page.number,
       options.mirrorMargins,
     );
-    if (page.authoredMargins && arePageMarginsEqual(page.authoredMargins, authoredMargins)) {
+    if (
+      page.authoredMargins &&
+      arePageMarginsEqual(page.authoredMargins, authoredMargins)
+    ) {
       return page;
     }
     changed = true;
@@ -503,7 +538,9 @@ function runLayoutPipelineMeasured<THfPMs>(
     const pageContentHeight = pageSize.h - margins.top - margins.bottom;
     const fontAlternates = buildFontAlternates(document?.package.fontTable);
     const displayCommentHighlights =
-      showCommentHighlights && markupView !== "no-markup" && markupView !== "original";
+      showCommentHighlights &&
+      markupView !== "no-markup" &&
+      markupView !== "original";
     const embeddedFontFamilies = session.embeddedFontFamilyMap
       ? { embeddedFontFamilyMap: session.embeddedFontFamilyMap }
       : {};
@@ -555,7 +592,11 @@ function runLayoutPipelineMeasured<THfPMs>(
     if (tableIndentCompatibility) {
       flowOpts.tableIndentCompatibility = tableIndentCompatibility;
     }
-    if (resolveAnchorLayoutInCellCompatibility(documentSettings?.compatibilityMode)) {
+    if (
+      resolveAnchorLayoutInCellCompatibility(
+        documentSettings?.compatibilityMode,
+      )
+    ) {
       flowOpts.forceAnchorLayoutInCell = true;
     }
     if (documentSettings?.autoHyphenation === true) {
@@ -576,13 +617,17 @@ function runLayoutPipelineMeasured<THfPMs>(
       document?.package.document.sections?.at(-1)?.properties.docGrid,
     );
     if (finalSectionDocumentGridLinePitchTwips !== undefined) {
-      flowOpts.finalSectionDocumentGridLinePitchTwips = finalSectionDocumentGridLinePitchTwips;
+      flowOpts.finalSectionDocumentGridLinePitchTwips =
+        finalSectionDocumentGridLinePitchTwips;
     }
     const endnotePosition = resolveEndnotePosition(
       document?.package.settings?.endnotePr?.position,
       document?.package.document.sections?.at(-1)?.properties,
     );
-    const bodyTrailingEndnoteIds = trailingEndnoteIds(document?.package.endnotes, endnotePosition);
+    const bodyTrailingEndnoteIds = trailingEndnoteIds(
+      document?.package.endnotes,
+      endnotePosition,
+    );
     if (bodyTrailingEndnoteIds.size > 0) {
       flowOpts.trailingEndnoteIds = bodyTrailingEndnoteIds;
     }
@@ -591,7 +636,10 @@ function runLayoutPipelineMeasured<THfPMs>(
     // its positions before anything downstream (template preview ranges,
     // dirty ranges, caret and selection) reads them.
     const projection = projectMarkupView(state, markupView);
-    if (projection.type === "resolved" && projection.completeness === "partial") {
+    if (
+      projection.type === "resolved" &&
+      projection.completeness === "partial"
+    ) {
       recordMarkupViewIncomplete(markupView);
     }
     const viewDoc = projection.type === "resolved" ? projection.doc : state.doc;
@@ -617,7 +665,8 @@ function runLayoutPipelineMeasured<THfPMs>(
     // without them. View-only: the PM doc — and with it the save path — is
     // never modified.
     const previewState = templatePreviewValuesKey.getState(state);
-    const previewEntries = previewState?.entries ?? EMPTY_TEMPLATE_PREVIEW_ENTRIES;
+    const previewEntries =
+      previewState?.entries ?? EMPTY_TEMPLATE_PREVIEW_ENTRIES;
     const previewHidden = previewState?.hidden ?? EMPTY_TEMPLATE_PREVIEW_HIDDEN;
     const previewMode = previewState?.preview?.mode ?? "plain";
     if (previewEntries.length > 0 || previewHidden.length > 0) {
@@ -645,7 +694,8 @@ function runLayoutPipelineMeasured<THfPMs>(
       state,
       document,
     );
-    const hasFootnotes = footnoteRefs.length > 0 && documentFootnotes !== undefined;
+    const hasFootnotes =
+      footnoteRefs.length > 0 && documentFootnotes !== undefined;
 
     // Body note markers carry the raw `w:id` as their run text (the PM doc
     // stores it that way; the save path serializes from the mark attrs).
@@ -671,7 +721,8 @@ function runLayoutPipelineMeasured<THfPMs>(
         )
       : undefined;
     const endnoteNumberFormat =
-      document?.package.document.sections?.at(-1)?.properties.endnotePr?.numFmt ??
+      document?.package.document.sections?.at(-1)?.properties.endnotePr
+        ?.numFmt ??
       document?.package.settings?.endnotePr?.numFmt ??
       "lowerRoman";
     const endnoteTexts = endnoteDisplayNumbers
@@ -680,7 +731,9 @@ function runLayoutPipelineMeasured<THfPMs>(
         )
       : undefined;
     newBlocks = remapNoteMarkerText(newBlocks, {
-      ...(footnoteDisplayNumbers ? { footnoteNumbers: footnoteDisplayNumbers } : {}),
+      ...(footnoteDisplayNumbers
+        ? { footnoteNumbers: footnoteDisplayNumbers }
+        : {}),
       ...(endnoteTexts ? { endnoteTexts } : {}),
     });
     outcome.blocks = newBlocks;
@@ -705,14 +758,22 @@ function runLayoutPipelineMeasured<THfPMs>(
     // before paint.
     const hfPageCountEstimate = layout?.pages.length ?? 1;
     const hfClock = new Date();
-    const buildHfOptions = (pageCount: number, fieldInputs?: HeaderFooterFieldInputs) => {
+    const buildHfOptions = (
+      pageCount: number,
+      fieldInputs?: HeaderFooterFieldInputs,
+    ) => {
       const hfMeasureBlocks: MeasureBlocksFn = (hfBlocks, hfWidth) =>
         measureBlocks(
           hfBlocks,
           hfWidth,
           undefined,
           undefined,
-          buildHeaderFooterFieldValues(hfBlocks, pageCount, hfClock, fieldInputs),
+          buildHeaderFooterFieldValues(
+            hfBlocks,
+            pageCount,
+            hfClock,
+            fieldInputs,
+          ),
           { allowEndTabOverflow: true },
         );
       return {
@@ -722,13 +783,19 @@ function runLayoutPipelineMeasured<THfPMs>(
         ...(document?.package.numbering === undefined
           ? {}
           : { numbering: document.package.numbering }),
-        ...(flowOpts.defaultSize === undefined ? {} : { defaultSize: flowOpts.defaultSize }),
+        ...(flowOpts.defaultSize === undefined
+          ? {}
+          : { defaultSize: flowOpts.defaultSize }),
         ...(_theme !== undefined ? { theme: _theme } : {}),
         fontAlternates,
         ...embeddedFontFamilies,
         measureBlocks: hfMeasureBlocks,
-        ...(defaultTabStop !== undefined ? { defaultTabStopTwips: defaultTabStop } : {}),
-        ...(flowOpts.lineBreakRules ? { lineBreakRules: flowOpts.lineBreakRules } : {}),
+        ...(defaultTabStop !== undefined
+          ? { defaultTabStopTwips: defaultTabStop }
+          : {}),
+        ...(flowOpts.lineBreakRules
+          ? { lineBreakRules: flowOpts.lineBreakRules }
+          : {}),
         ...(flowOpts.justificationCompatibility
           ? { justificationCompatibility: flowOpts.justificationCompatibility }
           : {}),
@@ -793,35 +860,48 @@ function runLayoutPipelineMeasured<THfPMs>(
       hfOptions,
     );
     const sectionPropertiesForMargins =
-      document?.package.document.sections?.map((section) => section.properties) ??
-      (sectionProperties ? [sectionProperties] : []);
-    const sectionEvenPageMargins = sectionHeaderFooterRefs?.map((refs, index) => {
-      if (refs.evenAndOddHeaders !== true) {
-        return undefined;
-      }
-      const properties = sectionPropertiesForMargins[index];
-      const authoredMargins = properties ? getMargins(properties) : margins;
-      return bodyMarginsClearHeaderFooter({
-        authoredMargins,
-        preparedHeader: refs.headerEven ? headerContentByRId?.get(refs.headerEven) : undefined,
-        preparedFooter: refs.footerEven ? footerContentByRId?.get(refs.footerEven) : undefined,
-      });
-    });
+      document?.package.document.sections?.map(
+        (section) => section.properties,
+      ) ?? (sectionProperties ? [sectionProperties] : []);
+    const sectionEvenPageMargins = sectionHeaderFooterRefs?.map(
+      (refs, index) => {
+        if (refs.evenAndOddHeaders !== true) {
+          return undefined;
+        }
+        const properties = sectionPropertiesForMargins[index];
+        const authoredMargins = properties ? getMargins(properties) : margins;
+        return bodyMarginsClearHeaderFooter({
+          authoredMargins,
+          preparedHeader: refs.headerEven
+            ? headerContentByRId?.get(refs.headerEven)
+            : undefined,
+          preparedFooter: refs.footerEven
+            ? footerContentByRId?.get(refs.footerEven)
+            : undefined,
+        });
+      },
+    );
 
     // Each section's own `w:titlePg` (§17.10.6) decides whether its first page
     // shows first-page parts, so each section clears its own first-page parts.
-    const sectionFirstPageMargins = sectionHeaderFooterRefs?.map((refs, index) => {
-      if (refs.titlePg !== true) {
-        return undefined;
-      }
-      const properties = sectionPropertiesForMargins[index];
-      const authoredMargins = properties ? getMargins(properties) : margins;
-      return bodyMarginsClearHeaderFooter({
-        authoredMargins,
-        preparedHeader: refs.headerFirst ? headerContentByRId?.get(refs.headerFirst) : undefined,
-        preparedFooter: refs.footerFirst ? footerContentByRId?.get(refs.footerFirst) : undefined,
-      });
-    });
+    const sectionFirstPageMargins = sectionHeaderFooterRefs?.map(
+      (refs, index) => {
+        if (refs.titlePg !== true) {
+          return undefined;
+        }
+        const properties = sectionPropertiesForMargins[index];
+        const authoredMargins = properties ? getMargins(properties) : margins;
+        return bodyMarginsClearHeaderFooter({
+          authoredMargins,
+          preparedHeader: refs.headerFirst
+            ? headerContentByRId?.get(refs.headerFirst)
+            : undefined,
+          preparedFooter: refs.footerFirst
+            ? footerContentByRId?.get(refs.footerFirst)
+            : undefined,
+        });
+      },
+    );
 
     newBlocks = bodyBlocksClearSectionHeaderFooter(newBlocks, {
       authoredMargins: margins,
@@ -850,7 +930,8 @@ function runLayoutPipelineMeasured<THfPMs>(
     if (columns !== undefined) {
       bodyLayoutConfig.columns = columns;
     }
-    const finalSectionProperties = document?.package.document.sections?.at(-1)?.properties;
+    const finalSectionProperties =
+      document?.package.document.sections?.at(-1)?.properties;
     const finalHeaderRId = sectionHeaderFooterRefs?.at(-1)?.headerDefault;
     let finalHeaderForLayout = headerContentForRender;
     if (finalHeaderRId) {
@@ -943,12 +1024,18 @@ function runLayoutPipelineMeasured<THfPMs>(
     recordPhaseDuration("measure-blocks", phaseStartedAt);
 
     // Note stories convert and measure through the same options as the body.
-    const buildNoteOptions = (): Parameters<typeof buildFootnoteContentMap>[3] & {
+    const buildNoteOptions = (): Parameters<
+      typeof buildFootnoteContentMap
+    >[3] & {
       measureBlocks: MeasureBlocksFn;
     } => {
       const noteOptions: Parameters<typeof buildFootnoteContentMap>[3] & {
         measureBlocks: MeasureBlocksFn;
-      } = { measureBlocks, showCommentHighlights: displayCommentHighlights, markupView };
+      } = {
+        measureBlocks,
+        showCommentHighlights: displayCommentHighlights,
+        markupView,
+      };
       if (flowOpts.styles) {
         noteOptions.styles = flowOpts.styles;
       }
@@ -972,10 +1059,12 @@ function runLayoutPipelineMeasured<THfPMs>(
         noteOptions.lineBreakRules = flowOpts.lineBreakRules;
       }
       if (flowOpts.justificationCompatibility) {
-        noteOptions.justificationCompatibility = flowOpts.justificationCompatibility;
+        noteOptions.justificationCompatibility =
+          flowOpts.justificationCompatibility;
       }
       if (flowOpts.tableIndentCompatibility) {
-        noteOptions.tableIndentCompatibility = flowOpts.tableIndentCompatibility;
+        noteOptions.tableIndentCompatibility =
+          flowOpts.tableIndentCompatibility;
       }
       if (flowOpts.automaticHyphenation) {
         noteOptions.automaticHyphenation = flowOpts.automaticHyphenation;
@@ -1028,11 +1117,17 @@ function runLayoutPipelineMeasured<THfPMs>(
         mirrorMargins,
       };
       if (document?.package.document.sections !== undefined) {
-        nextLayoutOpts.sectionVerticalAlignments = document.package.document.sections.map(
-          ({ properties }) => properties.verticalAlign,
-        );
-      } else if (sectionProperties !== null && sectionProperties !== undefined) {
-        nextLayoutOpts.sectionVerticalAlignments = [sectionProperties.verticalAlign];
+        nextLayoutOpts.sectionVerticalAlignments =
+          document.package.document.sections.map(
+            ({ properties }) => properties.verticalAlign,
+          );
+      } else if (
+        sectionProperties !== null &&
+        sectionProperties !== undefined
+      ) {
+        nextLayoutOpts.sectionVerticalAlignments = [
+          sectionProperties.verticalAlign,
+        ];
       }
       if (sectionFirstPageMargins !== undefined) {
         nextLayoutOpts.sectionFirstPageMargins = sectionFirstPageMargins;
@@ -1046,7 +1141,10 @@ function runLayoutPipelineMeasured<THfPMs>(
       if (finalSectionProperties) {
         nextLayoutOpts.finalPageSize = finalLayoutConfig.pageSize;
         nextLayoutOpts.finalMargins = finalLayoutConfig.margins;
-        nextLayoutOpts.finalColumns = finalLayoutConfig.columns ?? { count: 1, gap: 0 };
+        nextLayoutOpts.finalColumns = finalLayoutConfig.columns ?? {
+          count: 1,
+          gap: 0,
+        };
         nextLayoutOpts.finalPageNumbering = finalLayoutConfig.pageNumbering;
       }
       if (columns !== undefined) {
@@ -1084,7 +1182,10 @@ function runLayoutPipelineMeasured<THfPMs>(
       // spacing; source paragraph spacing inside each note carries the
       // visible gaps.
       for (const [id, content] of footnoteContentMap) {
-        footnoteHeightById.set(id, content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM);
+        footnoteHeightById.set(
+          id,
+          content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+        );
       }
       // Note: the layout engine adds the divider's height once per
       // fn-bearing page (in paginator.addFootnoteHeight); we pass per-fn
@@ -1128,7 +1229,10 @@ function runLayoutPipelineMeasured<THfPMs>(
       }
       const footnoteHeightById = new Map<number, number>();
       for (const [id, content] of footnoteContentMap) {
-        footnoteHeightById.set(id, content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM);
+        footnoteHeightById.set(
+          id,
+          content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+        );
       }
       return { ...nextLayoutOpts, footnoteHeightById };
     };
@@ -1156,16 +1260,22 @@ function runLayoutPipelineMeasured<THfPMs>(
           previousFieldValues === null
             ? { seqValues }
             : { fieldValues: previousFieldValues, seqValues };
-        const { values, changed } = resolveFieldValues(newBlocks, newLayout.pages, {
-          totalPages: newLayout.pages.length,
-          bookmarkPages: buildBookmarkPageMap(newLayout.pages, newBlocks),
-          bookmarkText: buildBookmarkText(newBlocks, bookmarkTextInputs),
-          seqValues,
-          sectionPageCounts: buildSectionPageCounts(newLayout.pages),
-          now: fieldClock,
-        });
+        const { values, changed } = resolveFieldValues(
+          newBlocks,
+          newLayout.pages,
+          {
+            totalPages: newLayout.pages.length,
+            bookmarkPages: buildBookmarkPageMap(newLayout.pages, newBlocks),
+            bookmarkText: buildBookmarkText(newBlocks, bookmarkTextInputs),
+            seqValues,
+            sectionPageCounts: buildSectionPageCounts(newLayout.pages),
+            now: fieldClock,
+          },
+        );
         const settled =
-          previousFieldValues === null ? !changed : fieldValuesEqual(previousFieldValues, values);
+          previousFieldValues === null
+            ? !changed
+            : fieldValuesEqual(previousFieldValues, values);
         if (settled) {
           stabilizedFieldValues = values;
           break;
@@ -1189,7 +1299,8 @@ function runLayoutPipelineMeasured<THfPMs>(
               marginTop: blockMeasureInputs.physicalPageGeometry.marginTops,
               marginLeft: blockMeasureInputs.physicalPageGeometry.marginLefts,
               marginRight: blockMeasureInputs.physicalPageGeometry.marginRights,
-              marginBottom: blockMeasureInputs.physicalPageGeometry.marginBottoms,
+              marginBottom:
+                blockMeasureInputs.physicalPageGeometry.marginBottoms,
             },
             columnIndex: blockMeasureInputs.columnIndices,
             columnCount: blockMeasureInputs.columnCounts,
@@ -1236,7 +1347,10 @@ function runLayoutPipelineMeasured<THfPMs>(
         seqValues,
         sectionPageCounts: buildSectionPageCounts(newLayout.pages),
       };
-      const finalHfOptions = buildHfOptions(newLayout.pages.length, finalHfFieldInputs);
+      const finalHfOptions = buildHfOptions(
+        newLayout.pages.length,
+        finalHfFieldInputs,
+      );
       headerContentForRender = renderHfFromContentOrPm(
         headerContent,
         headerContentRId,
@@ -1312,7 +1426,9 @@ function runLayoutPipelineMeasured<THfPMs>(
           if (!measure) {
             continue;
           }
-          const noteStory = endnoteAreas?.noteStoryByBlockId.get(String(block.id));
+          const noteStory = endnoteAreas?.noteStoryByBlockId.get(
+            String(block.id),
+          );
           blockLookup.set(String(block.id), {
             block,
             measure,
@@ -1320,15 +1436,23 @@ function runLayoutPipelineMeasured<THfPMs>(
           });
         }
       }
-      const continuationSeparator = endnoteAreas?.noteAreas.continuationSeparator;
+      const continuationSeparator =
+        endnoteAreas?.noteAreas.continuationSeparator;
       if (continuationSeparator) {
-        blockLookup.set(String(continuationSeparator.block.id), continuationSeparator);
+        blockLookup.set(
+          String(continuationSeparator.block.id),
+          continuationSeparator,
+        );
       }
       outcome.blockLookup = blockLookup;
 
       // Build per-page footnote render items
       const footnotesByPage = hasFootnotes
-        ? buildFootnoteRenderItems(pageFootnoteMap, footnoteContentMap, document)
+        ? buildFootnoteRenderItems(
+            pageFootnoteMap,
+            footnoteContentMap,
+            document,
+          )
         : undefined;
 
       // Render pages to container.
@@ -1373,14 +1497,18 @@ function runLayoutPipelineMeasured<THfPMs>(
         sectionProperties?.headerDistance !== undefined &&
         sectionProperties.headerDistance !== 0
       ) {
-        renderOpts.headerDistance = twipsToPixels(sectionProperties.headerDistance);
+        renderOpts.headerDistance = twipsToPixels(
+          sectionProperties.headerDistance,
+        );
       }
       if (
         sectionHeaderFooterRefs === undefined &&
         sectionProperties?.footerDistance !== undefined &&
         sectionProperties.footerDistance !== 0
       ) {
-        renderOpts.footerDistance = twipsToPixels(sectionProperties.footerDistance);
+        renderOpts.footerDistance = twipsToPixels(
+          sectionProperties.footerDistance,
+        );
       }
       if (sectionProperties?.pageBorders) {
         renderOpts.pageBorders = sectionProperties.pageBorders;
@@ -1445,7 +1573,8 @@ function runLayoutPipelineMeasured<THfPMs>(
             .filter((candidate) => candidate !== undefined)
             .map((candidate) => resolveWatermarkImageSrc(document, candidate)),
         );
-        const watermarkImageSrc = pictureSources.size === 1 ? [...pictureSources].at(0) : undefined;
+        const watermarkImageSrc =
+          pictureSources.size === 1 ? [...pictureSources].at(0) : undefined;
         if (watermarkImageSrc !== undefined) {
           renderOpts.watermarkImageSrc = watermarkImageSrc;
         }
@@ -1465,7 +1594,9 @@ function runLayoutPipelineMeasured<THfPMs>(
           // painter takes them per page through `footnotesByPage`, so the
           // furniture adapter cannot find them and the band would reserve its
           // height and paint nothing.
-          ...(footnoteContentMap.size === 0 ? {} : { footnoteContentById: footnoteContentMap }),
+          ...(footnoteContentMap.size === 0
+            ? {}
+            : { footnoteContentById: footnoteContentMap }),
         }).paintPage;
       }
       renderPages(newLayout.pages, pagesContainer, renderOpts);

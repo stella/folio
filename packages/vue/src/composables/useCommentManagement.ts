@@ -15,24 +15,25 @@
  * from the loaded document.
  */
 
-import { computed, ref, toRaw, watch, type ComputedRef, type Ref } from "vue";
-import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
-import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
-import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { EditorView } from "prosemirror-view";
-import type { Comment } from "@stll/folio-core/types/content";
-import type { Document } from "@stll/folio-core/types/document";
+import { computed, type ComputedRef, type Ref, ref, toRaw, watch } from "vue";
+
+import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
+import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
+import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import {
+  acceptAIEditRevision,
+  acceptChange,
+  rejectAIEditRevision,
+  rejectChange,
+} from "@stll/folio-core/prosemirror/commands/comments";
 import {
   createCommentIdAllocator,
   seedCommentAllocator,
 } from "@stll/folio-core/prosemirror/commentIdAllocator";
 import { createComment as coreCreateComment } from "@stll/folio-core/prosemirror/commentOps";
-import {
-  acceptChange,
-  rejectChange,
-  acceptAIEditRevision,
-  rejectAIEditRevision,
-} from "@stll/folio-core/prosemirror/commands/comments";
+import type { Comment } from "@stll/folio-core/types/content";
+import type { Document } from "@stll/folio-core/types/document";
 
 export type UseCommentManagementOptions = {
   editorView: Ref<EditorView | null>;
@@ -69,7 +70,11 @@ export type UseCommentManagementReturn = {
    * default `options.author()` — mirrors React's `applyAIEditOperations`
    * closure, which creates each comment with the per-call `operationAuthor`.
    */
-  createComment: (text: string, parentId?: number, authorOverride?: string) => Comment;
+  createComment: (
+    text: string,
+    parentId?: number,
+    authorOverride?: string,
+  ) => Comment;
   /** Append a comment and emit the change. */
   pushComment: (comment: Comment) => void;
   /** Append a batch of committed comments and emit one change. */
@@ -116,7 +121,9 @@ export function useCommentManagement(
   const comments = computed<Comment[]>(
     () =>
       canonicalComments.value ??
-      (isControlled.value ? (options.commentsProp() ?? []) : internalComments.value),
+      (isControlled.value
+        ? (options.commentsProp() ?? [])
+        : internalComments.value),
   );
 
   const lastCanonicalComments = ref<string | null>(null);
@@ -128,7 +135,10 @@ export function useCommentManagement(
         return;
       }
       const serialized = JSON.stringify(next);
-      if (lastCanonicalComments.value !== null && lastCanonicalComments.value !== serialized) {
+      if (
+        lastCanonicalComments.value !== null &&
+        lastCanonicalComments.value !== serialized
+      ) {
         options.onCommentsChange(next);
       }
       lastCanonicalComments.value = serialized;
@@ -171,10 +181,16 @@ export function useCommentManagement(
         lastControlledComments = serialized;
         return;
       }
-      if (result?.status !== "refused" || result.retry !== "afterComposition") return;
+      if (result?.status !== "refused" || result.retry !== "afterComposition")
+        return;
       const view = options.editor?.getView();
       if (!view) return;
-      onCleanup(afterCanonicalCompositionSettles(view, () => (controlledRetry.value += 1)));
+      onCleanup(
+        afterCanonicalCompositionSettles(
+          view,
+          () => (controlledRetry.value += 1),
+        ),
+      );
     },
     { flush: "post" },
   );
@@ -199,11 +215,20 @@ export function useCommentManagement(
     appendComments([comment]);
   }
 
-  function createComment(text: string, parentId?: number, authorOverride?: string): Comment {
+  function createComment(
+    text: string,
+    parentId?: number,
+    authorOverride?: string,
+  ): Comment {
     // Raise the allocator above every id currently live in the model + doc so a
     // reply/new comment can never re-mint an existing comment or revision id.
     seedCommentAllocator(allocator, comments.value, options.editorView.value);
-    return coreCreateComment(allocator, text, authorOverride ?? options.author(), parentId);
+    return coreCreateComment(
+      allocator,
+      text,
+      authorOverride ?? options.author(),
+      parentId,
+    );
   }
 
   function seedFromDocument(): void {
@@ -241,7 +266,11 @@ export function useCommentManagement(
     });
     if (result !== null && result !== undefined) return;
     markCommentsDirty();
-    setComments(comments.value.map((c) => (c.id === commentId ? { ...c, done: true } : c)));
+    setComments(
+      comments.value.map((c) =>
+        c.id === commentId ? { ...c, done: true } : c,
+      ),
+    );
   }
 
   function handleUnresolve(commentId: number): void {
@@ -252,17 +281,28 @@ export function useCommentManagement(
     });
     if (result !== null && result !== undefined) return;
     markCommentsDirty();
-    setComments(comments.value.map((c) => (c.id === commentId ? { ...c, done: false } : c)));
+    setComments(
+      comments.value.map((c) =>
+        c.id === commentId ? { ...c, done: false } : c,
+      ),
+    );
   }
 
   function handleDelete(commentId: number): void {
-    const result = options.editor?.applyCanonicalComment({ type: "delete", id: commentId });
+    const result = options.editor?.applyCanonicalComment({
+      type: "delete",
+      id: commentId,
+    });
     if (result !== null && result !== undefined) return;
     // Drop the comment and any direct replies threaded under it (matches React's
     // onCommentDelete). The orphaned comment mark left in the doc is pruned at
     // save time.
     markCommentsDirty();
-    setComments(comments.value.filter((c) => c.id !== commentId && c.parentId !== commentId));
+    setComments(
+      comments.value.filter(
+        (c) => c.id !== commentId && c.parentId !== commentId,
+      ),
+    );
   }
 
   function handleTrackedChangeReply(revisionId: number, text: string): void {
@@ -280,7 +320,10 @@ export function useCommentManagement(
     const view = options.editorView.value;
     if (!view) return;
     if (canonicalComments.value !== null && options.editor) {
-      options.editor.resolveCanonicalRevisions([revisionId], accept ? "accept" : "reject");
+      options.editor.resolveCanonicalRevisions(
+        [revisionId],
+        accept ? "accept" : "reject",
+      );
       return;
     }
     // Revision-scoped: acceptAIEditRevision/rejectAIEditRevision both locate
@@ -306,8 +349,12 @@ export function useCommentManagement(
     const view = options.editorView.value;
     if (!view) return;
     if (
-      resolveCanonicalReviewRange({ editor: options.editor, from, to, resolution: "accept" }) ===
-      null
+      resolveCanonicalReviewRange({
+        editor: options.editor,
+        from,
+        to,
+        resolution: "accept",
+      }) === null
     ) {
       acceptChange(from, to)(view.state, view.dispatch);
     }
@@ -317,8 +364,12 @@ export function useCommentManagement(
     const view = options.editorView.value;
     if (!view) return;
     if (
-      resolveCanonicalReviewRange({ editor: options.editor, from, to, resolution: "reject" }) ===
-      null
+      resolveCanonicalReviewRange({
+        editor: options.editor,
+        from,
+        to,
+        resolution: "reject",
+      }) === null
     ) {
       rejectChange(from, to)(view.state, view.dispatch);
     }

@@ -10,8 +10,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { EditorState, type Plugin, TextSelection } from "prosemirror-state";
 import type { Node as PMNode } from "prosemirror-model";
+import { EditorState, type Plugin, TextSelection } from "prosemirror-state";
 
 import { schema } from "../../schema";
 import { PreservedBlockExtension } from "./PreservedBlockExtension";
@@ -19,7 +19,9 @@ import { PreservedBlockExtension } from "./PreservedBlockExtension";
 const PRESERVED_XML = '<w:permStart w:id="77" w:edGrp="everyone"/>';
 
 const integrityPlugin = (): Plugin => {
-  const plugin = PreservedBlockExtension().onSchemaReady({ schema }).plugins?.at(0);
+  const plugin = PreservedBlockExtension()
+    .onSchemaReady({ schema })
+    .plugins?.at(0);
   if (!plugin) {
     throw new Error("PreservedBlockExtension must enforce node integrity");
   }
@@ -45,7 +47,11 @@ const shapeOf = (state: EditorState): string[] => {
   const shape: string[] = [];
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   state.doc.forEach((node) => {
-    shape.push(node.type.name === "preservedBlock" ? node.attrs["xml"] : node.textContent);
+    shape.push(
+      node.type.name === "preservedBlock"
+        ? node.attrs["xml"]
+        : node.textContent,
+    );
   });
   return shape;
 };
@@ -71,14 +77,24 @@ describe("a preserved block keeps its place while its neighbours change", () => 
   test("inserting a block in front of it does not move it", () => {
     const state = createState();
     const transaction = state.tr.insert(0, paragraph("zero"));
-    expect(shapeOf(state.apply(transaction))).toEqual(["zero", "one", PRESERVED_XML, "two"]);
+    expect(shapeOf(state.apply(transaction))).toEqual([
+      "zero",
+      "one",
+      PRESERVED_XML,
+      "two",
+    ]);
   });
 
   test("splitting the block in front of it leaves it after both halves", () => {
     const state = createState();
     // Between `o` and `ne` of the first paragraph.
     const transaction = state.tr.split(insideBlock(state, 0) + 1);
-    expect(shapeOf(state.apply(transaction))).toEqual(["o", "ne", PRESERVED_XML, "two"]);
+    expect(shapeOf(state.apply(transaction))).toEqual([
+      "o",
+      "ne",
+      PRESERVED_XML,
+      "two",
+    ]);
   });
 
   test("deleting the block in front of it attaches it to the next survivor", () => {
@@ -97,7 +113,11 @@ describe("a preserved block keeps its place while its neighbours change", () => 
     // a protected range; the range must not move because of it.
     const end = insideBlock(state, 2) + 3;
     const transaction = state.tr.insertText("!", end);
-    expect(shapeOf(state.apply(transaction))).toEqual(["one", PRESERVED_XML, "two!"]);
+    expect(shapeOf(state.apply(transaction))).toEqual([
+      "one",
+      PRESERVED_XML,
+      "two!",
+    ]);
   });
 
   test("the integrity plugin drops a node whose markup did not survive a paste", () => {
@@ -110,10 +130,9 @@ describe("a preserved block keeps its place while its neighbours change", () => 
       plugins: [integrityPlugin()],
     });
     // The plugin runs on a changed document, which is the state a paste leaves.
-    expect(shapeOf(state.apply(state.tr.insertText("!", insideBlock(state, 0) + 3)))).toEqual([
-      "one!",
-      "two",
-    ]);
+    expect(
+      shapeOf(state.apply(state.tr.insertText("!", insideBlock(state, 0) + 3))),
+    ).toEqual(["one!", "two"]);
   });
 
   test("it takes no selection and shows nothing", () => {
@@ -139,7 +158,9 @@ describe("a preserved block keeps its place while its neighbours change", () => 
 
   test("a text selection never lands on it", () => {
     const state = createState();
-    const selection = TextSelection.near(state.doc.resolve(insideBlock(state, 0)));
+    const selection = TextSelection.near(
+      state.doc.resolve(insideBlock(state, 0)),
+    );
     expect(selection.$from.parent.type.name).toBe("paragraph");
   });
 });

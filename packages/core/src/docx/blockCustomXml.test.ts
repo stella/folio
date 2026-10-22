@@ -1,4 +1,3 @@
-import { getDocumentText } from "./storyPlainText";
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
@@ -10,6 +9,7 @@ import { getAllParagraphs, getAllTables } from "./documentParser";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 import { docxToMarkdown } from "./server/docxToMarkdown";
+import { getDocumentText } from "./storyPlainText";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const paragraph = (text: string, id: string): string =>
@@ -33,7 +33,11 @@ const makeDocx = async (body: string): Promise<ArrayBuffer> => {
 };
 
 const documentXml = async (bytes: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(bytes)).file("word/document.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(bytes)
+  )
+    .file("word/document.xml")
+    ?.async("text")) ?? "";
 
 describe("block-level custom XML", () => {
   test("parses multiple paragraphs and a table as children in source order", async () => {
@@ -42,7 +46,9 @@ describe("block-level custom XML", () => {
         paragraph("Second clause.", "22222222") +
         table("Table clause."),
     );
-    const parsed = await parseDocx(await makeDocx(body), { preloadFonts: false });
+    const parsed = await parseDocx(await makeDocx(body), {
+      preloadFonts: false,
+    });
     const block = parsed.package.document.content.at(0);
 
     expect(block?.type).toBe("blockCustomXml");
@@ -65,7 +71,9 @@ describe("block-level custom XML", () => {
     expect(block.closingXml).toContain("</w:customXml>");
     expect(getAllParagraphs(parsed.package.document)).toHaveLength(3);
     expect(getAllTables(parsed.package.document)).toHaveLength(1);
-    expect(getDocumentText(parsed.package.document)).toContain("Second clause.");
+    expect(getDocumentText(parsed.package.document)).toContain(
+      "Second clause.",
+    );
   });
 
   test("nested wrappers and table cells reach every reader", async () => {
@@ -90,7 +98,9 @@ describe("block-level custom XML", () => {
     ];
 
     expect(reviewer.getContent().map(({ text }) => text)).toEqual(expected);
-    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual(expected);
+    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual(
+      expected,
+    );
     const text = reviewer.getContentAsText();
     const markdown = await docxToMarkdown(bytes);
     for (const clause of expected) {
@@ -110,19 +120,25 @@ describe("block-level custom XML", () => {
     if (block?.type !== "table") {
       return;
     }
-    expect(block.rows.at(0)?.cells.at(0)?.content.at(0)?.type).toBe("blockCustomXml");
+    expect(block.rows.at(0)?.cells.at(0)?.content.at(0)?.type).toBe(
+      "blockCustomXml",
+    );
     expect(
-      (await FolioDocxReviewer.fromBuffer(bytes)).getContent().map(({ text }) => text),
+      (await FolioDocxReviewer.fromBuffer(bytes))
+        .getContent()
+        .map(({ text }) => text),
     ).toEqual(["Cell clause."]);
     expect(await docxToMarkdown(bytes)).toContain("Cell clause.");
   });
 
   test("comparison sees a change confined to a wrapper", async () => {
     const base = await makeDocx(
-      wrap(paragraph("Original clause.", "11111111")) + paragraph("Same.", "22222222"),
+      wrap(paragraph("Original clause.", "11111111")) +
+        paragraph("Same.", "22222222"),
     );
     const revised = await makeDocx(
-      wrap(paragraph("Revised clause.", "11111111")) + paragraph("Same.", "22222222"),
+      wrap(paragraph("Revised clause.", "11111111")) +
+        paragraph("Same.", "22222222"),
     );
 
     const result = await compareDocx(base, revised, {
@@ -142,7 +158,9 @@ describe("block-level custom XML", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await makeDocx(wrap(paragraph("Original clause.", "11111111"))),
     );
-    const block = reviewer.snapshot().blocks.find(({ text }) => text === "Original clause.");
+    const block = reviewer
+      .snapshot()
+      .blocks.find(({ text }) => text === "Original clause.");
     expect(block).toBeDefined();
     if (!block) {
       return;
@@ -163,7 +181,9 @@ describe("block-level custom XML", () => {
 
     const saved = await reviewer.toBuffer();
     const reopened = await FolioDocxReviewer.fromBuffer(saved);
-    expect(reopened.getContent().map(({ text }) => text)).toEqual(["Revised clause."]);
+    expect(reopened.getContent().map(({ text }) => text)).toEqual([
+      "Revised clause.",
+    ]);
     const xml = await documentXml(saved);
     expect(xml).toContain('w:element="clause"');
     expect(xml).toContain('w:uri="urn:folio:test"');
@@ -176,10 +196,14 @@ describe("block-level custom XML", () => {
         wrap(paragraph("Nested clause.", "22222222")) +
         table("Table clause."),
     );
-    const parsed = await parseDocx(await makeDocx(body), { preloadFonts: false });
+    const parsed = await parseDocx(await makeDocx(body), {
+      preloadFonts: false,
+    });
     for (const document of [
       parsed,
-      fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(toProseDoc(parsed), parsed, {
+        stylesheetSource: { type: "package" },
+      }),
     ]) {
       const saved = await repackDocx(document, { updateModifiedDate: false });
       const xml = await documentXml(saved);
@@ -191,7 +215,9 @@ describe("block-level custom XML", () => {
       expect(xml).toContain("Nested clause.");
       expect(xml).toContain("Table clause.");
       expect(
-        (await FolioDocxReviewer.fromBuffer(saved)).getContent().map(({ text }) => text),
+        (await FolioDocxReviewer.fromBuffer(saved))
+          .getContent()
+          .map(({ text }) => text),
       ).toEqual(["First clause.", "Nested clause.", "Table clause."]);
     }
   });

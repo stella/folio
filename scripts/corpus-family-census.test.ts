@@ -1,12 +1,12 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { CORPUS_EVIDENCE, type CorpusFileId } from "./lib/corpus-census";
 import {
-  FamilyCensusBuilder,
   censusWithLateFailures,
   describeProducers,
+  FamilyCensusBuilder,
   familyOf,
   mergeFamilyCensuses,
 } from "./lib/corpus-family-census";
@@ -68,8 +68,12 @@ describe("familyOf", () => {
   });
 
   test("leaves the gate's original invariants with the core baseline", () => {
-    expect(familyOf(CORPUS_INVARIANTS.parse)).toBe(CORPUS_INVARIANT_FAMILIES.core);
-    expect(familyOf(CORPUS_INVARIANTS.completes)).toBe(CORPUS_INVARIANT_FAMILIES.core);
+    expect(familyOf(CORPUS_INVARIANTS.parse)).toBe(
+      CORPUS_INVARIANT_FAMILIES.core,
+    );
+    expect(familyOf(CORPUS_INVARIANTS.completes)).toBe(
+      CORPUS_INVARIANT_FAMILIES.core,
+    );
   });
 });
 
@@ -84,7 +88,10 @@ describe("FamilyCensusBuilder", () => {
     expect(census.files).toBe(3);
     expect(census.signatures).toHaveLength(1);
     expect(census.signatures.at(0)?.files).toBe(2);
-    expect(census.signatures.at(0)?.producers).toEqual({ "p1/16": 1, "libreoffice/7": 1 });
+    expect(census.signatures.at(0)?.producers).toEqual({
+      "p1/16": 1,
+      "libreoffice/7": 1,
+    });
     expect(census.producers).toEqual({ "p1/16": 2, "libreoffice/7": 1 });
   });
 
@@ -108,10 +115,17 @@ describe("FamilyCensusBuilder", () => {
 
   test("keeps the slowest files per stage", () => {
     const builder = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
-    builder.add(observed("slow", "p1/16", [], { "reserialize.forced-save": 900 }));
-    builder.add(observed("fast", "p1/16", [], { "reserialize.forced-save": 3 }));
+    builder.add(
+      observed("slow", "p1/16", [], { "reserialize.forced-save": 900 }),
+    );
+    builder.add(
+      observed("fast", "p1/16", [], { "reserialize.forced-save": 3 }),
+    );
     const slowest = builder.build().slowest["reserialize.forced-save"] ?? [];
-    expect(slowest.map((timing) => timing.file.sha256)).toEqual(["slow", "fast"]);
+    expect(slowest.map((timing) => timing.file.sha256)).toEqual([
+      "slow",
+      "fast",
+    ]);
   });
 });
 
@@ -133,12 +147,17 @@ describe("mergeFamilyCensuses", () => {
             // SAFETY: modulus is bounded by the constructed shard count.
             shards[index % shardCount]!.add(row);
           }
-          const merged = mergeFamilyCensuses(shards.map((shard) => shard.build()));
+          const merged = mergeFamilyCensuses(
+            shards.map((shard) => shard.build()),
+          );
           expect(merged.costs).toEqual(whole.build().costs);
           expect(merged.costs).toHaveLength(count);
         },
       ),
-      { numRuns: 30, id: "interleaved shards preserve every file cost in canonical order" },
+      {
+        numRuns: 30,
+        id: "interleaved shards preserve every file cost in canonical order",
+      },
     );
   });
 
@@ -149,12 +168,16 @@ describe("mergeFamilyCensuses", () => {
   test("a merge of two shards equals one run over both files", () => {
     const whole = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
     whole.add(observed("one", "p1/16", [RESERIALIZE_FAILURE]));
-    whole.add(observed("two", "libreoffice/7", [RESERIALIZE_FAILURE, SCHEMA_FAILURE]));
+    whole.add(
+      observed("two", "libreoffice/7", [RESERIALIZE_FAILURE, SCHEMA_FAILURE]),
+    );
 
     const left = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
     left.add(observed("one", "p1/16", [RESERIALIZE_FAILURE]));
     const right = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
-    right.add(observed("two", "libreoffice/7", [RESERIALIZE_FAILURE, SCHEMA_FAILURE]));
+    right.add(
+      observed("two", "libreoffice/7", [RESERIALIZE_FAILURE, SCHEMA_FAILURE]),
+    );
 
     const merged = mergeFamilyCensuses([left.build(), right.build()]);
     expect(merged.files).toBe(whole.build().files);
@@ -197,7 +220,9 @@ describe("censusWithLateFailures", () => {
     expect(signature?.family).toBe(CORPUS_INVARIANT_FAMILIES.performance);
     expect(signature?.files).toBe(1);
     expect(signature?.producers).toEqual({ "p1/16": 1 });
-    expect(census.totals[CORPUS_INVARIANT_FAMILIES.performance]?.failedFiles).toBe(1);
+    expect(
+      census.totals[CORPUS_INVARIANT_FAMILIES.performance]?.failedFiles,
+    ).toBe(1);
   });
 
   test("leaves a census with nothing late exactly as it was", () => {
@@ -210,8 +235,8 @@ describe("censusWithLateFailures", () => {
 
 describe("describeProducers", () => {
   test("busiest first, then alphabetical, capped", () => {
-    expect(describeProducers({ "p1/16": 2, "p1/12": 5, "libreoffice/7": 2 }, 2)).toBe(
-      "p1/12 5, libreoffice/7 2",
-    );
+    expect(
+      describeProducers({ "p1/16": 2, "p1/12": 5, "libreoffice/7": 2 }, 2),
+    ).toBe("p1/12 5, libreoffice/7 2");
   });
 });

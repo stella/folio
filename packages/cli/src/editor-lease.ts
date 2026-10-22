@@ -1,4 +1,4 @@
-import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
+import { Result } from "better-result";
 /**
  * The editor lease and the flush handshake: how a live editor (the VS Code
  * custom editor, `folio serve --edit`) and a folio write share one `.docx`
@@ -43,25 +43,25 @@ import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
  *    the journal's newest line), reload it before accepting the next save:
  *    a save names the version it was based on and refuses a stale one.
  */
-
-import { Result } from "better-result";
 import { randomUUID } from "node:crypto";
-import { watch, type FSWatcher } from "node:fs";
+import { type FSWatcher, watch } from "node:fs";
 import { readdir, readFile, rename, rm } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
+
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import { fileVersionOf } from "./file-system";
 import {
+  type AcquiredLease,
   acquireLease,
   DEFAULT_LEASE_OWNER,
-  publicLockHolder,
-  readLease,
-  type AcquiredLease,
   type LockHolder,
   type PublicLockHolder,
+  publicLockHolder,
+  readLease,
 } from "./lock";
 import { readSidecarFile, writeNewSidecarFile } from "./sidecar";
 
@@ -93,7 +93,9 @@ export type FlushRequest = {
 };
 
 /** Request metadata safe to include in a refused editor lease response. */
-export type PublicFlushRequest = Omit<FlushRequest, "leaseToken"> & { leaseToken?: never };
+export type PublicFlushRequest = Omit<FlushRequest, "leaseToken"> & {
+  leaseToken?: never;
+};
 
 const publicFlushRequest = ({
   id,
@@ -125,7 +127,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const parseRequest = (text: string): FlushRequest | null => {
   const parsed = Result.try((): unknown => JSON.parse(text));
   if (parsed.isErr() || !isRecord(parsed.value)) return null;
-  const { id, leaseToken, owner, pid, host, txId, requestedAt, deadline } = parsed.value;
+  const { id, leaseToken, owner, pid, host, txId, requestedAt, deadline } =
+    parsed.value;
   return typeof id === "string" &&
     typeof leaseToken === "string" &&
     typeof owner === "string" &&
@@ -176,7 +179,10 @@ const placeRequest = async (
     path.dirname(documentPath),
     `.${path.basename(documentPath)}.folio-flush.${request.id}.tmp`,
   );
-  const written = await writeNewSidecarFile(temporary, encodeUtf8(`${JSON.stringify(request)}\n`));
+  const written = await writeNewSidecarFile(
+    temporary,
+    encodeUtf8(`${JSON.stringify(request)}\n`),
+  );
   if (written.isErr()) return Result.err(written.error);
   const renamed = await Result.tryPromise(() => rename(temporary, target));
   if (renamed.isOk()) return Result.ok();
@@ -217,9 +223,13 @@ type AcquireLeaseForWriteOptions = {
   pollMs?: number;
 };
 
-const flushableHolder = async (documentPath: string): Promise<LockHolder | null> => {
+const flushableHolder = async (
+  documentPath: string,
+): Promise<LockHolder | null> => {
   const state = await readLease(documentPath);
-  return state.type === "held" && state.holder.acceptsFlush === true ? state.holder : null;
+  return state.type === "held" && state.holder.acceptsFlush === true
+    ? state.holder
+    : null;
 };
 
 /**
@@ -233,12 +243,22 @@ export const acquireLeaseForWrite = async ({
   owner = DEFAULT_LEASE_OWNER,
   flushWaitMs = DEFAULT_FLUSH_WAIT_MS,
   pollMs = FLUSH_POLL_MS,
-}: AcquireLeaseForWriteOptions): Promise<Result<LeaseForWrite, FolioCliError>> => {
+}: AcquireLeaseForWriteOptions): Promise<
+  Result<LeaseForWrite, FolioCliError>
+> => {
   const take = (takeOver: boolean) =>
-    acquireLease({ documentPath, txId, owner, force: takeOver, now: new Date() });
+    acquireLease({
+      documentPath,
+      txId,
+      owner,
+      force: takeOver,
+      now: new Date(),
+    });
   const first = await take(false);
-  if (first.isOk()) return Result.ok({ lease: first.value, flush: { type: "notAsked" } });
-  if (first.error.code !== FOLIO_CLI_ERROR_CODES.locked) return Result.err(first.error);
+  if (first.isOk())
+    return Result.ok({ lease: first.value, flush: { type: "notAsked" } });
+  if (first.error.code !== FOLIO_CLI_ERROR_CODES.locked)
+    return Result.err(first.error);
   let holder = await flushableHolder(documentPath);
   if (holder === null || flushWaitMs <= 0) {
     if (!force) return Result.err(first.error);
@@ -265,19 +285,28 @@ export const acquireLeaseForWrite = async ({
   if (placed.isErr()) return Result.err(placed.error);
   try {
     while (Date.now() < deadline.getTime()) {
-      await sleep(Math.min(pollMs, Math.max(deadline.getTime() - Date.now(), 0)));
+      await sleep(
+        Math.min(pollMs, Math.max(deadline.getTime() - Date.now(), 0)),
+      );
       const attempt = await take(false);
       if (attempt.isOk()) {
         return Result.ok({
           lease: attempt.value,
-          flush: { type: "flushed", holder: publicLockHolder(holder), versionBefore },
+          flush: {
+            type: "flushed",
+            holder: publicLockHolder(holder),
+            versionBefore,
+          },
         });
       }
-      if (attempt.error.code !== FOLIO_CLI_ERROR_CODES.locked) return Result.err(attempt.error);
+      if (attempt.error.code !== FOLIO_CLI_ERROR_CODES.locked)
+        return Result.err(attempt.error);
       const current = await flushableHolder(documentPath);
       if (current !== null && current.token !== request.leaseToken) {
         // Another editor session took the lease meanwhile; ask it instead.
-        await rm(flushRequestPathFor(documentPath, request.id), { force: true });
+        await rm(flushRequestPathFor(documentPath, request.id), {
+          force: true,
+        });
         holder = current;
         request = ask(current);
         const replaced = await placeRequest(documentPath, request);
@@ -291,13 +320,18 @@ export const acquireLeaseForWrite = async ({
         flush: { type: "timedOut", holder: publicLockHolder(holder) },
       });
     }
-    if (last.error.code !== FOLIO_CLI_ERROR_CODES.locked) return Result.err(last.error);
+    if (last.error.code !== FOLIO_CLI_ERROR_CODES.locked)
+      return Result.err(last.error);
     return Result.err(
       cliError({
         code: FOLIO_CLI_ERROR_CODES.locked,
         message: `${documentPath} is held by ${holder.owner} (pid ${holder.pid} on ${holder.host}), which did not save and release it within ${String(flushWaitMs)} ms.`,
         hint: "Save or close the document in the editor and retry, or pass --force to take the lease over.",
-        details: { holder: publicLockHolder(holder), flush: "timedOut", flushWaitMs },
+        details: {
+          holder: publicLockHolder(holder),
+          flush: "timedOut",
+          flushWaitMs,
+        },
       }),
     );
   } finally {
@@ -326,7 +360,9 @@ export const acquireEditorLease = async ({
   txId = `editor-${randomUUID()}`,
   leaseMs = EDITOR_LEASE_MS,
   now = new Date(),
-}: AcquireEditorLeaseOptions): Promise<Result<AcquiredLease, FolioCliError>> => {
+}: AcquireEditorLeaseOptions): Promise<
+  Result<AcquiredLease, FolioCliError>
+> => {
   const pending = await pendingFlushRequests(documentPath, now);
   if (pending.length > 0) {
     return Result.err(
@@ -422,7 +458,8 @@ export const watchFlushRequests = ({
     checking = true;
     try {
       for (const request of await pendingFlushRequests(documentPath)) {
-        if (closed || request.leaseToken !== token || seen.has(request.id)) continue;
+        if (closed || request.leaseToken !== token || seen.has(request.id))
+          continue;
         seen.add(request.id);
         onRequest(request);
       }
@@ -432,7 +469,8 @@ export const watchFlushRequests = ({
   };
   const watcher = Result.try((): FSWatcher =>
     watch(path.dirname(documentPath), (_event, name) => {
-      if (name === null || name.startsWith(prefix)) check().catch(surfaceBackgroundError);
+      if (name === null || name.startsWith(prefix))
+        check().catch(surfaceBackgroundError);
     }),
   );
   if (watcher.isOk()) watcher.value.on("error", () => undefined);

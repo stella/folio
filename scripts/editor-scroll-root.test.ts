@@ -15,12 +15,16 @@ const COORDINATES = new Set(["scrollTop", "scrollLeft"]);
 const parseSource = (file: string, text: string) => {
   // Keep offsets intact so Vue diagnostics point to the original source line.
   const script = file.endsWith(".vue")
-    ? text.replace(/<script\b[^>]*>([\s\S]*?)<\/script>|[^<]+|</gu, (match, body: unknown) =>
-        typeof body === "string"
-          ? match.slice(0, match.indexOf(body)).replace(/[^\n]/gu, " ") +
-            body +
-            match.slice(match.indexOf(body) + body.length).replace(/[^\n]/gu, " ")
-          : match.replace(/[^\n]/gu, " "),
+    ? text.replace(
+        /<script\b[^>]*>([\s\S]*?)<\/script>|[^<]+|</gu,
+        (match, body: unknown) =>
+          typeof body === "string"
+            ? match.slice(0, match.indexOf(body)).replace(/[^\n]/gu, " ") +
+              body +
+              match
+                .slice(match.indexOf(body) + body.length)
+                .replace(/[^\n]/gu, " ")
+            : match.replace(/[^\n]/gu, " "),
       )
     : text;
   return ts.createSourceFile(
@@ -34,7 +38,10 @@ const parseSource = (file: string, text: string) => {
 
 const propertyName = (node: ts.Node): string | undefined => {
   if (ts.isPropertyAccessExpression(node)) return node.name.text;
-  if (ts.isElementAccessExpression(node) && ts.isStringLiteral(node.argumentExpression)) {
+  if (
+    ts.isElementAccessExpression(node) &&
+    ts.isStringLiteral(node.argumentExpression)
+  ) {
     return node.argumentExpression.text;
   }
   return undefined;
@@ -47,7 +54,11 @@ const receiver = (node: ts.Node): ts.Expression | undefined =>
 
 const scopeOf = (node: ts.Node): ts.Node => {
   let scope = node.parent;
-  while (!ts.isSourceFile(scope) && !ts.isBlock(scope) && !ts.isFunctionLike(scope)) {
+  while (
+    !ts.isSourceFile(scope) &&
+    !ts.isBlock(scope) &&
+    !ts.isFunctionLike(scope)
+  ) {
     scope = scope.parent;
   }
   return scope;
@@ -69,12 +80,22 @@ type ScrollScanOptions = {
   transactionFunctions?: ReadonlySet<string>;
 };
 
-const scrollViolations = ({ file, text, transactionFunctions = new Set() }: ScrollScanOptions) => {
+const scrollViolations = ({
+  file,
+  text,
+  transactionFunctions = new Set(),
+}: ScrollScanOptions) => {
   if (file === SCROLL_WRITER) return { violations: [], outlineWrites: 0 };
   const source = parseSource(file, text);
-  const bindings: Array<ts.VariableDeclaration | ts.ParameterDeclaration | ts.BindingElement> = [];
+  const bindings: Array<
+    ts.VariableDeclaration | ts.ParameterDeclaration | ts.BindingElement
+  > = [];
   const collect = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node))
+    if (
+      ts.isVariableDeclaration(node) ||
+      ts.isParameter(node) ||
+      ts.isBindingElement(node)
+    )
       bindings.push(node);
     ts.forEachChild(node, collect);
   };
@@ -92,15 +113,25 @@ const scrollViolations = ({ file, text, transactionFunctions = new Set() }: Scro
       )
       .sort(
         (left, right) =>
-          scopes.indexOf(scopeOf(left)) - scopes.indexOf(scopeOf(right)) || right.pos - left.pos,
+          scopes.indexOf(scopeOf(left)) - scopes.indexOf(scopeOf(right)) ||
+          right.pos - left.pos,
       )
       .at(0);
   };
   const hasTransactionReturn = (node: ts.Node): boolean => {
-    if (ts.isFunctionTypeNode(node)) return node.type.getText(source) === "Transaction";
-    return ts.forEachChild(node, (child) => hasTransactionReturn(child) || undefined) ?? false;
+    if (ts.isFunctionTypeNode(node))
+      return node.type.getText(source) === "Transaction";
+    return (
+      ts.forEachChild(
+        node,
+        (child) => hasTransactionReturn(child) || undefined,
+      ) ?? false
+    );
   };
-  const isTransaction = (node: ts.Expression, seen = new Set<ts.Node>()): boolean => {
+  const isTransaction = (
+    node: ts.Expression,
+    seen = new Set<ts.Node>(),
+  ): boolean => {
     if (seen.has(node)) return false;
     seen.add(node);
     if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) {
@@ -130,36 +161,54 @@ const scrollViolations = ({ file, text, transactionFunctions = new Set() }: Scro
     const binding = bindingOf(node);
     if (!binding) return false;
     if (ts.isBindingElement(binding)) {
-      return (binding.propertyName?.getText(source) ?? binding.name.getText(source)) === "tr";
+      return (
+        (binding.propertyName?.getText(source) ??
+          binding.name.getText(source)) === "tr"
+      );
     }
-    if (binding.type && /\bTransaction\b/u.test(binding.type.getText(source))) return true;
-    return binding.initializer !== undefined && isTransaction(binding.initializer, seen);
+    if (binding.type && /\bTransaction\b/u.test(binding.type.getText(source)))
+      return true;
+    return (
+      binding.initializer !== undefined &&
+      isTransaction(binding.initializer, seen)
+    );
   };
 
   const isOutlineListWrite = (node: ts.BinaryExpression): boolean => {
-    if (!(file in OUTLINE_LISTS) || propertyName(node.left) !== "scrollTop") return false;
+    if (!(file in OUTLINE_LISTS) || propertyName(node.left) !== "scrollTop")
+      return false;
     const expectedRef = Object.entries(OUTLINE_LISTS)
       .find(([name]) => name === file)
       ?.at(1);
     const object = receiver(node.left);
     if (!object || object.getText(source) !== "list") return false;
     if (
-      !["list.scrollTop = top", "list.scrollTop = bottom - list.clientHeight"].includes(
-        node.getText(source),
-      )
+      ![
+        "list.scrollTop = top",
+        "list.scrollTop = bottom - list.clientHeight",
+      ].includes(node.getText(source))
     ) {
       return false;
     }
-    const callback = ancestors(node).find((ancestor) => ts.isArrowFunction(ancestor));
-    if (!callback || !ts.isArrowFunction(callback) || !ts.isBlock(callback.body)) return false;
+    const callback = ancestors(node).find((ancestor) =>
+      ts.isArrowFunction(ancestor),
+    );
+    if (
+      !callback ||
+      !ts.isArrowFunction(callback) ||
+      !ts.isBlock(callback.body)
+    )
+      return false;
     const call = callback.parent;
-    if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression)) return false;
+    if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression))
+      return false;
     const isReact =
       call.expression.text === "useEffect" &&
       call.arguments.at(1)?.getText(source) === "[activeIndex, presentation]";
     const isVue =
       call.expression.text === "watch" &&
-      call.arguments.at(0)?.getText(source) === "[activeIndex, () => props.presentation]";
+      call.arguments.at(0)?.getText(source) ===
+        "[activeIndex, () => props.presentation]";
     if (!isReact && !isVue) return false;
     return callback.body.statements.some(
       (statement) =>
@@ -176,11 +225,16 @@ const scrollViolations = ({ file, text, transactionFunctions = new Set() }: Scro
   const violations: string[] = [];
   let outlineWrites = 0;
   const report = (node: ts.Node): void => {
-    const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
+    const { line } = source.getLineAndCharacterOfPosition(
+      node.getStart(source),
+    );
     violations.push(`${file}:${line + 1}: ${node.getText(source)}`);
   };
   const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && METHODS.has(propertyName(node.expression) ?? "")) {
+    if (
+      ts.isCallExpression(node) &&
+      METHODS.has(propertyName(node.expression) ?? "")
+    ) {
       const object = receiver(node.expression);
       const transactionScroll =
         propertyName(node.expression) === "scrollIntoView" &&
@@ -242,7 +296,10 @@ const transactionReturningFunctions = (source: ts.SourceFile): Set<string> => {
 
 // Follow a named relative import only when the producer declares Transaction as
 // its return type. A DOM method with no arguments is still forbidden.
-const importedTransactionFunctions = async (file: string, text: string): Promise<Set<string>> => {
+const importedTransactionFunctions = async (
+  file: string,
+  text: string,
+): Promise<Set<string>> => {
   const source = parseSource(file, text);
   const names = transactionReturningFunctions(source);
   for (const statement of source.statements) {
@@ -262,7 +319,9 @@ const importedTransactionFunctions = async (file: string, text: string): Promise
     if (!(await Bun.file(importedFile).exists())) continue;
     const importedText = await Bun.file(importedFile).text();
     if (!importedText.includes("Transaction")) continue;
-    const exported = transactionReturningFunctions(parseSource(importedFile, importedText));
+    const exported = transactionReturningFunctions(
+      parseSource(importedFile, importedText),
+    );
     for (const binding of statement.importClause.namedBindings.elements) {
       if (exported.has(binding.propertyName?.text ?? binding.name.text))
         names.add(binding.name.text);
@@ -315,7 +374,9 @@ describe("editor scroll-root boundary", () => {
     for (const coordinate of COORDINATES) {
       for (const operator of operators) {
         const text = `root["${coordinate}"] ${operator} 10;`;
-        expect(scrollViolations({ file: "fixture.ts", text }).violations).toHaveLength(1);
+        expect(
+          scrollViolations({ file: "fixture.ts", text }).violations,
+        ).toHaveLength(1);
       }
     }
   });
@@ -363,12 +424,17 @@ describe("editor scroll-root boundary", () => {
     const violations: string[] = [];
     const outlineWrites: Record<string, number> = {};
     let scanned = 0;
-    for await (const file of new Bun.Glob("packages/*/src/**/*.{ts,tsx,vue}").scan({ cwd: ROOT })) {
+    for await (const file of new Bun.Glob(
+      "packages/*/src/**/*.{ts,tsx,vue}",
+    ).scan({ cwd: ROOT })) {
       if (!isProductionSource(file)) continue;
       const text = await Bun.file(path.join(ROOT, file)).text();
       scanned += 1;
       if (!/scroll(?:IntoView|To|By|Top|Left)/u.test(text)) continue;
-      const transactionFunctions = await importedTransactionFunctions(file, text);
+      const transactionFunctions = await importedTransactionFunctions(
+        file,
+        text,
+      );
       const result = scrollViolations({ file, text, transactionFunctions });
       violations.push(...result.violations);
       if (result.outlineWrites > 0) outlineWrites[file] = result.outlineWrites;

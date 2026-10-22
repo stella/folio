@@ -24,10 +24,11 @@
  */
 import { parse, TYPE } from "@formatjs/icu-messageformat-parser";
 import type { MessageFormatElement } from "@formatjs/icu-messageformat-parser";
-import { AhoCorasick } from "@stll/aho-corasick";
-import { RegexSet } from "@stll/regex-set";
 import { panic } from "better-result";
 import path from "node:path";
+
+import { AhoCorasick } from "@stll/aho-corasick";
+import { RegexSet } from "@stll/regex-set";
 
 import type { NestedMessages } from "./i18n-check";
 
@@ -71,7 +72,10 @@ const safeParse = (value: string): MessageFormatElement[] | null => {
   return Array.isArray(result) ? result : null;
 };
 
-const collectArgNames = (elements: MessageFormatElement[], names: Set<string>): void => {
+const collectArgNames = (
+  elements: MessageFormatElement[],
+  names: Set<string>,
+): void => {
   for (const element of elements) {
     switch (element.type) {
       case TYPE.argument:
@@ -150,7 +154,10 @@ const OMITTED_CARDINAL_PLURALS: Record<string, Set<string>> = {
 // Resolving Intl.PluralRules is comparatively expensive and the same locale
 // recurs across thousands of keys, so memoize the category list per locale+type.
 const pluralCategoryCache = new Map<string, readonly string[]>();
-const pluralCategories = (locale: string, type: "cardinal" | "ordinal"): readonly string[] => {
+const pluralCategories = (
+  locale: string,
+  type: "cardinal" | "ordinal",
+): readonly string[] => {
   const cacheKey = `${locale}:${type}`;
   const cached = pluralCategoryCache.get(cacheKey);
   if (cached) {
@@ -161,7 +168,8 @@ const pluralCategories = (locale: string, type: "cardinal" | "ordinal"): readonl
   // can't crash the whole lint run (boundary call into a runtime built-in).
   let categories: readonly string[];
   try {
-    categories = new Intl.PluralRules(locale, { type }).resolvedOptions().pluralCategories;
+    categories = new Intl.PluralRules(locale, { type }).resolvedOptions()
+      .pluralCategories;
   } catch {
     categories = [];
   }
@@ -174,7 +182,10 @@ const pluralCategories = (locale: string, type: "cardinal" | "ordinal"): readonl
  * reported as `arg#category`. Exact selectors (`=0`, `=1`) do not count, and
  * locale-specific fractional-only categories (cs/sk `many`) are not required.
  */
-export const findMissingPluralCategories = (value: string, locale: string): string[] => {
+export const findMissingPluralCategories = (
+  value: string,
+  locale: string,
+): string[] => {
   const ast = safeParse(value);
   if (!ast) {
     return [];
@@ -191,7 +202,9 @@ export const findMissingPluralCategories = (value: string, locale: string): stri
     for (const element of elements) {
       if (element.type === TYPE.plural) {
         const required = element.pluralType === "ordinal" ? ordinal : cardinal;
-        const present = new Set(Object.keys(element.options).filter((key) => !key.startsWith("=")));
+        const present = new Set(
+          Object.keys(element.options).filter((key) => !key.startsWith("=")),
+        );
         for (const category of required) {
           if (!present.has(category)) {
             missing.push(`${element.value}#${category}`);
@@ -266,7 +279,8 @@ const collectPluralCounts = (
     if (element.type === TYPE.plural) {
       counts.set(
         element.value,
-        (counts.get(element.value) ?? false) || pluralShowsCount(element.options, element.value),
+        (counts.get(element.value) ?? false) ||
+          pluralShowsCount(element.options, element.value),
       );
     }
     if (element.type === TYPE.plural || element.type === TYPE.select) {
@@ -287,7 +301,10 @@ const collectPluralCounts = (
  * parity and the category check miss both, so the count silently disappears. A
  * single branch may still omit the count as long as another branch shows it.
  */
-export const findDroppedPlurals = (source: string, target: string): string[] => {
+export const findDroppedPlurals = (
+  source: string,
+  target: string,
+): string[] => {
   const sourceAst = safeParse(source);
   const targetAst = safeParse(target);
   if (!sourceAst || !targetAst) {
@@ -299,7 +316,10 @@ export const findDroppedPlurals = (source: string, target: string): string[] => 
   collectPluralCounts(targetAst, targetCounts);
   const dropped: string[] = [];
   for (const [arg, sourceShows] of sourceCounts) {
-    if (!targetCounts.has(arg) || (sourceShows && targetCounts.get(arg) === false)) {
+    if (
+      !targetCounts.has(arg) ||
+      (sourceShows && targetCounts.get(arg) === false)
+    ) {
       dropped.push(arg);
     }
   }
@@ -313,7 +333,9 @@ const collectExactSelectors = (
 ): void => {
   for (const element of elements) {
     if (element.type === TYPE.plural) {
-      const exact = Object.keys(element.options).filter((key) => key.startsWith("="));
+      const exact = Object.keys(element.options).filter((key) =>
+        key.startsWith("="),
+      );
       if (exact.length > 0) {
         const set = byArg.get(element.value) ?? new Set<string>();
         for (const selector of exact) {
@@ -339,7 +361,10 @@ const collectExactSelectors = (
  * that removes the source's `=0` zero-state branch otherwise passes while count
  * 0 falls through to the generic plural category and renders the wrong copy.
  */
-export const findDroppedExactSelectors = (source: string, target: string): string[] => {
+export const findDroppedExactSelectors = (
+  source: string,
+  target: string,
+): string[] => {
   const sourceAst = safeParse(source);
   const targetAst = safeParse(target);
   if (!sourceAst || !targetAst) {
@@ -417,12 +442,16 @@ const parseForbidden = (
     return undefined;
   }
   if (!isRecord(raw)) {
-    return panic(`${where} (${id}): \`${field}\` must be an object keyed by locale`);
+    return panic(
+      `${where} (${id}): \`${field}\` must be an object keyed by locale`,
+    );
   }
   const result: Record<string, string[]> = {};
   for (const [locale, words] of Object.entries(raw)) {
     if (!Array.isArray(words) || words.some((w) => typeof w !== "string")) {
-      return panic(`${where} (${id}): \`${field}.${locale}\` must be an array of strings`);
+      return panic(
+        `${where} (${id}): \`${field}.${locale}\` must be an array of strings`,
+      );
     }
     result[locale] = words;
   }
@@ -458,22 +487,40 @@ const parseTerm = (value: unknown, where: string): Term => {
   if (forbidden) {
     term.forbidden = forbidden;
   }
-  const forbiddenOnKey = parseForbidden(value["forbiddenOnKey"], "forbiddenOnKey", where, id);
+  const forbiddenOnKey = parseForbidden(
+    value["forbiddenOnKey"],
+    "forbiddenOnKey",
+    where,
+    id,
+  );
   if (forbiddenOnKey) {
     term.forbiddenOnKey = forbiddenOnKey;
   }
-  const keyTriggers = parseStringArray(value["keyTriggers"], "keyTriggers", where, id);
+  const keyTriggers = parseStringArray(
+    value["keyTriggers"],
+    "keyTriggers",
+    where,
+    id,
+  );
   if (keyTriggers) {
     term.keyTriggers = keyTriggers;
   }
-  const sourceExempt = parseStringArray(value["sourceExempt"], "sourceExempt", where, id);
+  const sourceExempt = parseStringArray(
+    value["sourceExempt"],
+    "sourceExempt",
+    where,
+    id,
+  );
   if (sourceExempt) {
     term.sourceExempt = sourceExempt;
   }
   return term;
 };
 
-const parseTermGroup = (parsed: Record<string, unknown>, group: keyof Glossary): Term[] => {
+const parseTermGroup = (
+  parsed: Record<string, unknown>,
+  group: keyof Glossary,
+): Term[] => {
   // Each group is optional, but a present-yet-malformed value must fail loudly
   // rather than silently disabling its terminology rules.
   const raw = parsed[group];
@@ -500,7 +547,8 @@ export const parseGlossary = (json: string): Glossary => {
 
 // --- terminology ---
 
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
 // Arabic attaches proclitics to the front of a word — conjunctions (و/ف),
 // prepositions (ب/ك/ل/س), and the definite article ال — so a forbidden term
@@ -511,7 +559,11 @@ const ARABIC_PROCLITIC_PREFIX = "[وفبكلس]*(?:ال)?";
 
 /** Whole-word, script-aware (Unicode) containment test. */
 const wordRegexCache = new Map<string, RegexSet>();
-const containsWord = (haystack: string, needle: string, locale: string): boolean => {
+const containsWord = (
+  haystack: string,
+  needle: string,
+  locale: string,
+): boolean => {
   const normalizedNeedle = needle.toWellFormed();
   const cacheKey = `${locale}:${normalizedNeedle}`;
   let regex = wordRegexCache.get(cacheKey);
@@ -523,7 +575,10 @@ const containsWord = (haystack: string, needle: string, locale: string): boolean
     // inflected forms are listed explicitly in the glossary).
     const suffix = locale === "en" ? "(?:e?s)?" : "";
     regex = new RegexSet([
-      new RegExp(`(?<!\\p{L})${prefix}${escapeRegExp(normalizedNeedle)}${suffix}(?!\\p{L})`, "iu"),
+      new RegExp(
+        `(?<!\\p{L})${prefix}${escapeRegExp(normalizedNeedle)}${suffix}(?!\\p{L})`,
+        "iu",
+      ),
     ]);
     wordRegexCache.set(cacheKey, regex);
   }
@@ -569,7 +624,11 @@ export type ForbiddenRule = {
  */
 export const buildForbiddenRules = (glossary: Glossary): ForbiddenRule[] => {
   const rules: ForbiddenRule[] = [];
-  for (const term of [...glossary.verbs, ...glossary.legalConcepts, ...glossary.nouns]) {
+  for (const term of [
+    ...glossary.verbs,
+    ...glossary.legalConcepts,
+    ...glossary.nouns,
+  ]) {
     if (!term.forbidden && !term.forbiddenOnKey) {
       continue;
     }
@@ -601,8 +660,11 @@ export const findForbiddenTerms = (
 ): string[] => {
   const hits: string[] = [];
   for (const rule of rules) {
-    const wordFires = rule.triggers.some((trigger) => containsWord(source, trigger, "en"));
-    const keyFires = key !== undefined && containsLiteral(key, rule.keyTriggers);
+    const wordFires = rule.triggers.some((trigger) =>
+      containsWord(source, trigger, "en"),
+    );
+    const keyFires =
+      key !== undefined && containsLiteral(key, rule.keyTriggers);
     if (!wordFires && !keyFires) {
       continue;
     }
@@ -611,7 +673,8 @@ export const findForbiddenTerms = (
     // the word trigger unless the source is exempt (e.g. it also talks about
     // "organizing", so the banned form renders that word, not the concept).
     const lowerSource = source.toLowerCase();
-    const onKeyApplies = keyFires || !containsLiteral(lowerSource, rule.sourceExempt);
+    const onKeyApplies =
+      keyFires || !containsLiteral(lowerSource, rule.sourceExempt);
     const forbidden = [
       ...(rule.byLocale[locale] ?? []),
       ...(onKeyApplies ? (rule.byLocaleOnKey[locale] ?? []) : []),
@@ -635,9 +698,17 @@ export type BaselineEntry = { source: string; target: string };
 // grandfather to both values means editing either the en source or the
 // translation re-checks the string, so further same-category regressions on
 // already-grandfathered debt are not silently allowed.
-export type LintBaseline = Record<LintCategory, Record<string, Record<string, BaselineEntry>>>;
+export type LintBaseline = Record<
+  LintCategory,
+  Record<string, Record<string, BaselineEntry>>
+>;
 
-const CATEGORIES: LintCategory[] = ["placeholder", "icu", "plural", "terminology"];
+const CATEGORIES: LintCategory[] = [
+  "placeholder",
+  "icu",
+  "plural",
+  "terminology",
+];
 
 const emptyBaseline = (): LintBaseline => ({
   placeholder: {},
@@ -675,7 +746,8 @@ const findViolations = (
     if (targetValue === sourceValue) {
       if (
         locale === "en" &&
-        findForbiddenTerms(sourceValue, targetValue, "en", rules, key).length > 0
+        findForbiddenTerms(sourceValue, targetValue, "en", rules, key).length >
+          0
       ) {
         result.terminology.push(key);
       }
@@ -695,7 +767,10 @@ const findViolations = (
     ) {
       result.plural.push(key);
     }
-    if (findForbiddenTerms(sourceValue, targetValue, locale, rules, key).length > 0) {
+    if (
+      findForbiddenTerms(sourceValue, targetValue, locale, rules, key).length >
+      0
+    ) {
       result.terminology.push(key);
     }
   }
@@ -739,13 +814,19 @@ if (import.meta.main) {
     // folio has no glossary yet: the terminology check runs with an empty rule
     // set until a glossary.json is added next to the catalogs (in the i18n
     // directory, alongside the baselines). Dropping in that file enables it.
-    const glossaryFile = Bun.file(path.resolve(langsDir, "..", "glossary.json"));
+    const glossaryFile = Bun.file(
+      path.resolve(langsDir, "..", "glossary.json"),
+    );
     const glossary = (await glossaryFile.exists())
       ? parseGlossary(await glossaryFile.text())
       : emptyGlossary();
     const rules = buildForbiddenRules(glossary);
 
-    const baselinePath = path.resolve(langsDir, "..", "i18n-lint-baseline.json");
+    const baselinePath = path.resolve(
+      langsDir,
+      "..",
+      "i18n-lint-baseline.json",
+    );
     const readBaseline = async (): Promise<LintBaseline> => {
       const file = Bun.file(baselinePath);
       if (!(await file.exists())) {
@@ -828,7 +909,9 @@ if (import.meta.main) {
             .map(([key, byLocale]) => [
               key,
               Object.fromEntries(
-                Object.entries(byLocale).toSorted(([a], [b]) => a.localeCompare(b)),
+                Object.entries(byLocale).toSorted(([a], [b]) =>
+                  a.localeCompare(b),
+                ),
               ),
             ]),
         );
@@ -848,7 +931,9 @@ if (import.meta.main) {
           ),
         0,
       );
-      console.log(`Wrote ${baselinePath}\n  ${count} grandfathered violations.`);
+      console.log(
+        `Wrote ${baselinePath}\n  ${count} grandfathered violations.`,
+      );
     } else if (hasIssues) {
       console.log(
         "\nError: new i18n quality violations. Fix them, or grandfather with `i18n-lint <dir> --write-baseline`.",

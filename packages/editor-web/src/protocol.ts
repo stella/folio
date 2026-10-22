@@ -5,7 +5,11 @@
  * The extension imports this module to type and check its side.
  */
 
-import type { FolioEditorDocument, FolioEditorRepackReason, FolioEditorSaveStrategy } from "./host";
+import type {
+  FolioEditorDocument,
+  FolioEditorRepackReason,
+  FolioEditorSaveStrategy,
+} from "./host";
 import type { FolioEditingMode } from "./modes";
 import { isEditingMode } from "./modes";
 
@@ -46,7 +50,11 @@ export type EditorMessage =
       readonly fileVersion: string;
       readonly strategy: FolioEditorSaveStrategy;
     }
-  | { readonly type: "serializeFailed"; readonly requestId: number; readonly message: string }
+  | {
+      readonly type: "serializeFailed";
+      readonly requestId: number;
+      readonly message: string;
+    }
   | { readonly type: "error"; readonly message: string };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -75,7 +83,10 @@ const isSaveStrategy = (value: unknown): value is FolioEditorSaveStrategy => {
     case "selective-first":
       return true;
     case "full-repack":
-      return isString(value["reason"]) && Object.hasOwn(REPACK_REASONS, value["reason"]);
+      return (
+        isString(value["reason"]) &&
+        Object.hasOwn(REPACK_REASONS, value["reason"])
+      );
     default:
       return false;
   }

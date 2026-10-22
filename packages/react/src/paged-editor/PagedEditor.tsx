@@ -1,9 +1,18 @@
-import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
-import {
-  CANONICAL_GAP,
-  usesCanonicalSession,
-  type CanonicalGap,
-} from "@stll/folio-core/types/canonicalCapabilities";
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { CSSProperties } from "react";
+import { createPortal } from "react-dom";
+
+import { panic } from "better-result";
+import { redo as historyRedo, undo as historyUndo } from "prosemirror-history";
 /**
  * PagedEditor Component
  *
@@ -19,66 +28,45 @@ import {
  * 3. PM transaction → convert to blocks → measure → layout → paint
  * 4. Selection changes → compute rects → update overlay
  */
-
-import React, {
-  useRef,
-  useState,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useImperativeHandle,
-  forwardRef,
-} from "react";
-import type { CSSProperties } from "react";
-import { createPortal } from "react-dom";
-import { panic } from "better-result";
-
 import type { Node as PMNode } from "prosemirror-model";
 import { NodeSelection, TextSelection } from "prosemirror-state";
-import type { EditorState, Transaction, Plugin } from "prosemirror-state";
-import { redo as historyRedo, undo as historyUndo } from "prosemirror-history";
+import type { EditorState, Plugin, Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
 
-import { HiddenHeaderFooterPMs } from "../components/HiddenHeaderFooterPMs";
-import type { HiddenHeaderFooterPMsRef } from "../components/HiddenHeaderFooterPMs";
-import { NoteStoryEditor } from "../components/NoteStoryEditor";
-import type { NoteStoryEditorRef } from "../components/NoteStoryEditor";
-import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
-import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
-import {
-  projectMarkupView,
-  visibleCaretPosition,
-} from "@stll/folio-core/prosemirror/markupViewProjection";
-import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
-import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
-import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
-import type { FolioEditor, FolioEditorDocumentIO } from "@stll/folio-core/controller/folioEditor";
-import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
-import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
-import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
-import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
-import type { HiddenEditorTransactionUpdate } from "@stll/folio-core/controller/hiddenEditorManager";
+import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
-import { suggestionModeKey } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
-import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
-import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
-import {
-  browserClock,
-  createLayoutScheduler,
-  TRANSACTION_LAYOUT_TIMING,
-} from "@stll/folio-core/controller/layoutScheduler";
-import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOptions";
-import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
-import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
+import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
+import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
+import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
+import type {
+  FolioEditor,
+  FolioEditorDocumentIO,
+} from "@stll/folio-core/controller/folioEditor";
+import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import {
   readFontSetSignature,
   waitForInitialLayoutFonts,
   watchLayoutFontLoads,
 } from "@stll/folio-core/controller/fontReadiness";
-
+import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
+import type { HiddenEditorTransactionUpdate } from "@stll/folio-core/controller/hiddenEditorManager";
+import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
+import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
+import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
+import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOptions";
+import {
+  browserClock,
+  createLayoutScheduler,
+  TRANSACTION_LAYOUT_TIMING,
+} from "@stll/folio-core/controller/layoutScheduler";
+import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
+import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
+import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { allowsDirectDrawingEdit } from "@stll/folio-core/docx/imageRawXml";
+import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
 import {
   convertHeaderFooterPmDocToContent,
   convertHeaderFooterToContent,
@@ -93,11 +81,6 @@ import {
   getCaretPositionFromDom,
   getSelectionRectsFromDom,
 } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
-import { measurePaintedSpanRange } from "@stll/folio-core/layout-bridge/dom/textStreamDom";
-import {
-  resetImeCaretAnchor,
-  syncImeCaretAnchor,
-} from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import {
   findBodyPmAnchor,
   findBodyPmSpans,
@@ -107,41 +90,42 @@ import {
   findHfSlotForTarget,
   findHfSlotKindForTarget,
 } from "@stll/folio-core/layout-bridge/dom/findHfPmSpans";
-import { findNoteStoryForTarget } from "@stll/folio-core/layout-bridge/dom/noteStoryDom";
-import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
-import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
 import {
-  createNoteReferenceFollower,
-  type NoteReferenceFollower,
-} from "@stll/folio-core/prosemirror/noteReferenceReview";
+  resetImeCaretAnchor,
+  syncImeCaretAnchor,
+} from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
+import { findNoteStoryForTarget } from "@stll/folio-core/layout-bridge/dom/noteStoryDom";
+import { measurePaintedSpanRange } from "@stll/folio-core/layout-bridge/dom/textStreamDom";
 import { clickToPosition } from "@stll/folio-core/layout-bridge/engine/clickToPosition";
 import {
+  getPageTop,
   hitTestFragment,
   hitTestTableCell,
-  getPageTop,
 } from "@stll/folio-core/layout-bridge/engine/hitTest";
 import {
-  resetCanvasContext,
   clearAllCaches,
+  resetCanvasContext,
 } from "@stll/folio-core/layout-bridge/engine/measuring";
 import type {
-  SelectionRect,
   CaretPosition,
+  SelectionRect,
 } from "@stll/folio-core/layout-bridge/engine/selectionRects";
 import type * as SelectionGeometry from "@stll/folio-core/layout-bridge/engine/selectionRects";
-import { resolveHeaderFooterSelectionGeometry } from "@stll/folio-core/render-dom/HeaderFooterSelectionOverlay";
 // Layout engine
-import { resolveSectionHeaderFooterRefs, type ColumnLayout } from "@stll/folio-core/layout-engine";
+import {
+  type ColumnLayout,
+  resolveSectionHeaderFooterRefs,
+} from "@stll/folio-core/layout-engine";
 import { recordLayoutPhase } from "@stll/folio-core/layout-engine/layoutInstrumentation";
 import type {
-  Layout,
   FlowBlock,
+  FootnoteContent,
+  Layout,
   Measure,
+  PageHeaderFooterRefs,
+  PageMargins,
   TableBlock,
   TableMeasure,
-  PageMargins,
-  FootnoteContent,
-  PageHeaderFooterRefs,
 } from "@stll/folio-core/layout-engine/types";
 // Layout painter
 import { LayoutPainter } from "@stll/folio-core/layout-painter";
@@ -150,20 +134,26 @@ import {
   PAINTER_PAINTED_EVENT,
 } from "@stll/folio-core/layout-painter/renderPage";
 import type {
-  HeaderFooterContent,
   FootnoteRenderItem,
+  HeaderFooterContent,
 } from "@stll/folio-core/layout-painter/renderPage";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import {
+  type BlockRect,
   onPaintedLayoutChange,
   readBlockRects,
-  type BlockRect,
 } from "@stll/folio-core/paged-layout/blockGeometry";
+import {
+  getEditorScrollRoot,
+  scrollEditorElementIntoView,
+  scrollEditorTo,
+} from "@stll/folio-core/paged-layout/editorScrollRoot";
 // Selection sync
 import { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
 import {
-  retainRemoteSelectionGeometry,
-  type RemoteSelectionGeometry,
-} from "./remoteSelectionGeometry";
+  flashParagraphFragmentsByParaId,
+  type ScrollToParaIdOptions,
+} from "@stll/folio-core/paged-layout/paragraphFlash";
 import {
   collectRunFontsAtPmPositions,
   type DirectiveGutterGeometry,
@@ -171,20 +161,11 @@ import {
   projectRangesToRects,
 } from "@stll/folio-core/paged-layout/rangeProjection";
 import { isReadOnlyEditKey } from "@stll/folio-core/paged-layout/readOnlyEditAttempt";
-import {
-  getEditorScrollRoot,
-  scrollEditorTo,
-  scrollEditorElementIntoView,
-} from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { getPageScrollTarget } from "@stll/folio-core/paged-layout/scrollNavigation";
 import {
   PAGES_CONTAINER_CLASS,
   scrollPagesToPmPosition,
 } from "@stll/folio-core/paged-layout/scrollToPmPosition";
-import {
-  flashParagraphFragmentsByParaId,
-  type ScrollToParaIdOptions,
-} from "@stll/folio-core/paged-layout/paragraphFlash";
 import {
   DEFAULT_PAGE_HEIGHT_PX,
   getMargins,
@@ -194,8 +175,7 @@ import {
 import { resizeColumnPair } from "@stll/folio-core/paged-layout/tableColumnResize";
 import { tableInsertButtonOffset } from "@stll/folio-core/paged-layout/tableInsertButtonGeometry";
 // Table commands (for quick-action insert buttons)
-import { addRowBelow, addColumnRight } from "@stll/folio-core/prosemirror";
-import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
+import { addColumnRight, addRowBelow } from "@stll/folio-core/prosemirror";
 import {
   expectImageAttrs,
   expectTableAttrs,
@@ -204,19 +184,27 @@ import {
   mergeTableCellAttrs,
   mergeTableRowAttrs,
 } from "@stll/folio-core/prosemirror/attrs";
-import { allowsDirectDrawingEdit } from "@stll/folio-core/docx/imageRawXml";
+import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
   commitImageFloatMove,
   commitImageInlineMove,
   commitImageResize,
   isFloatingImage,
 } from "@stll/folio-core/prosemirror/imageCommit";
-import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
+import {
+  projectMarkupView,
+  visibleCaretPosition,
+} from "@stll/folio-core/prosemirror/markupViewProjection";
+import {
+  createNoteReferenceFollower,
+  type NoteReferenceFollower,
+} from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { aiSuggestionDecorationsKey } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
 import { anonymizationDecorationsKey } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 import { autocompleteSuggestionKey } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import type { AutocompleteSuggestionState } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
+import { suggestionModeKey } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import { templateDirectivesKey } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import type { DirectiveRange } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import { templatePreviewValuesKey } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
@@ -226,20 +214,33 @@ import type {
   TemplatePreviewValues,
 } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import { getTemplateSlashMenu } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
+import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
+import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
+import { resolveHeaderFooterSelectionGeometry } from "@stll/folio-core/render-dom/HeaderFooterSelectionOverlay";
+import {
+  CANONICAL_GAP,
+  type CanonicalGap,
+  usesCanonicalSession,
+} from "@stll/folio-core/types/canonicalCapabilities";
 import type { Footnote } from "@stll/folio-core/types/content";
 // Types
 import type {
   Document,
-  Theme,
-  StyleDefinitions,
-  SectionProperties,
   HeaderFooter,
+  SectionProperties,
+  StyleDefinitions,
+  Theme,
 } from "@stll/folio-core/types/document";
 import {
   closestHtmlElement,
   htmlQueryAll,
   queryHtmlElement,
 } from "@stll/folio-core/utils/domGuards";
+
+import { HiddenHeaderFooterPMs } from "../components/HiddenHeaderFooterPMs";
+import type { HiddenHeaderFooterPMsRef } from "../components/HiddenHeaderFooterPMs";
+import { NoteStoryEditor } from "../components/NoteStoryEditor";
+import type { NoteStoryEditorRef } from "../components/NoteStoryEditor";
 import { containedHandler } from "../utils/contained-handler";
 // Internal components
 import { AISuggestionRectsOverlay } from "./AISuggestionRectsOverlay";
@@ -248,17 +249,24 @@ import { AnonymizationRectsOverlay } from "./AnonymizationRectsOverlay";
 import type { AnonymizationRectGroup } from "./AnonymizationRectsOverlay";
 import { AutocompleteCaretOverlay } from "./AutocompleteCaretOverlay";
 import type { AutocompleteCaretRect } from "./AutocompleteCaretOverlay";
-import { PassageHighlightOverlay } from "./PassageHighlightOverlay";
 import { loadEmbeddedFontFaces, removeFontFaces } from "./embeddedFonts";
-import { loadHostFontFaces, type FontDefinition } from "./hostFonts";
-import { createHiddenEditorState, HiddenProseMirror } from "./HiddenProseMirror";
+import {
+  createHiddenEditorState,
+  HiddenProseMirror,
+} from "./HiddenProseMirror";
 import type {
   HiddenProseMirrorCollaboration,
-  HiddenProseMirrorRemoteSelection,
   HiddenProseMirrorRef,
+  HiddenProseMirrorRemoteSelection,
 } from "./HiddenProseMirror";
+import { type FontDefinition, loadHostFontFaces } from "./hostFonts";
 import { ImageSelectionOverlay } from "./ImageSelectionOverlay";
 import type { ImageSelectionInfo } from "./ImageSelectionOverlay";
+import { PassageHighlightOverlay } from "./PassageHighlightOverlay";
+import {
+  type RemoteSelectionGeometry,
+  retainRemoteSelectionGeometry,
+} from "./remoteSelectionGeometry";
 import { SelectionOverlay } from "./SelectionOverlay";
 import { TemplateDirectivesOverlay } from "./TemplateDirectivesOverlay";
 import type { DirectiveRectGroup } from "./TemplateDirectivesOverlay";
@@ -352,7 +360,11 @@ export type PagedEditorProps = {
    * selection-bearing transaction (caret moves, drag,
    * word-select, programmatic `setSelection`).
    */
-  onSelectionTextChange?: (selection: { from: number; to: number; text: string }) => void;
+  onSelectionTextChange?: (selection: {
+    from: number;
+    to: number;
+    text: string;
+  }) => void;
   /** Callback when the hidden body EditorView is created or destroyed. */
   onEditorViewReady?: (view: EditorView | null) => void;
   /** External ProseMirror plugins. */
@@ -374,8 +386,7 @@ export type PagedEditorProps = {
   /** Callback when header or footer is double-clicked for editing. Pass
    * `undefined` to disable header/footer editing entirely. */
   onHeaderFooterDoubleClick?:
-    | ((position: "header" | "footer", pageNumber?: number) => void)
-    | undefined;
+    ((position: "header" | "footer", pageNumber?: number) => void) | undefined;
   /** Active header/footer editing mode (dims body, intercepts body clicks). */
   hfEditMode?: "header" | "footer" | null;
   /** Relationship id of the active header/footer story. */
@@ -400,7 +411,11 @@ export type PagedEditorProps = {
     anchorEl: HTMLAnchorElement;
   }) => void;
   /** Callback when user right-clicks on the pages (for context menu). */
-  onContextMenu?: (data: { x: number; y: number; hasSelection: boolean }) => void;
+  onContextMenu?: (data: {
+    x: number;
+    y: number;
+    hasSelection: boolean;
+  }) => void;
   /** Callback with pre-computed Y positions for comment/tracked-change anchors (for sidebar positioning without DOM queries). */
   onAnchorPositionsChange?: (positions: Map<string, number>) => void;
   /** Callback when layout reports a different total page count. */
@@ -414,7 +429,8 @@ export type PagedEditorProps = {
    * the rendered document. Receives the canonical surface form
    * and label slug; the host wires this to the sidebar bridge.
    */
-  onAnonymizationTermClick?: ((canonical: string, label: string) => void) | undefined;
+  onAnonymizationTermClick?:
+    ((canonical: string, label: string) => void) | undefined;
   /**
    * Canonical to highlight as "selected" in the overlay. The
    * first matching rect scrolls into view whenever
@@ -496,7 +512,9 @@ export type PagedEditorRef = {
   /** Painted geometry for one AI-snapshot block. */
   getBlockRect: (blockId: string) => BlockRect | null;
   /** Painted geometry for many AI-snapshot blocks in one layout read. */
-  getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
+  getBlockRects: (
+    blockIds: readonly string[],
+  ) => ReadonlyMap<string, BlockRect>;
   /** The scroll root that owns the painted pages. */
   getScrollRoot: () => HTMLElement | null;
   /** Subscribe to changes in the set or contents of painted pages. */
@@ -563,7 +581,16 @@ const DEFERRED_KEYDOWN_REPLAY_KEYS = new Set([
   "PageUp",
   "Tab",
 ]);
-const DEFERRED_MODIFIER_KEYDOWN_REPLAY_KEYS = new Set(["a", "b", "i", "u", "v", "x", "y", "z"]);
+const DEFERRED_MODIFIER_KEYDOWN_REPLAY_KEYS = new Set([
+  "a",
+  "b",
+  "i",
+  "u",
+  "v",
+  "x",
+  "y",
+  "z",
+]);
 
 const isPlainTextInputEvent = (event: React.KeyboardEvent): boolean =>
   event.key.length === 1 &&
@@ -582,7 +609,9 @@ type DeferredEditorKeyDownEvent = {
   };
 };
 
-export const isDeferredEditorKeyDown = (event: DeferredEditorKeyDownEvent): boolean => {
+export const isDeferredEditorKeyDown = (
+  event: DeferredEditorKeyDownEvent,
+): boolean => {
   if (event.nativeEvent.isComposing) {
     return true;
   }
@@ -598,7 +627,9 @@ export const isDeferredEditorKeyDown = (event: DeferredEditorKeyDownEvent): bool
   return isReadOnlyEditKey(event);
 };
 
-const toDeferredKeyboardEventInit = (event: React.KeyboardEvent): KeyboardEventInit => ({
+const toDeferredKeyboardEventInit = (
+  event: React.KeyboardEvent,
+): KeyboardEventInit => ({
   altKey: event.altKey,
   bubbles: true,
   cancelable: true,
@@ -613,7 +644,10 @@ const toDeferredKeyboardEventInit = (event: React.KeyboardEvent): KeyboardEventI
   shiftKey: event.shiftKey,
 });
 
-const replayDeferredKeyDown = (view: EditorView, eventInit: KeyboardEventInit) => {
+const replayDeferredKeyDown = (
+  view: EditorView,
+  eventInit: KeyboardEventInit,
+) => {
   view.dom.dispatchEvent(new KeyboardEvent("keydown", eventInit));
 };
 
@@ -670,18 +704,22 @@ type SelectionGeometryModule = typeof SelectionGeometry;
 let selectionGeometryPromise: Promise<SelectionGeometryModule> | null = null;
 
 const loadSelectionGeometry = (): Promise<SelectionGeometryModule> => {
-  selectionGeometryPromise ??= import("@stll/folio-core/layout-bridge/engine/selectionRects").catch(
-    (error: unknown) => {
-      selectionGeometryPromise = null;
-      throw error;
-    },
-  );
+  selectionGeometryPromise ??=
+    import("@stll/folio-core/layout-bridge/engine/selectionRects").catch(
+      (error: unknown) => {
+        selectionGeometryPromise = null;
+        throw error;
+      },
+    );
 
   return selectionGeometryPromise;
 };
 
 type PagedRuntimeInputs = {
-  controller: Omit<Parameters<typeof createFolioEditor>[0], "emitter" | "getDocumentIO"> & {
+  controller: Omit<
+    Parameters<typeof createFolioEditor>[0],
+    "emitter" | "getDocumentIO"
+  > & {
     getDocumentIO: () => FolioEditorDocumentIO;
   };
   hyphenation: Parameters<typeof createHyphenationReadiness>[0];
@@ -690,10 +728,13 @@ type PagedRuntimeInputs = {
 
 // Construct the persistent runtime without reading refs. The commit phase
 // publishes its event-time inputs before descendants request editor views.
-const createPagedRuntime = (emitter: Parameters<typeof createFolioEditor>[0]["emitter"]) => {
+const createPagedRuntime = (
+  emitter: Parameters<typeof createFolioEditor>[0]["emitter"],
+) => {
   let inputs: PagedRuntimeInputs | null = null;
   let selectionUpdate: ((state: EditorState) => void) | null = null;
-  const readInputs = () => inputs ?? panic("Paged runtime inputs must be committed before use.");
+  const readInputs = () =>
+    inputs ?? panic("Paged runtime inputs must be committed before use.");
   return {
     commit: (next: PagedRuntimeInputs) => {
       inputs = next;
@@ -702,13 +743,16 @@ const createPagedRuntime = (emitter: Parameters<typeof createFolioEditor>[0]["em
       selectionUpdate = next;
     },
     updateSelection: (state: EditorState) => {
-      const update = selectionUpdate ?? panic("Selection callback must be committed before use.");
+      const update =
+        selectionUpdate ??
+        panic("Selection callback must be committed before use.");
       update(state);
     },
     folioEditor: createFolioEditor({
       getEditorApi: () => readInputs().controller.getEditorApi(),
       getLayout: () => readInputs().controller.getLayout(),
-      runLayout: (state, options) => readInputs().controller.runLayout(state, options),
+      runLayout: (state, options) =>
+        readInputs().controller.runLayout(state, options),
       getDocumentIO: () => readInputs().controller.getDocumentIO(),
       emitter,
     }),
@@ -718,7 +762,8 @@ const createPagedRuntime = (emitter: Parameters<typeof createFolioEditor>[0]["em
     }),
     layoutScheduler: createLayoutScheduler({
       readState: () => readInputs().readState(),
-      runLayout: (state, options) => readInputs().controller.runLayout(state, options),
+      runLayout: (state, options) =>
+        readInputs().controller.runLayout(state, options),
       ...TRANSACTION_LAYOUT_TIMING,
       clock: browserClock,
     }),
@@ -778,7 +823,13 @@ function HfCaretOverlay({
       const zoomDivisor = zoom !== 0 ? zoom : 1;
       const geometry = resolveHeaderFooterSelectionGeometry(
         pagesContainer,
-        { rId, kind, from, to, ...(pageNumber === undefined ? {} : { pageNumber }) },
+        {
+          rId,
+          kind,
+          from,
+          to,
+          ...(pageNumber === undefined ? {} : { pageNumber }),
+        },
         zoomDivisor,
       );
       setCaretProjection({ caret: geometry.caret, pagesContainer });
@@ -897,10 +948,17 @@ function renderHfFromContentOrPm(
   if (!hf) {
     return undefined;
   }
-  const optsWithRId: ConvertHeaderFooterOptions = rId ? { ...options, rId } : options;
+  const optsWithRId: ConvertHeaderFooterOptions = rId
+    ? { ...options, rId }
+    : options;
   const view = rId ? hfPMs?.getView(rId) : null;
   if (view) {
-    return convertHeaderFooterPmDocToContent(view.state.doc, contentWidth, metrics, optsWithRId);
+    return convertHeaderFooterPmDocToContent(
+      view.state.doc,
+      contentWidth,
+      metrics,
+      optsWithRId,
+    );
   }
   return convertHeaderFooterToContent(hf, contentWidth, metrics, optsWithRId);
 }
@@ -917,7 +975,14 @@ function renderHeaderFooterContentByRId(
   }
   const rendered = new Map<string, HeaderFooterContent>();
   for (const [rId, hf] of source) {
-    const content = renderHfFromContentOrPm(hf, rId, hfPMs, contentWidth, metrics, options);
+    const content = renderHfFromContentOrPm(
+      hf,
+      rId,
+      hfPMs,
+      contentWidth,
+      metrics,
+      options,
+    );
     if (content) {
       rendered.set(rId, content);
     }
@@ -957,7 +1022,9 @@ type LayoutInputSignatureOptions = {
 };
 
 const getPageOverlayOffset = (pagesContainer: HTMLDivElement, zoom: number) => {
-  const overlay = pagesContainer.parentElement?.querySelector('[data-testid="selection-overlay"]');
+  const overlay = pagesContainer.parentElement?.querySelector(
+    '[data-testid="selection-overlay"]',
+  );
   const firstPage = pagesContainer.querySelector(".layout-page");
   if (!overlay || !firstPage) {
     return null;
@@ -971,7 +1038,9 @@ const getPageOverlayOffset = (pagesContainer: HTMLDivElement, zoom: number) => {
   };
 };
 
-function buildLayoutInputSignature(options: LayoutInputSignatureOptions): string {
+function buildLayoutInputSignature(
+  options: LayoutInputSignatureOptions,
+): string {
   return stableJsonStringify(options);
 }
 
@@ -1012,7 +1081,9 @@ function describeInvalidHighlightMarks(doc: EditorState["doc"]): string {
         mark.type.name === "highlight" &&
         !validHighlightColors.has(String(mark.attrs["color"]))
       ) {
-        invalidHighlights.push(`${path}.marks[${index}]=${JSON.stringify(mark.attrs)}`);
+        invalidHighlights.push(
+          `${path}.marks[${index}]=${JSON.stringify(mark.attrs)}`,
+        );
       }
     }
 
@@ -1034,7 +1105,9 @@ const RemoteSelectionOverlay = ({
   remoteSelection,
   zoom,
 }: RemoteSelectionOverlayProps) => {
-  const [geometry, setGeometry] = useState<RemoteSelectionGeometry | null>(null);
+  const [geometry, setGeometry] = useState<RemoteSelectionGeometry | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1044,7 +1117,9 @@ const RemoteSelectionOverlay = ({
           return undefined;
         }
         const pagesContainer = getPagesContainer();
-        const offset = pagesContainer ? getPageOverlayOffset(pagesContainer, zoom) : null;
+        const offset = pagesContainer
+          ? getPageOverlayOffset(pagesContainer, zoom)
+          : null;
         if (!offset) {
           setGeometry(null);
           return undefined;
@@ -1052,16 +1127,25 @@ const RemoteSelectionOverlay = ({
 
         const from = Math.min(remoteSelection.anchor, remoteSelection.head);
         const to = Math.max(remoteSelection.anchor, remoteSelection.head);
-        const nextSelectionRects = selectionToRects(layout, blocks, measures, from, to).map(
-          (rect) => ({
-            height: rect.height,
-            pageIndex: rect.pageIndex,
-            width: rect.width,
-            x: rect.x + offset.x,
-            y: rect.y + offset.y,
-          }),
+        const nextSelectionRects = selectionToRects(
+          layout,
+          blocks,
+          measures,
+          from,
+          to,
+        ).map((rect) => ({
+          height: rect.height,
+          pageIndex: rect.pageIndex,
+          width: rect.width,
+          x: rect.x + offset.x,
+          y: rect.y + offset.y,
+        }));
+        const caretBase = getCaretPosition(
+          layout,
+          blocks,
+          measures,
+          remoteSelection.head,
         );
-        const caretBase = getCaretPosition(layout, blocks, measures, remoteSelection.head);
         const caretPosition = caretBase
           ? {
               ...caretBase,
@@ -1166,8 +1250,12 @@ function computeAnchorPositions(
 
   const { doc: pmDoc, schema } = state;
   const commentType = schema.marks["comment"];
-  const insertionType = options.includeRevisions ? schema.marks["insertion"] : undefined;
-  const deletionType = options.includeRevisions ? schema.marks["deletion"] : undefined;
+  const insertionType = options.includeRevisions
+    ? schema.marks["insertion"]
+    : undefined;
+  const deletionType = options.includeRevisions
+    ? schema.marks["deletion"]
+    : undefined;
   if (!commentType && !insertionType && !deletionType) {
     return positions;
   }
@@ -1213,8 +1301,13 @@ function computeAnchorPositions(
           }
 
           const rowOffsetY =
-            frag.kind === "table" ? getTableRowOffset(blocks, measures, frag, pos) : 0;
-          positions.set(key, frag.y + rowOffsetY + getPageTop(layout, pi) + contentOffset);
+            frag.kind === "table"
+              ? getTableRowOffset(blocks, measures, frag, pos)
+              : 0;
+          positions.set(
+            key,
+            frag.y + rowOffsetY + getPageTop(layout, pi) + contentOffset,
+          );
           found = true;
           break;
         }
@@ -1273,7 +1366,9 @@ function getTableRowOffset(
  * Extract column layout from section properties.
  * Returns undefined for single-column (default) to avoid unnecessary paginator overhead.
  */
-function getColumns(sectionProps: SectionProperties | null | undefined): ColumnLayout | undefined {
+function getColumns(
+  sectionProps: SectionProperties | null | undefined,
+): ColumnLayout | undefined {
   const count = sectionProps?.columnCount ?? 1;
   if (count <= 1) {
     return undefined;
@@ -1426,7 +1521,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
     // Resolve the scroll container: prefer parent-provided ref, fallback to own container
     const getScrollContainer = useCallback((): HTMLElement | null => {
-      if (scrollContainerRefProp && typeof scrollContainerRefProp === "object") {
+      if (
+        scrollContainerRefProp &&
+        typeof scrollContainerRefProp === "object"
+      ) {
         return getEditorScrollRoot(scrollContainerRefProp.current);
       }
       return getEditorScrollRoot(containerRef.current);
@@ -1438,7 +1536,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // An explicitly supplied host root keeps its existing public contract: the
     // host need not know the internal marker used by navigation helpers.
     useLayoutEffect(() => {
-      if (!scrollContainerRefProp || typeof scrollContainerRefProp !== "object") {
+      if (
+        !scrollContainerRefProp ||
+        typeof scrollContainerRefProp !== "object"
+      ) {
         return undefined;
       }
       const root = scrollContainerRefProp.current;
@@ -1540,7 +1641,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     ]);
     const handleSessionRefusal = useCallback(
       (message: string, gap: CanonicalGap, error?: Error) => {
-        onErrorRef.current?.(error ?? new CanonicalSessionRefusalError({ gap, message }));
+        onErrorRef.current?.(
+          error ?? new CanonicalSessionRefusalError({ gap, message }),
+        );
       },
       [],
     );
@@ -1559,18 +1662,26 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const [hiddenEditorRequested, setShouldCreateHiddenEditorView] = useState(
       () => collaboration !== undefined,
     );
-    const shouldCreateHiddenEditorView = hiddenEditorRequested || collaboration !== undefined;
-    const shouldFocusHiddenEditorOnReadyRef = useRef(collaboration !== undefined);
+    const shouldCreateHiddenEditorView =
+      hiddenEditorRequested || collaboration !== undefined;
+    const shouldFocusHiddenEditorOnReadyRef = useRef(
+      collaboration !== undefined,
+    );
     const layoutSessionRef = useRef(createLayoutSession());
     const precomputedInitialStateRef = useRef<EditorState | null>(null);
     const precomputedInitialDocumentRef = useRef<Document | null>(null);
     const preHiddenInitialLayoutDoneRef = useRef(false);
-    const pendingHiddenEditorSelectionRef = useRef<PendingHiddenEditorSelection | null>(null);
-    const queuedInputBeforeHiddenEditorRef = useRef<QueuedHiddenEditorInput[]>([]);
+    const pendingHiddenEditorSelectionRef =
+      useRef<PendingHiddenEditorSelection | null>(null);
+    const queuedInputBeforeHiddenEditorRef = useRef<QueuedHiddenEditorInput[]>(
+      [],
+    );
     const pendingInitialFontReadyLayoutRef = useRef(false);
     const [isFocused, setIsFocused] = useState(false);
     const [selectionRects, setSelectionRects] = useState<SelectionRect[]>([]);
-    const [caretPosition, setCaretPosition] = useState<CaretPosition | null>(null);
+    const [caretPosition, setCaretPosition] = useState<CaretPosition | null>(
+      null,
+    );
     const [anonymizationRectGroups, setAnonymizationRectGroups] = useState<
       AnonymizationRectGroup[]
     >([]);
@@ -1591,18 +1702,23 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       requestId: null,
     });
     const [autocompleteOverlayRequestGate] = useState(createLatestRequestGate);
-    const [autocompleteCaret, setAutocompleteCaret] = useState<AutocompleteCaretRect | null>(null);
+    const [autocompleteCaret, setAutocompleteCaret] =
+      useState<AutocompleteCaretRect | null>(null);
     const [autocompleteText, setAutocompleteText] = useState<string>("");
-    const [autocompleteIsStreaming, setAutocompleteIsStreaming] = useState<boolean>(false);
+    const [autocompleteIsStreaming, setAutocompleteIsStreaming] =
+      useState<boolean>(false);
     const [directiveProjection, setDirectiveProjection] = useState<{
       groups: DirectiveRectGroup[];
       ranges: readonly DirectiveRange[];
     }>({ groups: [], ranges: [] });
     const directiveRectGroups = directiveProjection.groups;
-    const [directiveGutter, setDirectiveGutter] = useState<DirectiveGutterGeometry | null>(null);
+    const [directiveGutter, setDirectiveGutter] =
+      useState<DirectiveGutterGeometry | null>(null);
     // Caret/selection head PM position, kept only while a template document has
     // block directives — drives the innermost-block rail emphasis in the overlay.
-    const [directiveCaretPos, setDirectiveCaretPos] = useState<number | null>(null);
+    const [directiveCaretPos, setDirectiveCaretPos] = useState<number | null>(
+      null,
+    );
     const directivesRef = useRef<readonly DirectiveRange[]>([]);
     const [directivesOverlayRequestGate] = useState(createLatestRequestGate);
     // Template fill preview — the hidden editor's plugin keeps marker↔value
@@ -1622,9 +1738,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     });
     // AI suggestion review — same pattern for the suggestion list and the
     // focused suggestion's in-text diff preview.
-    const [aiSuggestionRectGroups, setAiSuggestionRectGroups] = useState<AISuggestionRectGroup[]>(
-      [],
-    );
+    const [aiSuggestionRectGroups, setAiSuggestionRectGroups] = useState<
+      AISuggestionRectGroup[]
+    >([]);
     const aiSuggestionsRef = useRef<{
       suggestions: readonly AISuggestion[];
       focusedId: string | null;
@@ -1636,18 +1752,30 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // rects. It is cleared on the next doc-changing transaction (a citation
     // highlight should simply disappear once the user edits), so there is no
     // recompute-on-edit path here.
-    const passageHighlightRangeRef = useRef<{ from: number; to: number } | null>(null);
-    const [passageHighlightRects, setPassageHighlightRects] = useState<SelectionRect[]>([]);
-    const [passageHighlightOverlayRequestGate] = useState(createLatestRequestGate);
-    const [remoteSelections, setRemoteSelections] = useState<HiddenProseMirrorRemoteSelection[]>(
-      [],
+    const passageHighlightRangeRef = useRef<{
+      from: number;
+      to: number;
+    } | null>(null);
+    const [passageHighlightRects, setPassageHighlightRects] = useState<
+      SelectionRect[]
+    >([]);
+    const [passageHighlightOverlayRequestGate] = useState(
+      createLatestRequestGate,
     );
+    const [remoteSelections, setRemoteSelections] = useState<
+      HiddenProseMirrorRemoteSelection[]
+    >([]);
     const suppressSelectionOverlayRef = useRef(false);
     const revealSelectionOverlayTimerRef = useRef<number | null>(null);
     const [selectionOverlayRequestGate] = useState(createLatestRequestGate);
 
     const validPrecomputedInitialState = useMemo(() => {
-      if (shouldCreateHiddenEditorView || collaboration !== undefined || !document) return null;
+      if (
+        shouldCreateHiddenEditorView ||
+        collaboration !== undefined ||
+        !document
+      )
+        return null;
       return createHiddenEditorState({
         document,
         styles,
@@ -1669,14 +1797,17 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     }, [validPrecomputedInitialState]);
 
     // Image selection state
-    const [selectedImageInfo, setSelectedImageInfo] = useState<ImageSelectionInfo | null>(null);
+    const [selectedImageInfo, setSelectedImageInfo] =
+      useState<ImageSelectionInfo | null>(null);
     const isImageInteractingRef = useRef(false);
 
     /** Build ImageSelectionInfo from a DOM element with data-pm-start */
     const buildImageSelectionInfo = useCallback(
       (el: HTMLElement, pmPos: number): ImageSelectionInfo => {
-        const imgTagCandidate = el.tagName === "IMG" ? el : el.querySelector("img");
-        const imgTag = imgTagCandidate instanceof HTMLElement ? imgTagCandidate : null;
+        const imgTagCandidate =
+          el.tagName === "IMG" ? el : el.querySelector("img");
+        const imgTag =
+          imgTagCandidate instanceof HTMLElement ? imgTagCandidate : null;
         const element = imgTag ?? el;
         const rect = element.getBoundingClientRect();
         // The commit helpers refuse a drawing whose raw XML says more than the
@@ -1720,7 +1851,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       ({ focus = true }: EnsureHiddenEditorViewOptions = {}) => {
         if (focus) {
           shouldFocusHiddenEditorOnReadyRef.current = true;
-        } else if (!hiddenPMRef.current?.isViewRequested() && !hiddenPMRef.current?.getView()) {
+        } else if (
+          !hiddenPMRef.current?.isViewRequested() &&
+          !hiddenPMRef.current?.getView()
+        ) {
           shouldFocusHiddenEditorOnReadyRef.current = false;
         }
 
@@ -1744,12 +1878,15 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       queuedInputBeforeHiddenEditorRef.current.push({ type: "text", text });
     }, []);
 
-    const queueHiddenEditorKeyDown = useCallback((event: React.KeyboardEvent) => {
-      queuedInputBeforeHiddenEditorRef.current.push({
-        type: "keydown",
-        eventInit: toDeferredKeyboardEventInit(event),
-      });
-    }, []);
+    const queueHiddenEditorKeyDown = useCallback(
+      (event: React.KeyboardEvent) => {
+        queuedInputBeforeHiddenEditorRef.current.push({
+          type: "keydown",
+          eventInit: toDeferredKeyboardEventInit(event),
+        });
+      },
+      [],
+    );
 
     const applyPendingHiddenEditorInput = useCallback(
       (view: EditorView) => {
@@ -1794,7 +1931,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         queuedInputBeforeHiddenEditorRef.current = [];
         for (const input of queuedInput) {
           if (input.type === "text") {
-            if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
+            if (
+              usesCanonicalSession(
+                experimentalSession,
+                CANONICAL_GAP.authorityRouting,
+              )
+            ) {
               view.dom.dispatchEvent(
                 new InputEvent("beforeinput", {
                   inputType: "insertText",
@@ -1865,8 +2007,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       /** PM position inside target cell (to set selection before dispatching) */
       cellPmPos: number;
     };
-    const [tableInsertButton, setTableInsertButton] = useState<TableInsertButtonState | null>(null);
-    const tableInsertHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [tableInsertButton, setTableInsertButton] =
+      useState<TableInsertButtonState | null>(null);
+    const tableInsertHideTimerRef = useRef<ReturnType<
+      typeof setTimeout
+    > | null>(null);
 
     const clearTableInsertTimer = useCallback(() => {
       if (tableInsertHideTimerRef.current) {
@@ -1889,9 +2034,18 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const syncCoordinator = useMemo(() => new LayoutSelectionGate(), []);
 
     // Compute page size and margins
-    const pageSize = useMemo(() => getPageSize(sectionProperties), [sectionProperties]);
-    const margins = useMemo(() => getMargins(sectionProperties), [sectionProperties]);
-    const columns = useMemo(() => getColumns(sectionProperties), [sectionProperties]);
+    const pageSize = useMemo(
+      () => getPageSize(sectionProperties),
+      [sectionProperties],
+    );
+    const margins = useMemo(
+      () => getMargins(sectionProperties),
+      [sectionProperties],
+    );
+    const columns = useMemo(
+      () => getColumns(sectionProperties),
+      [sectionProperties],
+    );
     const contentWidth = pageSize.w - margins.left - margins.right;
     const defaultTabStop = document?.package.settings?.defaultTabStop;
     const mirrorMargins = document?.package.settings?.mirrorMargins === true;
@@ -2103,20 +2257,25 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         controller: {
           getEditorApi: () => hiddenPMRef.current,
           getLayout: () => layoutRef.current,
-          runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
+          runLayout: (state, options) =>
+            runLayoutPipelineRef.current(state, options),
           getDocumentIO: () => documentIORef.current,
         },
         hyphenation: {
           relayout: () => {
             const view = hiddenPMRef.current?.getView();
-            const state = view?.state ?? layoutSessionRef.current.lastEditorState;
+            const state =
+              view?.state ?? layoutSessionRef.current.lastEditorState;
             if (!state) return;
-            runLayoutPipelineRef.current(state, { reason: "hyphenation-ready" });
+            runLayoutPipelineRef.current(state, {
+              reason: "hyphenation-ready",
+            });
             if (view) runtime.updateSelection(view.state);
           },
           onError: (error) => onErrorRef.current?.(error),
         },
-        readState: () => hiddenPMRef.current?.getState() ?? precomputedInitialStateRef.current,
+        readState: () =>
+          hiddenPMRef.current?.getState() ?? precomputedInitialStateRef.current,
       });
     }, [runtime]);
     // Eagerly request the hidden editor when collaborating (matches the former
@@ -2176,7 +2335,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // A note follows its reference: a reference whose deletion the reported
     // edits rejected gives its note back its text, and deleting it again (as
     // undoing that reject does) takes the text with it.
-    const [noteFollower] = useState<NoteReferenceFollower>(createNoteReferenceFollower);
+    const [noteFollower] = useState<NoteReferenceFollower>(
+      createNoteReferenceFollower,
+    );
     const noteFollowerDocumentRef = useRef(documentIdentity);
     useEffect(() => {
       if (noteFollowerDocumentRef.current === documentIdentity) return;
@@ -2193,15 +2354,14 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         if (hiddenPMRef.current?.isCanonicalComposing()) {
           const activeView =
-            getActiveEditorStory().view ?? panic("Canonical composition requires an editor view.");
+            getActiveEditorStory().view ??
+            panic("Canonical composition requires an editor view.");
           if (compositionNotificationRetryRef.current === null) {
-            compositionNotificationRetryRef.current = afterCanonicalCompositionSettles(
-              activeView,
-              () => {
+            compositionNotificationRetryRef.current =
+              afterCanonicalCompositionSettles(activeView, () => {
                 compositionNotificationRetryRef.current = null;
                 flush();
-              },
-            );
+              });
           }
           return;
         }
@@ -2210,7 +2370,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         let newDoc = hiddenPMRef.current?.getDocument();
         const body = hiddenPMRef.current?.getState()?.doc;
-        if (newDoc && body && !usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)) {
+        if (
+          newDoc &&
+          body &&
+          !usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)
+        ) {
           newDoc = noteFollower.reconcile(newDoc, body);
         }
         if (newDoc) {
@@ -2221,7 +2385,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           );
           folioEmitterRef.current.emit(
             "docChange",
-            usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+            usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            )
               ? cloneDocumentWithParagraphPropertySources(newDoc)
               : newDoc,
           );
@@ -2274,7 +2441,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         );
         if (!overlay) return null;
         const overlayRect = overlay.getBoundingClientRect();
-        const caret = getCaretPositionFromDom(pagesContainer, pmPos, overlayRect);
+        const caret = getCaretPositionFromDom(
+          pagesContainer,
+          pmPos,
+          overlayRect,
+        );
         return caret
           ? {
               x: caret.x / currentZoom,
@@ -2296,7 +2467,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       const { selection } = view.state;
       const domCaret = selection.empty
         ? getCaretFromDom(
-            visibleCaretPosition(projectMarkupView(view.state, markupView), selection.head),
+            visibleCaretPosition(
+              projectMarkupView(view.state, markupView),
+              selection.head,
+            ),
             zoom,
           )
         : null;
@@ -2344,7 +2518,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // separators collapses table cells, paragraphs, and
         // inline atoms into a single-line phrase.
         if (onSelectionTextChangeRef.current) {
-          const text = from === to ? "" : state.doc.textBetween(from, to, " ", " ");
+          const text =
+            from === to ? "" : state.doc.textBetween(from, to, " ", " ");
           onSelectionTextChangeRef.current({ from, to, text });
         }
 
@@ -2372,7 +2547,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           // If CellSelection, highlight the corresponding visible cells
           // Use duck-typing ($anchorCell) instead of instanceof to avoid bundling issues
           const sel = state.selection as CellSelection;
-          const isCellSel = "$anchorCell" in sel && typeof sel.forEachCell === "function";
+          const isCellSel =
+            "$anchorCell" in sel && typeof sel.forEachCell === "function";
           if (isCellSel) {
             // Collect ranges [cellStart, cellEnd) for each selected cell
             const selectedRanges: [number, number][] = [];
@@ -2381,7 +2557,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             });
 
             // Find visible layout cells whose pmStart falls inside a selected cell range
-            const allCells = htmlQueryAll(pagesContainerRef.current, ".layout-table-cell");
+            const allCells = htmlQueryAll(
+              pagesContainerRef.current,
+              ".layout-table-cell",
+            );
             for (const cellEl of allCells) {
               const pmStartAttr = cellEl.dataset["pmStart"];
               if (pmStartAttr !== undefined) {
@@ -2410,14 +2589,18 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         if (from === to) {
           // A caret in text the markup view does not show paints at the
           // nearest place the view shows.
-          const caretPos = visibleCaretPosition(projectMarkupView(state, markupView), from);
+          const caretPos = visibleCaretPosition(
+            projectMarkupView(state, markupView),
+            from,
+          );
           // Use DOM-based caret positioning for accuracy
           const domCaret = getCaretFromDom(caretPos, zoom);
           if (domCaret) {
             setCaretPosition(domCaret);
-            const overlay = pagesContainerRef.current?.parentElement?.querySelector(
-              '[data-testid="selection-overlay"]',
-            );
+            const overlay =
+              pagesContainerRef.current?.parentElement?.querySelector(
+                '[data-testid="selection-overlay"]',
+              );
             const overlayRect = overlay?.getBoundingClientRect();
             syncImeCaretAnchor({
               hiddenHost: hiddenPMRef.current?.getHostElement(),
@@ -2431,10 +2614,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             });
           } else {
             // Fallback to layout-based calculation if DOM not ready
-            const overlay = pagesContainerRef.current?.parentElement?.querySelector(
-              '[data-testid="selection-overlay"]',
-            );
-            const firstPage = pagesContainerRef.current?.querySelector(".layout-page");
+            const overlay =
+              pagesContainerRef.current?.parentElement?.querySelector(
+                '[data-testid="selection-overlay"]',
+              );
+            const firstPage =
+              pagesContainerRef.current?.querySelector(".layout-page");
 
             if (overlay && firstPage) {
               const overlayRect = overlay.getBoundingClientRect();
@@ -2446,7 +2631,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                     return undefined;
                   }
 
-                  const caret = getCaretPosition(layout, blocks, measures, caretPos);
+                  const caret = getCaretPosition(
+                    layout,
+                    blocks,
+                    measures,
+                    caretPos,
+                  );
                   if (caret) {
                     const fallbackCaret = {
                       ...caret,
@@ -2501,9 +2691,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             visibleCaret: null,
           });
           // Range selection - show highlight rectangles using DOM-based approach
-          const overlay = pagesContainerRef.current?.parentElement?.querySelector(
-            '[data-testid="selection-overlay"]',
-          );
+          const overlay =
+            pagesContainerRef.current?.parentElement?.querySelector(
+              '[data-testid="selection-overlay"]',
+            );
 
           if (overlay && pagesContainerRef.current) {
             const overlayRect = overlay.getBoundingClientRect();
@@ -2524,7 +2715,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               setSelectionRects(domRects);
             } else {
               // Fallback to layout-based calculation
-              const firstPage = pagesContainerRef.current.querySelector(".layout-page");
+              const firstPage =
+                pagesContainerRef.current.querySelector(".layout-page");
               if (firstPage) {
                 const pageRect = firstPage.getBoundingClientRect();
                 const pageOffsetX = (pageRect.left - overlayRect.left) / zoom;
@@ -2536,7 +2728,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                       return undefined;
                     }
 
-                    const rects = selectionToRects(layout, blocks, measures, from, to);
+                    const rects = selectionToRects(
+                      layout,
+                      blocks,
+                      measures,
+                      from,
+                      to,
+                    );
                     const adjustedRects = rects.map((rect) => ({
                       height: rect.height,
                       pageIndex: rect.pageIndex,
@@ -2564,7 +2762,15 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           setCaretPosition(null);
         }
       },
-      [layout, blocks, measures, getCaretFromDom, selectionOverlayRequestGate, zoom, markupView],
+      [
+        layout,
+        blocks,
+        measures,
+        getCaretFromDom,
+        selectionOverlayRequestGate,
+        zoom,
+        markupView,
+      ],
       // NOTE: onSelectionChange removed from dependencies - accessed via ref to prevent infinite loops
     );
     useLayoutEffect(() => {
@@ -2587,7 +2793,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       pagesContainer.addEventListener(PAINTER_PAINTED_EVENT, repaintSelection);
       return () => {
         if (animationFrame !== null) cancelAnimationFrame(animationFrame);
-        pagesContainer.removeEventListener(PAINTER_PAINTED_EVENT, repaintSelection);
+        pagesContainer.removeEventListener(
+          PAINTER_PAINTED_EVENT,
+          repaintSelection,
+        );
       };
     }, [runtime]);
 
@@ -2637,7 +2846,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           if (measurement.type === "outside") continue;
           const pageIndex = getPageIndex(spanEl);
           const measuredRects =
-            measurement.type === "element" ? [measurement.rect] : measurement.rects;
+            measurement.type === "element"
+              ? [measurement.rect]
+              : measurement.rects;
           for (const rect of measuredRects) {
             domRects.push({
               x: (rect.left - overlayRect.left) / zoom,
@@ -2671,7 +2882,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       }
       setAnonymizationRectGroups(groups);
 
-      if (layoutFallbackMatches.length === 0 || !layout || blocks.length === 0) {
+      if (
+        layoutFallbackMatches.length === 0 ||
+        !layout ||
+        blocks.length === 0
+      ) {
         return;
       }
 
@@ -2683,15 +2898,19 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
           const fallbackGroups: AnonymizationRectGroup[] = [];
           for (const match of layoutFallbackMatches) {
-            const rects = selectionToRects(layout, blocks, measures, match.from, match.to).map(
-              (rect) => ({
-                height: rect.height,
-                pageIndex: rect.pageIndex,
-                width: rect.width,
-                x: rect.x + pageOffsetX,
-                y: rect.y + pageOffsetY,
-              }),
-            );
+            const rects = selectionToRects(
+              layout,
+              blocks,
+              measures,
+              match.from,
+              match.to,
+            ).map((rect) => ({
+              height: rect.height,
+              pageIndex: rect.pageIndex,
+              width: rect.width,
+              x: rect.x + pageOffsetX,
+              y: rect.y + pageOffsetY,
+            }));
             if (rects.length > 0) {
               fallbackGroups.push({
                 rects,
@@ -2809,7 +3028,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         templatePreviewRef.current.entries.map((entry) => entry.from),
       );
       const ranges = directivesRef.current.filter(
-        (range) => !(range.kind === "placeholder" && previewedStarts.has(range.from)),
+        (range) =>
+          !(range.kind === "placeholder" && previewedStarts.has(range.from)),
       );
       const pagesContainer = pagesContainerRef.current;
       if (ranges.length === 0 || !pagesContainer) {
@@ -2827,7 +3047,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           measures,
         });
         if (isCurrentRequest()) {
-          setDirectiveProjection({ groups: projected, ranges: directivesRef.current });
+          setDirectiveProjection({
+            groups: projected,
+            ranges: directivesRef.current,
+          });
         }
       })();
     }, [directivesOverlayRequestGate, layout, blocks, measures, zoom]);
@@ -2862,7 +3085,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         if (!isCurrentRequest()) {
           return;
         }
-        const focused = projected.find(({ range }) => range.suggestion.id === focusedId);
+        const focused = projected.find(
+          ({ range }) => range.suggestion.id === focusedId,
+        );
         const fonts = collectRunFontsAtPmPositions(
           pagesContainer,
           focused ? [focused.range.from] : [],
@@ -2872,7 +3097,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             suggestion: range.suggestion,
             rects,
             focused: range.suggestion.id === focusedId,
-            font: range.suggestion.id === focusedId ? (fonts.get(range.from) ?? null) : null,
+            font:
+              range.suggestion.id === focusedId
+                ? (fonts.get(range.from) ?? null)
+                : null,
           })),
         );
       })();
@@ -2969,7 +3197,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      * Handle PM transaction - re-layout on content/selection change.
      */
     const handleTransaction = useCallback(
-      ({ newState, docChanged, transactions }: HiddenEditorTransactionUpdate) => {
+      ({
+        newState,
+        docChanged,
+        transactions,
+      }: HiddenEditorTransactionUpdate) => {
         const before = transactions[0]?.before;
         if (docChanged && before) {
           noteFollower.noteBase(before);
@@ -2980,7 +3212,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // a state setter inside its useCallback closure. We pull off
         // the plugin's state on every transaction; if the matches
         // identity changes (term meta or doc edit), schedule a paint.
-        const nextMatches = anonymizationDecorationsKey.getState(newState)?.matches ?? [];
+        const nextMatches =
+          anonymizationDecorationsKey.getState(newState)?.matches ?? [];
         const matchesChanged = nextMatches !== anonymizationMatchesRef.current;
         anonymizationMatchesRef.current = nextMatches;
         if (matchesChanged) {
@@ -2999,7 +3232,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           updateAutocompleteOverlay();
         }
 
-        const nextDirectives = templateDirectivesKey.getState(newState)?.ranges ?? [];
+        const nextDirectives =
+          templateDirectivesKey.getState(newState)?.ranges ?? [];
         if (nextDirectives !== directivesRef.current) {
           directivesRef.current = nextDirectives;
           // On a doc edit the layout is about to reflow; projecting now places
@@ -3022,8 +3256,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // measure path can skip untouched blocks; a mode toggle restyles every
         // substituted run, so it takes the full pass.
         const nextPreviewState = templatePreviewValuesKey.getState(newState);
-        const nextPreviewEntries = nextPreviewState?.entries ?? EMPTY_TEMPLATE_PREVIEW_ENTRIES;
-        const nextPreviewHidden = nextPreviewState?.hidden ?? EMPTY_TEMPLATE_PREVIEW_HIDDEN;
+        const nextPreviewEntries =
+          nextPreviewState?.entries ?? EMPTY_TEMPLATE_PREVIEW_ENTRIES;
+        const nextPreviewHidden =
+          nextPreviewState?.hidden ?? EMPTY_TEMPLATE_PREVIEW_HIDDEN;
         const nextPreviewMode = nextPreviewState?.preview?.mode ?? "plain";
         if (
           nextPreviewEntries !== templatePreviewRef.current.entries ||
@@ -3039,7 +3275,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           if (
             !docChanged &&
             (nextPreviewMode !== previousPreview.mode ||
-              templatePreviewDirtyRange(previousPreview, templatePreviewRef.current) !== null)
+              templatePreviewDirtyRange(
+                previousPreview,
+                templatePreviewRef.current,
+              ) !== null)
           ) {
             scheduleLayout();
           }
@@ -3048,7 +3287,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // AI suggestions: the plugin remaps its ranges through doc edits,
         // so the ref always holds projectable positions.
         const nextAiState = aiSuggestionDecorationsKey.getState(newState);
-        const nextAiSuggestions = nextAiState?.suggestions ?? EMPTY_AI_SUGGESTIONS;
+        const nextAiSuggestions =
+          nextAiState?.suggestions ?? EMPTY_AI_SUGGESTIONS;
         const nextAiFocusedId = nextAiState?.focusedId ?? null;
         if (
           nextAiSuggestions !== aiSuggestionsRef.current.suggestions ||
@@ -3127,7 +3367,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      *      state; the HF blocks are pulled from the HF PM via
      *      `renderHfFromContentOrPm` on the next layout tick.
      */
-    const [hfCaretSelection, setHfCaretSelection] = useState<HfCaretSelection | null>(null);
+    const [hfCaretSelection, setHfCaretSelection] =
+      useState<HfCaretSelection | null>(null);
     const [previousHfEditMode, setPreviousHfEditMode] = useState(hfEditMode);
     if (previousHfEditMode !== hfEditMode) {
       setPreviousHfEditMode(hfEditMode);
@@ -3164,11 +3405,19 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           // reads the precomputed initial state when present; otherwise
           // force-create the view via `ensureHiddenEditorView` so it reads
           // the view's state.
-          if (!hiddenPMRef.current?.getState() && !precomputedInitialStateRef.current) {
+          if (
+            !hiddenPMRef.current?.getState() &&
+            !precomputedInitialStateRef.current
+          ) {
             ensureHiddenEditorView({ sync: true });
           }
           scheduleLayout();
-          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting))
+          if (
+            usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            )
+          )
             scheduleDocumentChangeNotification();
         }
         if (docChanged || selectionChanged) {
@@ -3216,13 +3465,19 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const handleNoteDocumentChange = useCallback(
       (updated: Document) => {
         onDocumentChangeRef.current?.(
-          usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+          usesCanonicalSession(
+            experimentalSession,
+            CANONICAL_GAP.authorityRouting,
+          )
             ? cloneDocumentWithParagraphPropertySources(updated)
             : updated,
         );
         folioEmitterRef.current.emit(
           "docChange",
-          usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+          usesCanonicalSession(
+            experimentalSession,
+            CANONICAL_GAP.authorityRouting,
+          )
             ? cloneDocumentWithParagraphPropertySources(updated)
             : updated,
         );
@@ -3251,7 +3506,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       (state: EditorState) => {
         // Check if this is an image node selection - suppress text overlay if so
         const { selection } = state;
-        if (selection instanceof NodeSelection && selection.node.type.name === "image") {
+        if (
+          selection instanceof NodeSelection &&
+          selection.node.type.name === "image"
+        ) {
           // Suppress text selection overlay for image selections
           setSelectionRects([]);
           setCaretPosition(null);
@@ -3301,13 +3559,19 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }
 
         // Try DOM-based click mapping first (most accurate)
-        const domPos = clickToPositionDom(pagesContainerRef.current, clientX, clientY, zoom);
+        const domPos = clickToPositionDom(
+          pagesContainerRef.current,
+          clientX,
+          clientY,
+          zoom,
+        );
         if (domPos !== null) {
           return domPos;
         }
 
         // Fallback to geometry-based mapping
-        const pageElements = pagesContainerRef.current.querySelectorAll(".layout-page");
+        const pageElements =
+          pagesContainerRef.current.querySelectorAll(".layout-page");
         let clickedPageIndex = -1;
         let pageRect: DOMRect | null = null;
 
@@ -3371,20 +3635,26 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      * Find the table cell position in ProseMirror doc for a given PM position.
      * Returns the position just inside the cell node, suitable for CellSelection.create().
      */
-    const findCellPosInDoc = useCallback((doc: PMNode, pmPos: number): number | null => {
-      try {
-        const $pos = doc.resolve(pmPos);
-        for (let d = $pos.depth; d > 0; d--) {
-          const node = $pos.node(d);
-          if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
-            return $pos.before(d);
+    const findCellPosInDoc = useCallback(
+      (doc: PMNode, pmPos: number): number | null => {
+        try {
+          const $pos = doc.resolve(pmPos);
+          for (let d = $pos.depth; d > 0; d--) {
+            const node = $pos.node(d);
+            if (
+              node.type.name === "tableCell" ||
+              node.type.name === "tableHeader"
+            ) {
+              return $pos.before(d);
+            }
           }
+        } catch {
+          // Position resolution failed
         }
-      } catch {
-        // Position resolution failed
-      }
-      return null;
-    }, []);
+        return null;
+      },
+      [],
+    );
 
     const findCellPosFromPmPos = useCallback(
       (pmPos: number): number | null => {
@@ -3401,32 +3671,39 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      * Find the closest image element from a click target.
      * Returns the element with data-pm-start if it's an image, or null.
      */
-    const findImageElement = useCallback((target: HTMLElement): HTMLElement | null => {
-      const IMAGE_CONTAINER_CLASSES = [
-        "layout-block-image",
-        "layout-image",
-        "layout-page-floating-image",
-      ];
-      const isImageContainer = (el: HTMLElement) =>
-        !!el.dataset["pmStart"] && IMAGE_CONTAINER_CLASSES.some((c) => el.classList.contains(c));
+    const findImageElement = useCallback(
+      (target: HTMLElement): HTMLElement | null => {
+        const IMAGE_CONTAINER_CLASSES = [
+          "layout-block-image",
+          "layout-image",
+          "layout-page-floating-image",
+        ];
+        const isImageContainer = (el: HTMLElement) =>
+          !!el.dataset["pmStart"] &&
+          IMAGE_CONTAINER_CLASSES.some((c) => el.classList.contains(c));
 
-      // Inline images: <img class="layout-run layout-run-image" data-pm-start="X">
-      if (target.tagName === "IMG" && target.classList.contains("layout-run-image")) {
-        return target;
-      }
-      // Click on <img> inside a container div, or directly on the container
-      if (
-        target.tagName === "IMG" &&
-        target.parentElement &&
-        isImageContainer(target.parentElement)
-      ) {
-        return target.parentElement;
-      }
-      if (isImageContainer(target)) {
-        return target;
-      }
-      return null;
-    }, []);
+        // Inline images: <img class="layout-run layout-run-image" data-pm-start="X">
+        if (
+          target.tagName === "IMG" &&
+          target.classList.contains("layout-run-image")
+        ) {
+          return target;
+        }
+        // Click on <img> inside a container div, or directly on the container
+        if (
+          target.tagName === "IMG" &&
+          target.parentElement &&
+          isImageContainer(target.parentElement)
+        ) {
+          return target.parentElement;
+        }
+        if (isImageContainer(target)) {
+          return target;
+        }
+        return null;
+      },
+      [],
+    );
 
     /** Scroll visible pages to a ProseMirror position. */
     const scrollToPositionImpl = useCallback((pmPos: number) => {
@@ -3478,7 +3755,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           const targetNode = state.doc.nodeAt(startPos);
           const inner =
             targetNode?.isTextblock === true
-              ? Math.min(startPos + 1 + targetNode.content.size, state.doc.content.size)
+              ? Math.min(
+                  startPos + 1 + targetNode.content.size,
+                  state.doc.content.size,
+                )
               : Math.min(startPos + 1, state.doc.content.size);
           hiddenPMRef.current?.setSelection(inner);
           hiddenPMRef.current?.focus();
@@ -3515,7 +3795,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           cellDragAnchorPosRef.current = cellPos;
           cellDragContentEndRef.current = null;
           if (cellPos !== null) {
-            const cellNode = hiddenPMRef.current?.getView()?.state.doc.nodeAt(cellPos);
+            const cellNode = hiddenPMRef.current
+              ?.getView()
+              ?.state.doc.nodeAt(cellPos);
             if (cellNode) {
               // `cellPos` is the cell's `before` position; the last cursor
               // position inside it is `cellPos + nodeSize - 2` (just before the
@@ -3544,7 +3826,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             endPos = Math.max(0, view.state.doc.content.size - 1);
             hiddenPMRef.current?.setSelection(endPos);
           } else {
-            endPos = Math.max(0, (precomputedInitialStateRef.current?.doc.content.size ?? 1) - 1);
+            endPos = Math.max(
+              0,
+              (precomputedInitialStateRef.current?.doc.content.size ?? 1) - 1,
+            );
             queueHiddenEditorSelection({ type: "text", anchor: endPos });
           }
           dragAnchorRef.current = endPos;
@@ -3553,7 +3838,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         focusHiddenEditor();
       },
-      [findCellPosFromPmPos, focusHiddenEditor, getPositionFromMouse, queueHiddenEditorSelection],
+      [
+        findCellPosFromPmPos,
+        focusHiddenEditor,
+        getPositionFromMouse,
+        queueHiddenEditorSelection,
+      ],
     );
 
     const copySelectionText = useCallback(() => {
@@ -3627,7 +3917,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // but let the rest of the handler run for cursor placement and drag selection.
         // The popup is shown in handlePagesClick (on mouseup) instead.
         const anchorClosest = target.closest("a[href]");
-        const anchorEl = anchorClosest instanceof HTMLAnchorElement ? anchorClosest : null;
+        const anchorEl =
+          anchorClosest instanceof HTMLAnchorElement ? anchorClosest : null;
         if (anchorEl) {
           e.preventDefault(); // Prevent navigation only
         }
@@ -3635,7 +3926,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // When in HF edit mode, clicks outside header/footer area close the HF editor
         if (!readOnly && hfEditMode && onBodyClick) {
           const isInHfArea =
-            findHfSlotForTarget(target) !== null || target.closest(".hf-inline-editor");
+            findHfSlotForTarget(target) !== null ||
+            target.closest(".hf-inline-editor");
           if (!isInHfArea) {
             e.preventDefault();
             e.stopPropagation();
@@ -3656,7 +3948,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             target.classList.contains("layout-table-row-resize-handle") ||
             target.classList.contains("layout-table-edge-handle-bottom") ||
             target.classList.contains("layout-table-edge-handle-right"));
-        const resizeHfSlot = isResizeHandleTarget ? findHfSlotForTarget(target) : null;
+        const resizeHfSlot = isResizeHandleTarget
+          ? findHfSlotForTarget(target)
+          : null;
         const resizeViewForRead: EditorView | null = resizeHfSlot
           ? (hfPMsRef.current?.getView(resizeHfSlot.rId) ?? null)
           : hiddenPMRef.current.getView();
@@ -3675,8 +3969,14 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // can dispatch NodeSelection.create on the matching HF view —
         // without this guard the generic text-click flow would silently
         // shadow the image NodeSelect path (Codex #487 P2, 20:40 review).
-        const isHfImageTarget = !readOnly && hfEditMode && findImageElement(target) !== null;
-        if (!readOnly && hfEditMode && !isResizeHandleTarget && !isHfImageTarget) {
+        const isHfImageTarget =
+          !readOnly && hfEditMode && findImageElement(target) !== null;
+        if (
+          !readOnly &&
+          hfEditMode &&
+          !isResizeHandleTarget &&
+          !isHfImageTarget
+        ) {
           const slot = findHfSlotForTarget(target);
           if (slot) {
             const hfView = hfPMsRef.current?.getView(slot.rId);
@@ -3712,20 +4012,27 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                 // previous page and the caret renders on the wrong
                 // painted instance until the next transaction (Codex
                 // #487 P2: 22:27 review).
-                const pageEl = slot.element.closest<HTMLElement>(".layout-page");
+                const pageEl =
+                  slot.element.closest<HTMLElement>(".layout-page");
                 const pageNumStr = pageEl?.dataset["pageNumber"];
-                activeHfPageNumberRef.current = pageNumStr ? Number.parseInt(pageNumStr, 10) : null;
+                activeHfPageNumberRef.current = pageNumStr
+                  ? Number.parseInt(pageNumStr, 10)
+                  : null;
                 if (e.shiftKey && dragAnchorRef.current !== null) {
                   const $anchor = hfView.state.doc.resolve(
                     Math.max(0, Math.min(dragAnchorRef.current, docEnd)),
                   );
                   const $head = hfView.state.doc.resolve(clamped);
                   hfView.dispatch(
-                    hfView.state.tr.setSelection(TextSelection.between($anchor, $head)),
+                    hfView.state.tr.setSelection(
+                      TextSelection.between($anchor, $head),
+                    ),
                   );
                 } else {
                   const $pos = hfView.state.doc.resolve(clamped);
-                  hfView.dispatch(hfView.state.tr.setSelection(TextSelection.near($pos)));
+                  hfView.dispatch(
+                    hfView.state.tr.setSelection(TextSelection.near($pos)),
+                  );
                   dragAnchorRef.current = clamped;
                 }
                 const cellPos = findCellPosInDoc(hfView.state.doc, clamped);
@@ -3757,7 +4064,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }
 
         // Column resize: intercept clicks on resize handles
-        if (!readOnly && target.classList.contains("layout-table-resize-handle")) {
+        if (
+          !readOnly &&
+          target.classList.contains("layout-table-resize-handle")
+        ) {
           e.preventDefault();
           e.stopPropagation();
           isResizingColumnRef.current = true;
@@ -3769,7 +4079,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           resizeBidiRef.current = target.dataset["bidi"] === "true";
           target.classList.add("dragging");
 
-          const colIndex = Number.parseInt(target.dataset["columnIndex"] ?? "0", 10);
+          const colIndex = Number.parseInt(
+            target.dataset["columnIndex"] ?? "0",
+            10,
+          );
           resizeColumnIndexRef.current = colIndex;
           resizeTablePmStartRef.current = Number.parseInt(
             target.dataset["tablePmStart"] ?? "0",
@@ -3778,7 +4091,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
           const view = resizeViewForRead;
           if (view) {
-            const $pos = view.state.doc.resolve(resizeTablePmStartRef.current + 1);
+            const $pos = view.state.doc.resolve(
+              resizeTablePmStartRef.current + 1,
+            );
             for (let d = $pos.depth; d >= 0; d--) {
               const node = $pos.node(d);
               if (node.type.name === "table") {
@@ -3817,7 +4132,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           resizeRowIsEdgeRef.current = target.dataset["isEdge"] === "bottom";
           target.classList.add("dragging");
 
-          const rowIndex = Number.parseInt(target.dataset["rowIndex"] ?? "0", 10);
+          const rowIndex = Number.parseInt(
+            target.dataset["rowIndex"] ?? "0",
+            10,
+          );
           resizeRowIndexRef.current = rowIndex;
           resizeRowTablePmStartRef.current = Number.parseInt(
             target.dataset["tablePmStart"] ?? "0",
@@ -3826,7 +4144,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
           const view = resizeViewForRead;
           if (view) {
-            const $pos = view.state.doc.resolve(resizeRowTablePmStartRef.current + 1);
+            const $pos = view.state.doc.resolve(
+              resizeRowTablePmStartRef.current + 1,
+            );
             for (let d = $pos.depth; d >= 0; d--) {
               const node = $pos.node(d);
               if (node.type.name === "table") {
@@ -3838,10 +4158,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                   } else {
                     // Estimate from rendered height: find the row element
                     const tableEl = target.closest(".layout-table");
-                    const rowEl = tableEl?.querySelector(`[data-row-index="${rowIndex}"]`);
+                    const rowEl = tableEl?.querySelector(
+                      `[data-row-index="${rowIndex}"]`,
+                    );
                     const renderedHeight =
-                      rowEl instanceof HTMLElement ? rowEl.getBoundingClientRect().height : 30;
-                    resizeRowOrigHeightRef.current = Math.round(renderedHeight * 15);
+                      rowEl instanceof HTMLElement
+                        ? rowEl.getBoundingClientRect().height
+                        : 30;
+                    resizeRowOrigHeightRef.current = Math.round(
+                      renderedHeight * 15,
+                    );
                   }
                 }
                 break;
@@ -3852,7 +4178,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }
 
         // Right edge resize: intercept clicks on right edge handle
-        if (!readOnly && target.classList.contains("layout-table-edge-handle-right")) {
+        if (
+          !readOnly &&
+          target.classList.contains("layout-table-edge-handle-right")
+        ) {
           e.preventDefault();
           e.stopPropagation();
           isResizingRightEdgeRef.current = true;
@@ -3863,7 +4192,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           resizeRightEdgeHandleRef.current = target;
           target.classList.add("dragging");
 
-          const colIndex = Number.parseInt(target.dataset["columnIndex"] ?? "0", 10);
+          const colIndex = Number.parseInt(
+            target.dataset["columnIndex"] ?? "0",
+            10,
+          );
           resizeRightEdgeColIndexRef.current = colIndex;
           resizeRightEdgePmStartRef.current = Number.parseInt(
             target.dataset["tablePmStart"] ?? "0",
@@ -3873,7 +4205,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           // Get current last column width from ProseMirror doc
           const view = resizeViewForRead;
           if (view) {
-            const $pos = view.state.doc.resolve(resizeRightEdgePmStartRef.current + 1);
+            const $pos = view.state.doc.resolve(
+              resizeRightEdgePmStartRef.current + 1,
+            );
             for (let d = $pos.depth; d >= 0; d--) {
               const node = $pos.node(d);
               if (node.type.name === "table") {
@@ -3902,17 +4236,25 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             // an HF-doc position, which doesn't address a valid node and
             // silently no-ops (or worse, picks an unrelated body node).
             const hfSlot = hfEditMode ? findHfSlotForTarget(imageEl) : null;
-            const hfView = hfSlot ? hfPMsRef.current?.getView(hfSlot.rId) : null;
+            const hfView = hfSlot
+              ? hfPMsRef.current?.getView(hfSlot.rId)
+              : null;
             if (hfView) {
               try {
                 hfView.dispatch(
-                  hfView.state.tr.setSelection(NodeSelection.create(hfView.state.doc, pos)),
+                  hfView.state.tr.setSelection(
+                    NodeSelection.create(hfView.state.doc, pos),
+                  ),
                 );
               } catch {
                 // Pos didn't address a selectable node — fall back to a
                 // near text selection so the user still gets focus.
-                const $pos = hfView.state.doc.resolve(Math.min(pos, hfView.state.doc.content.size));
-                hfView.dispatch(hfView.state.tr.setSelection(TextSelection.near($pos)));
+                const $pos = hfView.state.doc.resolve(
+                  Math.min(pos, hfView.state.doc.content.size),
+                );
+                hfView.dispatch(
+                  hfView.state.tr.setSelection(TextSelection.near($pos)),
+                );
               }
               hfView.focus();
               // Image selection chrome is body-only today; HF image select
@@ -3957,11 +4299,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const dragAutoScrollCallbackRef = useCallback((cx: number, cy: number) => {
       dragExtendRef.current(cx, cy);
     }, []);
-    const { updateMousePosition: updateDragScroll, stopAutoScroll: stopDragAutoScroll } =
-      useDragAutoScroll({
-        pagesContainerRef,
-        onScrollExtendSelection: dragAutoScrollCallbackRef,
-      });
+    const {
+      updateMousePosition: updateDragScroll,
+      stopAutoScroll: stopDragAutoScroll,
+    } = useDragAutoScroll({
+      pagesContainerRef,
+      onScrollExtendSelection: dragAutoScrollCallbackRef,
+    });
 
     // Wire up the drag-extend callback after getPositionFromMouse is available
     useLayoutEffect(() => {
@@ -3990,7 +4334,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           const head = Math.max(0, Math.min(pmPos, docEnd));
           const $anchor = hfView.state.doc.resolve(anchor);
           const $head = hfView.state.doc.resolve(head);
-          hfView.dispatch(hfView.state.tr.setSelection(TextSelection.between($anchor, $head)));
+          hfView.dispatch(
+            hfView.state.tr.setSelection(TextSelection.between($anchor, $head)),
+          );
           return;
         }
         if (!hiddenPMRef.current) {
@@ -4015,7 +4361,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           const delta = e.clientX - resizeStartXRef.current;
           // Move the handle visually
           if (resizeHandleRef.current) {
-            const origLeft = Number.parseFloat(resizeHandleRef.current.style.left);
+            const origLeft = Number.parseFloat(
+              resizeHandleRef.current.style.left,
+            );
             resizeHandleRef.current.style.left = `${origLeft + delta}px`;
             resizeStartXRef.current = e.clientX;
 
@@ -4038,7 +4386,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           e.preventDefault();
           const delta = e.clientY - resizeStartYRef.current;
           if (resizeRowHandleRef.current) {
-            const origTop = Number.parseFloat(resizeRowHandleRef.current.style.top);
+            const origTop = Number.parseFloat(
+              resizeRowHandleRef.current.style.top,
+            );
             resizeRowHandleRef.current.style.top = `${origTop + delta}px`;
             resizeStartYRef.current = e.clientY;
 
@@ -4058,7 +4408,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           e.preventDefault();
           const delta = e.clientX - resizeRightEdgeStartXRef.current;
           if (resizeRightEdgeHandleRef.current) {
-            const origLeft = Number.parseFloat(resizeRightEdgeHandleRef.current.style.left);
+            const origLeft = Number.parseFloat(
+              resizeRightEdgeHandleRef.current.style.left,
+            );
             resizeRightEdgeHandleRef.current.style.left = `${origLeft + delta}px`;
             resizeRightEdgeStartXRef.current = e.clientX;
 
@@ -4135,16 +4487,25 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           if (isCellDraggingRef.current) {
             const currentCellPos = findCellPosFromPmPos(pmPos);
             if (currentCellPos !== null) {
-              hiddenPMRef.current.setCellSelection(cellDragAnchorPosRef.current, currentCellPos);
+              hiddenPMRef.current.setCellSelection(
+                cellDragAnchorPosRef.current,
+                currentCellPos,
+              );
               return;
             }
           }
 
           // Switch to cell selection when drag crosses into a different cell
           const currentCellPos = findCellPosFromPmPos(pmPos);
-          if (currentCellPos !== null && currentCellPos !== cellDragAnchorPosRef.current) {
+          if (
+            currentCellPos !== null &&
+            currentCellPos !== cellDragAnchorPosRef.current
+          ) {
             isCellDraggingRef.current = true;
-            hiddenPMRef.current.setCellSelection(cellDragAnchorPosRef.current, currentCellPos);
+            hiddenPMRef.current.setCellSelection(
+              cellDragAnchorPosRef.current,
+              currentCellPos,
+            );
             cellDragOverflowXRef.current = null;
             return;
           }
@@ -4165,7 +4526,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             if (cellDragOverflowXRef.current === null) {
               cellDragOverflowXRef.current = e.clientX;
             } else if (
-              Math.abs(e.clientX - cellDragOverflowXRef.current) >= CELL_SELECT_OVERFLOW_PX
+              Math.abs(e.clientX - cellDragOverflowXRef.current) >=
+              CELL_SELECT_OVERFLOW_PX
             ) {
               // Overflow threshold reached — select the entire cell
               isCellDraggingRef.current = true;
@@ -4187,7 +4549,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         const anchor = dragAnchorRef.current;
         hiddenPMRef.current.setSelection(anchor, pmPos);
       },
-      [getPositionFromMouse, findCellPosFromPmPos, findCellPosInDoc, updateDragScroll],
+      [
+        getPositionFromMouse,
+        findCellPosFromPmPos,
+        findCellPosInDoc,
+        updateDragScroll,
+      ],
     );
 
     /**
@@ -4212,7 +4579,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         if (view) {
           const pmStart = resizeTablePmStartRef.current;
           const colIdx = resizeColumnIndexRef.current;
-          const { left: newLeft, right: newRight } = resizeOrigWidthsRef.current;
+          const { left: newLeft, right: newRight } =
+            resizeOrigWidthsRef.current;
 
           // Find the table node and update columnWidths + cell widths
           const $pos = view.state.doc.resolve(pmStart + 1);
@@ -4486,16 +4854,24 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         // Find the table — either directly under the cursor or nearby (for edge hover)
         const eventTarget = e.target instanceof HTMLElement ? e.target : null;
-        let tableEl = eventTarget ? closestHtmlElement(eventTarget, ".layout-table") : null;
+        let tableEl = eventTarget
+          ? closestHtmlElement(eventTarget, ".layout-table")
+          : null;
         if (!tableEl) {
           // Mouse may be in the margin area near a table — check all tables
           const tables = htmlQueryAll(pagesEl, ".layout-table");
           for (const t of tables) {
             const r = t.getBoundingClientRect();
-            const nearLeft = mouseX >= r.left - TABLE_INSERT_EDGE_PROXIMITY && mouseX < r.left;
-            const nearTop = mouseY >= r.top - TABLE_INSERT_EDGE_PROXIMITY && mouseY < r.top;
-            const withinX = mouseX >= r.left - TABLE_INSERT_EDGE_PROXIMITY && mouseX <= r.right;
-            const withinY = mouseY >= r.top - TABLE_INSERT_EDGE_PROXIMITY && mouseY <= r.bottom;
+            const nearLeft =
+              mouseX >= r.left - TABLE_INSERT_EDGE_PROXIMITY && mouseX < r.left;
+            const nearTop =
+              mouseY >= r.top - TABLE_INSERT_EDGE_PROXIMITY && mouseY < r.top;
+            const withinX =
+              mouseX >= r.left - TABLE_INSERT_EDGE_PROXIMITY &&
+              mouseX <= r.right;
+            const withinY =
+              mouseY >= r.top - TABLE_INSERT_EDGE_PROXIMITY &&
+              mouseY <= r.bottom;
             if ((nearLeft && withinY) || (nearTop && withinX)) {
               tableEl = t;
               break;
@@ -4551,8 +4927,18 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               const rowCenterY = rowRect.top + rowRect.height / 2;
               setTableInsertButton({
                 type: "row",
-                x: tableInsertButtonOffset(tableRect.left, viewportRect.left, zoom, 24),
-                y: tableInsertButtonOffset(rowCenterY, viewportRect.top, zoom, 10),
+                x: tableInsertButtonOffset(
+                  tableRect.left,
+                  viewportRect.left,
+                  zoom,
+                  24,
+                ),
+                y: tableInsertButtonOffset(
+                  rowCenterY,
+                  viewportRect.top,
+                  zoom,
+                  10,
+                ),
                 cellPmPos: pmPos,
               });
               clearTableInsertTimer();
@@ -4574,8 +4960,18 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               const cellCenterX = cellRect.left + cellRect.width / 2;
               setTableInsertButton({
                 type: "column",
-                x: tableInsertButtonOffset(cellCenterX, viewportRect.left, zoom, 10),
-                y: tableInsertButtonOffset(tableRect.top, viewportRect.top, zoom, 24),
+                x: tableInsertButtonOffset(
+                  cellCenterX,
+                  viewportRect.left,
+                  zoom,
+                  10,
+                ),
+                y: tableInsertButtonOffset(
+                  tableRect.top,
+                  viewportRect.top,
+                  zoom,
+                  24,
+                ),
                 cellPmPos: pmPos,
               });
               clearTableInsertTimer();
@@ -4614,7 +5010,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         const { type, cellPmPos } = tableInsertButton;
 
         // Set selection inside the target cell
-        const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, cellPmPos + 1));
+        const tr = view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, cellPmPos + 1),
+        );
         view.dispatch(tr);
 
         // Dispatch the appropriate insert command
@@ -4652,7 +5050,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // `containedHandler(pagesContainerRef, …)` at the JSX site.
         // Handle hyperlink clicks (single-click only, not drag-to-select)
         const anchorClosest = target.closest("a[href]");
-        const anchorEl = anchorClosest instanceof HTMLAnchorElement ? anchorClosest : null;
+        const anchorEl =
+          anchorClosest instanceof HTMLAnchorElement ? anchorClosest : null;
         if (anchorEl) {
           e.preventDefault();
           const href = anchorEl.getAttribute("href") || "";
@@ -4669,8 +5068,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                   }
                   if (node.type.name === "paragraph") {
                     const bookmarks = node.attrs["bookmarks"] as
-                      | { id: number; name: string }[]
-                      | undefined;
+                      { id: number; name: string }[] | undefined;
                     if (bookmarks?.some((b) => b.name === bookmarkName)) {
                       targetPos.value = pos;
                       return false;
@@ -4697,11 +5095,15 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               (hfSlot ? hfPMsRef.current?.getView(hfSlot.rId) : null) ??
               hiddenPMRef.current?.getView();
             const hasRangeSelection =
-              surfaceView && surfaceView.state.selection.from !== surfaceView.state.selection.to;
+              surfaceView &&
+              surfaceView.state.selection.from !==
+                surfaceView.state.selection.to;
             if (!hasRangeSelection) {
               const displayText = anchorEl.textContent || "";
               const tooltip = anchorEl.getAttribute("title") || undefined;
-              const clickData: Parameters<NonNullable<typeof onHyperlinkClick>>[0] = {
+              const clickData: Parameters<
+                NonNullable<typeof onHyperlinkClick>
+              >[0] = {
                 href,
                 displayText,
                 anchorEl,
@@ -4721,7 +5123,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // through to the active-HF word/paragraph-select branch below
         // instead of pointlessly re-firing `onHeaderFooterDoubleClick`
         // (Codex #487 P2: 21:49 review).
-        if (!readOnly && !hfEditMode && e.detail === 2 && onHeaderFooterDoubleClick) {
+        if (
+          !readOnly &&
+          !hfEditMode &&
+          e.detail === 2 &&
+          onHeaderFooterDoubleClick
+        ) {
           // Kind-only, not `findHfSlotForTarget`: an empty header/footer box has
           // no `data-rid` yet, so the rId-gated resolver misses it and adding a
           // header via double-click never fires. Entering edit mode to create one
@@ -4747,7 +5154,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // the body PM. We re-resolve the slot from the target so the
         // selection lands on the right surface even when this handler fires
         // before any prior HF click set drag state.
-        if (!readOnly && hfEditMode && (e.detail === 2 || e.detail === 3) && hfPMsRef.current) {
+        if (
+          !readOnly &&
+          hfEditMode &&
+          (e.detail === 2 || e.detail === 3) &&
+          hfPMsRef.current
+        ) {
           const slot = findHfSlotForTarget(target);
           if (slot) {
             const hfView = hfPMsRef.current.getView(slot.rId);
@@ -4771,9 +5183,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                 // word / paragraph selection on a later page would
                 // render the highlight on the first matching painted
                 // instance (Codex #487 P2: 23:09 review).
-                const pageEl = slot.element.closest<HTMLElement>(".layout-page");
+                const pageEl =
+                  slot.element.closest<HTMLElement>(".layout-page");
                 const pageNumStr = pageEl?.dataset["pageNumber"];
-                activeHfPageNumberRef.current = pageNumStr ? Number.parseInt(pageNumStr, 10) : null;
+                activeHfPageNumberRef.current = pageNumStr
+                  ? Number.parseInt(pageNumStr, 10)
+                  : null;
                 if (e.detail === 3) {
                   const start = $pos.start($pos.depth);
                   const end = $pos.end($pos.depth);
@@ -4787,7 +5202,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                   for (let i = 0; i < parent.content.childCount; i++) {
                     const node = parent.content.child(i);
                     pmAlignedParts.push(
-                      node.isText ? (node.text ?? "") : " ".repeat(node.nodeSize),
+                      node.isText
+                        ? (node.text ?? "")
+                        : " ".repeat(node.nodeSize),
                     );
                   }
                   const pmAlignedText = pmAlignedParts.join("");
@@ -4811,7 +5228,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                   if (absStart < absEnd) {
                     hfView.dispatch(
                       hfView.state.tr.setSelection(
-                        TextSelection.create(hfView.state.doc, absStart, absEnd),
+                        TextSelection.create(
+                          hfView.state.doc,
+                          absStart,
+                          absEnd,
+                        ),
                       ),
                     );
                   }
@@ -4859,7 +5280,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                 const pmAlignedParts: string[] = [];
                 for (let i = 0; i < parent.content.childCount; i++) {
                   const node = parent.content.child(i);
-                  pmAlignedParts.push(node.isText ? (node.text ?? "") : " ".repeat(node.nodeSize));
+                  pmAlignedParts.push(
+                    node.isText ? (node.text ?? "") : " ".repeat(node.nodeSize),
+                  );
                 }
                 const pmAlignedText = pmAlignedParts.join("");
                 const offset = $pos.parentOffset;
@@ -4879,7 +5302,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
                 // Find word end (go forward until whitespace/punctuation)
                 let end = offset;
-                while (end < pmAlignedText.length && wordChar.test(pmAlignedText[end]!)) {
+                while (
+                  end < pmAlignedText.length &&
+                  wordChar.test(pmAlignedText[end]!)
+                ) {
                   // SAFETY: end < pmAlignedText.length
                   end++;
                 }
@@ -4952,11 +5378,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                 e.clientX,
                 e.clientY,
               );
-              if (pmPos !== null && (from === to || pmPos < from || pmPos > to)) {
+              if (
+                pmPos !== null &&
+                (from === to || pmPos < from || pmPos > to)
+              ) {
                 const docEnd = hfView.state.doc.content.size;
                 const clamped = Math.max(0, Math.min(pmPos, docEnd));
                 const $pos = hfView.state.doc.resolve(clamped);
-                hfView.dispatch(hfView.state.tr.setSelection(TextSelection.near($pos)));
+                hfView.dispatch(
+                  hfView.state.tr.setSelection(TextSelection.near($pos)),
+                );
                 hfView.focus();
               }
               const after = hfView.state.selection;
@@ -5000,7 +5431,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const handleContainerFocus = useCallback(
       (e: React.FocusEvent) => {
         // Don't steal focus from sidebar inputs (textareas, inputs, buttons)
-        if (e.target instanceof HTMLElement && e.target.closest(".docx-comments-sidebar")) {
+        if (
+          e.target instanceof HTMLElement &&
+          e.target.closest(".docx-comments-sidebar")
+        ) {
           return;
         }
         // Don't steal focus from a persistent hidden HF EditorView. The
@@ -5025,7 +5459,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      */
     const handleContainerBlur = useCallback((e: React.FocusEvent) => {
       // Check if focus is moving to hidden PM or staying within container
-      const relatedTarget = e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null;
+      const relatedTarget =
+        e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null;
       if (relatedTarget && containerRef.current?.contains(relatedTarget)) {
         return; // Focus staying within editor
       }
@@ -5047,20 +5482,23 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     /**
      * Handle image resize from the overlay.
      */
-    const handleImageResize = useCallback((pmPos: number, newWidth: number, newHeight: number) => {
-      const view = hiddenPMRef.current?.getView();
-      if (!view) {
-        return;
-      }
+    const handleImageResize = useCallback(
+      (pmPos: number, newWidth: number, newHeight: number) => {
+        const view = hiddenPMRef.current?.getView();
+        if (!view) {
+          return;
+        }
 
-      // Commit through the shared helper so a drawing whose raw XML says more
-      // than the model (a preserved drawing, a rasterized group) is refused
-      // here rather than edited into a save that cannot reproduce it.
-      const committed = commitImageResize(view, pmPos, newWidth, newHeight);
-      if (committed !== null) {
-        hiddenPMRef.current?.setNodeSelection(committed);
-      }
-    }, []);
+        // Commit through the shared helper so a drawing whose raw XML says more
+        // than the model (a preserved drawing, a rasterized group) is refused
+        // here rather than edited into a save that cannot reproduce it.
+        const committed = commitImageResize(view, pmPos, newWidth, newHeight);
+        if (committed !== null) {
+          hiddenPMRef.current?.setNodeSelection(committed);
+        }
+      },
+      [],
+    );
 
     /**
      * Handle image resize start - prevent text selection during resize.
@@ -5098,7 +5536,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             // For floating images: update position attributes so the image
             // moves to the drop point while staying floating.
             // Find the page under the drop point
-            const pages = pagesContainerRef.current?.querySelectorAll(".layout-page");
+            const pages =
+              pagesContainerRef.current?.querySelectorAll(".layout-page");
             if (!pages || pages.length === 0) {
               return;
             }
@@ -5114,7 +5553,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             if (!contentEl) {
               // Fallback to last page if below all pages
               const lastPage = Array.from(pages).at(-1);
-              contentEl = lastPage ? queryHtmlElement(lastPage, ".layout-page-content") : null;
+              contentEl = lastPage
+                ? queryHtmlElement(lastPage, ".layout-page-content")
+                : null;
             }
             if (!contentEl) {
               return;
@@ -5129,7 +5570,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             const hOffsetEmu = Math.round(dropX * PIXELS_TO_EMU);
             const vOffsetEmu = Math.round(dropY * PIXELS_TO_EMU);
 
-            committed = commitImageFloatMove(view, pmPos, hOffsetEmu, vOffsetEmu);
+            committed = commitImageFloatMove(
+              view,
+              pmPos,
+              hOffsetEmu,
+              vOffsetEmu,
+            );
           } else {
             // For inline images: move to the drop text position
             const dropPos = getPositionFromMouse(clientX, clientY);
@@ -5165,7 +5611,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      */
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent) => {
-        if (readOnly && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
+        if (
+          readOnly &&
+          (e.metaKey || e.ctrlKey) &&
+          e.key.toLowerCase() === "c"
+        ) {
           copySelectionText();
           return;
         }
@@ -5237,7 +5687,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }
 
         // PageUp/PageDown - let container handle scrolling
-        if (["PageUp", "PageDown"].includes(e.key) && !e.metaKey && !e.ctrlKey) {
+        if (
+          ["PageUp", "PageDown"].includes(e.key) &&
+          !e.metaKey &&
+          !e.ctrlKey
+        ) {
           // Let PM handle the cursor movement first
           // If PM doesn't handle it (at bounds), the container will scroll
         }
@@ -5277,7 +5731,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const handleContainerMouseDown = useCallback(
       (e: React.MouseEvent) => {
         // Don't steal focus from sidebar inputs
-        if (e.target instanceof HTMLElement && e.target.closest(".docx-comments-sidebar")) {
+        if (
+          e.target instanceof HTMLElement &&
+          e.target.closest(".docx-comments-sidebar")
+        ) {
           return;
         }
         // Don't steal focus from the persistent hidden HF EditorView host
@@ -5330,7 +5787,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       precomputedInitialDocumentRef.current = document;
       anonymizationMatchesRef.current =
         anonymizationDecorationsKey.getState(initialState)?.matches ?? [];
-      directivesRef.current = templateDirectivesKey.getState(initialState)?.ranges ?? [];
+      directivesRef.current =
+        templateDirectivesKey.getState(initialState)?.ranges ?? [];
 
       let cancelled = false;
       pendingInitialFontReadyLayoutRef.current = true;
@@ -5342,7 +5800,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         pendingInitialFontReadyLayoutRef.current = false;
         preHiddenInitialLayoutDoneRef.current = true;
-        recordLayoutPhase("initial", "initial-fonts", performance.now() - fontWaitStartedAt);
+        recordLayoutPhase(
+          "initial",
+          "initial-fonts",
+          performance.now() - fontWaitStartedAt,
+        );
         resetCanvasContext();
         clearAllCaches();
         runLayoutPipeline(initialState, { reason: "initial" });
@@ -5379,12 +5841,15 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         onEditorViewReadyRef.current?.(view);
         anonymizationMatchesRef.current =
           anonymizationDecorationsKey.getState(view.state)?.matches ?? [];
-        const initialSuggestion = autocompleteSuggestionKey.getState(view.state)?.suggestion;
+        const initialSuggestion = autocompleteSuggestionKey.getState(
+          view.state,
+        )?.suggestion;
         if (initialSuggestion !== undefined) {
           autocompleteSuggestionRef.current = initialSuggestion;
         }
         updateAutocompleteOverlay();
-        directivesRef.current = templateDirectivesKey.getState(view.state)?.ranges ?? [];
+        directivesRef.current =
+          templateDirectivesKey.getState(view.state)?.ranges ?? [];
         const previewState = templatePreviewValuesKey.getState(view.state);
         templatePreviewRef.current = {
           entries: previewState?.entries ?? EMPTY_TEMPLATE_PREVIEW_ENTRIES,
@@ -5416,9 +5881,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         if (
           layoutSessionRef.current.lastPmDoc?.eq(view.state.doc) &&
-          layoutSessionRef.current.lastMeasureInputs?.markupView === markupView &&
+          layoutSessionRef.current.lastMeasureInputs?.markupView ===
+            markupView &&
           layoutSessionRef.current.lastMeasureInputs?.showCommentHighlights ===
-            (showCommentHighlights && markupView !== "no-markup" && markupView !== "original")
+            (showCommentHighlights &&
+              markupView !== "no-markup" &&
+              markupView !== "original")
         ) {
           // The doc is already laid out, but the painted pages may carry a
           // fill preview the fresh view's plugin no longer holds (or vice
@@ -5427,7 +5895,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           const lastPreview = layoutSessionRef.current.lastTemplatePreview;
           if (
             templatePreviewRef.current.mode !== lastPreview.mode ||
-            templatePreviewDirtyRange(lastPreview, templatePreviewRef.current) !== null
+            templatePreviewDirtyRange(
+              lastPreview,
+              templatePreviewRef.current,
+            ) !== null
           ) {
             runLayoutPipeline(view.state, { reason: "manual" });
           }
@@ -5455,7 +5926,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           if (currentView !== view) {
             return;
           }
-          recordLayoutPhase("initial", "initial-fonts", performance.now() - fontWaitStartedAt);
+          recordLayoutPhase(
+            "initial",
+            "initial-fonts",
+            performance.now() - fontWaitStartedAt,
+          );
           resetCanvasContext();
           clearAllCaches();
           runInitialLayout(currentView);
@@ -5536,7 +6011,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               measures,
               pageGap,
               {
-                includeRevisions: anchorPositionMode === "comments-and-revisions",
+                includeRevisions:
+                  anchorPositionMode === "comments-and-revisions",
               },
               getCaretPosition,
             );
@@ -5552,7 +6028,14 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       return () => {
         cancelled = true;
       };
-    }, [anchorPositionMode, blocks, layout, measures, onAnchorPositionsChange, pageGap]);
+    }, [
+      anchorPositionMode,
+      blocks,
+      layout,
+      measures,
+      onAnchorPositionsChange,
+      pageGap,
+    ]);
 
     // Same dependency on layout for the autocomplete caret — when
     // pages re-flow (zoom, content edit), the anchor's pixel
@@ -5568,7 +6051,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     useEffect(
       () =>
         watchLayoutFontLoads({
-          measuredFontSet: () => layoutSessionRef.current.lastMeasureInputs?.fontSet ?? null,
+          measuredFontSet: () =>
+            layoutSessionRef.current.lastMeasureInputs?.fontSet ?? null,
           relayout: () => {
             // The initial layout still to come measures in the current set.
             if (pendingInitialFontReadyLayoutRef.current) {
@@ -5577,7 +6061,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             // Before the hidden view exists the pages come from a pre-view
             // layout; re-run that state, as the hyphenation follow-up does.
             const view = hiddenPMRef.current?.getView();
-            const state = view?.state ?? layoutSessionRef.current.lastEditorState;
+            const state =
+              view?.state ?? layoutSessionRef.current.lastEditorState;
             if (!state) {
               return;
             }
@@ -5604,31 +6089,33 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       }
       let cancelled = false;
       let registered: FontFace[] = [];
-      void loadEmbeddedFontFaces(embeddedFontBuffer).then(({ faces, familyMap }) => {
-        if (cancelled) {
-          removeFontFaces(faces);
+      void loadEmbeddedFontFaces(embeddedFontBuffer).then(
+        ({ faces, familyMap }) => {
+          if (cancelled) {
+            removeFontFaces(faces);
+            return undefined;
+          }
+          registered = faces;
+          if (faces.length === 0 && familyMap.size === 0) {
+            return undefined;
+          }
+          // Activate this document's original→scoped embedded-font family map
+          // before invalidating the resolved-font cache, so every run that
+          // resolves after this point (measurement + paint) picks up the
+          // scoped family instead of the raw DOCX name — which is never
+          // registered on `document.fonts` (see `fonts/embeddedFonts.ts`).
+          layoutSessionRef.current.embeddedFontFamilyMap = new Map(familyMap);
+          const view = hiddenPMRef.current?.getView();
+          if (!view) {
+            return undefined;
+          }
+          resetCanvasContext();
+          clearAllCaches();
+          runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
+          runtime.updateSelection(view.state);
           return undefined;
-        }
-        registered = faces;
-        if (faces.length === 0 && familyMap.size === 0) {
-          return undefined;
-        }
-        // Activate this document's original→scoped embedded-font family map
-        // before invalidating the resolved-font cache, so every run that
-        // resolves after this point (measurement + paint) picks up the
-        // scoped family instead of the raw DOCX name — which is never
-        // registered on `document.fonts` (see `fonts/embeddedFonts.ts`).
-        layoutSessionRef.current.embeddedFontFamilyMap = new Map(familyMap);
-        const view = hiddenPMRef.current?.getView();
-        if (!view) {
-          return undefined;
-        }
-        resetCanvasContext();
-        clearAllCaches();
-        runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
-        runtime.updateSelection(view.state);
-        return undefined;
-      });
+        },
+      );
       return () => {
         cancelled = true;
         removeFontFaces(registered);
@@ -5706,7 +6193,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       // that state too, or the pages keep the old inputs until the view exists.
       const state =
         hiddenPMRef.current?.getView()?.state ??
-        (preHiddenInitialLayoutDoneRef.current && precomputedInitialDocumentRef.current === document
+        (preHiddenInitialLayoutDoneRef.current &&
+        precomputedInitialDocumentRef.current === document
           ? layoutSessionRef.current.lastEditorState
           : null);
       if (state) {
@@ -5794,10 +6282,19 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             flushDocumentChangeNotification();
           }
           const editorDocument = folioEditor.getDocument();
-          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting))
+          if (
+            usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            )
+          )
             return editorDocument;
-          const current = editorDocument ? noteFollower.withPending(editorDocument) : null;
-          return current ? (noteEditorRef.current?.snapshotDocument(current) ?? current) : null;
+          const current = editorDocument
+            ? noteFollower.withPending(editorDocument)
+            : null;
+          return current
+            ? (noteEditorRef.current?.snapshotDocument(current) ?? current)
+            : null;
         },
         getState() {
           return folioEditor.getState();
@@ -5833,7 +6330,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         },
         blur() {
           const view = getActiveEditorStory().view;
-          if (view?.hasFocus() && view.dom instanceof HTMLElement) view.dom.blur();
+          if (view?.hasFocus() && view.dom instanceof HTMLElement)
+            view.dom.blur();
           setIsFocused(false);
         },
         isFocused() {
@@ -5845,7 +6343,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         undo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
+          if (
+            usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            )
+          ) {
             return (
               hiddenPMRef.current?.applyCanonicalStoryHistory({
                 view: target.view,
@@ -5854,13 +6357,19 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               }) ?? false
             );
           }
-          if (target.type === "body") return hiddenPMRef.current?.undo() ?? false;
+          if (target.type === "body")
+            return hiddenPMRef.current?.undo() ?? false;
           return historyUndo(target.view.state, target.view.dispatch);
         },
         redo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
+          if (
+            usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            )
+          ) {
             return (
               hiddenPMRef.current?.applyCanonicalStoryHistory({
                 view: target.view,
@@ -5869,22 +6378,27 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               }) ?? false
             );
           }
-          if (target.type === "body") return hiddenPMRef.current?.redo() ?? false;
+          if (target.type === "body")
+            return hiddenPMRef.current?.redo() ?? false;
           return historyRedo(target.view.state, target.view.dispatch);
         },
         canUndo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting) ||
-            target.type === "body"
+          return usesCanonicalSession(
+            experimentalSession,
+            CANONICAL_GAP.authorityRouting,
+          ) || target.type === "body"
             ? (hiddenPMRef.current?.canUndo() ?? false)
             : historyUndo(target.view.state);
         },
         canRedo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting) ||
-            target.type === "body"
+          return usesCanonicalSession(
+            experimentalSession,
+            CANONICAL_GAP.authorityRouting,
+          ) || target.type === "body"
             ? (hiddenPMRef.current?.canRedo() ?? false)
             : historyRedo(target.view.state);
         },
@@ -5918,11 +6432,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           // Fallback for non-virtualised docs (< 8 pages): every page is in the
           // DOM eagerly, so scan shells and find the one whose pm range covers
           // the target.
-          const shells = container.querySelectorAll<HTMLElement>("[data-page-number]");
+          const shells =
+            container.querySelectorAll<HTMLElement>("[data-page-number]");
           let bestNumber: number | null = null;
           let bestStart = Number.NEGATIVE_INFINITY;
           for (const shell of shells) {
-            const anchors = shell.querySelectorAll<HTMLElement>("[data-pm-start]");
+            const anchors =
+              shell.querySelectorAll<HTMLElement>("[data-pm-start]");
             if (anchors.length === 0) {
               continue;
             }
@@ -5991,7 +6507,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         getScrollRoot: getScrollContainer,
         onLayoutChange(listener) {
           const pagesContainer = pagesContainerRef.current;
-          return pagesContainer ? onPaintedLayoutChange(pagesContainer, listener) : () => {};
+          return pagesContainer
+            ? onPaintedLayoutChange(pagesContainer, listener)
+            : () => {};
         },
       }),
       [
@@ -6053,7 +6571,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     for (const page of layout?.pages ?? []) {
       widestPageWidth = Math.max(widestPageWidth, page.size.w);
     }
-    const scaledViewportWidth = Math.max(1, widestPageWidth * zoom + pageEndGutter);
+    const scaledViewportWidth = Math.max(
+      1,
+      widestPageWidth * zoom + pageEndGutter,
+    );
     const viewportExtentStyle: CSSProperties = {
       position: "relative",
       width: `max(100%, ${String(scaledViewportWidth)}px)`,
@@ -6085,7 +6606,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     };
 
     const handleContainedFocus = useCallback(
-      (event: React.FocusEvent<HTMLDivElement>) => containedHandler(handleContainerFocus)(event),
+      (event: React.FocusEvent<HTMLDivElement>) =>
+        containedHandler(handleContainerFocus)(event),
       [handleContainerFocus],
     );
     const handleContainedContainerMouseDown = useCallback(
@@ -6094,11 +6616,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       [handleContainerMouseDown],
     );
     const handleContainedPagesMouseDown = useCallback(
-      (event: React.MouseEvent<HTMLDivElement>) => containedHandler(handlePagesMouseDown)(event),
+      (event: React.MouseEvent<HTMLDivElement>) =>
+        containedHandler(handlePagesMouseDown)(event),
       [handlePagesMouseDown],
     );
     const handleContainedPagesClick = useCallback(
-      (event: React.MouseEvent<HTMLDivElement>) => containedHandler(handlePagesClick)(event),
+      (event: React.MouseEvent<HTMLDivElement>) =>
+        containedHandler(handlePagesClick)(event),
       [handlePagesClick],
     );
 
@@ -6106,7 +6630,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       <div
         ref={containerRef}
         data-folio-scroll={
-          scrollContainerRefProp && typeof scrollContainerRefProp === "object" ? undefined : ""
+          scrollContainerRefProp && typeof scrollContainerRefProp === "object"
+            ? undefined
+            : ""
         }
         className={`folio-root paged-editor ${className ?? ""}`}
         style={{ ...containerStyles, ...style }}
@@ -6130,7 +6656,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           onTransaction={handleHfPmTransaction}
           getCanonicalApi={getCanonicalApi}
           onSessionRefusal={handleSessionRefusal}
-          {...(!usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+          {...(!usesCanonicalSession(
+            experimentalSession,
+            CANONICAL_GAP.authorityRouting,
+          )
             ? {}
             : { experimentalSession })}
           {...(styles !== undefined ? { styles } : {})}
@@ -6143,7 +6672,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           onActiveChange={handleActiveNoteStoryChange}
           getCanonicalApi={getCanonicalApi}
           onSessionRefusal={handleSessionRefusal}
-          {...(!usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+          {...(!usesCanonicalSession(
+            experimentalSession,
+            CANONICAL_GAP.authorityRouting,
+          )
             ? {}
             : { experimentalSession })}
           onDocumentChange={handleNoteDocumentChange}
@@ -6160,7 +6692,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           ref={hiddenPMRef}
           document={document}
           documentIdentity={documentIdentity}
-          {...(!usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+          {...(!usesCanonicalSession(
+            experimentalSession,
+            CANONICAL_GAP.authorityRouting,
+          )
             ? {}
             : { experimentalSession })}
           onSessionRefusal={handleSessionRefusal}
@@ -6182,11 +6717,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           externalPlugins={externalPlugins}
           {...(collaboration !== undefined ? { collaboration } : {})}
           {...(extensionManager !== undefined ? { extensionManager } : {})}
-          {...(onReadOnlyEditAttempt !== undefined ? { onReadOnlyEditAttempt } : {})}
+          {...(onReadOnlyEditAttempt !== undefined
+            ? { onReadOnlyEditAttempt }
+            : {})}
         />
 
         {/* Viewport for visible pages */}
-        <div className="paged-editor__viewport-extent" style={viewportExtentStyle}>
+        <div
+          className="paged-editor__viewport-extent"
+          style={viewportExtentStyle}
+        >
           <div className="paged-editor__viewport" style={scaledViewportStyle}>
             {/* Pages container */}
             <div
@@ -6257,9 +6797,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               being edited. */}
             <SelectionOverlay
               selectionRects={
-                hfEditMode || noteStoryActive ? EMPTY_SELECTION_RECTS : selectionRects
+                hfEditMode || noteStoryActive
+                  ? EMPTY_SELECTION_RECTS
+                  : selectionRects
               }
-              caretPosition={hfEditMode || noteStoryActive ? null : caretPosition}
+              caretPosition={
+                hfEditMode || noteStoryActive ? null : caretPosition
+              }
               isFocused={isFocused}
               pageGap={pageGap}
               markCaretRect

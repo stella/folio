@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { IntlProvider } from "use-intl";
 
 import {
-  DocxEditor,
   createEmptyDocument,
   createStellaStyleDocumentPreset,
+  DocxEditor,
 } from "@stll/folio-react";
 import { getFolioMessages } from "@stll/folio-react/messages";
 
 import { AvatarStack } from "./collaboration/AvatarStack";
-import { getOrCreateRoomFromUrl, loadOrCreateUser } from "./collaboration/identity";
+import {
+  getOrCreateRoomFromUrl,
+  loadOrCreateUser,
+} from "./collaboration/identity";
 import { useCollaboration } from "./collaboration/useCollaboration";
 
 const collaborationStatusLabel = (
@@ -35,7 +39,9 @@ export function CollaborationApp() {
   const [user] = useState(loadOrCreateUser);
   const [room] = useState(getOrCreateRoomFromUrl);
   const [shareCopied, setShareCopied] = useState(false);
-  const shareCopiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shareCopiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!window.location.hash) {
@@ -52,7 +58,8 @@ export function CollaborationApp() {
     [],
   );
 
-  const { collaboration, users, status, comments, setComments } = useCollaboration(room, user);
+  const { collaboration, users, status, comments, setComments } =
+    useCollaboration(room, user);
   const seedDocument = useMemo(
     () => createEmptyDocument({ preset: createStellaStyleDocumentPreset() }),
     [],
@@ -65,7 +72,10 @@ export function CollaborationApp() {
       if (shareCopiedTimeoutRef.current) {
         clearTimeout(shareCopiedTimeoutRef.current);
       }
-      shareCopiedTimeoutRef.current = setTimeout(() => setShareCopied(false), 1500);
+      shareCopiedTimeoutRef.current = setTimeout(
+        () => setShareCopied(false),
+        1500,
+      );
     } catch {
       setShareCopied(false);
     }
@@ -83,7 +93,11 @@ export function CollaborationApp() {
           </div>
           <div className="pg-collab-header__right">
             <AvatarStack users={users} />
-            <button type="button" className="pg-button" onClick={handleCopyShareLink}>
+            <button
+              type="button"
+              className="pg-button"
+              onClick={handleCopyShareLink}
+            >
               {shareCopied ? "Link copied!" : "Share link"}
             </button>
           </div>

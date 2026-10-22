@@ -1,15 +1,16 @@
 /** Focused resolve-all scaling; use --legacy for the retained range command. */
 import { loadavg } from "node:os";
 import { history } from "prosemirror-history";
-import { EditorState, type Command } from "prosemirror-state";
-import { schema } from "@stll/folio-core/prosemirror/schema";
+import { type Command, EditorState } from "prosemirror-state";
+
 import {
   acceptAllChanges,
-  rejectAllChanges,
   acceptChange,
+  rejectAllChanges,
   rejectChange,
 } from "@stll/folio-core/prosemirror/commands/comments";
 import { ParagraphChangeTrackerExtension } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { schema } from "@stll/folio-core/prosemirror/schema";
 
 const sampleCommand = (state: EditorState, command: Command) => {
   let steps = 0;
@@ -21,7 +22,11 @@ const sampleCommand = (state: EditorState, command: Command) => {
   });
   const milliseconds = performance.now() - start;
   const cpu = process.cpuUsage(cpuStart);
-  return { milliseconds, cpuMilliseconds: (cpu.user + cpu.system) / 1000, steps };
+  return {
+    milliseconds,
+    cpuMilliseconds: (cpu.user + cpu.system) / 1000,
+    steps,
+  };
 };
 
 const legacy = process.argv.includes("--legacy");
@@ -32,26 +37,41 @@ for (const blocks of [250, 1000, 2200, 4400]) {
     "doc",
     null,
     Array.from({ length: blocks }, (_, index) =>
-      schema.node("paragraph", { paraId: index.toString(16).padStart(8, "0") }, [
-        schema.text("old ", [
-          schema.marks.deletion.create({ revisionId: index * 2 + 1, author: "Reviewer" }),
-        ]),
-        schema.text("new ", [
-          schema.marks.insertion.create({ revisionId: index * 2 + 2, author: "Reviewer" }),
-        ]),
-      ]),
+      schema.node(
+        "paragraph",
+        { paraId: index.toString(16).padStart(8, "0") },
+        [
+          schema.text("old ", [
+            schema.marks.deletion.create({
+              revisionId: index * 2 + 1,
+              author: "Reviewer",
+            }),
+          ]),
+          schema.text("new ", [
+            schema.marks.insertion.create({
+              revisionId: index * 2 + 2,
+              author: "Reviewer",
+            }),
+          ]),
+        ],
+      ),
     ),
   );
   const state = EditorState.create({
     doc,
     plugins: [
       history(),
-      ...(ParagraphChangeTrackerExtension().onSchemaReady({ schema }).plugins ?? []),
+      ...(ParagraphChangeTrackerExtension().onSchemaReady({ schema }).plugins ??
+        []),
     ],
   });
   for (const mode of ["accept", "reject"] as const) {
-    const accept = legacy ? acceptChange(0, doc.content.size) : acceptAllChanges();
-    const reject = legacy ? rejectChange(0, doc.content.size) : rejectAllChanges();
+    const accept = legacy
+      ? acceptChange(0, doc.content.size)
+      : acceptAllChanges();
+    const reject = legacy
+      ? rejectChange(0, doc.content.size)
+      : rejectAllChanges();
     const command = mode === "accept" ? accept : reject;
     const samples: number[] = [];
     const cpuSamples: number[] = [];

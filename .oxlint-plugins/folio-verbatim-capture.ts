@@ -10,7 +10,10 @@ type AstNode = Record<string, unknown> & { type: string };
 
 type RuleContext = {
   filename: string;
-  report: (descriptor: { node: unknown; messageId: "directElementToXml" }) => void;
+  report: (descriptor: {
+    node: unknown;
+    messageId: "directElementToXml";
+  }) => void;
 };
 
 const OWNERS = ["docx/verbatimCapture.ts", "docx/metadataPrivacy.ts"];

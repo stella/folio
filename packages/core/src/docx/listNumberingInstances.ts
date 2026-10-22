@@ -18,8 +18,6 @@
  * definition it rebuilds is the one the command minted.
  */
 
-import { createNumberingIdAllocator, mintNumberingId } from "./numberingIds";
-
 import { NUMBER_FORMATS } from "@stll/docx-core/model";
 
 import type {
@@ -34,6 +32,7 @@ import type {
   ParagraphAlignment,
   ParagraphFormatting,
 } from "../types/document";
+import { createNumberingIdAllocator, mintNumberingId } from "./numberingIds";
 
 /** The two kinds of list a command can create. */
 export const LIST_KINDS = ["bullet", "numbered"] as const;
@@ -73,7 +72,11 @@ type NumberedCycleEntry = {
 };
 
 /** The customary numbered-list cycle: `1.`, `a.`, `i.`, then again one level deeper. */
-const NUMBERED_CYCLE: readonly [NumberedCycleEntry, NumberedCycleEntry, NumberedCycleEntry] = [
+const NUMBERED_CYCLE: readonly [
+  NumberedCycleEntry,
+  NumberedCycleEntry,
+  NumberedCycleEntry,
+] = [
   { numFmt: "decimal", lvlJc: "left", hanging: HANGING_TWIPS },
   { numFmt: "lowerLetter", lvlJc: "left", hanging: HANGING_TWIPS },
   { numFmt: "lowerRoman", lvlJc: "right", hanging: ROMAN_HANGING_TWIPS },
@@ -82,7 +85,11 @@ const NUMBERED_CYCLE: readonly [NumberedCycleEntry, NumberedCycleEntry, Numbered
 type BulletCycleEntry = { text: string; font: string | null };
 
 /** The customary bullet cycle: a round bullet, an open circle, a square. */
-const BULLET_CYCLE: readonly [BulletCycleEntry, BulletCycleEntry, BulletCycleEntry] = [
+const BULLET_CYCLE: readonly [
+  BulletCycleEntry,
+  BulletCycleEntry,
+  BulletCycleEntry,
+] = [
   { text: "\u2022", font: null },
   { text: "o", font: "Courier New" },
   { text: "\u25AA", font: null },
@@ -112,7 +119,9 @@ const bulletLevel = (ilvl: number): ListLevel => {
     lvlText: text,
     lvlJc: "left",
     pPr: levelIndent(ilvl, HANGING_TWIPS),
-    ...(font === null ? {} : { rPr: { fontFamily: { ascii: font, hAnsi: font } } }),
+    ...(font === null
+      ? {}
+      : { rPr: { fontFamily: { ascii: font, hAnsi: font } } }),
   };
 };
 
@@ -142,23 +151,33 @@ const mintAbstractNumbering = ({
 };
 
 /** The template counts from one, so only another first value needs an override. */
-const levelZeroStart = (start: number | undefined): LevelOverride[] | undefined =>
-  start === undefined || start === 1 ? undefined : [{ ilvl: 0, startOverride: start }];
+const levelZeroStart = (
+  start: number | undefined,
+): LevelOverride[] | undefined =>
+  start === undefined || start === 1
+    ? undefined
+    : [{ ilvl: 0, startOverride: start }];
 
 const EMPTY_DEFINITIONS: NumberingDefinitions = { abstractNums: [], nums: [] };
 
 /** A fresh `w:numId` for `definitions`; zero is reserved for "no numbering". */
-const nextNumId = (definitions: NumberingDefinitions | null | undefined): number =>
+const nextNumId = (
+  definitions: NumberingDefinitions | null | undefined,
+): number =>
   mintNumberingId({
     kind: "num",
     existingIds: (definitions?.nums ?? []).map(({ numId }) => numId),
   });
 
 /** A fresh `w:abstractNumId` for `definitions`. */
-const nextAbstractNumId = (definitions: NumberingDefinitions | null | undefined): number =>
+const nextAbstractNumId = (
+  definitions: NumberingDefinitions | null | undefined,
+): number =>
   mintNumberingId({
     kind: "abstract",
-    existingIds: (definitions?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
+    existingIds: (definitions?.abstractNums ?? []).map(
+      ({ abstractNumId }) => abstractNumId,
+    ),
   });
 
 type MintedListInstance = {
@@ -221,7 +240,10 @@ export const restartListInstance = (
     abstractNumId,
     levelOverrides: [{ ilvl, startOverride: start }],
   };
-  return { numId, definitions: { ...current, nums: [...current.nums, instance] } };
+  return {
+    numId,
+    definitions: { ...current, nums: [...current.nums, instance] },
+  };
 };
 
 /** One paragraph's numbering reference and the rendering it resolved to. */
@@ -233,7 +255,9 @@ export type ListInstanceReference = {
 
 const NUMBER_FORMAT_SET: ReadonlySet<string> = new Set(NUMBER_FORMATS);
 
-const isNumberFormat = (format: CounterFormat | undefined): format is NumberFormat =>
+const isNumberFormat = (
+  format: CounterFormat | undefined,
+): format is NumberFormat =>
   format !== undefined && NUMBER_FORMAT_SET.has(format);
 
 const levelZeroFormat = (
@@ -242,14 +266,17 @@ const levelZeroFormat = (
   const first = references.find(({ ilvl }) => ilvl === 0)?.rendering;
   const numFmt =
     first?.numFmt ??
-    references.find(({ rendering }) => rendering.levelNumFmts?.[0])?.rendering.levelNumFmts?.[0];
+    references.find(({ rendering }) => rendering.levelNumFmts?.[0])?.rendering
+      .levelNumFmts?.[0];
   if (!isNumberFormat(numFmt)) {
     return undefined;
   }
   return { numFmt, lvlText: first?.markerTemplate ?? "%1." };
 };
 
-const startOverridesOf = (references: readonly ListInstanceReference[]): LevelOverride[] => {
+const startOverridesOf = (
+  references: readonly ListInstanceReference[],
+): LevelOverride[] => {
   const byLevel = new Map<number, number>();
   for (const { ilvl, rendering } of references) {
     if (rendering.startOverride !== undefined && !byLevel.has(ilvl)) {
@@ -273,7 +300,9 @@ export const completeListNumbering = (
   definitions: NumberingDefinitions | undefined,
   references: Iterable<ListInstanceReference>,
 ): NumberingDefinitions | undefined => {
-  const definedNums = new Set((definitions?.nums ?? []).map(({ numId }) => numId));
+  const definedNums = new Set(
+    (definitions?.nums ?? []).map(({ numId }) => numId),
+  );
   const missing = new Map<number, ListInstanceReference[]>();
   for (const reference of references) {
     if (definedNums.has(reference.numId)) {
@@ -291,7 +320,9 @@ export const completeListNumbering = (
   }
 
   const current = definitions ?? EMPTY_DEFINITIONS;
-  const abstractIds = new Set(current.abstractNums.map(({ abstractNumId }) => abstractNumId));
+  const abstractIds = new Set(
+    current.abstractNums.map(({ abstractNumId }) => abstractNumId),
+  );
   const statedAbstractIds = [...missing.values()].flatMap((group) =>
     group.flatMap(({ rendering }) =>
       rendering.abstractNumId === undefined ? [] : [rendering.abstractNumId],
@@ -306,15 +337,19 @@ export const completeListNumbering = (
 
   for (const [numId, group] of missing) {
     const abstractNumId =
-      group.find(({ rendering }) => rendering.abstractNumId !== undefined)?.rendering
-        .abstractNumId ?? missingAbstractIds.next();
+      group.find(({ rendering }) => rendering.abstractNumId !== undefined)
+        ?.rendering.abstractNumId ?? missingAbstractIds.next();
     if (!abstractIds.has(abstractNumId)) {
       abstractIds.add(abstractNumId);
       const kind: ListKind = group.some(({ rendering }) => rendering.isBullet)
         ? "bullet"
         : "numbered";
       abstractNums.push(
-        mintAbstractNumbering({ abstractNumId, kind, format: levelZeroFormat(group) }),
+        mintAbstractNumbering({
+          abstractNumId,
+          kind,
+          format: levelZeroFormat(group),
+        }),
       );
     }
     const levelOverrides = startOverridesOf(group);

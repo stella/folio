@@ -85,7 +85,8 @@ const RAIL_SEGMENT_MIN_HEIGHT = 2;
 /** Opener kind of a band ("if" ⇒ condition family, "for" ⇒ loop family). */
 type BandKind = "if" | "for";
 
-const bandKindOf = (kind: DirectiveKind): BandKind => (kind === "for" ? "for" : "if");
+const bandKindOf = (kind: DirectiveKind): BandKind =>
+  kind === "for" ? "for" : "if";
 
 /**
  * Deepest nesting level whose rail still fits inside the left margin with a
@@ -108,7 +109,11 @@ export const railBudgetDepth = (marginWidth: number): number => {
  * as concentric brackets `[ [ [ text ] ] ]`. Depths beyond the budget clamp to
  * the deepest offset.
  */
-export const railXForDepth = (depth: number, contentLeft: number, marginWidth: number): number => {
+export const railXForDepth = (
+  depth: number,
+  contentLeft: number,
+  marginWidth: number,
+): number => {
   const budget = railBudgetDepth(marginWidth);
   const capped = Math.min(Math.max(0, depth), budget);
   const deepestX = contentLeft - RAIL_TEXT_CLEARANCE - RAIL_WIDTH;
@@ -174,9 +179,14 @@ type OpenBlock = { range: DirectiveRange; depth: number };
  * `{% for %}`.
  * Inline (block:false) markers are excluded. Pure function of the ranges.
  */
-export const pairBlockRanges = (ranges: readonly DirectiveRange[]): BlockPairing[] => {
+export const pairBlockRanges = (
+  ranges: readonly DirectiveRange[],
+): BlockPairing[] => {
   const blocks = ranges
-    .filter((r) => r.block && (BLOCK_OPENERS.has(r.kind) || BLOCK_CLOSERS.has(r.kind)))
+    .filter(
+      (r) =>
+        r.block && (BLOCK_OPENERS.has(r.kind) || BLOCK_CLOSERS.has(r.kind)),
+    )
     .slice()
     .sort((a, b) => a.from - b.from);
 
@@ -235,7 +245,8 @@ export const innermostBlockAt = (
   let bestBlockId: number | null = null;
   let bestOpener = Number.NEGATIVE_INFINITY;
   for (const pairing of pairings) {
-    const contains = caretPos >= pairing.openerFrom && caretPos <= pairing.closerTo;
+    const contains =
+      caretPos >= pairing.openerFrom && caretPos <= pairing.closerTo;
     if (contains && pairing.openerFrom > bestOpener) {
       bestOpener = pairing.openerFrom;
       bestBlockId = pairing.blockId;
@@ -282,7 +293,11 @@ const computeRailBands = (
     bands.push({
       blockId: pairing.blockId,
       kind: pairing.kind,
-      railX: railXForDepth(pairing.depth, gutter.contentLeft, gutter.marginWidth),
+      railX: railXForDepth(
+        pairing.depth,
+        gutter.contentLeft,
+        gutter.marginWidth,
+      ),
       segments,
     });
   }
@@ -322,7 +337,10 @@ export const TemplateDirectivesOverlay = ({
   for (const pairing of pairings) {
     blockIdByFrom.set(pairing.openerFrom, pairing.blockId);
     blockIdByFrom.set(pairing.closerFrom, pairing.blockId);
-    closerLabelByFrom.set(pairing.closerFrom, closerHintLabel(pairing.kind, pairing.openerExpr));
+    closerLabelByFrom.set(
+      pairing.closerFrom,
+      closerHintLabel(pairing.kind, pairing.openerExpr),
+    );
   }
 
   const caretBlockId = innermostBlockAt(pairings, caretPos);
@@ -376,14 +394,19 @@ export const TemplateDirectivesOverlay = ({
       {groups.flatMap(({ range, rects }, groupIdx) => {
         const blockId = range.block ? blockIdByFrom.get(range.from) : undefined;
         const isBlockChip =
-          range.block && (BLOCK_OPENERS.has(range.kind) || BLOCK_CLOSERS.has(range.kind));
-        const closerLabel = range.block ? closerLabelByFrom.get(range.from) : undefined;
+          range.block &&
+          (BLOCK_OPENERS.has(range.kind) || BLOCK_CLOSERS.has(range.kind));
+        const closerLabel = range.block
+          ? closerLabelByFrom.get(range.from)
+          : undefined;
         const active = blockId !== undefined && isActive(blockId);
         return rects.map((rect, idx) => (
           <span
             key={`d:${groupIdx}:${idx}`}
             className={`folio-template-directive folio-template-directive--${range.kind}${isBlockChip ? " folio-template-directive--block" : ""}${active ? " folio-template-directive--active" : ""}`}
-            {...(blockId !== undefined ? { "data-folio-block-id": blockId } : {})}
+            {...(blockId !== undefined
+              ? { "data-folio-block-id": blockId }
+              : {})}
             {...(closerLabel !== undefined ? { title: closerLabel } : {})}
             style={{
               left: rect.x - 1,

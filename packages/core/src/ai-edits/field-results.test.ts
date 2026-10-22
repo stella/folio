@@ -9,7 +9,8 @@ import JSZip from "jszip";
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { FolioDocxReviewer } from "./headless";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /** `{ REF _Ref1 \r \h }` with a cached result, the shape Word writes. */
 const referenceField = (result: string) =>
@@ -76,8 +77,12 @@ describe("field results in AI block text", () => {
   });
 
   test("keeps the annotated view on the same text", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await createFieldDocx());
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createFieldDocx(),
+    );
 
-    expect(reviewer.getContentAsText({ annotated: true })).toContain("see Clause 3.6(a) above");
+    expect(reviewer.getContentAsText({ annotated: true })).toContain(
+      "see Clause 3.6(a) above",
+    );
   });
 });

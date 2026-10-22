@@ -1,4 +1,9 @@
-import type { Table, TableCell, TableCellBlock, Paragraph } from "../types/document";
+import type {
+  Paragraph,
+  Table,
+  TableCell,
+  TableCellBlock,
+} from "../types/document";
 import { isCellMergeContinuation } from "./tableParser";
 
 /** The reader and revision resolver share which continuation cells remain visible. */
@@ -29,7 +34,9 @@ export function calculateRowSpans(table: Table): Map<string, RowSpanInfo> {
       const colspan = cell.formatting?.gridSpan ?? 1;
       const vMerge = cell.formatting?.vMerge;
       const isMergeContinuation = isCellMergeContinuation(cell);
-      const startRow = isMergeContinuation ? activeMerges.get(colIndex) : undefined;
+      const startRow = isMergeContinuation
+        ? activeMerges.get(colIndex)
+        : undefined;
       const info = {
         cell,
         colIndex,
@@ -43,7 +50,8 @@ export function calculateRowSpans(table: Table): Map<string, RowSpanInfo> {
       colIndex += colspan;
       return info;
     });
-    const rowWouldBeEmpty = rowCells.length > 0 && rowCells.every((cell) => cell.shouldSkip);
+    const rowWouldBeEmpty =
+      rowCells.length > 0 && rowCells.every((cell) => cell.shouldSkip);
 
     for (const cellInfo of rowCells) {
       const {
@@ -69,7 +77,10 @@ export function calculateRowSpans(table: Table): Map<string, RowSpanInfo> {
         // merged away.
         if (startRow === undefined || rowWouldBeEmpty || hasMeaningfulContent) {
           result.set(key, { rowSpan: 1, skip: false });
-          if ((rowWouldBeEmpty || hasMeaningfulContent) && startRow !== undefined) {
+          if (
+            (rowWouldBeEmpty || hasMeaningfulContent) &&
+            startRow !== undefined
+          ) {
             const restartCell = result.get(`${startRow}-${cellColIndex}`);
             if (restartCell) {
               restartCell.preserveVMergeRestart = true;
@@ -160,7 +171,9 @@ function blockHasMeaningfulContent(block: TableCellBlock): boolean {
     return true;
   }
   if (block.type === "table") {
-    return block.rows.some((row) => row.cells.some((cell) => tableCellHasMeaningfulContent(cell)));
+    return block.rows.some((row) =>
+      row.cells.some((cell) => tableCellHasMeaningfulContent(cell)),
+    );
   }
   if (block.type === "blockSdt" || block.type === "blockCustomXml") {
     // The wrapper carries authored structure even when its children are empty.
@@ -170,7 +183,9 @@ function blockHasMeaningfulContent(block: TableCellBlock): boolean {
   return block.content.some(paragraphContentHasMeaningfulContent);
 }
 
-function paragraphContentHasMeaningfulContent(content: Paragraph["content"][number]): boolean {
+function paragraphContentHasMeaningfulContent(
+  content: Paragraph["content"][number],
+): boolean {
   if (content.type === "run") {
     return content.content.length > 0;
   }

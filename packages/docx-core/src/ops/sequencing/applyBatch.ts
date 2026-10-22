@@ -5,7 +5,7 @@ import { applyDocumentOps } from "../apply";
 import { storyBody, storyParagraphs } from "../blocks";
 import { paragraphLength } from "../offsets";
 import type { DocumentOpRefusal } from "../refusal";
-import { DOCUMENT_OP_TYPES, SPLIT_HALVES, type DocumentOp } from "../types";
+import { DOCUMENT_OP_TYPES, type DocumentOp, SPLIT_HALVES } from "../types";
 import { NO_SEQUENCED_EFFECT, type SequencedBatch } from "./envelope";
 
 const TOUCHED_BLOCKS_EFFECT = "touchedBlocks";
@@ -25,7 +25,9 @@ export const applyBatch = (
   const inverses: (readonly DocumentOp[])[] = [];
   const effects: NonNullable<SequencedBatch["effects"]>[number][] = [];
   for (const op of ops) {
-    let effect: NonNullable<SequencedBatch["effects"]>[number] = { type: NO_SEQUENCED_EFFECT };
+    let effect: NonNullable<SequencedBatch["effects"]>[number] = {
+      type: NO_SEQUENCED_EFFECT,
+    };
     if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK) {
       const paragraph = storyParagraphs(storyBody(current, op.at.story)).find(
         ({ paragraph: candidate }) => candidate.paraId === op.at.blockId,
@@ -46,7 +48,10 @@ export const applyBatch = (
         ({ paragraph: candidate }) => candidate.paraId === op.blockId,
       )?.paragraph;
       if (paragraph !== undefined) {
-        effect = { type: DOCUMENT_OP_TYPES.JOIN_BLOCKS, firstLength: paragraphLength(paragraph) };
+        effect = {
+          type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+          firstLength: paragraphLength(paragraph),
+        };
       }
     }
     const applied = applyDocumentOps(current, [op]);
@@ -67,5 +72,9 @@ export const applyBatch = (
     inverses.push(applied.value.inverse);
     effects.push(effect);
   }
-  return Result.ok({ document: current, inverse: inverses.reverse().flat(), effects });
+  return Result.ok({
+    document: current,
+    inverse: inverses.reverse().flat(),
+    effects,
+  });
 };

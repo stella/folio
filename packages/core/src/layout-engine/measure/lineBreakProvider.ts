@@ -53,18 +53,33 @@ const eastAsianLineBreakLocales = new Map<string, boolean>();
 
 const segmenterLocale = (locale?: string): string | undefined => {
   const language = locale?.trim().replaceAll("_", "-").split("-").at(0);
-  return language && /^[a-z]{2,3}$/iu.test(language) ? language.toLowerCase() : undefined;
+  return language && /^[a-z]{2,3}$/iu.test(language)
+    ? language.toLowerCase()
+    : undefined;
 };
 
 const DICTIONARY_BREAK_SCRIPT =
   /[\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
-const CJK_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+const CJK_SCRIPT =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 // Word limits overflow punctuation to runs whose language is Chinese,
 // Japanese, Korean, or Yi (treated as Simplified Chinese). Applying the
 // East-Asian punctuation set to Latin runs lets ordinary commas and periods
 // exceed a margin, changing otherwise unrelated line and page breaks.
-const WORD_HANGING_PUNCTUATION_LANGUAGES = new Set(["cmn", "ii", "ja", "ko", "zh"]);
-const EAST_ASIAN_LINE_BREAK_SCRIPTS = new Set(["Hans", "Hant", "Jpan", "Kore", "Yiii"]);
+const WORD_HANGING_PUNCTUATION_LANGUAGES = new Set([
+  "cmn",
+  "ii",
+  "ja",
+  "ko",
+  "zh",
+]);
+const EAST_ASIAN_LINE_BREAK_SCRIPTS = new Set([
+  "Hans",
+  "Hant",
+  "Jpan",
+  "Kore",
+  "Yiii",
+]);
 const SIMPLE_BREAK_TEXT =
   /^[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{Number}\p{Punctuation}\p{White_Space}]*$/u;
 const BREAK_AFTER_CHARACTER = new Set([
@@ -94,7 +109,8 @@ const isGlueCodeUnit = (code: number): boolean =>
     code === 0x202f ||
     code === 0x2060 ||
     code === 0xfeff);
-const isWordJoinerCodeUnit = (code: number): boolean => code === 0x2060 || code === 0xfeff;
+const isWordJoinerCodeUnit = (code: number): boolean =>
+  code === 0x2060 || code === 0xfeff;
 
 const isBreakingWhitespace = (character: string): boolean =>
   /\s/u.test(character) && !isGlueCodeUnit(character.charCodeAt(0));
@@ -114,7 +130,10 @@ export const gluePermitsBreakBefore = (
   if (!isNonBreakingGlue(next)) {
     return true;
   }
-  if (isWordJoinerCodeUnit(next?.charCodeAt(0) ?? 0) || previous === undefined) {
+  if (
+    isWordJoinerCodeUnit(next?.charCodeAt(0) ?? 0) ||
+    previous === undefined
+  ) {
     return false;
   }
   return isBreakingWhitespace(previous) || BREAK_AFTER_CHARACTER.has(previous);
@@ -218,14 +237,20 @@ const previousCodePoint = (text: string, index: number): string | undefined => {
   return text[index - 1];
 };
 
-const isProhibitedLineStart = (character: string | undefined, policy?: LineBreakPolicy): boolean =>
+const isProhibitedLineStart = (
+  character: string | undefined,
+  policy?: LineBreakPolicy,
+): boolean =>
   character !== undefined &&
   policy?.kinsoku !== false &&
   (policy?.noLineBreaksBefore !== undefined
     ? policy.noLineBreaksBefore.has(character)
     : DEFAULT_PROHIBITED_LINE_START.has(character));
 
-const isProhibitedLineEnd = (character: string | undefined, policy?: LineBreakPolicy): boolean =>
+const isProhibitedLineEnd = (
+  character: string | undefined,
+  policy?: LineBreakPolicy,
+): boolean =>
   character !== undefined &&
   policy?.kinsoku !== false &&
   (policy?.noLineBreaksAfter !== undefined
@@ -258,18 +283,23 @@ const isLegacyEthiopicBreakCharacter = (
   return codePoint !== undefined && codePoint >= 0x1361 && codePoint <= 0x1368;
 };
 
-const localeUsesEastAsianLineBreaking = (locale?: string): boolean | undefined => {
+const localeUsesEastAsianLineBreaking = (
+  locale?: string,
+): boolean | undefined => {
   const language = segmenterLocale(locale);
   if (language === undefined) {
     return undefined;
   }
-  const normalized = locale?.trim().replaceAll("_", "-").toLowerCase() ?? language;
+  const normalized =
+    locale?.trim().replaceAll("_", "-").toLowerCase() ?? language;
   const cached = eastAsianLineBreakLocales.get(normalized);
   if (cached !== undefined) {
     return cached;
   }
   const subtags = normalized.split("-");
-  const extensionIndex = subtags.findIndex((part, index) => index > 0 && part.length === 1);
+  const extensionIndex = subtags.findIndex(
+    (part, index) => index > 0 && part.length === 1,
+  );
   const explicitScript = subtags
     .slice(1, extensionIndex === -1 ? undefined : extensionIndex)
     .find((part) => /^[a-z]{4}$/u.test(part));
@@ -318,7 +348,10 @@ const allowsBreak = (
   if (permitsSpacedPercentage) {
     return !isProhibitedLineEnd(previous, policy);
   }
-  return !isProhibitedLineEnd(previous, policy) && !isProhibitedLineStart(next, policy);
+  return (
+    !isProhibitedLineEnd(previous, policy) &&
+    !isProhibitedLineStart(next, policy)
+  );
 };
 
 const pushBreak = (
@@ -364,16 +397,21 @@ const findSimpleGraphemeBreaks = (text: string): number[] | undefined => {
   return breaks;
 };
 
-const findUnicodeGraphemeBreaks = (text: string, policy?: LineBreakPolicy): number[] => {
+const findUnicodeGraphemeBreaks = (
+  text: string,
+  policy?: LineBreakPolicy,
+): number[] => {
   const simpleBreaks = findSimpleGraphemeBreaks(text);
   if (simpleBreaks !== undefined) {
     return simpleBreaks;
   }
 
   const breaks: number[] = [];
-  for (const segment of getSegmenter(graphemeSegmenters, "grapheme", policy?.locale).segment(
-    text,
-  )) {
+  for (const segment of getSegmenter(
+    graphemeSegmenters,
+    "grapheme",
+    policy?.locale,
+  ).segment(text)) {
     const end = segment.index + segment.segment.length;
     breaks.push(end);
   }
@@ -395,7 +433,10 @@ const isSimpleWhitespace = (character: string, codePoint: number): boolean =>
  * dictionary-segmented scripts, CJK, and other complex input keeps the full
  * Unicode provider responsible for those cases.
  */
-const findSimpleBreaks = (text: string, policy?: LineBreakPolicy): number[] | undefined => {
+const findSimpleBreaks = (
+  text: string,
+  policy?: LineBreakPolicy,
+): number[] | undefined => {
   if (!SIMPLE_BREAK_TEXT.test(text)) {
     return undefined;
   }
@@ -427,7 +468,14 @@ const findSimpleBreaks = (text: string, policy?: LineBreakPolicy): number[] | un
         }
         nextVisibleAfterWhitespace = next;
       }
-      pushBreak(breaks, text, index + 1, policy, usesEastAsianRules, nextVisibleAfterWhitespace);
+      pushBreak(
+        breaks,
+        text,
+        index + 1,
+        policy,
+        usesEastAsianRules,
+        nextVisibleAfterWhitespace,
+      );
     } else if (
       BREAK_AFTER_CHARACTER.has(character) ||
       isLegacyEthiopicBreakCharacter(character, policy)
@@ -439,7 +487,10 @@ const findSimpleBreaks = (text: string, policy?: LineBreakPolicy): number[] | un
   return breaks;
 };
 
-const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => {
+const findUnicodeBreaks = (
+  text: string,
+  policy?: LineBreakPolicy,
+): number[] => {
   if (text.length === 0) {
     return [];
   }
@@ -466,16 +517,26 @@ const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => 
         }
         nextVisibleAfterWhitespace = next;
       }
-      pushBreak(breaks, text, index, policy, usesEastAsianRules, nextVisibleAfterWhitespace);
+      pushBreak(
+        breaks,
+        text,
+        index,
+        policy,
+        usesEastAsianRules,
+        nextVisibleAfterWhitespace,
+      );
     } else if (
       previous !== undefined &&
-      (BREAK_AFTER_CHARACTER.has(previous) || isLegacyEthiopicBreakCharacter(previous, policy))
+      (BREAK_AFTER_CHARACTER.has(previous) ||
+        isLegacyEthiopicBreakCharacter(previous, policy))
     ) {
       pushBreak(breaks, text, index, policy, usesEastAsianRules);
     }
   }
 
-  const wordSegments = [...getSegmenter(wordSegmenters, "word", policy?.locale).segment(text)];
+  const wordSegments = [
+    ...getSegmenter(wordSegmenters, "word", policy?.locale).segment(text),
+  ];
 
   for (const [segmentIndex, segment] of wordSegments.entries()) {
     const end = segment.index + segment.segment.length;
@@ -503,7 +564,9 @@ const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => 
 };
 
 const isAllCapsWord = (text: string, locale?: string): boolean => {
-  const letters = [...text].filter((character) => /\p{Letter}/u.test(character)).join("");
+  const letters = [...text]
+    .filter((character) => /\p{Letter}/u.test(character))
+    .join("");
   if (letters.length === 0) {
     return false;
   }
@@ -514,7 +577,10 @@ const isAllCapsWord = (text: string, locale?: string): boolean => {
   );
 };
 
-const findPatternHyphenationBreaks = (text: string, policy?: LineBreakPolicy): number[] => {
+const findPatternHyphenationBreaks = (
+  text: string,
+  policy?: LineBreakPolicy,
+): number[] => {
   if (text.length > MAX_HYPHENATION_WORD_LENGTH || text.includes(SOFT_HYPHEN)) {
     return [];
   }
@@ -546,7 +612,10 @@ const findPatternHyphenationBreaks = (text: string, policy?: LineBreakPolicy): n
   return sourceOffset === text.length ? breaks : [];
 };
 
-const isDefaultHangingPunctuation = (text: string, policy?: LineBreakPolicy): boolean => {
+const isDefaultHangingPunctuation = (
+  text: string,
+  policy?: LineBreakPolicy,
+): boolean => {
   const language = segmenterLocale(policy?.locale);
   if (!language || !WORD_HANGING_PUNCTUATION_LANGUAGES.has(language)) {
     return false;
@@ -568,7 +637,8 @@ export const defaultLineBreakProvider: LineBreakProvider = {
 let activeLineBreakProvider = defaultLineBreakProvider;
 let lineBreakProviderGeneration = 0;
 
-export const getLineBreakProvider = (): LineBreakProvider => activeLineBreakProvider;
+export const getLineBreakProvider = (): LineBreakProvider =>
+  activeLineBreakProvider;
 
 /**
  * Changes whenever the active provider or a hyphenation dictionary changes, so

@@ -6,7 +6,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { ImageBlock, ImageFragment, ImageMeasure } from "../../../layout-engine/types";
+import type {
+  ImageBlock,
+  ImageFragment,
+  ImageMeasure,
+} from "../../../layout-engine/types";
 import { IMAGE_CLASS_NAMES } from "../../renderImage";
 import type { RenderContext } from "../../renderUtils";
 import { imageModule } from "./image";

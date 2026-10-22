@@ -2,22 +2,33 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, mock, test } from "bun:test";
 import { act, createRef, useCallback, useRef, useState } from "react";
-import { IntlProvider } from "use-intl";
 import { createRoot } from "react-dom/client";
 
+import { afterAll, expect, mock, test } from "bun:test";
+import { IntlProvider } from "use-intl";
+
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
-import { DEFAULT_OUTLINE_DEPTH, filterHeadingsByDepth } from "@stll/folio-core/utils/outlineDepth";
-import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import type { Paragraph } from "@stll/folio-core/types/document";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
+import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
+import {
+  DEFAULT_OUTLINE_DEPTH,
+  filterHeadingsByDepth,
+} from "@stll/folio-core/utils/outlineDepth";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
-import { DocumentOutline, type DocumentOutlineSurface } from "./DocumentOutline";
+
+import {
+  DocumentOutline,
+  type DocumentOutlineSurface,
+} from "./DocumentOutline";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -58,7 +69,11 @@ test("defaults to two outline levels and reports depth selector changes", async 
       setDepth(nextDepth);
     }, []);
     return (
-      <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+      <IntlProvider
+        locale="en"
+        timeZone="UTC"
+        messages={getFolioMessages("en")}
+      >
         <DocumentOutline
           activeId={null}
           available
@@ -81,7 +96,9 @@ test("defaults to two outline levels and reports depth selector changes", async 
     await act(async () => root.render(<OutlineHarness />));
 
     const itemLabels = () =>
-      [...container.querySelectorAll(".folio-outline-item-label")].map((node) => node.textContent);
+      [...container.querySelectorAll(".folio-outline-item-label")].map(
+        (node) => node.textContent,
+      );
     const select = container.querySelector("select");
     expect(select?.value).toBe("2");
     expect(itemLabels()).toEqual(["First level", "Second level"]);
@@ -103,7 +120,11 @@ test("defaults to two outline levels and reports depth selector changes", async 
 
     await act(async () =>
       root.render(
-        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
           <DocumentOutline
             activeId={null}
             available
@@ -132,7 +153,10 @@ test("DocxEditor defaults to two levels and forwards depth changes to the host",
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  const previousClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+  const previousClientWidth = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientWidth",
+  );
 
   try {
     Object.defineProperty(HTMLElement.prototype, "clientWidth", {
@@ -144,7 +168,11 @@ test("DocxEditor defaults to two levels and forwards depth changes to the host",
     });
     await act(async () =>
       root.render(
-        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
           <DocxEditor
             ref={editorRef}
             document={outlineDocument}
@@ -154,16 +182,21 @@ test("DocxEditor defaults to two levels and forwards depth changes to the host",
         </IntlProvider>,
       ),
     );
-    await act(async () => editorRef.current?.ensureEditorView({ focus: false }));
+    await act(async () =>
+      editorRef.current?.ensureEditorView({ focus: false }),
+    );
 
     const itemLabels = () =>
-      [...container.querySelectorAll(".folio-outline-item-label")].map((node) => node.textContent);
+      [...container.querySelectorAll(".folio-outline-item-label")].map(
+        (node) => node.textContent,
+      );
     expect(itemLabels()).toContain("First level");
     expect(itemLabels()).toContain("Second level");
     expect(itemLabels()).not.toContain("Third level");
 
     const select = container.querySelector(".folio-outline select");
-    if (!(select instanceof HTMLSelectElement)) throw new Error("outline depth selector missing");
+    if (!(select instanceof HTMLSelectElement))
+      throw new Error("outline depth selector missing");
     await act(async () => {
       select.value = "all";
       select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -174,7 +207,11 @@ test("DocxEditor defaults to two levels and forwards depth changes to the host",
     await act(async () => root.unmount());
     container.remove();
     if (previousClientWidth) {
-      Object.defineProperty(HTMLElement.prototype, "clientWidth", previousClientWidth);
+      Object.defineProperty(
+        HTMLElement.prototype,
+        "clientWidth",
+        previousClientWidth,
+      );
     } else {
       Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
     }
@@ -191,7 +228,11 @@ test("Escape from expanded outline restores focus to the newly mounted rail togg
     const expand = useCallback(() => setSurface("expanded"), []);
     const close = useCallback(() => setSurface("rail"), []);
     return (
-      <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+      <IntlProvider
+        locale="en"
+        timeZone="UTC"
+        messages={getFolioMessages("en")}
+      >
         <DocumentOutline
           activeId={null}
           available
@@ -221,11 +262,15 @@ test("Escape from expanded outline restores focus to the newly mounted rail togg
       opener.click();
     });
     expect(
-      document.activeElement?.closest('[data-folio-outline-surface="expanded"]'),
+      document.activeElement?.closest(
+        '[data-folio-outline-surface="expanded"]',
+      ),
     ).not.toBeNull();
 
     await act(async () => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
     });
     const restoredToggle = container.querySelector<HTMLButtonElement>(
       "[data-testid='folio-outline-expand']",

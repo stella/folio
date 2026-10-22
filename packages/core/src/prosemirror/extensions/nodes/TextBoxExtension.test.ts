@@ -27,15 +27,21 @@ describe("TextBoxExtension toDOM border", () => {
   });
 
   test("centers middle-aligned content", () => {
-    expect(styleOf({ verticalAlign: "middle" })).toContain("justify-content: center");
+    expect(styleOf({ verticalAlign: "middle" })).toContain(
+      "justify-content: center",
+    );
   });
 
   test("bottom-aligns content", () => {
-    expect(styleOf({ verticalAlign: "bottom" })).toContain("justify-content: flex-end");
+    expect(styleOf({ verticalAlign: "bottom" })).toContain(
+      "justify-content: flex-end",
+    );
   });
 
   test("applies a DrawingML transform about the text-box centre", () => {
-    const style = styleOf({ transform: "rotate(270deg) scaleX(-1) scaleY(-1)" });
+    const style = styleOf({
+      transform: "rotate(270deg) scaleX(-1) scaleY(-1)",
+    });
 
     expect(style).toContain("transform: rotate(270deg) scaleX(-1) scaleY(-1)");
     expect(style).toContain("transform-origin: center center");
@@ -76,7 +82,11 @@ describe("TextBoxExtension WordArt DOM attrs", () => {
       preset: "textWave1",
       adjustments: [{ name: "adj1", formula: "val 123" }],
     });
-    expect(parseTextBoxWordArt('{"fromWordArt":true,"adjustments":[{"name":"adj1"}]}')).toEqual({
+    expect(
+      parseTextBoxWordArt(
+        '{"fromWordArt":true,"adjustments":[{"name":"adj1"}]}',
+      ),
+    ).toEqual({
       fromWordArt: true,
     });
   });

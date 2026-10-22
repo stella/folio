@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import type { FolioDocumentOperation } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
@@ -16,7 +16,9 @@ import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 
 const reviewerOf = async (markdown: string): Promise<FolioDocxReviewer> => {
-  const { docx } = await ensureParaIds(await createDocx(fromMarkdown(markdown)));
+  const { docx } = await ensureParaIds(
+    await createDocx(fromMarkdown(markdown)),
+  );
   return FolioDocxReviewer.fromBuffer(docx, { author: "Agent" });
 };
 
@@ -40,14 +42,19 @@ const kinds = (reviewer: FolioDocxReviewer): string[] =>
   });
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
-  const block = reviewer.getContent().find((candidate) => candidate.text === text);
+  const block = reviewer
+    .getContent()
+    .find((candidate) => candidate.text === text);
   if (!block) {
     throw new Error(`no block reads "${text}"`);
   }
   return block.id;
 };
 
-const numberingChanges: Record<string, (reviewer: FolioDocxReviewer) => FolioDocumentOperation> = {
+const numberingChanges: Record<
+  string,
+  (reviewer: FolioDocxReviewer) => FolioDocumentOperation
+> = {
   "a new list": (reviewer) => ({
     id: "1",
     type: "setBlockParagraphProperties",
@@ -63,7 +70,9 @@ const numberingChanges: Record<string, (reviewer: FolioDocxReviewer) => FolioDoc
         kind: "reference",
         numId:
           expectParagraphBlock(
-            reviewer.getContent().find(({ text }) => text === "Deposit on signature"),
+            reviewer
+              .getContent()
+              .find(({ text }) => text === "Deposit on signature"),
           ).listReference?.numId ?? 0,
         ilvl: 0,
       },
@@ -97,7 +106,9 @@ describe("rejecting a tracked numbering change", () => {
 
       reviewer.rejectAll();
       expect(kinds(reviewer)).toEqual(before);
-      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
       expect(kinds(reopened)).toEqual(before);
     });
   }

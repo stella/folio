@@ -246,7 +246,9 @@ describe("getStandaloneClipboardImageFiles", () => {
   });
 
   test("keeps an image-only paste on the image file path", () => {
-    expect(getStandaloneClipboardImageFiles(clipboard({}))).toEqual([imageFile]);
+    expect(getStandaloneClipboardImageFiles(clipboard({}))).toEqual([
+      imageFile,
+    ]);
   });
 
   test.each([
@@ -256,12 +258,16 @@ describe("getStandaloneClipboardImageFiles", () => {
     ["internal editor data", INTERNAL_CLIPBOARD_TYPE, '{"type":"slice"}'],
     ["HTML image", "text/html", '<img src="data:image/png;base64,AA==">'],
   ])("lets %s win over a rendered image", (_label, type, value) => {
-    expect(getStandaloneClipboardImageFiles(clipboard({ [type]: value }))).toEqual([]);
+    expect(
+      getStandaloneClipboardImageFiles(clipboard({ [type]: value })),
+    ).toEqual([]);
   });
 
   test("treats advertised but empty text formats as image-only", () => {
     expect(
-      getStandaloneClipboardImageFiles(clipboard({ "text/html": "", "text/plain": "" })),
+      getStandaloneClipboardImageFiles(
+        clipboard({ "text/html": "", "text/plain": "" }),
+      ),
     ).toEqual([imageFile]);
   });
 
@@ -342,7 +348,9 @@ describe("htmlToRuns", () => {
         "<p>Before</p><form><textarea>Field value</textarea></form><p>After</p>",
         "",
       );
-      const text = runs.map((run) => run.content.map((part) => part.text).join("")).join("");
+      const text = runs
+        .map((run) => run.content.map((part) => part.text).join(""))
+        .join("");
 
       expect(text).toContain("Before");
       expect(text).toContain("Field value");

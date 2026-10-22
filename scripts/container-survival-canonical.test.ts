@@ -17,12 +17,23 @@ import { allSubjects } from "./container-survival-census";
 import {
   CANONICAL_SPELLINGS,
   type CanonicalSpelling,
-  type CanonicalSubject,
   canonicalSpellingsFor,
+  type CanonicalSubject,
 } from "./lib/container-survival/canonicalSpellings";
-import { buildFixture, modelledCompanionFor, type Subject } from "./lib/container-survival/fixture";
-import { forcedSavePart, runSurvivalLaws, subjectKey } from "./lib/container-survival/laws";
-import { loadContainerSpace, WML_NAMESPACE } from "./lib/container-survival/schemaSpace";
+import {
+  buildFixture,
+  modelledCompanionFor,
+  type Subject,
+} from "./lib/container-survival/fixture";
+import {
+  forcedSavePart,
+  runSurvivalLaws,
+  subjectKey,
+} from "./lib/container-survival/laws";
+import {
+  loadContainerSpace,
+  WML_NAMESPACE,
+} from "./lib/container-survival/schemaSpace";
 import { valuesForType } from "./lib/container-survival/values";
 
 const space = await loadContainerSpace();
@@ -51,8 +62,14 @@ const attributeSubjectAt = (key: string): AttributeSubject => {
 };
 
 const canonicalSubjectOf = (subject: Subject): CanonicalSubject => ({
-  element: subject.kind === "child" ? subject.slot.child : subject.slot.container.element,
-  type: subject.kind === "child" ? subject.slot.childTypeQName : subject.slot.container.typeQName,
+  element:
+    subject.kind === "child"
+      ? subject.slot.child
+      : subject.slot.container.element,
+  type:
+    subject.kind === "child"
+      ? subject.slot.childTypeQName
+      : subject.slot.container.typeQName,
   attribute: subject.kind === "attribute" ? subject.slot.attribute : undefined,
   value: subject.kind === "attribute" ? subject.value : undefined,
 });
@@ -78,7 +95,9 @@ describe("every canonical spelling is one a pair exercises", () => {
         matched.add(entry);
       }
     }
-    const unmatched = CANONICAL_SPELLINGS.filter((entry) => !matched.has(entry)).map(describeEntry);
+    const unmatched = CANONICAL_SPELLINGS.filter(
+      (entry) => !matched.has(entry),
+    ).map(describeEntry);
     expect(unmatched).toEqual([]);
   });
 
@@ -106,7 +125,12 @@ describe("every canonical spelling is one a pair exercises", () => {
 });
 
 const codeTokens = (source: string): string => {
-  const parsed = ts.createSourceFile("citation.ts", source, ts.ScriptTarget.Latest, true);
+  const parsed = ts.createSourceFile(
+    "citation.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const tokens: string[] = [];
   const visit = (node: ts.Node): void => {
     const children = node.getChildren(parsed);
@@ -114,7 +138,10 @@ const codeTokens = (source: string): string => {
       for (const child of children) visit(child);
       return;
     }
-    if (node.kind !== ts.SyntaxKind.EndOfFileToken && node.getWidth(parsed) > 0) {
+    if (
+      node.kind !== ts.SyntaxKind.EndOfFileToken &&
+      node.getWidth(parsed) > 0
+    ) {
       tokens.push(node.getText(parsed));
     }
   };
@@ -126,15 +153,24 @@ const citationMatches = (
   source: string,
   { declaration, writes }: { declaration: string; writes: string },
 ): boolean => {
-  const parsed = ts.createSourceFile("serializer.ts", source, ts.ScriptTarget.Latest, true);
+  const parsed = ts.createSourceFile(
+    "serializer.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const declarations = parsed.statements.flatMap((statement) =>
-    ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : [],
+    ts.isVariableStatement(statement)
+      ? [...statement.declarationList.declarations]
+      : [],
   );
   const owner = declarations.find(
     (node) => ts.isIdentifier(node.name) && node.name.text === declaration,
   );
   if (owner === undefined) return false;
-  return `\0${codeTokens(owner.getText(parsed))}\0`.includes(`\0${codeTokens(writes)}\0`);
+  return `\0${codeTokens(owner.getText(parsed))}\0`.includes(
+    `\0${codeTokens(writes)}\0`,
+  );
 };
 
 describe("every canonical spelling cites the declaration that performs it", () => {
@@ -143,16 +179,30 @@ describe("every canonical spelling cites the declaration that performs it", () =
       declaration: "INDENT_LEFT",
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"]',
     };
-    for (const prefix of ["", "\n\n", "// An unrelated declaration follows.\n"]) {
+    for (const prefix of [
+      "",
+      "\n\n",
+      "// An unrelated declaration follows.\n",
+    ]) {
       for (const spacing of ["", " ", "\n  ", "/* spacing */"]) {
         const write = `TRANSITIONAL_NAME_BY_STRICT_NAME${spacing}[${spacing}"CT_Ind @start"${spacing}]`;
-        expect(citationMatches(`${prefix}const INDENT_LEFT = ${write};`, citation)).toBe(true);
-        expect(citationMatches(`${prefix}const INDENT_RIGHT = ${write};`, citation)).toBe(false);
-        expect(citationMatches(`${prefix}const INDENT_LEFT = "left"; // ${write}`, citation)).toBe(
-          false,
-        );
         expect(
-          citationMatches(`${prefix}const INDENT_LEFT = /* ${write} */ "left";`, citation),
+          citationMatches(`${prefix}const INDENT_LEFT = ${write};`, citation),
+        ).toBe(true);
+        expect(
+          citationMatches(`${prefix}const INDENT_RIGHT = ${write};`, citation),
+        ).toBe(false);
+        expect(
+          citationMatches(
+            `${prefix}const INDENT_LEFT = "left"; // ${write}`,
+            citation,
+          ),
+        ).toBe(false);
+        expect(
+          citationMatches(
+            `${prefix}const INDENT_LEFT = /* ${write} */ "left";`,
+            citation,
+          ),
         ).toBe(false);
       }
     }
@@ -185,9 +235,13 @@ describe("every canonical spelling cites the declaration that performs it", () =
     for (const entry of CANONICAL_SPELLINGS) {
       for (const { file, declaration, writes } of entry.writtenBy) {
         // oxlint-disable-next-line no-await-in-loop -- nine small files, read once each
-        const source = await Bun.file(new URL(`../${file}`, import.meta.url)).text();
+        const source = await Bun.file(
+          new URL(`../${file}`, import.meta.url),
+        ).text();
         if (!citationMatches(source, { declaration, writes })) {
-          stale.push(`${describeEntry(entry)}: ${file}:${declaration} does not write ${writes}`);
+          stale.push(
+            `${describeEntry(entry)}: ${file}:${declaration} does not write ${writes}`,
+          );
         }
       }
     }
@@ -202,9 +256,15 @@ const mechanismOf = async (subject: Subject): Promise<string> => {
 
 describe("the law reads canonical and preserved spellings", () => {
   test("logical-direction borders and indents survive, including preserved character units", async () => {
-    expect(await mechanismOf(subjectAt("w:tblBorders|w:CT_TblBorders/w:start"))).toBe("survives");
-    expect(await mechanismOf(subjectAt("w:ind|w:CT_Ind@w:start"))).toBe("survives");
-    expect(await mechanismOf(subjectAt("w:ind|w:CT_Ind@w:endChars"))).toBe("survives");
+    expect(
+      await mechanismOf(subjectAt("w:tblBorders|w:CT_TblBorders/w:start")),
+    ).toBe("survives");
+    expect(await mechanismOf(subjectAt("w:ind|w:CT_Ind@w:start"))).toBe(
+      "survives",
+    );
+    expect(await mechanismOf(subjectAt("w:ind|w:CT_Ind@w:endChars"))).toBe(
+      "survives",
+    );
   }, 180_000);
 
   test("a companion comes from another model field, not an alternate spelling", () => {
@@ -223,16 +283,24 @@ describe("an absent w:val is the on state and nothing else", () => {
   }, 60_000);
 
   test("the off state survives by keeping its value, not by the entry", async () => {
-    const off: AttributeSubject = { kind: "attribute", slot: keepNext.slot, value: "0" };
+    const off: AttributeSubject = {
+      kind: "attribute",
+      slot: keepNext.slot,
+      value: "0",
+    };
     expect(await mechanismOf(off)).toBe("survives");
     const built = buildFixture(space, off);
     if (built.status !== "built") {
       throw new Error(built.reason);
     }
-    expect(await forcedSavePart(built.fixture)).toContain('<w:keepNext w:val="0"/>');
+    expect(await forcedSavePart(built.fixture)).toContain(
+      '<w:keepNext w:val="0"/>',
+    );
     const onOff = CANONICAL_SPELLINGS.filter(
       (entry) => entry.kind === "value" && entry.type === "CT_OnOff",
-    ).map((entry) => (entry.kind === "value" ? entry.authored.join("|") : entry.authored));
+    ).map((entry) =>
+      entry.kind === "value" ? entry.authored.join("|") : entry.authored,
+    );
     expect(onOff).toEqual(["true|1|on"]);
   }, 60_000);
 });

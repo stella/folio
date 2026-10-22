@@ -1,8 +1,19 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { DRAWING_RAW_XML_MODES, type DrawingRawXmlMode } from "@stll/docx-core/model";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
+
+import {
+  DRAWING_RAW_XML_MODES,
+  type DrawingRawXmlMode,
+} from "@stll/docx-core/model";
 
 import { expectImageAttrs } from "./attrs";
 import { commitImageResize } from "./imageCommit";
@@ -40,7 +51,11 @@ afterAll(() => GlobalRegistrator.unregister());
 
 describe("image commits on classified drawings", () => {
   test("resizes an ordinary editable image", () => {
-    const view = mountImage({ src: "data:image/png;base64,AA==", width: 40, height: 40 });
+    const view = mountImage({
+      src: "data:image/png;base64,AA==",
+      width: 40,
+      height: 40,
+    });
 
     expect(commitImageResize(view, 1, 80, 80)).toBe(1);
 

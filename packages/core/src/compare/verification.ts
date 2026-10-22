@@ -18,13 +18,20 @@
  * report, or quote it in a review.
  */
 
-import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll/docx-core/model";
 import { panic } from "better-result";
 
+import {
+  PARAGRAPH_MARK_CHANGE_KINDS,
+  type ParagraphMarkChangeKind,
+} from "@stll/docx-core/model";
+
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
-import type { FolioAIDiagnosticBlock, FolioAIParagraphBlock } from "../ai-edits/types";
-import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
+import type {
+  FolioAIDiagnosticBlock,
+  FolioAIParagraphBlock,
+} from "../ai-edits/types";
 import { paragraphIndentationEqual } from "../prosemirror/paragraphIndentation";
+import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
 import { sameFolioContentOutlineLevel } from "./content";
 import { sameFolioContentStatedNumbering } from "./content-types";
 
@@ -34,7 +41,8 @@ export const COMPARE_VERIFICATION_INVARIANTS = Object.freeze([
   "reject-reproduces-base",
 ] as const);
 
-export type CompareVerificationInvariant = (typeof COMPARE_VERIFICATION_INVARIANTS)[number];
+export type CompareVerificationInvariant =
+  (typeof COMPARE_VERIFICATION_INVARIANTS)[number];
 
 /**
  * What diverged. Ordered from the structural to the textual: the first cause
@@ -75,7 +83,8 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   "text",
 ] as const);
 
-export type CompareVerificationCause = (typeof COMPARE_VERIFICATION_CAUSES)[number];
+export type CompareVerificationCause =
+  (typeof COMPARE_VERIFICATION_CAUSES)[number];
 
 /** One invariant that did not hold, in one story. */
 export type CompareVerificationFailure = {
@@ -98,7 +107,10 @@ export type CompareVerification =
   | { status: "unverified"; failures: readonly CompareVerificationFailure[] };
 
 type ProjectedBlockFields = Omit<
-  Pick<FolioAIParagraphBlock, "kind" | "headingLevel" | "text" | "table" | "styleId">,
+  Pick<
+    FolioAIParagraphBlock,
+    "kind" | "headingLevel" | "text" | "table" | "styleId"
+  >,
   "kind"
 >;
 
@@ -156,7 +168,11 @@ const sameStructuralBoundaries = (
   for (let index = 0; index < leftLength; index++) {
     const boundary = left[index];
     const other = right[index];
-    if (boundary === undefined || other === undefined || boundary.offset !== other.offset) {
+    if (
+      boundary === undefined ||
+      other === undefined ||
+      boundary.offset !== other.offset
+    ) {
       return false;
     }
     if (boundary.type === "pageBreak") {
@@ -174,10 +190,16 @@ const sameStructuralBoundaries = (
   return true;
 };
 
-const sameClassification = (left: ProjectedBlock, right: ProjectedBlock): boolean =>
+const sameClassification = (
+  left: ProjectedBlock,
+  right: ProjectedBlock,
+): boolean =>
   left.kind === right.kind && left.headingLevel === right.headingLevel;
 
-const sameProjectedNumbering = (left: ProjectedBlock, right: ProjectedBlock): boolean => {
+const sameProjectedNumbering = (
+  left: ProjectedBlock,
+  right: ProjectedBlock,
+): boolean => {
   switch (left.kind) {
     case "diagnostic":
       return right.kind === "diagnostic";
@@ -186,7 +208,10 @@ const sameProjectedNumbering = (left: ProjectedBlock, right: ProjectedBlock): bo
     case "listItem":
       return (
         right.kind !== "diagnostic" &&
-        sameFolioContentStatedNumbering(left.statedNumbering, right.statedNumbering)
+        sameFolioContentStatedNumbering(
+          left.statedNumbering,
+          right.statedNumbering,
+        )
       );
     default: {
       const unreachable: never = left;
@@ -195,7 +220,10 @@ const sameProjectedNumbering = (left: ProjectedBlock, right: ProjectedBlock): bo
   }
 };
 
-const sameProjectedListReference = (left: ProjectedBlock, right: ProjectedBlock): boolean => {
+const sameProjectedListReference = (
+  left: ProjectedBlock,
+  right: ProjectedBlock,
+): boolean => {
   switch (left.kind) {
     case "diagnostic":
       return right.kind === "diagnostic";
@@ -226,7 +254,10 @@ const sameProjectedStructuralBoundaries = (
     case "listItem":
       return (
         right.kind !== "diagnostic" &&
-        sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries)
+        sameStructuralBoundaries(
+          left.structuralBoundaries,
+          right.structuralBoundaries,
+        )
       );
     default: {
       const unreachable: never = left;
@@ -235,12 +266,18 @@ const sameProjectedStructuralBoundaries = (
   }
 };
 
-type ProjectedParagraphBlock = Extract<ProjectedBlock, { kind: FolioAIParagraphBlock["kind"] }>;
+type ProjectedParagraphBlock = Extract<
+  ProjectedBlock,
+  { kind: FolioAIParagraphBlock["kind"] }
+>;
 
 const sameProjectedParagraphFormatting = (
   left: ProjectedBlock,
   right: ProjectedBlock,
-  compare: (left: ProjectedParagraphBlock, right: ProjectedParagraphBlock) => boolean,
+  compare: (
+    left: ProjectedParagraphBlock,
+    right: ProjectedParagraphBlock,
+  ) => boolean,
 ): boolean => {
   switch (left.kind) {
     case "diagnostic":
@@ -256,7 +293,10 @@ const sameProjectedParagraphFormatting = (
   }
 };
 
-const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolean =>
+const sameProjectedBlock = (
+  left: ProjectedBlock,
+  right: ProjectedBlock,
+): boolean =>
   sameContainer(left.table, right.table) &&
   sameClassification(left, right) &&
   sameProjectedStructuralBoundaries(left, right) &&
@@ -279,10 +319,12 @@ const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolea
   ) &&
   left.text === right.text;
 
-const containerKind = (container: ProjectedTableContainer | undefined): "body" | "cell" =>
-  container ? "cell" : "body";
+const containerKind = (
+  container: ProjectedTableContainer | undefined,
+): "body" | "cell" => (container ? "cell" : "body");
 
-const collapseWhitespace = (text: string): string => text.replace(/\s+/gu, " ").trim();
+const collapseWhitespace = (text: string): string =>
+  text.replace(/\s+/gu, " ").trim();
 
 const sameBlockProjection = (
   left: readonly ProjectedBlock[],
@@ -294,8 +336,12 @@ const sameBlockProjection = (
     return other !== undefined && sameProjectedBlock(entry, other);
   });
 
-const sameStringProjection = (left: readonly string[], right: readonly string[]): boolean =>
-  left.length === right.length && left.every((entry, index) => entry === right[index]);
+const sameStringProjection = (
+  left: readonly string[],
+  right: readonly string[],
+): boolean =>
+  left.length === right.length &&
+  left.every((entry, index) => entry === right[index]);
 
 /**
  * The same projection with every table coordinate renumbered by first
@@ -309,7 +355,9 @@ const sameStringProjection = (left: readonly string[], right: readonly string[])
  * on the raw coordinates, the redline holds every block the other side does,
  * in order, and the difference is one the block model cannot see.
  */
-const byVisibleOrdinal = (entries: readonly ProjectedBlock[]): ProjectedBlock[] => {
+const byVisibleOrdinal = (
+  entries: readonly ProjectedBlock[],
+): ProjectedBlock[] => {
   const ordinals = new Map<string, number>();
   const counts = new Map<string, number>();
   const ordinalWithin = (scope: string, index: string): number => {
@@ -330,7 +378,10 @@ const byVisibleOrdinal = (entries: readonly ProjectedBlock[]): ProjectedBlock[] 
     if (!container) {
       return entry;
     }
-    const outerTableOrdinal = ordinalWithin("t", String(container.outerTableIndex));
+    const outerTableOrdinal = ordinalWithin(
+      "t",
+      String(container.outerTableIndex),
+    );
     const tableOrdinal = ordinalWithin("t", String(container.tableIndex));
     const rowScope = `r${String(tableOrdinal)}`;
     const rowOrdinal = ordinalWithin(rowScope, String(container.rowIndex));
@@ -360,12 +411,20 @@ const byVisibleOrdinal = (entries: readonly ProjectedBlock[]): ProjectedBlock[] 
 const firstDivergence = (
   actual: readonly ProjectedBlock[],
   expected: readonly ProjectedBlock[],
-): { index: number; actual: ProjectedBlock | null; expected: ProjectedBlock | null } => {
+): {
+  index: number;
+  actual: ProjectedBlock | null;
+  expected: ProjectedBlock | null;
+} => {
   const shared = Math.min(actual.length, expected.length);
   for (let index = 0; index < shared; index++) {
     const left = actual[index];
     const right = expected[index];
-    if (left !== undefined && right !== undefined && !sameProjectedBlock(left, right)) {
+    if (
+      left !== undefined &&
+      right !== undefined &&
+      !sameProjectedBlock(left, right)
+    ) {
       return {
         index,
         actual: left,
@@ -436,7 +495,9 @@ export const classifyProjectionMismatch = ({
     detail,
   });
 
-  if (sameBlockProjection(byVisibleOrdinal(actual), byVisibleOrdinal(expected))) {
+  if (
+    sameBlockProjection(byVisibleOrdinal(actual), byVisibleOrdinal(expected))
+  ) {
     return failure(
       "invisible-structure",
       `every block matches once table coordinates count visible blocks (${String(expected.length)} blocks)`,
@@ -448,7 +509,10 @@ export const classifyProjectionMismatch = ({
   const counts = `${String(actual.length)} blocks against ${String(expected.length)}`;
   if (divergence.actual === null || divergence.expected === null) {
     const side = actual.length > expected.length ? "more" : "fewer";
-    return failure("block-count", `${side} blocks than expected (${counts}), diverging ${at}`);
+    return failure(
+      "block-count",
+      `${side} blocks than expected (${counts}), diverging ${at}`,
+    );
   }
   const { actual: left, expected: right } = divergence;
   if (!sameContainer(left.table, right.table)) {
@@ -457,14 +521,20 @@ export const classifyProjectionMismatch = ({
       `a block sits in a ${containerKind(left.table)} where it is expected in a ${containerKind(right.table)}, ${at} (${counts})`,
     );
   }
-  if (left.kind === right.kind && !sameProjectedStructuralBoundaries(left, right)) {
+  if (
+    left.kind === right.kind &&
+    !sameProjectedStructuralBoundaries(left, right)
+  ) {
     return failure(
       "inline-structure",
       `a block's zero-width inline structure does not match ${at} (${counts})`,
     );
   }
   if (left.text === right.text && left.styleId !== right.styleId) {
-    return failure("style", `the paragraph style did not move ${at} (${counts})`);
+    return failure(
+      "style",
+      `the paragraph style did not move ${at} (${counts})`,
+    );
   }
   if (
     left.kind === right.kind &&
@@ -473,14 +543,20 @@ export const classifyProjectionMismatch = ({
       sameFolioContentOutlineLevel(a.directOutlineLevel, b.directOutlineLevel),
     )
   ) {
-    return failure("style", `the direct outline level did not move ${at} (${counts})`);
+    return failure(
+      "style",
+      `the direct outline level did not move ${at} (${counts})`,
+    );
   }
   if (
     left.kind === right.kind &&
     left.text === right.text &&
     !sameProjectedListReference(left, right)
   ) {
-    return failure("list-level", `the numbering reference did not move ${at} (${counts})`);
+    return failure(
+      "list-level",
+      `the numbering reference did not move ${at} (${counts})`,
+    );
   }
   if (
     left.kind === right.kind &&
@@ -494,8 +570,14 @@ export const classifyProjectionMismatch = ({
   }
   if (left.text === right.text && !sameClassification(left, right)) {
     return left.kind === "heading" || right.kind === "heading"
-      ? failure("style", `the heading classification did not move ${at} (${counts})`)
-      : failure("list-level", `the list membership did not move ${at} (${counts})`);
+      ? failure(
+          "style",
+          `the heading classification did not move ${at} (${counts})`,
+        )
+      : failure(
+          "list-level",
+          `the list membership did not move ${at} (${counts})`,
+        );
   }
   if (
     left.kind === right.kind &&
@@ -506,7 +588,10 @@ export const classifyProjectionMismatch = ({
       (a, b) => a.directAlignment === b.directAlignment,
     )
   ) {
-    return failure("alignment", `the direct paragraph alignment did not move ${at} (${counts})`);
+    return failure(
+      "alignment",
+      `the direct paragraph alignment did not move ${at} (${counts})`,
+    );
   }
   if (
     left.kind === right.kind &&
@@ -515,7 +600,10 @@ export const classifyProjectionMismatch = ({
       paragraphSpacingEqual(a.directSpacing, b.directSpacing),
     )
   ) {
-    return failure("spacing", `the direct paragraph spacing did not move ${at} (${counts})`);
+    return failure(
+      "spacing",
+      `the direct paragraph spacing did not move ${at} (${counts})`,
+    );
   }
   if (
     left.kind === right.kind &&
@@ -530,7 +618,10 @@ export const classifyProjectionMismatch = ({
     );
   }
   if (collapseWhitespace(left.text) === collapseWhitespace(right.text)) {
-    return failure("whitespace", `a block's text differs only in whitespace ${at} (${counts})`);
+    return failure(
+      "whitespace",
+      `a block's text differs only in whitespace ${at} (${counts})`,
+    );
   }
   if (actual.length !== expected.length) {
     return failure("block-count", `${counts}, first differing ${at}`);
@@ -557,7 +648,9 @@ export type FinalParagraphMarkRevision = {
   kind: ParagraphMarkChangeKind;
 };
 
-const isAParagraphMarkChangeKind = (value: unknown): value is ParagraphMarkChangeKind =>
+const isAParagraphMarkChangeKind = (
+  value: unknown,
+): value is ParagraphMarkChangeKind =>
   PARAGRAPH_MARK_CHANGE_KINDS.some((kind) => kind === value);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -613,7 +706,8 @@ export const revisedFinalParagraphMarks = (
   const pathOf = (): string => {
     let path = "";
     for (const segment of trail) {
-      path += typeof segment === "number" ? `[${String(segment)}]` : `.${segment}`;
+      path +=
+        typeof segment === "number" ? `[${String(segment)}]` : `.${segment}`;
     }
     return path.slice(1);
   };
@@ -624,9 +718,14 @@ export const revisedFinalParagraphMarks = (
       const kind = isRecord(mark) ? mark["kind"] : undefined;
       const info = isRecord(mark) ? mark["info"] : undefined;
       const revisionId = isRecord(info) ? info["id"] : undefined;
-      const isOurs = typeof revisionId === "number" ? revisionId >= since : true;
+      const isOurs =
+        typeof revisionId === "number" ? revisionId >= since : true;
       if (isAParagraphMarkChangeKind(kind) && isOurs && !insideADeletedRow) {
-        found.push({ container: pathOf(), paragraphIndex: value.length - 1, kind });
+        found.push({
+          container: pathOf(),
+          paragraphIndex: value.length - 1,
+          kind,
+        });
       }
       for (const [index, item] of value.entries()) {
         trail.push(index);
@@ -643,7 +742,11 @@ export const revisedFinalParagraphMarks = (
       }
       return;
     }
-    if (!isRecord(value) || value instanceof Date || ArrayBuffer.isView(value)) {
+    if (
+      !isRecord(value) ||
+      value instanceof Date ||
+      ArrayBuffer.isView(value)
+    ) {
       return;
     }
     const inADeletedRow = insideADeletedRow || isADeletedTableRow(value);

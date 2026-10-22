@@ -10,4 +10,5 @@ const readNumRunsFactor = (raw: string | undefined): number => {
   return Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
 };
 
-export const numRunsFactor = (): number => readNumRunsFactor(process.env[NUM_RUNS_FACTOR_ENV]);
+export const numRunsFactor = (): number =>
+  readNumRunsFactor(process.env[NUM_RUNS_FACTOR_ENV]);

@@ -7,7 +7,8 @@ import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
 import { normalizeTrackedMoveRanges } from "./trackedMoveRangeNormalization";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 describe("normalizeTrackedMoveRanges", () => {
   test("removes unbalanced tracked move range markers", () => {
@@ -116,7 +117,9 @@ describe("normalizeTrackedMoveRanges", () => {
       throw new Error("Expected first block to be a paragraph");
     }
     expect(block.content.map((content) => content.type)).toEqual(["run"]);
-    expect(doc.warnings).toContain("Removed 2 unbalanced tracked move range markers.");
+    expect(doc.warnings).toContain(
+      "Removed 2 unbalanced tracked move range markers.",
+    );
 
     const repacked = await repackDocx(doc, { updateModifiedDate: false });
     const zip = await JSZip.loadAsync(repacked);

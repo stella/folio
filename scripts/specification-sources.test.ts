@@ -12,7 +12,11 @@ describe("specification source manifest", () => {
 
   test("rejects duplicate source ids", () => {
     const manifest = cloneManifest();
-    if (typeof manifest !== "object" || manifest === null || !("sources" in manifest)) {
+    if (
+      typeof manifest !== "object" ||
+      manifest === null ||
+      !("sources" in manifest)
+    ) {
       throw new TypeError("invalid test fixture");
     }
     if (!Array.isArray(manifest.sources)) {
@@ -26,7 +30,11 @@ describe("specification source manifest", () => {
 
   test("rejects source order drift", () => {
     const manifest = cloneManifest();
-    if (typeof manifest !== "object" || manifest === null || !("sources" in manifest)) {
+    if (
+      typeof manifest !== "object" ||
+      manifest === null ||
+      !("sources" in manifest)
+    ) {
       throw new TypeError("invalid test fixture");
     }
     if (!Array.isArray(manifest.sources)) {
@@ -40,7 +48,11 @@ describe("specification source manifest", () => {
 
   test("rejects an invalid artifact digest", () => {
     const manifest = cloneManifest();
-    if (typeof manifest !== "object" || manifest === null || !("sources" in manifest)) {
+    if (
+      typeof manifest !== "object" ||
+      manifest === null ||
+      !("sources" in manifest)
+    ) {
       throw new TypeError("invalid test fixture");
     }
     if (!Array.isArray(manifest.sources)) {
@@ -58,7 +70,11 @@ describe("specification source manifest", () => {
 
   test("rejects cache paths outside the specification cache", () => {
     const manifest = cloneManifest();
-    if (typeof manifest !== "object" || manifest === null || !("sources" in manifest)) {
+    if (
+      typeof manifest !== "object" ||
+      manifest === null ||
+      !("sources" in manifest)
+    ) {
       throw new TypeError("invalid test fixture");
     }
     if (!Array.isArray(manifest.sources)) {

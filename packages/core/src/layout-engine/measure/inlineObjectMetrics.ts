@@ -63,14 +63,16 @@ function hasStackedMathLayout(run: MathRun): boolean {
   if (run.display === "block") {
     return true;
   }
-  const tagPattern = /<(?<tag>[A-Za-z_][\w.-]*(?::[A-Za-z_][\w.-]*)?)(?:\s|\/|>)/gu;
+  const tagPattern =
+    /<(?<tag>[A-Za-z_][\w.-]*(?::[A-Za-z_][\w.-]*)?)(?:\s|\/|>)/gu;
   for (const match of run.ommlXml.matchAll(tagPattern)) {
     const tagName = match.groups?.["tag"];
     if (!tagName) {
       continue;
     }
     const colonIndex = tagName.indexOf(":");
-    const localName = colonIndex === -1 ? tagName : tagName.slice(colonIndex + 1);
+    const localName =
+      colonIndex === -1 ? tagName : tagName.slice(colonIndex + 1);
     if (isStackedMathLocalName(localName)) {
       return true;
     }

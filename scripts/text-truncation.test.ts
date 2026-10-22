@@ -1,28 +1,46 @@
-import { scanTestTimeout } from "../test/scan-timeout";
-
-import { setDefaultTimeout, describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
-import { readFileSync } from "node:fs";
+
+import { scanTestTimeout } from "../test/scan-timeout";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
 const PACKAGES = path.resolve(import.meta.dir, "../packages");
 const OWNER = "utf8-boundaries/src/sliceText.ts";
-const EXTENSIONS = ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs", "vue"];
+const EXTENSIONS = [
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "mts",
+  "cts",
+  "mjs",
+  "cjs",
+  "vue",
+];
 const SOURCE_GLOB = `*/src/**/*.{${EXTENSIONS.join(",")}}`;
 const SOURCE_FILES = [...new Bun.Glob(SOURCE_GLOB).scanSync({ cwd: PACKAGES })];
-const CAP_NAME = /max|limit|radius|preview|snippet|context|truncate|unchanged.*edge/iu;
+const CAP_NAME =
+  /max|limit|radius|preview|snippet|context|truncate|unchanged.*edge/iu;
 const TEXT_NAME =
   /^(?:text|message|name|value|json|label|description|title|raw|query|author|snippet|context)$/iu;
 
 type Violation = { line: number; reason: string };
 
-const SPACE_INSPECTOR = "core/src/layout-engine/measure/paragraphMeasureShared.ts";
+const SPACE_INSPECTOR =
+  "core/src/layout-engine/measure/paragraphMeasureShared.ts";
 const verifiedSpaceInspector = (text: string): boolean => {
-  const source = ts.createSourceFile(SPACE_INSPECTOR, text, ts.ScriptTarget.Latest, true);
+  const source = ts.createSourceFile(
+    SPACE_INSPECTOR,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const declaration = source.statements.find(
-    (node) => ts.isFunctionDeclaration(node) && node.name?.text === "isSpaceOrTab",
+    (node) =>
+      ts.isFunctionDeclaration(node) && node.name?.text === "isSpaceOrTab",
   );
   if (
     !declaration ||
@@ -50,7 +68,10 @@ const verifiedSpaceInspector = (text: string): boolean => {
     node.left.text === parameter.text &&
     ts.isStringLiteral(node.right) &&
     node.right.text === expected;
-  return compares(statement.expression.left, " ") && compares(statement.expression.right, "\t");
+  return (
+    compares(statement.expression.left, " ") &&
+    compares(statement.expression.right, "\t")
+  );
 };
 
 const member = (node: ts.Expression): string | undefined => {
@@ -80,7 +101,9 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
     text,
     ts.ScriptTarget.Latest,
     true,
-    file.endsWith(".tsx") || file.endsWith(".jsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    file.endsWith(".tsx") || file.endsWith(".jsx")
+      ? ts.ScriptKind.TSX
+      : ts.ScriptKind.TS,
   );
   const nodes: ts.Node[] = [];
   const collect = (node: ts.Node): void => {
@@ -104,7 +127,11 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       if (isScope(current)) return current;
     return source;
   };
-  const bind = (name: ts.BindingName, declaration: ts.Node, scope: ts.Node): void => {
+  const bind = (
+    name: ts.BindingName,
+    declaration: ts.Node,
+    scope: ts.Node,
+  ): void => {
     if (!ts.isIdentifier(name)) {
       for (const element of name.elements)
         if (ts.isBindingElement(element)) bind(element.name, element, scope);
@@ -125,7 +152,11 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         ts.isVariableDeclarationList(node.parent) &&
         !(node.parent.flags & ts.NodeFlags.BlockScoped)
       ) {
-        for (let current: ts.Node | undefined = node.parent; current; current = current.parent) {
+        for (
+          let current: ts.Node | undefined = node.parent;
+          current;
+          current = current.parent
+        ) {
           if (ts.isFunctionLike(current) || ts.isSourceFile(current)) {
             scope = current;
             break;
@@ -134,9 +165,11 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       }
       bind(node.name, node, scope);
     }
-    if (ts.isFunctionDeclaration(node) && node.name) bind(node.name, node, scopeOf(node.parent));
+    if (ts.isFunctionDeclaration(node) && node.name)
+      bind(node.name, node, scopeOf(node.parent));
     if (ts.isImportSpecifier(node)) bind(node.name, node, scopeOf(node.parent));
-    if (ts.isImportClause(node) && node.name) bind(node.name, node, scopeOf(node.parent));
+    if (ts.isImportClause(node) && node.name)
+      bind(node.name, node, scopeOf(node.parent));
     if (ts.isNamespaceImport(node)) bind(node.name, node, scopeOf(node.parent));
   }
   const bindingOf = (identifier: ts.Identifier): ts.Node => {
@@ -154,7 +187,10 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
   const arrays = new Set<ts.Node>();
   const stringArrays = new Set<ts.Node>();
   const stringFunctions = new Set<ts.Node>();
-  const methods = new Map<ts.Node, { receiver: ts.Expression; method: string }>();
+  const methods = new Map<
+    ts.Node,
+    { receiver: ts.Expression; method: string }
+  >();
   const caps = new Set<ts.Node>();
   const numbers = new Set<ts.Node>();
   const asciiValidators = new Set<ts.Node>();
@@ -194,11 +230,15 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
     );
   };
   for (const node of nodes) {
-    if ((ts.isParameter(node) || ts.isVariableDeclaration(node)) && ts.isIdentifier(node.name)) {
+    if (
+      (ts.isParameter(node) || ts.isVariableDeclaration(node)) &&
+      ts.isIdentifier(node.name)
+    ) {
       if (node.type?.kind === ts.SyntaxKind.StringKeyword) strings.add(node);
       if (node.type?.kind === ts.SyntaxKind.NumberKeyword) numbers.add(node);
       if (node.type?.getText(source) === "RegExp") regexes.add(node);
-      if (/^RegExp(?:Match|Exec)Array$/u.test(node.type?.getText(source) ?? "")) arrays.add(node);
+      if (/^RegExp(?:Match|Exec)Array$/u.test(node.type?.getText(source) ?? ""))
+        arrays.add(node);
       if (
         node.type &&
         (ts.isArrayTypeNode(node.type) ||
@@ -232,7 +272,9 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
       node.initializer?.kind === ts.SyntaxKind.RegularExpressionLiteral &&
-      /^\/\^\[[\da-zA-Z-]+\]\{\d+\}\$\/[gu]*$/u.test(node.initializer.getText(source))
+      /^\/\^\[[\da-zA-Z-]+\]\{\d+\}\$\/[gu]*$/u.test(
+        node.initializer.getText(source),
+      )
     )
       asciiValidators.add(node);
     if (
@@ -242,7 +284,8 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         (ts.isNewExpression(node.initializer) &&
           ts.isIdentifier(node.initializer.expression) &&
           node.initializer.expression.text === "RegExp" &&
-          bindingOf(node.initializer.expression) === node.initializer.expression))
+          bindingOf(node.initializer.expression) ===
+            node.initializer.expression))
     )
       regexes.add(node);
     if (
@@ -261,9 +304,14 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       if (
         ts.isImportDeclaration(declaration) &&
         ts.isStringLiteral(declaration.moduleSpecifier) &&
-        path.resolve(PACKAGES, path.dirname(file), `${declaration.moduleSpecifier.text}.ts`) ===
-          path.join(PACKAGES, SPACE_INSPECTOR) &&
-        verifiedSpaceInspector(readFileSync(path.join(PACKAGES, SPACE_INSPECTOR), "utf8"))
+        path.resolve(
+          PACKAGES,
+          path.dirname(file),
+          `${declaration.moduleSpecifier.text}.ts`,
+        ) === path.join(PACKAGES, SPACE_INSPECTOR) &&
+        verifiedSpaceInspector(
+          readFileSync(path.join(PACKAGES, SPACE_INSPECTOR), "utf8"),
+        )
       )
         inspectors.add(node);
     }
@@ -295,7 +343,8 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
           (ts.isIdentifier(owner) && regexes.has(bindingOf(owner))))
       )
         return true;
-      if (member(node.expression) === "match" && owner && isString(owner)) return true;
+      if (member(node.expression) === "match" && owner && isString(owner))
+        return true;
     }
     return false;
   };
@@ -319,13 +368,22 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       return true;
     if (ts.isIdentifier(node))
       return (
-        !numbers.has(bindingOf(node)) && (strings.has(bindingOf(node)) || TEXT_NAME.test(node.text))
+        !numbers.has(bindingOf(node)) &&
+        (strings.has(bindingOf(node)) || TEXT_NAME.test(node.text))
       );
-    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))
-      return /^(?:text|message|name|title|description|label)$/u.test(member(node) ?? "");
+    if (
+      ts.isPropertyAccessExpression(node) ||
+      ts.isElementAccessExpression(node)
+    )
+      return /^(?:text|message|name|title|description|label)$/u.test(
+        member(node) ?? "",
+      );
     if (ts.isCallExpression(node)) {
       if (ts.isIdentifier(node.expression))
-        return node.expression.text === "String" || stringFunctions.has(bindingOf(node.expression));
+        return (
+          node.expression.text === "String" ||
+          stringFunctions.has(bindingOf(node.expression))
+        );
       const method = member(node.expression);
       if (method === "join") return true;
       if (method === "toString") return true;
@@ -338,7 +396,10 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         isString(owner)
       );
     }
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken)
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.PlusToken
+    )
       return isString(node.left) || isString(node.right);
     return false;
   };
@@ -351,7 +412,9 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       return true;
     return nodes.some((node) => {
       if (!ts.isWhileStatement(node) && !ts.isForStatement(node)) return false;
-      const condition = ts.isWhileStatement(node) ? node.expression : node.condition;
+      const condition = ts.isWhileStatement(node)
+        ? node.expression
+        : node.condition;
       if (!condition) return false;
       let indexed = false;
       const inspect = (part: ts.Node): void => {
@@ -379,7 +442,9 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         ts.isForOfStatement(node.parent.parent)
       ) {
         const iterable = node.parent.parent.expression;
-        const owner = ts.isCallExpression(iterable) ? receiver(iterable.expression) : undefined;
+        const owner = ts.isCallExpression(iterable)
+          ? receiver(iterable.expression)
+          : undefined;
         if (
           ts.isCallExpression(iterable) &&
           member(iterable.expression) === "matchAll" &&
@@ -404,7 +469,11 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
           (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))
         ) {
           const parameter = callback.parameters.at(0)?.name;
-          if (parameter && ts.isIdentifier(parameter) && !strings.has(bindingOf(parameter))) {
+          if (
+            parameter &&
+            ts.isIdentifier(parameter) &&
+            !strings.has(bindingOf(parameter))
+          ) {
             strings.add(bindingOf(parameter));
             changed = true;
           }
@@ -415,12 +484,16 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         for (const element of node.name.elements) {
           if (!ts.isIdentifier(element.name)) continue;
           const method =
-            element.propertyName?.getText(source).replace(/["']/gu, "") ?? element.name.text;
+            element.propertyName?.getText(source).replace(/["']/gu, "") ??
+            element.name.text;
           if (
             /^(?:slice|substring|substr)$/u.test(method) &&
             !methods.has(bindingOf(element.name))
           ) {
-            methods.set(bindingOf(element.name), { receiver: node.initializer, method });
+            methods.set(bindingOf(element.name), {
+              receiver: node.initializer,
+              method,
+            });
             changed = true;
           }
         }
@@ -444,7 +517,8 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       }
       if (
         (ts.isNumericLiteral(node.initializer) ||
-          (ts.isIdentifier(node.initializer) && numbers.has(bindingOf(node.initializer)))) &&
+          (ts.isIdentifier(node.initializer) &&
+            numbers.has(bindingOf(node.initializer)))) &&
         !numbers.has(node)
       ) {
         numbers.add(node);
@@ -454,7 +528,10 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         arrays.add(node);
         changed = true;
       }
-      if (isStringArray(node.initializer) && !stringArrays.has(bindingOf(node.name))) {
+      if (
+        isStringArray(node.initializer) &&
+        !stringArrays.has(bindingOf(node.name))
+      ) {
         stringArrays.add(node);
         changed = true;
       }
@@ -465,10 +542,14 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       if (
         ts.isVariableDeclarationList(node.parent) &&
         (!mutated.has(node) ||
-          !/(?:offset|index|idx|start|end|cursor|position|^i$|^j$)/iu.test(node.name.text) ||
+          !/(?:offset|index|idx|start|end|cursor|position|^i$|^j$)/iu.test(
+            node.name.text,
+          ) ||
           !coordinateWalk(node)) &&
-        ((ts.isNumericLiteral(node.initializer) && Number(node.initializer.text) >= 1) ||
-          (ts.isIdentifier(node.initializer) && caps.has(bindingOf(node.initializer))))
+        ((ts.isNumericLiteral(node.initializer) &&
+          Number(node.initializer.text) >= 1) ||
+          (ts.isIdentifier(node.initializer) &&
+            caps.has(bindingOf(node.initializer))))
       ) {
         if (!caps.has(bindingOf(node.name))) {
           caps.add(bindingOf(node.name));
@@ -483,7 +564,10 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         /^(?:slice|substring|substr)$/u.test(method ?? "") &&
         !methods.has(bindingOf(node.name))
       ) {
-        methods.set(bindingOf(node.name), { receiver: owner, method: method ?? "" });
+        methods.set(bindingOf(node.name), {
+          receiver: owner,
+          method: method ?? "",
+        });
         changed = true;
       }
       if (
@@ -491,10 +575,16 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         methods.has(bindingOf(node.initializer)) &&
         !methods.has(bindingOf(node.name))
       ) {
-        methods.set(bindingOf(node.name), methods.get(bindingOf(node.initializer))!);
+        methods.set(
+          bindingOf(node.name),
+          methods.get(bindingOf(node.initializer))!,
+        );
         changed = true;
       }
-      if (ts.isCallExpression(node.initializer) && member(node.initializer.expression) === "bind") {
+      if (
+        ts.isCallExpression(node.initializer) &&
+        member(node.initializer.expression) === "bind"
+      ) {
         const reference = receiver(node.initializer.expression);
         const boundOwner = reference ? receiver(reference) : undefined;
         const boundMethod = reference ? member(reference) : undefined;
@@ -504,7 +594,10 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
           /^(?:slice|substring|substr)$/u.test(boundMethod ?? "") &&
           !methods.has(bindingOf(node.name))
         ) {
-          methods.set(bindingOf(node.name), { receiver: boundOwner, method: boundMethod ?? "" });
+          methods.set(bindingOf(node.name), {
+            receiver: boundOwner,
+            method: boundMethod ?? "",
+          });
           changed = true;
         }
       }
@@ -513,51 +606,76 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
   const sameBinding = (left: ts.Identifier, right: ts.Identifier): boolean => {
     const first = bindingOf(left);
     const second = bindingOf(right);
-    return first === second || (first === left && second === right && left.text === right.text);
+    return (
+      first === second ||
+      (first === left && second === right && left.text === right.text)
+    );
   };
   const coordinate = (node: ts.Expression): boolean => {
     if (ts.isPropertyAccessExpression(node))
       return /^(?:index|offset|position|start|end)$/iu.test(node.name.text);
-    if (!ts.isIdentifier(node) || CAP_NAME.test(node.text) || caps.has(bindingOf(node)))
+    if (
+      !ts.isIdentifier(node) ||
+      CAP_NAME.test(node.text) ||
+      caps.has(bindingOf(node))
+    )
       return false;
-    if (/(?:offset|index|idx|start|end|cursor|position|break|^at$)/iu.test(node.text)) return true;
+    if (
+      /(?:offset|index|idx|start|end|cursor|position|break|^at$)/iu.test(
+        node.text,
+      )
+    )
+      return true;
     const declaration = bindingOf(node);
     return (
       ts.isVariableDeclaration(declaration) &&
       declaration.initializer !== undefined &&
       ts.isCallExpression(declaration.initializer) &&
-      /^(?:indexOf|lastIndexOf|search)$/u.test(member(declaration.initializer.expression) ?? "")
+      /^(?:indexOf|lastIndexOf|search)$/u.test(
+        member(declaration.initializer.expression) ?? "",
+      )
     );
   };
   const cap = (node: ts.Expression | undefined): boolean => {
     if (!node) return false;
     if (ts.isNumericLiteral(node)) return Number(node.text) >= 1;
-    if (ts.isIdentifier(node)) return caps.has(bindingOf(node)) || CAP_NAME.test(node.text);
+    if (ts.isIdentifier(node))
+      return caps.has(bindingOf(node)) || CAP_NAME.test(node.text);
     if (ts.isPrefixUnaryExpression(node) && ts.isNumericLiteral(node.operand))
       return Number(node.operand.text) >= 1;
-    if (ts.isCallExpression(node)) return node.arguments.some((argument) => cap(argument));
+    if (ts.isCallExpression(node))
+      return node.arguments.some((argument) => cap(argument));
     if (ts.isBinaryExpression(node)) {
       // Small offsets beside parser/selection coordinates retain UTF-16 units.
       if (
         (coordinate(node.left) &&
           ts.isNumericLiteral(node.right) &&
           Number(node.right.text) <= 4) ||
-        (coordinate(node.right) && ts.isNumericLiteral(node.left) && Number(node.left.text) <= 4)
+        (coordinate(node.right) &&
+          ts.isNumericLiteral(node.left) &&
+          Number(node.left.text) <= 4)
       )
         return false;
       return cap(node.left) || cap(node.right);
     }
-    if (ts.isPropertyAccessExpression(node)) return CAP_NAME.test(node.name.text);
+    if (ts.isPropertyAccessExpression(node))
+      return CAP_NAME.test(node.name.text);
     return false;
   };
   const isInspection = (node: ts.Node): boolean => {
     // Numeric and regexp predicates inspect units; they do not emit clipped text.
     let parent = node.parent;
-    while (ts.isNonNullExpression(parent) || ts.isParenthesizedExpression(parent))
+    while (
+      ts.isNonNullExpression(parent) ||
+      ts.isParenthesizedExpression(parent)
+    )
       parent = parent.parent;
     if (!ts.isCallExpression(parent)) return false;
     if (numericCall(parent)) return true;
-    if (ts.isIdentifier(parent.expression) && inspectors.has(bindingOf(parent.expression)))
+    if (
+      ts.isIdentifier(parent.expression) &&
+      inspectors.has(bindingOf(parent.expression))
+    )
       return true;
     const owner = receiver(parent.expression);
     return (
@@ -586,7 +704,9 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       );
     }
     if (ts.isBinaryExpression(condition)) {
-      if (condition.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken)
+      if (
+        condition.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+      )
         return (
           asciiTailCondition(condition.left, owner, amount, seen) ||
           asciiTailCondition(condition.right, owner, amount, seen)
@@ -597,7 +717,10 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
           asciiTailCondition(condition.right, owner, amount, new Set(seen))
         );
     }
-    if (!ts.isCallExpression(condition) || member(condition.expression) !== "endsWith")
+    if (
+      !ts.isCallExpression(condition) ||
+      member(condition.expression) !== "endsWith"
+    )
       return false;
     const tested = receiver(condition.expression);
     const suffix = condition.arguments.at(0);
@@ -609,13 +732,19 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       ts.isStringLiteral(suffix) &&
       suffix.text.length === amount &&
       suffix.text.length > 0 &&
-      Array.from(suffix.text).every((character) => character.charCodeAt(0) <= 0x7f)
+      Array.from(suffix.text).every(
+        (character) => character.charCodeAt(0) <= 0x7f,
+      )
     );
   };
-  const protectedAsciiTail = (node: ts.CallExpression, owner: ts.Expression): boolean => {
+  const protectedAsciiTail = (
+    node: ts.CallExpression,
+    owner: ts.Expression,
+  ): boolean => {
     if (!ts.isIdentifier(owner)) return false;
     const end =
-      node.arguments.at(1) ?? (node.arguments.length === 1 ? node.arguments.at(0) : undefined);
+      node.arguments.at(1) ??
+      (node.arguments.length === 1 ? node.arguments.at(0) : undefined);
     let amount: number | undefined;
     if (
       end &&
@@ -666,7 +795,9 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         asciiNumber(owner) &&
         (!padding ||
           (ts.isStringLiteral(padding) &&
-            Array.from(padding.text).every((character) => character.charCodeAt(0) <= 0x7f)))
+            Array.from(padding.text).every(
+              (character) => character.charCodeAt(0) <= 0x7f,
+            )))
       );
     }
     if (
@@ -680,14 +811,16 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       (ts.isCallExpression(owner) &&
         ts.isPropertyAccessExpression(owner.expression) &&
         ts.isIdentifier(owner.expression.expression) &&
-        bindingOf(owner.expression.expression) === owner.expression.expression &&
+        bindingOf(owner.expression.expression) ===
+          owner.expression.expression &&
         /^(?:Math\.random|Date\.now)$/u.test(owner.expression.getText(source)))
     );
   };
   const violations: Violation[] = [];
   const add = (node: ts.Node, reason: string): void => {
     violations.push({
-      line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
+      line:
+        source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
       reason,
     });
   };
@@ -706,7 +839,8 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         const condition = parent.expression;
         if (
           ts.isBinaryExpression(condition) &&
-          condition.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken &&
+          condition.operatorToken.kind ===
+            ts.SyntaxKind.EqualsEqualsEqualsToken &&
           ts.isElementAccessExpression(condition.left) &&
           condition.left.argumentExpression?.getText(source) === "1" &&
           ts.isStringLiteral(condition.right) &&
@@ -741,7 +875,12 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         add(node, "string initials must use grapheme slicing");
       continue;
     }
-    if (!owner || !isString(owner) || !/^(?:slice|substring|substr)$/u.test(method ?? "")) continue;
+    if (
+      !owner ||
+      !isString(owner) ||
+      !/^(?:slice|substring|substr)$/u.test(method ?? "")
+    )
+      continue;
     if (asciiNumber(owner)) continue;
     if (isInspection(node) || protectedAsciiTail(node, owner)) continue;
     // Parsing a hexadecimal numeric field does not emit the sliced text.
@@ -755,7 +894,8 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
           parent.expression.name.text === "parseInt" &&
           ts.isIdentifier(parent.expression.expression) &&
           parent.expression.expression.text === "Number" &&
-          bindingOf(parent.expression.expression) === parent.expression.expression));
+          bindingOf(parent.expression.expression) ===
+            parent.expression.expression));
     if (
       ts.isCallExpression(parent) &&
       numericParser &&
@@ -804,12 +944,18 @@ const violationsFor = (file: string, text: string): Violation[] => {
   )
     return [];
   if (file === "core/src/fonts/sfnt/parse.ts") {
-    const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+    const source = ts.createSourceFile(
+      file,
+      text,
+      ts.ScriptTarget.Latest,
+      true,
+    );
     const ascii = source.statements.find(
       (node) =>
         ts.isVariableStatement(node) &&
         node.declarationList.declarations.some(
-          ({ name }) => ts.isIdentifier(name) && name.text === "sanitizePostScriptName",
+          ({ name }) =>
+            ts.isIdentifier(name) && name.text === "sanitizePostScriptName",
         ),
     );
     if (ascii?.getText(source).replace(/\s+/gu, "") === ASCII_FONT_FUNCTION)
@@ -864,8 +1010,13 @@ describe("text truncation boundaries", () => {
       for (const extension of EXTENSIONS)
         for (const fixture of fixtures) {
           const file = `${packageName}/src/boundary-fixture.${extension}`;
-          const text = extension === "vue" ? `<script setup>${fixture}</script>` : fixture;
-          expect({ file, fixture, rejected: violationsFor(file, text).length > 0 }).toEqual({
+          const text =
+            extension === "vue" ? `<script setup>${fixture}</script>` : fixture;
+          expect({
+            file,
+            fixture,
+            rejected: violationsFor(file, text).length > 0,
+          }).toEqual({
             file,
             fixture,
             rejected: true,
@@ -903,7 +1054,9 @@ describe("text truncation boundaries", () => {
   test("the imported space inspector must retain its actual ASCII-only boolean contract", () => {
     const helper = readFileSync(path.join(PACKAGES, SPACE_INSPECTOR), "utf8");
     expect(verifiedSpaceInspector(helper)).toBe(true);
-    expect(verifiedSpaceInspector(helper.replace('char === " "', 'char === "👩"'))).toBe(false);
+    expect(
+      verifiedSpaceInspector(helper.replace('char === " "', 'char === "👩"')),
+    ).toBe(false);
     expect(
       findTruncations(
         'import { isSpaceOrTab } from "./paragraphMeasureShared"; isSpaceOrTab(text.at(0)); isSpaceOrTab(text[0]);',
@@ -911,7 +1064,9 @@ describe("text truncation boundaries", () => {
       ),
     ).toEqual([]);
     expect(
-      findTruncations("const isSpaceOrTab = (text: string) => text; isSpaceOrTab(text[0]);"),
+      findTruncations(
+        "const isSpaceOrTab = (text: string) => text; isSpaceOrTab(text[0]);",
+      ),
     ).toHaveLength(1);
   });
   test("declaration identities isolate shadowed string, array, numeric and copied method bindings", () => {
@@ -942,11 +1097,13 @@ describe("text truncation boundaries", () => {
       ),
     ).toEqual([]);
     expect(
-      findTruncations("const ANY = /^.{64}$/u; ANY.test(value) ? value.slice(0, 32) : null;")
-        .length,
+      findTruncations(
+        "const ANY = /^.{64}$/u; ANY.test(value) ? value.slice(0, 32) : null;",
+      ).length,
     ).toBeGreaterThan(0);
     expect(
-      findTruncations("function prefix(name: string) { return name[0]; }").length,
+      findTruncations("function prefix(name: string) { return name[0]; }")
+        .length,
     ).toBeGreaterThan(0);
     expect(
       findTruncations(
@@ -959,8 +1116,9 @@ describe("text truncation boundaries", () => {
       ),
     ).toEqual([]);
     expect(
-      findTruncations("function text(value: string) { return value.toString().slice(0, 40); }")
-        .length,
+      findTruncations(
+        "function text(value: string) { return value.toString().slice(0, 40); }",
+      ).length,
     ).toBeGreaterThan(0);
   });
   test("the font ASCII exception is tied to the actual admitted-character filter", async () => {
@@ -968,7 +1126,8 @@ describe("text truncation boundaries", () => {
     const source = await Bun.file(path.join(PACKAGES, file)).text();
     expect(violationsFor(file, source)).toEqual([]);
     expect(
-      violationsFor(file, source.replace("code < 0x7f", "code < 0x10ffff")).length,
+      violationsFor(file, source.replace("code < 0x7f", "code < 0x10ffff"))
+        .length,
     ).toBeGreaterThan(0);
   });
   test("production bounded text passes through its owner", async () => {

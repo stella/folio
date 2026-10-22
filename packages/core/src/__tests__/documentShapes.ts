@@ -79,14 +79,17 @@ type DocumentShapeDefinition = Omit<DocumentShape, "rebuild">;
 // ============================================================================
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const R_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
-const OFFICE_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const OFFICE_REL =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const WML_CT = "application/vnd.openxmlformats-officedocument.wordprocessingml";
 const FIXED_DATE = "2026-01-01T00:00:00Z";
 
-const withParaIds = async (bytes: ArrayBuffer | Uint8Array): Promise<Uint8Array> =>
-  (await ensureParaIds(bytes)).docx;
+const withParaIds = async (
+  bytes: ArrayBuffer | Uint8Array,
+): Promise<Uint8Array> => (await ensureParaIds(bytes)).docx;
 
 const fromModel = async (document: Document): Promise<Uint8Array> =>
   withParaIds(await createDocx(document));
@@ -126,7 +129,8 @@ export const buildRawPackage = async ({
 }: RawPackage): Promise<Uint8Array> => {
   const zip = new JSZip();
   const date = new Date(FIXED_DATE);
-  const add = (path: string, data: string | Uint8Array) => zip.file(path, data, { date });
+  const add = (path: string, data: string | Uint8Array) =>
+    zip.file(path, data, { date });
 
   const allParts: RawPart[] = [
     ...(styles === null
@@ -145,7 +149,10 @@ export const buildRawPackage = async ({
 
   const overrides = allParts
     .filter((part) => part.contentType !== undefined)
-    .map((part) => `<Override PartName="/${part.path}" ContentType="${part.contentType ?? ""}"/>`)
+    .map(
+      (part) =>
+        `<Override PartName="/${part.path}" ContentType="${part.contentType ?? ""}"/>`,
+    )
     .join("");
   add(
     "[Content_Types].xml",
@@ -182,7 +189,10 @@ export const buildRawPackage = async ({
     add(part.path, part.body);
   }
 
-  const bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  const bytes = await zip.generateAsync({
+    type: "uint8array",
+    compression: "DEFLATE",
+  });
   return withParaIds(bytes);
 };
 
@@ -206,7 +216,8 @@ const run = (text: string, rPr = ""): string =>
 const paragraph = (inner: string, pPr = ""): string =>
   `<w:p>${pPr === "" ? "" : `<w:pPr>${pPr}</w:pPr>`}${inner}</w:p>`;
 
-const textParagraph = (text: string, pPr = ""): string => paragraph(run(text), pPr);
+const textParagraph = (text: string, pPr = ""): string =>
+  paragraph(run(text), pPr);
 
 /** A styles part with the styles a word-processor document typically carries. */
 export const WORD_STYLES = `${XML_DECL}<w:styles xmlns:w="${W_NS}">
@@ -230,7 +241,9 @@ export const WORD_STYLES = `${XML_DECL}<w:styles xmlns:w="${W_NS}">
 <w:style w:type="table" w:styleId="TableGrid"><w:name w:val="Table Grid"/><w:basedOn w:val="TableNormal"/><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders></w:tblPr></w:style>
 </w:styles>`;
 
-const DECIMAL_LEVELS = (count: number): NumberingDefinitions["abstractNums"][number]["levels"] =>
+const DECIMAL_LEVELS = (
+  count: number,
+): NumberingDefinitions["abstractNums"][number]["levels"] =>
   Array.from({ length: count }, (_, ilvl) => ({
     ilvl,
     start: 1,
@@ -240,7 +253,9 @@ const DECIMAL_LEVELS = (count: number): NumberingDefinitions["abstractNums"][num
     pPr: { indentLeft: 720 * (ilvl + 1), indentFirstLine: -360 },
   }));
 
-const BULLET_LEVELS = (count: number): NumberingDefinitions["abstractNums"][number]["levels"] =>
+const BULLET_LEVELS = (
+  count: number,
+): NumberingDefinitions["abstractNums"][number]["levels"] =>
   Array.from({ length: count }, (_, ilvl) => ({
     ilvl,
     start: 1,
@@ -280,11 +295,16 @@ const styleNumberedHeadings = (markdown: string): Document => {
     ],
     nums: [{ numId: 5, abstractNumId: 5 }],
   };
-  const heading2 = model.package.styles?.styles.find((style) => style.styleId === "Heading2");
+  const heading2 = model.package.styles?.styles.find(
+    (style) => style.styleId === "Heading2",
+  );
   if (!heading2) {
     throw new Error("fromMarkdown produced no Heading2 style");
   }
-  heading2.pPr = { ...heading2.pPr, numPr: paragraphNumberingReference({ numId: 5, ilvl: 0 }) };
+  heading2.pPr = {
+    ...heading2.pPr,
+    numPr: paragraphNumberingReference({ numId: 5, ilvl: 0 }),
+  };
   return model;
 };
 
@@ -309,7 +329,8 @@ const INLINE_IMAGE = (relationshipId: string) =>
 const NOTES_PART = (kind: "footnote" | "endnote", text: string) => {
   const root = kind === "footnote" ? "footnotes" : "endnotes";
   const style = kind === "footnote" ? "FootnoteText" : "EndnoteText";
-  const refStyle = kind === "footnote" ? "FootnoteReference" : "EndnoteReference";
+  const refStyle =
+    kind === "footnote" ? "FootnoteReference" : "EndnoteReference";
   const ref = kind === "footnote" ? "footnoteRef" : "endnoteRef";
   return (
     `${XML_DECL}<w:${root} xmlns:w="${W_NS}" xmlns:r="${R_NS}">` +
@@ -324,7 +345,8 @@ const NOTES_PART = (kind: "footnote" | "endnote", text: string) => {
 const noteReference = (kind: "footnote" | "endnote") =>
   `<w:r><w:rPr><w:rStyle w:val="${kind === "footnote" ? "FootnoteReference" : "EndnoteReference"}"/></w:rPr><w:${kind}Reference w:id="1"/></w:r>`;
 
-const REVISION = (id: number) => `w:id="${id}" w:author="Reviewer" w:date="${FIXED_DATE}"`;
+const REVISION = (id: number) =>
+  `w:id="${id}" w:author="Reviewer" w:date="${FIXED_DATE}"`;
 
 const TRACKED_CHANGE_FEATURES = [
   "tracked-insertion",
@@ -362,7 +384,9 @@ const buildTrackedChanges = (): Promise<Uint8Array> =>
 // SHAPES
 // ============================================================================
 
-const cached = (build: () => Promise<Uint8Array>): (() => Promise<Uint8Array>) => {
+const cached = (
+  build: () => Promise<Uint8Array>,
+): (() => Promise<Uint8Array>) => {
   let pending: Promise<Uint8Array> | null = null;
   return () => {
     pending ??= build();
@@ -397,7 +421,10 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
     description: "Prose from fromMarkdown; styles part, no numbering part",
     features: ["no-numbering-part"],
     focus: "First item",
-    build: () => fromModel(fromMarkdown("Intro paragraph.\n\nFirst item\n\nTail paragraph.")),
+    build: () =>
+      fromModel(
+        fromMarkdown("Intro paragraph.\n\nFirst item\n\nTail paragraph."),
+      ),
   }),
   shape({
     id: "single-decimal-list",
@@ -405,7 +432,11 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
     features: ["list-decimal"],
     focus: "Beta",
     build: () =>
-      fromModel(fromMarkdown("Intro paragraph.\n\n1. Alpha\n2. Beta\n\nPlain text.\n\nTail.")),
+      fromModel(
+        fromMarkdown(
+          "Intro paragraph.\n\n1. Alpha\n2. Beta\n\nPlain text.\n\nTail.",
+        ),
+      ),
   }),
   shape({
     id: "single-bullet-list",
@@ -413,7 +444,11 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
     features: ["list-bullet"],
     focus: "Beta",
     build: () =>
-      fromModel(fromMarkdown("Intro paragraph.\n\n- Alpha\n- Beta\n\nPlain text.\n\nTail.")),
+      fromModel(
+        fromMarkdown(
+          "Intro paragraph.\n\n- Alpha\n- Beta\n\nPlain text.\n\nTail.",
+        ),
+      ),
   }),
   shape({
     id: "mixed-lists",
@@ -441,7 +476,8 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
   }),
   shape({
     id: "outline-level-numbered",
-    description: "A body paragraph with a direct outline level and direct numbering",
+    description:
+      "A body paragraph with a direct outline level and direct numbering",
     features: ["outline-level", "list-decimal"],
     focus: "Numbered outline paragraph",
     build: () => {
@@ -450,7 +486,11 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
       );
       model.package.numbering = {
         abstractNums: [
-          { abstractNumId: 3, multiLevelType: "multilevel", levels: DECIMAL_LEVELS(3) },
+          {
+            abstractNumId: 3,
+            multiLevelType: "multilevel",
+            levels: DECIMAL_LEVELS(3),
+          },
         ],
         nums: [{ numId: 3, abstractNumId: 3 }],
       };
@@ -468,16 +508,30 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
   }),
   shape({
     id: "host-unused-instances",
-    description: "Unused decimal (901) and bullet (902) instances first in nums, plus a used list",
+    description:
+      "Unused decimal (901) and bullet (902) instances first in nums, plus a used list",
     features: ["unused-list-instances", "list-decimal"],
     focus: "Plain text.",
     build: () => {
-      const model = fromMarkdown("Intro paragraph.\n\n1. Alpha\n2. Beta\n\nPlain text.\n\nTail.");
-      const existing = model.package.numbering ?? { abstractNums: [], nums: [] };
+      const model = fromMarkdown(
+        "Intro paragraph.\n\n1. Alpha\n2. Beta\n\nPlain text.\n\nTail.",
+      );
+      const existing = model.package.numbering ?? {
+        abstractNums: [],
+        nums: [],
+      };
       model.package.numbering = {
         abstractNums: [
-          { abstractNumId: 901, multiLevelType: "hybridMultilevel", levels: DECIMAL_LEVELS(9) },
-          { abstractNumId: 902, multiLevelType: "hybridMultilevel", levels: BULLET_LEVELS(9) },
+          {
+            abstractNumId: 901,
+            multiLevelType: "hybridMultilevel",
+            levels: DECIMAL_LEVELS(9),
+          },
+          {
+            abstractNumId: 902,
+            multiLevelType: "hybridMultilevel",
+            levels: BULLET_LEVELS(9),
+          },
           ...existing.abstractNums,
         ],
         nums: [
@@ -596,14 +650,16 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
   }),
   shape({
     id: "tracked-changes",
-    description: "Tracked insertion, deletion, paragraph-property and run-property changes",
+    description:
+      "Tracked insertion, deletion, paragraph-property and run-property changes",
     features: TRACKED_CHANGE_FEATURES,
     focus: "Kept text inserted text",
     build: buildTrackedChanges,
   }),
   shape({
     id: "pending-property-change",
-    description: "The tracked-changes package, aimed at the paragraph with a pending w:pPrChange",
+    description:
+      "The tracked-changes package, aimed at the paragraph with a pending w:pPrChange",
     features: TRACKED_CHANGE_FEATURES,
     focus: "Centred by a tracked change.",
     build: buildTrackedChanges,
@@ -643,7 +699,8 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
   }),
   shape({
     id: "sections",
-    description: "Two sections: a paragraph-level sectPr, then a landscape final section",
+    description:
+      "Two sections: a paragraph-level sectPr, then a landscape final section",
     features: ["sections"],
     focus: "Last paragraph of section one.",
     build: () =>
@@ -651,7 +708,10 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
         styles: WORD_STYLES,
         body:
           textParagraph("Intro paragraph.") +
-          paragraph(run("Last paragraph of section one."), SECTION('<w:type w:val="nextPage"/>')) +
+          paragraph(
+            run("Last paragraph of section one."),
+            SECTION('<w:type w:val="nextPage"/>'),
+          ) +
           textParagraph("First paragraph of section two.") +
           textParagraph("Tail.") +
           '<w:sectPr><w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>',
@@ -704,7 +764,9 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
         body:
           textParagraph("Intro paragraph.") +
           paragraph(
-            run("Text before the picture") + INLINE_IMAGE("rIdImage1") + run(" and after it."),
+            run("Text before the picture") +
+              INLINE_IMAGE("rIdImage1") +
+              run(" and after it."),
           ) +
           textParagraph("Tail.") +
           SECTION(),
@@ -720,7 +782,8 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
   }),
   shape({
     id: "rtl-cjk",
-    description: "A right-to-left paragraph (Arabic and Hebrew) and a CJK paragraph",
+    description:
+      "A right-to-left paragraph (Arabic and Hebrew) and a CJK paragraph",
     features: ["rtl", "cjk"],
     focus: "مرحبا بالعالم שלום עולם",
     build: () =>
@@ -728,7 +791,10 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
         styles: WORD_STYLES,
         body:
           textParagraph("Intro paragraph.") +
-          paragraph(run("مرحبا بالعالم שלום עולם", "<w:rtl/>"), '<w:bidi/><w:jc w:val="right"/>') +
+          paragraph(
+            run("مرحبا بالعالم שלום עולם", "<w:rtl/>"),
+            '<w:bidi/><w:jc w:val="right"/>',
+          ) +
           paragraph(
             run(
               "日本語の段落です。中文段落。",
@@ -750,7 +816,9 @@ export const documentShape = (id: string): DocumentShape => {
 };
 
 /** A copy of the shape's bytes as an `ArrayBuffer`, safe to hand to a parser. */
-export const shapeArrayBuffer = async (shapeOrId: DocumentShape | string): Promise<ArrayBuffer> => {
+export const shapeArrayBuffer = async (
+  shapeOrId: DocumentShape | string,
+): Promise<ArrayBuffer> => {
   const bytes = await (
     typeof shapeOrId === "string" ? documentShape(shapeOrId) : shapeOrId
   ).build();

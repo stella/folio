@@ -13,7 +13,13 @@ describe("parity CLI args", () => {
   });
 
   test("parses an explicit JSON output path without treating it as an input document", () => {
-    const flags = parseArgs(["fixture.docx", "--max-pages", "3", "--output", "/tmp/out.json"]);
+    const flags = parseArgs([
+      "fixture.docx",
+      "--max-pages",
+      "3",
+      "--output",
+      "/tmp/out.json",
+    ]);
     expect(flags.paths).toEqual(["fixture.docx"]);
     expect(flags.maxPages).toBe(3);
     expect(flags.outputPath).toBe("/tmp/out.json");
@@ -27,7 +33,9 @@ describe("parity CLI args", () => {
 
   test("defaults to LibreOffice and accepts Word as an explicit reference", () => {
     expect(parseArgs(["fixture.docx"]).referenceId).toBe("libreoffice");
-    expect(parseArgs(["fixture.docx", "--reference", "word"]).referenceId).toBe("word");
+    expect(parseArgs(["fixture.docx", "--reference", "word"]).referenceId).toBe(
+      "word",
+    );
   });
 
   test("validates the reference renderer", () => {
@@ -45,7 +53,9 @@ describe("parity CLI args", () => {
   });
 
   test("requires a path after --output", () => {
-    expect(() => parseArgs(["fixture.docx", "--output"])).toThrow("--output requires a file path");
+    expect(() => parseArgs(["fixture.docx", "--output"])).toThrow(
+      "--output requires a file path",
+    );
     expect(() => parseArgs(["fixture.docx", "--output", "--json"])).toThrow(
       "--output requires a file path",
     );
@@ -93,7 +103,13 @@ describe("parity clean status", () => {
     expect(
       isFullyClean(
         makeReport(
-          makeResult({ status: "compared", score: 1, diffPixels: 0, totalPixels: 10, pages: [] }),
+          makeResult({
+            status: "compared",
+            score: 1,
+            diffPixels: 0,
+            totalPixels: 10,
+            pages: [],
+          }),
         ),
         [],
       ),
@@ -101,11 +117,19 @@ describe("parity clean status", () => {
   });
 
   test("rejects empty and imperfect raster diagnostics", () => {
-    expect(isFullyClean(makeReport(makeResult({ status: "empty", pages: [] })), [])).toBe(false);
+    expect(
+      isFullyClean(makeReport(makeResult({ status: "empty", pages: [] })), []),
+    ).toBe(false);
     expect(
       isFullyClean(
         makeReport(
-          makeResult({ status: "compared", score: 0.9, diffPixels: 1, totalPixels: 10, pages: [] }),
+          makeResult({
+            status: "compared",
+            score: 0.9,
+            diffPixels: 1,
+            totalPixels: 10,
+            pages: [],
+          }),
         ),
         [],
       ),

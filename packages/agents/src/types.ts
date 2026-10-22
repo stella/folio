@@ -1,14 +1,14 @@
 import type {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-  FolioDocumentOutlineEntry,
+  FolioAIDiagnosticBlock,
+  FolioAIParagraphBlock,
   FolioAITextRangeHandle,
   FolioDocumentOperationIssue,
   FolioDocumentOperationReceipt,
-  FolioReviewChange,
+  FolioDocumentOutlineEntry,
   FolioDocumentSectionHandle,
   FolioDocumentStoryHandle,
-  FolioAIParagraphBlock,
-  FolioAIDiagnosticBlock,
+  FolioReviewChange,
 } from "@stll/folio-core/server";
 
 /**
@@ -85,8 +85,7 @@ export type FolioAgentTypedToolDefinition<
  * into this shape too.
  */
 export type FolioToolCallResult<TResult = unknown> =
-  | { ok: true; result: TResult }
-  | { ok: false; error: string };
+  { ok: true; result: TResult } | { ok: false; error: string };
 
 /**
  * One document block as exposed to a model. Paragraph blocks carry authored
@@ -154,7 +153,9 @@ export type FolioAgentStoryTextMatch = {
   context: string;
 };
 
-export type FolioAgentOutlineEntry = FolioDocumentOutlineEntry & { page?: number };
+export type FolioAgentOutlineEntry = FolioDocumentOutlineEntry & {
+  page?: number;
+};
 
 export type FolioAgentDocumentOutline = {
   sections: FolioAgentOutlineEntry[];
@@ -190,8 +191,7 @@ export type FolioAgentStoryFindTextResult = {
 };
 
 export type FolioAgentScopedFindTextResult =
-  | FolioAgentFindTextResult
-  | FolioAgentStoryFindTextResult;
+  FolioAgentFindTextResult | FolioAgentStoryFindTextResult;
 
 /** One reply within a comment thread. */
 export type FolioAgentCommentReply = {

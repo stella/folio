@@ -19,19 +19,29 @@ import {
 } from "./errors";
 import { CLI_READ_BOUNDS, executeReadTool } from "./execute-read";
 import { executeWriteTool, type WriteDestination } from "./execute-write";
-import { coerceFlag, flagsForSchema, readInputSource, type GeneratedFlag } from "./flags";
+import {
+  coerceFlag,
+  flagsForSchema,
+  type GeneratedFlag,
+  readInputSource,
+} from "./flags";
 import { serveFolioMcp } from "./mcp";
-import { runRender, runServe } from "./preview-commands";
 import {
   failureEnvelope,
   isOutputFormat,
   OUTPUT_FORMATS,
+  type OutputFormat,
   renderEnvelope,
   successEnvelope,
-  type OutputFormat,
 } from "./output";
+import { runRender, runServe } from "./preview-commands";
 import { resolveAuthor, resolveTransactionDate } from "./provenance";
-import { findCommand, listCommands, toolAccess, type FolioResolvedCommand } from "./registry";
+import {
+  findCommand,
+  type FolioResolvedCommand,
+  listCommands,
+  toolAccess,
+} from "./registry";
 import { resolveRoots } from "./roots";
 import { parseFlushWait, runSave } from "./save";
 
@@ -55,7 +65,11 @@ export type FolioCliIo = {
 type ParsedValue = string | boolean | (string | boolean)[] | undefined;
 type ParsedValues = Record<string, ParsedValue>;
 
-type CommonFlag = { flag: string; description: string; option: ParseArgsOptionDescriptor };
+type CommonFlag = {
+  flag: string;
+  description: string;
+  option: ParseArgsOptionDescriptor;
+};
 
 const COMMON_FLAGS: readonly CommonFlag[] = [
   {
@@ -65,7 +79,8 @@ const COMMON_FLAGS: readonly CommonFlag[] = [
   },
   {
     flag: "input",
-    description: "All arguments as a JSON object: inline, @file.json, or - for stdin.",
+    description:
+      "All arguments as a JSON object: inline, @file.json, or - for stdin.",
     option: { type: "string" },
   },
   {
@@ -83,7 +98,8 @@ const COMMON_FLAGS: readonly CommonFlag[] = [
 const WRITE_FLAGS: readonly CommonFlag[] = [
   {
     flag: "in-place",
-    description: "Write the change to the file itself, keeping a backup in .folio/backups.",
+    description:
+      "Write the change to the file itself, keeping a backup in .folio/backups.",
     option: { type: "boolean" },
   },
   {
@@ -100,7 +116,8 @@ const WRITE_FLAGS: readonly CommonFlag[] = [
   },
   {
     flag: "expect-destination-version",
-    description: "The fileVersion of the file -o --overwrite replaces; refused if it changed.",
+    description:
+      "The fileVersion of the file -o --overwrite replaces; refused if it changed.",
     option: { type: "string" },
   },
   {
@@ -111,22 +128,26 @@ const WRITE_FLAGS: readonly CommonFlag[] = [
   },
   {
     flag: "author",
-    description: "Author of the change (default: FOLIO_AUTHOR, then git user.name).",
+    description:
+      "Author of the change (default: FOLIO_AUTHOR, then git user.name).",
     option: { type: "string" },
   },
   {
     flag: "date",
-    description: "ISO-8601 timestamp for the change (default: now), for reproducible output.",
+    description:
+      "ISO-8601 timestamp for the change (default: now), for reproducible output.",
     option: { type: "string" },
   },
   {
     flag: "allow-repack",
-    description: "Allow rewriting the whole package when the edit cannot be patched in.",
+    description:
+      "Allow rewriting the whole package when the edit cannot be patched in.",
     option: { type: "boolean" },
   },
   {
     flag: "tx-id",
-    description: "Idempotency key: re-running a committed transaction returns its receipt.",
+    description:
+      "Idempotency key: re-running a committed transaction returns its receipt.",
     option: { type: "string" },
   },
   {
@@ -136,7 +157,8 @@ const WRITE_FLAGS: readonly CommonFlag[] = [
   },
   {
     flag: "journal",
-    description: "Journal file (default: .folio/journal.jsonl beside the destination).",
+    description:
+      "Journal file (default: .folio/journal.jsonl beside the destination).",
     option: { type: "string" },
   },
   {
@@ -156,14 +178,19 @@ const DIRECT_FLAG: CommonFlag = {
 const usageError = (message: string, hint?: string): FolioCliError =>
   cliError({ code: FOLIO_CLI_ERROR_CODES.usage, message, hint });
 
-const writeFlagsFor = ({ tool }: FolioResolvedCommand): readonly CommonFlag[] => {
+const writeFlagsFor = ({
+  tool,
+}: FolioResolvedCommand): readonly CommonFlag[] => {
   if (toolAccess(tool) === "read") return [];
   return tool.type === "agentWrite" && tool.editMode === "tracked-or-direct"
     ? [...WRITE_FLAGS, DIRECT_FLAG]
     : WRITE_FLAGS;
 };
 
-const generatedFlags = ({ tool, command }: FolioResolvedCommand): GeneratedFlag[] => {
+const generatedFlags = ({
+  tool,
+  command,
+}: FolioResolvedCommand): GeneratedFlag[] => {
   const bound = new Set([
     ...Object.keys(command.preset ?? {}),
     ...(command.positionals ?? []).map(({ property }) => property),
@@ -177,19 +204,26 @@ const parseOptions = (
   resolved: FolioResolvedCommand,
 ): Record<string, ParseArgsOptionDescriptor> => {
   const options: Record<string, ParseArgsOptionDescriptor> = {};
-  for (const { flag, option } of [...COMMON_FLAGS, ...writeFlagsFor(resolved)]) {
+  for (const { flag, option } of [
+    ...COMMON_FLAGS,
+    ...writeFlagsFor(resolved),
+  ]) {
     options[flag] = option;
   }
   for (const { flag, valueType } of generatedFlags(resolved)) {
     options[flag] =
       valueType === "boolean"
         ? { type: "boolean" }
-        : { type: "string", ...(valueType === "strings" && { multiple: true }) };
+        : {
+            type: "string",
+            ...(valueType === "strings" && { multiple: true }),
+          };
   }
   return options;
 };
 
-const wrapText = (value: string, indent: string): string => value.replaceAll("\n", `\n${indent}`);
+const wrapText = (value: string, indent: string): string =>
+  value.replaceAll("\n", `\n${indent}`);
 
 const usageLine = ({ command }: FolioResolvedCommand): string =>
   [
@@ -249,12 +283,14 @@ const commandHelp = (resolved: FolioResolvedCommand): string => {
       name: valueType === "boolean" ? `--${flag}` : `--${flag} <${valueType}>`,
       description,
     })),
-    ...[...writeFlagsFor(resolved), ...COMMON_FLAGS].map(({ flag, description, option }) => ({
-      name: `${option.short === undefined ? "" : `-${option.short}, `}--${flag}${
-        option.type === "boolean" ? "" : " <value>"
-      }`,
-      description,
-    })),
+    ...[...writeFlagsFor(resolved), ...COMMON_FLAGS].map(
+      ({ flag, description, option }) => ({
+        name: `${option.short === undefined ? "" : `-${option.short}, `}--${flag}${
+          option.type === "boolean" ? "" : " <value>"
+        }`,
+        description,
+      }),
+    ),
   ];
   return [
     `Usage: ${usageLine(resolved)}`,
@@ -264,10 +300,14 @@ const commandHelp = (resolved: FolioResolvedCommand): string => {
     wrapText(resolved.tool.description, ""),
     "",
     "Flags:",
-    ...flags.map(({ name, description }) => `  ${name}\n      ${wrapText(description, "      ")}`),
+    ...flags.map(
+      ({ name, description }) =>
+        `  ${name}\n      ${wrapText(description, "      ")}`,
+    ),
     "",
-    ...(COMMAND_EXAMPLES[resolved.command.name] ?? []).flatMap((line, index, lines) =>
-      index === lines.length - 1 ? [line, ""] : [line],
+    ...(COMMAND_EXAMPLES[resolved.command.name] ?? []).flatMap(
+      (line, index, lines) =>
+        index === lines.length - 1 ? [line, ""] : [line],
     ),
   ].join("\n");
 };
@@ -288,7 +328,9 @@ type BuildArgumentsOptions = {
 const stringValue = (value: ParsedValue): string | undefined =>
   typeof value === "string" ? value : undefined;
 
-const flagValue = (value: ParsedValue): string | boolean | readonly string[] | undefined => {
+const flagValue = (
+  value: ParsedValue,
+): string | boolean | readonly string[] | undefined => {
   if (!Array.isArray(value)) return value;
   return value.filter((entry): entry is string => typeof entry === "string");
 };
@@ -306,16 +348,23 @@ const buildArguments = async ({
     return Result.err(usageError(`Usage: ${usageLine(resolved)}.`));
   }
   if (rest.length > named.length) {
-    return Result.err(usageError(`Unexpected argument ${JSON.stringify(rest[named.length])}.`));
+    return Result.err(
+      usageError(`Unexpected argument ${JSON.stringify(rest[named.length])}.`),
+    );
   }
   let args: Record<string, unknown> = {};
   const input = stringValue(values["input"]);
   if (input !== undefined) {
-    const parsed = await readInputSource({ source: input, readStdin: io.readStdin });
+    const parsed = await readInputSource({
+      source: input,
+      readStdin: io.readStdin,
+    });
     if (parsed.isErr()) return Result.err(parsed.error);
     if (Array.isArray(parsed.value)) {
       if (command.inputArrayProperty === undefined) {
-        return Result.err(usageError("--input must be a JSON object for this command."));
+        return Result.err(
+          usageError("--input must be a JSON object for this command."),
+        );
       }
       args = { [command.inputArrayProperty]: parsed.value };
     } else {
@@ -340,16 +389,23 @@ const buildArguments = async ({
 };
 
 /** `--in-place` or `-o`, exactly one; `null` when neither is given. */
-const destinationFrom = (values: ParsedValues): Result<WriteDestination | null, FolioCliError> => {
+const destinationFrom = (
+  values: ParsedValues,
+): Result<WriteDestination | null, FolioCliError> => {
   const inPlace = values["in-place"] === true;
   const out = stringValue(values["out"]);
   if (inPlace && out !== undefined) {
     return Result.err(usageError("Pass --in-place or -o <path>, not both."));
   }
   const expectedVersion = stringValue(values["expect-destination-version"]);
-  if ((values["overwrite"] === true || expectedVersion !== undefined) && out === undefined) {
+  if (
+    (values["overwrite"] === true || expectedVersion !== undefined) &&
+    out === undefined
+  ) {
     return Result.err(
-      usageError("--overwrite and --expect-destination-version only apply to -o <path>."),
+      usageError(
+        "--overwrite and --expect-destination-version only apply to -o <path>.",
+      ),
     );
   }
   if (inPlace) return Result.ok({ type: "inPlace" });
@@ -364,12 +420,18 @@ const destinationFrom = (values: ParsedValues): Result<WriteDestination | null, 
   return Result.ok(null);
 };
 
-const defaultFormat = (io: FolioCliIo): OutputFormat => (io.isTTY ? "text" : "json");
+const defaultFormat = (io: FolioCliIo): OutputFormat =>
+  io.isTTY ? "text" : "json";
 
 /** The `--output` value named in raw argv, so a parse failure still prints in it. */
-const requestedFormat = (argv: readonly string[], io: FolioCliIo): OutputFormat => {
+const requestedFormat = (
+  argv: readonly string[],
+  io: FolioCliIo,
+): OutputFormat => {
   const index = argv.indexOf("--output");
-  const inline = argv.find((arg) => arg.startsWith("--output="))?.slice("--output=".length);
+  const inline = argv
+    .find((arg) => arg.startsWith("--output="))
+    ?.slice("--output=".length);
   const value = inline ?? (index === -1 ? undefined : argv[index + 1]);
   return isOutputFormat(value) ? value : defaultFormat(io);
 };
@@ -382,7 +444,9 @@ type EmitOptions = {
 };
 
 const emit = ({ io, format, tool, result }: EmitOptions): number => {
-  const envelope = result.isOk() ? successEnvelope(result.value) : failureEnvelope(result.error);
+  const envelope = result.isOk()
+    ? successEnvelope(result.value)
+    : failureEnvelope(result.error);
   const rendered = renderEnvelope({ envelope, format, tool });
   if (rendered.stdout !== "") io.stdout(rendered.stdout);
   if (rendered.stderr !== "") io.stderr(rendered.stderr);
@@ -403,7 +467,11 @@ const execute = async ({
   io,
 }: ExecuteOptions): Promise<Result<unknown, FolioCliError>> => {
   const { tool, command } = resolved;
-  const call = { path: built.file, fileVersion: built.expectVersion, args: built.args };
+  const call = {
+    path: built.file,
+    fileVersion: built.expectVersion,
+    args: built.args,
+  };
   const access = toolAccess(tool);
   if (access === "read") {
     return await executeReadTool(tool, call, CLI_READ_BOUNDS);
@@ -431,7 +499,9 @@ const execute = async ({
   if (date.isErr()) return date;
   const waived = values["no-expect-version"] === true;
   if (waived && built.expectVersion !== undefined) {
-    return Result.err(usageError("Pass --expect-version or --no-expect-version, not both."));
+    return Result.err(
+      usageError("Pass --expect-version or --no-expect-version, not both."),
+    );
   }
   const flushWaitMs = parseFlushWait(stringValue(values["flush-wait"]));
   if (flushWaitMs.isErr()) return flushWaitMs;
@@ -470,7 +540,12 @@ const runCommand = async (
       ),
   });
   if (parsed.isErr()) {
-    return emit({ io, format: fallbackFormat, tool: resolved.tool.name, result: parsed });
+    return emit({
+      io,
+      format: fallbackFormat,
+      tool: resolved.tool.name,
+      result: parsed,
+    });
   }
   const { values, positionals } = parsed.value;
   if (values["help"] === true) {
@@ -483,7 +558,9 @@ const runCommand = async (
       io,
       format: defaultFormat(io),
       tool: resolved.tool.name,
-      result: Result.err(usageError(`--output must be ${OUTPUT_FORMATS.join(" or ")}.`)),
+      result: Result.err(
+        usageError(`--output must be ${OUTPUT_FORMATS.join(" or ")}.`),
+      ),
     });
   }
   const format = output ?? defaultFormat(io);
@@ -510,7 +587,10 @@ const MCP_HELP = [
   "",
 ].join("\n");
 
-const runMcp = async (rest: readonly string[], io: FolioCliIo): Promise<number> => {
+const runMcp = async (
+  rest: readonly string[],
+  io: FolioCliIo,
+): Promise<number> => {
   const fail = (error: FolioCliError): number => {
     const hint = error.hint === undefined ? "" : `hint: ${error.hint}\n`;
     io.stderr(`error: ${error.message}\n${hint}`);
@@ -527,7 +607,8 @@ const runMcp = async (rest: readonly string[], io: FolioCliIo): Promise<number> 
         },
         strict: true,
       }),
-    catch: (error) => usageError(error instanceof Error ? error.message : String(error)),
+    catch: (error) =>
+      usageError(error instanceof Error ? error.message : String(error)),
   });
   if (parsed.isErr()) return fail(parsed.error);
   const { values } = parsed.value;
@@ -540,11 +621,17 @@ const runMcp = async (rest: readonly string[], io: FolioCliIo): Promise<number> 
   if (io.stdio === undefined) {
     return fail(usageError("folio mcp needs stdin and stdout streams."));
   }
-  const author = resolveAuthor({ explicit: values.author, env: io.env, cwd: io.cwd });
+  const author = resolveAuthor({
+    explicit: values.author,
+    env: io.env,
+    cwd: io.cwd,
+  });
   if (author.isErr()) {
     io.stderr(`folio mcp: ${author.error.message} Changes will be refused.\n`);
   }
-  io.stderr(`folio mcp ${packageJson.version}: roots ${roots.value.join(", ")}\n`);
+  io.stderr(
+    `folio mcp ${packageJson.version}: roots ${roots.value.join(", ")}\n`,
+  );
   await serveFolioMcp({
     input: io.stdio.input,
     output: io.stdio.output,
@@ -555,9 +642,17 @@ const runMcp = async (rest: readonly string[], io: FolioCliIo): Promise<number> 
 };
 
 /** Run `folio` with the given arguments (without the executable); resolves to the exit code. */
-export const runFolioCli = async (argv: readonly string[], io: FolioCliIo): Promise<number> => {
+export const runFolioCli = async (
+  argv: readonly string[],
+  io: FolioCliIo,
+): Promise<number> => {
   const [name, ...rest] = argv;
-  if (name === undefined || name === "help" || name === "--help" || name === "-h") {
+  if (
+    name === undefined ||
+    name === "help" ||
+    name === "--help" ||
+    name === "-h"
+  ) {
     io.stdout(rootHelp());
     return EXIT_CODES.ok;
   }
@@ -584,7 +679,10 @@ export const runFolioCli = async (argv: readonly string[], io: FolioCliIo): Prom
       format: requestedFormat(rest, io),
       tool: name,
       result: Result.err(
-        usageError(`Unknown command ${JSON.stringify(name)}.`, "Run folio --help."),
+        usageError(
+          `Unknown command ${JSON.stringify(name)}.`,
+          "Run folio --help.",
+        ),
       ),
     });
   }

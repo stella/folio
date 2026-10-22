@@ -71,19 +71,27 @@ const layoutBoxBetween = (hostParagraph?: ParagraphAttrs) => {
     hostedBox(hostParagraph),
     paragraph("after"),
   ];
-  const measures: Measure[] = [paragraphMeasure(20), boxMeasure, paragraphMeasure(20)];
-  const fragments = layoutDocument(blocks, measures, layoutOptions).pages[0]?.fragments ?? [];
+  const measures: Measure[] = [
+    paragraphMeasure(20),
+    boxMeasure,
+    paragraphMeasure(20),
+  ];
+  const fragments =
+    layoutDocument(blocks, measures, layoutOptions).pages[0]?.fragments ?? [];
   return {
     box: fragments.find((fragment) => fragment.kind === "textBox"),
     after: fragments.find(
-      (fragment) => fragment.kind === "paragraph" && fragment.blockId === "after",
+      (fragment) =>
+        fragment.kind === "paragraph" && fragment.blockId === "after",
     ),
   };
 };
 
 describe("inline text box host paragraph", () => {
   test("the host paragraph's spacing surrounds the box and collapses with its neighbours'", () => {
-    const { box, after } = layoutBoxBetween({ spacing: { before: 12, after: 15 } });
+    const { box, after } = layoutBoxBetween({
+      spacing: { before: 12, after: 15 },
+    });
 
     // The larger of the previous paragraph's 8 after and the host's 12 before.
     expect(box?.y).toBe(50 + 20 + 12 + 4);
@@ -92,11 +100,17 @@ describe("inline text box host paragraph", () => {
   });
 
   test("the host paragraph's indentation and alignment place the box on its line", () => {
-    const centered = layoutBoxBetween({ alignment: "center", indent: { left: 20, right: 40 } });
+    const centered = layoutBoxBetween({
+      alignment: "center",
+      indent: { left: 20, right: 40 },
+    });
     // Column 500 wide; 440 remain inside the indents for a 210-wide occupied box.
     expect(centered.box?.x).toBe(50 + 20 + (440 - 210) / 2 + 4);
 
-    const right = layoutBoxBetween({ alignment: "right", indent: { right: 40 } });
+    const right = layoutBoxBetween({
+      alignment: "right",
+      indent: { right: 40 },
+    });
     expect(right.box?.x).toBe(50 + (460 - 210) + 4);
 
     const indented = layoutBoxBetween({ indent: { left: 30, firstLine: 12 } });

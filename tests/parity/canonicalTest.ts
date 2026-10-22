@@ -1,5 +1,6 @@
-import { test as base, type Frame } from "@playwright/test";
+import { type Frame, test as base } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+
 import { observeCanonicalPageNavigation } from "../visual/canonicalPageNavigation";
 
 /** Preserve navigation evidence when an evaluation loses its document context. */
@@ -8,7 +9,11 @@ export const test = base.extend<{ canonicalNavigationEvidence: void }>({
     async ({ page }, use, testInfo) => {
       observeCanonicalPageNavigation(page);
       const cdp = await page.context().newCDPSession(page);
-      const contexts: { elapsedMs: number; method: string; payload: unknown }[] = [];
+      const contexts: {
+        elapsedMs: number;
+        method: string;
+        payload: unknown;
+      }[] = [];
       const started = Date.now();
       const capture = (method: string, payload: unknown) =>
         contexts.push({ elapsedMs: Date.now() - started, method, payload });
@@ -21,9 +26,15 @@ export const test = base.extend<{ canonicalNavigationEvidence: void }>({
       cdp.on("Runtime.executionContextsCleared", (payload) =>
         capture("Runtime.executionContextsCleared", payload),
       );
-      cdp.on("Inspector.targetCrashed", (payload) => capture("Inspector.targetCrashed", payload));
+      cdp.on("Inspector.targetCrashed", (payload) =>
+        capture("Inspector.targetCrashed", payload),
+      );
       await cdp.send("Runtime.enable");
-      const navigations: { elapsedMs: number; url: string; frame: "main" | "child" }[] = [];
+      const navigations: {
+        elapsedMs: number;
+        url: string;
+        frame: "main" | "child";
+      }[] = [];
       const record = (frame: Frame) => {
         navigations.push({
           elapsedMs: Date.now() - started,
@@ -37,8 +48,13 @@ export const test = base.extend<{ canonicalNavigationEvidence: void }>({
         await use();
         if (testInfo.status !== testInfo.expectedStatus) {
           const body = JSON.stringify(navigations, null, 2);
-          console.log(`Canonical browser navigation evidence (${testInfo.title}):\n${body}`);
-          await testInfo.attach("canonical-navigations", { body, contentType: "application/json" });
+          console.log(
+            `Canonical browser navigation evidence (${testInfo.title}):\n${body}`,
+          );
+          await testInfo.attach("canonical-navigations", {
+            body,
+            contentType: "application/json",
+          });
           await testInfo.attach("canonical-execution-contexts", {
             body: JSON.stringify(contexts, null, 2),
             contentType: "application/json",
@@ -64,7 +80,8 @@ export const test = base.extend<{ canonicalNavigationEvidence: void }>({
           }
         }
       }
-      if (detachFailure && testInfo.status === testInfo.expectedStatus) throw detachFailure.error;
+      if (detachFailure && testInfo.status === testInfo.expectedStatus)
+        throw detachFailure.error;
     },
     { auto: true },
   ],

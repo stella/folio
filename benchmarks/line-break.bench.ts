@@ -6,11 +6,12 @@
  * CJK, right-to-left, and international fallback visible alongside it.
  */
 import { withCodSpeed } from "@codspeed/tinybench-plugin";
+import { Bench } from "tinybench";
+
 import {
   findGraphemeBreaks,
   findWordBreaks,
 } from "@stll/folio-core/layout-engine/measure/lineBreaks";
-import { Bench } from "tinybench";
 
 import { MICRO_BENCH_OPTIONS } from "./config";
 
@@ -30,11 +31,15 @@ const MIXED_PARAGRAPHS = Array.from({ length: 250 }, (_, index) => [
 export function lineBreakBench(): Bench {
   const bench = withCodSpeed(new Bench(MICRO_BENCH_OPTIONS));
 
-  bench.add("simple Latin · 1500 paragraphs", () => countBreaks(SIMPLE_PARAGRAPHS));
+  bench.add("simple Latin · 1500 paragraphs", () =>
+    countBreaks(SIMPLE_PARAGRAPHS),
+  );
   bench.add("simple Latin graphemes · 1500 paragraphs", () =>
     countBreaks(SIMPLE_PARAGRAPHS, findGraphemeBreaks),
   );
-  bench.add("mixed script · 1250 paragraphs", () => countBreaks(MIXED_PARAGRAPHS));
+  bench.add("mixed script · 1250 paragraphs", () =>
+    countBreaks(MIXED_PARAGRAPHS),
+  );
 
   return bench;
 }

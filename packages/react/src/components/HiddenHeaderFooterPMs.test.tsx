@@ -1,11 +1,16 @@
-import { describe, expect, test } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
+
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 
 import type { Document, HeaderFooter } from "@stll/folio-core/types/document";
-import { enumerateHfSlots, HiddenHeaderFooterPMs } from "./HiddenHeaderFooterPMs";
+
+import {
+  enumerateHfSlots,
+  HiddenHeaderFooterPMs,
+} from "./HiddenHeaderFooterPMs";
 import type { HiddenHeaderFooterPMsRef } from "./HiddenHeaderFooterPMs";
 
 const persistentHeaderDocument = {
@@ -20,7 +25,9 @@ const persistentHeaderDocument = {
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "Header" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Header" }] },
+              ],
             },
           ],
         },
@@ -40,7 +47,9 @@ test("persistent header/footer views refuse edits through read-only switches", a
   const ref = createRef<HiddenHeaderFooterPMsRef>();
   try {
     await act(async () =>
-      root.render(<HiddenHeaderFooterPMs ref={ref} document={persistentHeaderDocument} />),
+      root.render(
+        <HiddenHeaderFooterPMs ref={ref} document={persistentHeaderDocument} />,
+      ),
     );
     const view = ref.current?.getView("rIdH");
     if (!view) panic("Expected a persistent header view");
@@ -58,7 +67,9 @@ test("persistent header/footer views refuse edits through read-only switches", a
       expect(ref.current?.getView("rIdH")).toBe(view);
       expect(view.editable).toBe(!readOnly);
       if (readOnly) {
-        await act(async () => view.dispatch(view.state.tr.insertText("Refused", 1)));
+        await act(async () =>
+          view.dispatch(view.state.tr.insertText("Refused", 1)),
+        );
         expect(view.state.doc.eq(authored)).toBe(true);
       }
     }

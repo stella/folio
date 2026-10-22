@@ -6,7 +6,9 @@
  * pasting an untrusted document cannot trigger an external request or run a
  * script scheme through `<img src>`.
  */
-export function sanitizeImageSrc(src: string | null | undefined): string | undefined {
+export function sanitizeImageSrc(
+  src: string | null | undefined,
+): string | undefined {
   if (typeof src !== "string") {
     return undefined;
   }

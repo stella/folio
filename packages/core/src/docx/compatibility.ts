@@ -9,24 +9,25 @@
  * serializer replays verbatim is not, whichever part holds it.
  */
 
-import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 import { panic } from "better-result";
+
+import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 
 import {
   type BlockContent,
   type Document,
   type DocxConformanceClass,
-  type Hyperlink,
   type HeaderFooter,
+  type Hyperlink,
   type ParagraphContent,
   type Run,
 } from "../types/document";
+import { isAltChunkMarkup } from "./altChunk";
 import {
   classifyDrawingSafety,
   DRAWING_SAFETY_CLASSES,
   type DrawingSafetyClass,
 } from "./imageRawXml";
-import { isAltChunkMarkup } from "./altChunk";
 
 export type DocxCompatibilityReason = "opaqueDrawing" | "unsupportedAltChunk";
 
@@ -93,7 +94,10 @@ const resolveCompatibilityContext = (
   options: InspectDocxCompatibilityOptions,
 ): DocxCompatibilityContext => ({
   host: options.host ?? "unknown",
-  profile: options.profile ?? doc.package.conformanceClass ?? DOCX_CONFORMANCE_CLASSES.UNKNOWN,
+  profile:
+    options.profile ??
+    doc.package.conformanceClass ??
+    DOCX_CONFORMANCE_CLASSES.UNKNOWN,
 });
 
 export const inspectDocxCompatibility = (
@@ -169,7 +173,10 @@ export const inspectDocxCompatibility = (
 
 function inspectBlocks(
   blocks: BlockContent[],
-  context: InspectionLocationContext & { record: RecordDrawing; recordIssue: RecordIssue },
+  context: InspectionLocationContext & {
+    record: RecordDrawing;
+    recordIssue: RecordIssue;
+  },
 ): void {
   for (const [blockIndex, block] of blocks.entries()) {
     const blockPath = `${context.path}[${blockIndex}]`;
@@ -221,14 +228,20 @@ function inspectBlocks(
 
 function inspectHeaderFooter(
   headerFooter: HeaderFooter,
-  context: InspectionLocationContext & { record: RecordDrawing; recordIssue: RecordIssue },
+  context: InspectionLocationContext & {
+    record: RecordDrawing;
+    recordIssue: RecordIssue;
+  },
 ): void {
   inspectBlocks(headerFooter.content, context);
 }
 
 function inspectParagraphContent(
   content: ParagraphContent[],
-  context: InspectionLocationContext & { record: RecordDrawing; recordIssue: RecordIssue },
+  context: InspectionLocationContext & {
+    record: RecordDrawing;
+    recordIssue: RecordIssue;
+  },
 ): void {
   for (const [itemIndex, item] of content.entries()) {
     const itemContext = {
@@ -295,7 +308,10 @@ function inspectParagraphContent(
 
 function inspectHyperlink(
   hyperlink: Hyperlink,
-  context: InspectionLocationContext & { record: RecordDrawing; recordIssue: RecordIssue },
+  context: InspectionLocationContext & {
+    record: RecordDrawing;
+    recordIssue: RecordIssue;
+  },
 ): void {
   for (const [childIndex, child] of hyperlink.children.entries()) {
     const path = `${context.path}.children[${childIndex}]`;
@@ -306,7 +322,10 @@ function inspectHyperlink(
     // A drawing inside a transparent wrapper inside the link is still the
     // link's drawing, so the walk goes through the wrapper.
     if (child.type === "inlineWrapper") {
-      inspectParagraphContent(child.content, { ...context, path: `${path}.content` });
+      inspectParagraphContent(child.content, {
+        ...context,
+        path: `${path}.content`,
+      });
     }
   }
 }

@@ -13,8 +13,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   blockTexts,
   openReviewer,
@@ -27,7 +29,10 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
-import { splitsGraphemeCluster, splitsSurrogatePair } from "./character-boundaries";
+import {
+  splitsGraphemeCluster,
+  splitsSurrogatePair,
+} from "./character-boundaries";
 import type { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle, hashFolioAIBlockText } from "./snapshot";
 import type { FolioAITextRangeHandle } from "./types";
@@ -52,7 +57,11 @@ const handle = (
   selectedTextHash: hashFolioAIBlockText(text.slice(startOffset, endOffset)),
 });
 
-const applyOne = (reviewer: FolioDocxReviewer, mode: Mode, operation: FolioDocumentOperation) =>
+const applyOne = (
+  reviewer: FolioDocxReviewer,
+  mode: Mode,
+  operation: FolioDocumentOperation,
+) =>
   reviewer.applyDocumentOperations(
     {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -84,7 +93,8 @@ describe("an offset inside an emoji", () => {
         {
           id: "split",
           reason: "splitsCharacter",
-          message: 'offset 7 falls inside "🧑", which spans offsets 6 to 8; use 6 or 8.',
+          message:
+            'offset 7 falls inside "🧑", which spans offsets 6 to 8; use 6 or 8.',
         },
       ]);
       expect(refused.issues?.[0]).toMatchObject({
@@ -96,21 +106,44 @@ describe("an offset inside an emoji", () => {
 
       const beside = await openReviewer(buffer.slice(0));
       expect(
-        applyOne(beside, mode, { id: "split", type: "splitBlock", blockId, offset: 8 }).skipped,
+        applyOne(beside, mode, {
+          id: "split",
+          type: "splitBlock",
+          blockId,
+          offset: 8,
+        }).skipped,
       ).toEqual([]);
-      expect(blockTexts(await settled(beside, mode))).toEqual(["Party 🧑", " agrees."]);
+      expect(blockTexts(await settled(beside, mode))).toEqual([
+        "Party 🧑",
+        " agrees.",
+      ]);
     },
   );
 
   test("is no range a handle can name", () => {
     expect(
-      createFolioAITextRangeHandle({ blockId: "b", text: PARTY, startOffset: 6, endOffset: 7 }),
+      createFolioAITextRangeHandle({
+        blockId: "b",
+        text: PARTY,
+        startOffset: 6,
+        endOffset: 7,
+      }),
     ).toBeNull();
     expect(
-      createFolioAITextRangeHandle({ blockId: "b", text: PARTY, startOffset: 7, endOffset: 9 }),
+      createFolioAITextRangeHandle({
+        blockId: "b",
+        text: PARTY,
+        startOffset: 7,
+        endOffset: 9,
+      }),
     ).toBeNull();
     expect(
-      createFolioAITextRangeHandle({ blockId: "b", text: PARTY, startOffset: 6, endOffset: 8 }),
+      createFolioAITextRangeHandle({
+        blockId: "b",
+        text: PARTY,
+        startOffset: 6,
+        endOffset: 8,
+      }),
     ).not.toBeNull();
   });
 
@@ -122,7 +155,9 @@ describe("an offset inside an emoji", () => {
     ] as const)(
       `refuses %s over half of it and keeps the emoji (${mode}, saved and reopened)`,
       async (type, fields) => {
-        const reviewer = await openReviewer(await paragraphsDocx([[textRun(PARTY)]]));
+        const reviewer = await openReviewer(
+          await paragraphsDocx([[textRun(PARTY)]]),
+        );
         const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
         const operation = {
           id: type,
@@ -131,7 +166,9 @@ describe("an offset inside an emoji", () => {
           ...fields,
         } as FolioDocumentOperation;
         const result = applyOne(reviewer, mode, operation);
-        expect(result.skipped.map(({ reason }) => reason)).toEqual(["splitsCharacter"]);
+        expect(result.skipped.map(({ reason }) => reason)).toEqual([
+          "splitsCharacter",
+        ]);
         expect(blockTexts(await settled(reviewer, mode))).toEqual([PARTY]);
       },
     );
@@ -141,24 +178,33 @@ describe("an offset inside an emoji", () => {
 describe("an offset inside a grapheme cluster", () => {
   const CAFE = "Café au lait"; // é written as e + U+0301
 
-  test.each(MODES)("refuses a replacement of its base letter alone (%s)", async (mode) => {
-    const text = CAFE.replace("é", "é");
-    const reviewer = await openReviewer(await paragraphsDocx([[textRun(text)]]));
-    const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
-    const result = applyOne(reviewer, mode, {
-      id: "replace",
-      type: "replaceInBlock",
-      blockId,
-      find: "Cafe",
-      replace: "Coffee",
-    });
-    expect(result.skipped.map(({ reason }) => reason)).toEqual(["splitsCharacter"]);
-    expect(blockTexts(await settled(reviewer, mode))).toEqual([text]);
-  });
+  test.each(MODES)(
+    "refuses a replacement of its base letter alone (%s)",
+    async (mode) => {
+      const text = CAFE.replace("é", "é");
+      const reviewer = await openReviewer(
+        await paragraphsDocx([[textRun(text)]]),
+      );
+      const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
+      const result = applyOne(reviewer, mode, {
+        id: "replace",
+        type: "replaceInBlock",
+        blockId,
+        find: "Cafe",
+        replace: "Coffee",
+      });
+      expect(result.skipped.map(({ reason }) => reason)).toEqual([
+        "splitsCharacter",
+      ]);
+      expect(blockTexts(await settled(reviewer, mode))).toEqual([text]);
+    },
+  );
 
   test("still lets a comment start at a combining mark the document formats apart", async () => {
     const text = "Café";
-    const reviewer = await openReviewer(await paragraphsDocx([[textRun(text)]]));
+    const reviewer = await openReviewer(
+      await paragraphsDocx([[textRun(text)]]),
+    );
     const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
     const result = applyOne(reviewer, "direct", {
       id: "comment",
@@ -242,14 +288,19 @@ describe("an offset-taking operation at any offset", () => {
             );
             const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
             const selected = text.slice(start, end);
-            const unique = text.indexOf(selected) === text.lastIndexOf(selected);
+            const unique =
+              text.indexOf(selected) === text.lastIndexOf(selected);
             let operation: FolioDocumentOperation;
             let expected: string[];
             let offsets: number[] = [start, end];
             switch (type) {
               case "splitBlock":
                 operation = { id: "op", type, blockId, offset: start };
-                expected = [text.slice(0, start), text.slice(start), "Untouched."];
+                expected = [
+                  text.slice(0, start),
+                  text.slice(start),
+                  "Untouched.",
+                ];
                 offsets = [start];
                 break;
               case "replaceRange":
@@ -259,14 +310,26 @@ describe("an offset-taking operation at any offset", () => {
                   range: handle(blockId, text, start, end),
                   replace: "Q",
                 };
-                expected = [`${text.slice(0, start)}Q${text.slice(end)}`, "Untouched."];
+                expected = [
+                  `${text.slice(0, start)}Q${text.slice(end)}`,
+                  "Untouched.",
+                ];
                 break;
               case "replaceInBlock":
                 if (!unique || hasLoneSurrogate(selected)) {
                   return;
                 }
-                operation = { id: "op", type, blockId, find: selected, replace: "Q" };
-                expected = [`${text.slice(0, start)}Q${text.slice(end)}`, "Untouched."];
+                operation = {
+                  id: "op",
+                  type,
+                  blockId,
+                  find: selected,
+                  replace: "Q",
+                };
+                expected = [
+                  `${text.slice(0, start)}Q${text.slice(end)}`,
+                  "Untouched.",
+                ];
                 break;
               case "formatRange":
                 operation = {
@@ -316,7 +379,13 @@ describe("an offset-taking operation at any offset", () => {
             });
             const final = blockTexts(await settled(reviewer, mode));
             if (allowed) {
-              expect({ text, type, start, end, skipped: result.skipped }).toEqual({
+              expect({
+                text,
+                type,
+                start,
+                end,
+                skipped: result.skipped,
+              }).toEqual({
                 text,
                 type,
                 start,
@@ -331,12 +400,21 @@ describe("an offset-taking operation at any offset", () => {
                 start,
                 end,
                 reasons: result.skipped.map((s) => s.reason),
-              }).toEqual({ text, type, start, end, reasons: ["splitsCharacter"] });
+              }).toEqual({
+                text,
+                type,
+                start,
+                end,
+                reasons: ["splitsCharacter"],
+              });
               expect(final).toEqual([text, "Untouched."]);
             }
           },
         ),
-        { numRuns: 120, id: "changes no text beyond what it names, and cuts no character" },
+        {
+          numRuns: 120,
+          id: "changes no text beyond what it names, and cuts no character",
+        },
       );
     },
     propertyTestTimeout(300_000),

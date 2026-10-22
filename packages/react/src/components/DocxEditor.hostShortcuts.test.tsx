@@ -2,15 +2,18 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 // ProseMirror's keymap reads the platform at import, before the DOM is
 // registered; the editor's page-level shortcuts read it per press.
-const KEYMAP_MAC = /Mac|iP(?:hone|[oa]d)/u.test(globalThis.navigator?.platform ?? "");
+const KEYMAP_MAC = /Mac|iP(?:hone|[oa]d)/u.test(
+  globalThis.navigator?.platform ?? "",
+);
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, test } from "bun:test";
-import { panic } from "better-result";
-import type { EditorView } from "prosemirror-view";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
+
+import { panic } from "better-result";
+import { afterAll, expect, test } from "bun:test";
+import type { EditorView } from "prosemirror-view";
 import { IntlProvider } from "use-intl";
 
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
@@ -21,7 +24,10 @@ import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -59,7 +65,9 @@ const createProbe = () => {
   };
 };
 
-const renderEditor = async (hostShortcuts: readonly HostShortcut[] | undefined) => {
+const renderEditor = async (
+  hostShortcuts: readonly HostShortcut[] | undefined,
+) => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -67,7 +75,11 @@ const renderEditor = async (hostShortcuts: readonly HostShortcut[] | undefined) 
   const { views, prints, onEditorViewReady, onPrint } = createProbe();
   await act(async () => {
     root.render(
-      <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+      <IntlProvider
+        locale="en"
+        timeZone="UTC"
+        messages={getFolioMessages("en")}
+      >
         <DocxEditor
           ref={editor}
           document={createEmptyDocument({ initialText: "Hello" })}
@@ -89,7 +101,9 @@ const renderEditor = async (hostShortcuts: readonly HostShortcut[] | undefined) 
     prints,
     type: async (text: string) => {
       await act(async () => {
-        view.dispatch(view.state.tr.insertText(text, view.state.doc.content.size - 1));
+        view.dispatch(
+          view.state.tr.insertText(text, view.state.doc.content.size - 1),
+        );
       });
     },
     /** A Mod chord inside the body, where the ProseMirror keymap answers it. */

@@ -3,14 +3,17 @@ import { describe, expect, test } from "bun:test";
 import type {
   FieldRun,
   FlowBlock,
+  Page,
   PageMargins,
   ParagraphBlock,
   ParagraphFragment,
-  Page,
   TableBlock,
   TableFragment,
 } from "../layout-engine/types";
-import { buildHeaderFooterFieldValues, resolveFieldValues } from "./resolveFieldValues";
+import {
+  buildHeaderFooterFieldValues,
+  resolveFieldValues,
+} from "./resolveFieldValues";
 import type { SharedFieldInputs } from "./resolveFieldValues";
 
 const MARGINS: PageMargins = { top: 96, right: 96, bottom: 96, left: 96 };
@@ -40,7 +43,11 @@ const fragment = (blockId: string): ParagraphFragment => ({
   toLine: 1,
 });
 
-const tableFragment = (blockId: string, fromRow: number, toRow: number): TableFragment => ({
+const tableFragment = (
+  blockId: string,
+  fromRow: number,
+  toRow: number,
+): TableFragment => ({
   kind: "table",
   blockId,
   x: 0,
@@ -88,7 +95,9 @@ describe("resolveFieldValues", () => {
     const blocks = [para("a", [field(10, "PAGE")])];
     const logicalPage = { ...page(1, ["a"]), logicalNumber: 13 };
 
-    expect(resolveFieldValues(blocks, [logicalPage], shared()).values.get(10)).toBe("13");
+    expect(
+      resolveFieldValues(blocks, [logicalPage], shared()).values.get(10),
+    ).toBe("13");
   });
 
   test("resolves PAGEREF and SEQ from the shared inputs", () => {
@@ -148,7 +157,9 @@ describe("resolveFieldValues", () => {
           cells: [
             {
               id: "c1",
-              blocks: [para("row1", [field(20, "PAGE"), field(30, "SECTIONPAGES")])],
+              blocks: [
+                para("row1", [field(20, "PAGE"), field(30, "SECTIONPAGES")]),
+              ],
             },
           ],
         },
@@ -207,7 +218,11 @@ describe("resolveFieldValues", () => {
       pmStart: 10,
       fallback: "2",
     };
-    const stable = resolveFieldValues([para("a", [matching])], [page(2, ["a"])], shared());
+    const stable = resolveFieldValues(
+      [para("a", [matching])],
+      [page(2, ["a"])],
+      shared(),
+    );
     expect(stable.changed).toBe(false);
   });
 });
@@ -217,7 +232,11 @@ describe("buildHeaderFooterFieldValues", () => {
 
   test("reserves page-number fields at the widest page width", () => {
     const blocks: FlowBlock[] = [
-      para("p", [field(10, "PAGE"), field(20, "NUMPAGES"), field(30, "SECTIONPAGES")]),
+      para("p", [
+        field(10, "PAGE"),
+        field(20, "NUMPAGES"),
+        field(30, "SECTIONPAGES"),
+      ]),
     ];
 
     const values = buildHeaderFooterFieldValues(blocks, 42, now);
@@ -251,7 +270,9 @@ describe("buildHeaderFooterFieldValues", () => {
   });
 
   test("reserves formatted PAGE fields at a wider display value", () => {
-    const blocks: FlowBlock[] = [para("p", [field(10, "PAGE \\* ROMAN"), field(20, "PAGE")])];
+    const blocks: FlowBlock[] = [
+      para("p", [field(10, "PAGE \\* ROMAN"), field(20, "PAGE")]),
+    ];
 
     const values = buildHeaderFooterFieldValues(blocks, 9, now);
 
@@ -261,7 +282,10 @@ describe("buildHeaderFooterFieldValues", () => {
 
   test("measures SECTIONPAGES against section page counts", () => {
     const blocks: FlowBlock[] = [
-      para("p", [field(10, "SECTIONPAGES"), field(20, "SECTIONPAGES \\* ROMAN")]),
+      para("p", [
+        field(10, "SECTIONPAGES"),
+        field(20, "SECTIONPAGES \\* ROMAN"),
+      ]),
     ];
 
     const values = buildHeaderFooterFieldValues(blocks, 9, now, {

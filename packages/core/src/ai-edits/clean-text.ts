@@ -8,11 +8,11 @@ import {
 import type { PageBreakRunAttrs } from "../prosemirror/schema/nodes";
 import {
   createNoteReferenceNumbering,
-  noteReferenceMarker,
   type NoteReferenceKind,
+  noteReferenceMarker,
   type NoteReferenceNumbering,
 } from "../utils/noteReferenceLabels";
-import { noteReferenceOf, type NoteReferenceLabels } from "./note-references";
+import { type NoteReferenceLabels, noteReferenceOf } from "./note-references";
 
 /**
  * "Post-tracked-changes" view of a textblock: the string the user
@@ -141,7 +141,10 @@ export const resolveCleanTextRange = ({
   let to = baseTo;
   for (const boundary of structuralBoundaries) {
     if (boundary.type === "field" || boundary.type === "noteReference") {
-      if (cutsIntoSpan(boundary, startOffset) || cutsIntoSpan(boundary, endOffset)) {
+      if (
+        cutsIntoSpan(boundary, startOffset) ||
+        cutsIntoSpan(boundary, endOffset)
+      ) {
         return null;
       }
       continue;
@@ -169,7 +172,10 @@ const INSERTION_MARK = "insertion";
 const COMMENT_MARK = "comment";
 const HIDDEN_MARK = "hidden";
 const isOmittedFromCleanView = (node: PMNode): boolean =>
-  node.marks.some((mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK);
+  node.marks.some(
+    (mark) =>
+      mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
+  );
 
 export type BuildCleanBlockTextOptions = {
   /**
@@ -189,7 +195,9 @@ export type BuildCleanBlockTextOptions = {
   noteReferences?: NoteReferenceLabels | "sourceText";
 };
 
-const DEFAULT_BUILD_CLEAN_BLOCK_TEXT_OPTIONS: BuildCleanBlockTextOptions = { fieldResults: "text" };
+const DEFAULT_BUILD_CLEAN_BLOCK_TEXT_OPTIONS: BuildCleanBlockTextOptions = {
+  fieldResults: "text",
+};
 
 /**
  * The marker a reference reads as: the story's number when the labels know
@@ -228,9 +236,14 @@ export const buildCleanBlockText = (
   let localNumbering: NoteReferenceNumbering | undefined;
   const local = () => (localNumbering ??= createNoteReferenceNumbering());
   blockNode.descendants((node, pos) => {
-    if (noteReferences !== "sourceText" && node.isText && !isOmittedFromCleanView(node)) {
+    if (
+      noteReferences !== "sourceText" &&
+      node.isText &&
+      !isOmittedFromCleanView(node)
+    ) {
       const reference = noteReferenceOf(node);
-      const label = reference === null ? null : noteReferenceLabelFor(node, labels, local);
+      const label =
+        reference === null ? null : noteReferenceLabelFor(node, labels, local);
       if (reference !== null && label !== null) {
         const from = blockFrom + 1 + pos;
         const to = from + node.nodeSize;
@@ -262,7 +275,9 @@ export const buildCleanBlockText = (
         from,
         to: from + node.nodeSize,
         ...(clear !== undefined ? { clear } : {}),
-        presentInCleanView: !node.marks.some(({ type }) => type.name === DELETION_MARK),
+        presentInCleanView: !node.marks.some(
+          ({ type }) => type.name === DELETION_MARK,
+        ),
       });
       return false;
     }
@@ -316,7 +331,8 @@ export const buildCleanBlockText = (
   return {
     text,
     offsets,
-    structuralBoundaries: structuralBoundaries ?? EMPTY_CLEAN_TEXT_STRUCTURAL_BOUNDARIES,
+    structuralBoundaries:
+      structuralBoundaries ?? EMPTY_CLEAN_TEXT_STRUCTURAL_BOUNDARIES,
   };
 };
 
@@ -411,7 +427,8 @@ const sameAnnotation = (a: RunAnnotation, b: RunAnnotation): boolean =>
 const escapeText = (text: string): string =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
-const escapeAttr = (value: string): string => escapeText(value).replaceAll('"', "&quot;");
+const escapeAttr = (value: string): string =>
+  escapeText(value).replaceAll('"', "&quot;");
 
 const renderAnnotatedSegment = ({
   annotation,

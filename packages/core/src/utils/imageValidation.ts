@@ -29,11 +29,21 @@ export async function isSafeImageFile(file: File): Promise<boolean> {
 function matchesImageSignature(bytes: Uint8Array, mimeType: string): boolean {
   switch (mimeType) {
     case "image/png":
-      return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+      return (
+        bytes[0] === 0x89 &&
+        bytes[1] === 0x50 &&
+        bytes[2] === 0x4e &&
+        bytes[3] === 0x47
+      );
     case "image/jpeg":
       return bytes[0] === 0xff && bytes[1] === 0xd8;
     case "image/gif":
-      return bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38;
+      return (
+        bytes[0] === 0x47 &&
+        bytes[1] === 0x49 &&
+        bytes[2] === 0x46 &&
+        bytes[3] === 0x38
+      );
     case "image/bmp":
       return bytes[0] === 0x42 && bytes[1] === 0x4d;
     case "image/webp":

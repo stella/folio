@@ -21,9 +21,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
-import { createEmptyDocument } from "../../utils/createDocument";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type {
   BorderSpec,
   Document,
@@ -32,6 +33,7 @@ import type {
   Run,
   Style,
 } from "../../types/document";
+import { createEmptyDocument } from "../../utils/createDocument";
 import { STYLE_RESOLVED_PARAGRAPH_FIELDS } from "../paragraphFormattingProvenance";
 import { updateDocumentContent } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
@@ -41,8 +43,16 @@ setDefaultTimeout(propertyTestTimeout(30_000));
 const STYLE_ID = "Governed";
 const BASE_STYLE_ID = "GovernedBase";
 
-const BORDER: BorderSpec = { style: "single", size: 8, color: { rgb: "FF0000" } };
-const OTHER_BORDER: BorderSpec = { style: "double", size: 12, color: { rgb: "00FF00" } };
+const BORDER: BorderSpec = {
+  style: "single",
+  size: 8,
+  color: { rgb: "FF0000" },
+};
+const OTHER_BORDER: BorderSpec = {
+  style: "double",
+  size: 12,
+  color: { rgb: "00FF00" },
+};
 
 /**
  * Two distinct values per governed field, so "the style says X, the paragraph
@@ -102,8 +112,10 @@ const applyStates = (
   return formatting;
 };
 
-const valueOf = (field: GovernedField, state: Exclude<FieldState, 0>): unknown =>
-  FIELD_VALUES[field][state - 1];
+const valueOf = (
+  field: GovernedField,
+  state: Exclude<FieldState, 0>,
+): unknown => FIELD_VALUES[field][state - 1];
 
 const sameValue = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
@@ -161,7 +173,12 @@ const ADJACENT_TEXT_RUNS: Run[] = [
 const documentFor = (scenario: Scenario): Document => {
   const document = createEmptyDocument();
   const styles: Style[] = [
-    { styleId: BASE_STYLE_ID, type: "paragraph", name: BASE_STYLE_ID, pPr: scenario.base },
+    {
+      styleId: BASE_STYLE_ID,
+      type: "paragraph",
+      name: BASE_STYLE_ID,
+      pPr: scenario.base,
+    },
     {
       styleId: STYLE_ID,
       type: "paragraph",
@@ -179,18 +196,26 @@ const documentFor = (scenario: Scenario): Document => {
     formatting: { styleId: STYLE_ID, ...scenario.direct },
     content: [...ADJACENT_TEXT_RUNS, OBJECT_RUN],
   };
-  document.package.document.content = [paragraph, { ...paragraph, formatting: undefined }];
+  document.package.document.content = [
+    paragraph,
+    { ...paragraph, formatting: undefined },
+  ];
   return document;
 };
 
 const rebuild = (document: Document): Document =>
   updateDocumentContent(
     document,
-    toProseDoc(document, { styles: document.package.styles, theme: document.package.theme }),
+    toProseDoc(document, {
+      styles: document.package.styles,
+      theme: document.package.theme,
+    }),
   );
 
 const bodyParagraphs = (document: Document): Paragraph[] =>
-  document.package.document.content.filter((block) => block.type === "paragraph");
+  document.package.document.content.filter(
+    (block) => block.type === "paragraph",
+  );
 
 describe("a style-resolved paragraph property stays out of direct w:pPr", () => {
   test("every governed field keeps absent, explicit-off and explicit-on apart", () => {
@@ -202,9 +227,10 @@ describe("a style-resolved paragraph property stays out of direct w:pPr", () => 
         expect(after).toHaveLength(before.length);
         for (const [index, paragraph] of before.entries()) {
           for (const field of GOVERNED_FIELDS) {
-            expect(after[index]?.formatting?.[field], `paragraph ${index} field ${field}`).toEqual(
-              paragraph.formatting?.[field],
-            );
+            expect(
+              after[index]?.formatting?.[field],
+              `paragraph ${index} field ${field}`,
+            ).toEqual(paragraph.formatting?.[field]);
           }
         }
       }),
@@ -214,30 +240,49 @@ describe("a style-resolved paragraph property stays out of direct w:pPr", () => 
 
   test("a later edit to the style still moves the paragraph's effective value", () => {
     fc.assert(
-      fc.property(scenarioArb, fc.constantFrom(...GOVERNED_FIELDS), (scenario, field) => {
-        // Only a field the paragraph inherits can be moved by the style.
-        fc.pre(scenario.direct[field] === undefined);
-        fc.pre(scenario.style[field] !== undefined || scenario.base[field] !== undefined);
+      fc.property(
+        scenarioArb,
+        fc.constantFrom(...GOVERNED_FIELDS),
+        (scenario, field) => {
+          // Only a field the paragraph inherits can be moved by the style.
+          fc.pre(scenario.direct[field] === undefined);
+          fc.pre(
+            scenario.style[field] !== undefined ||
+              scenario.base[field] !== undefined,
+          );
 
-        const saved = rebuild(documentFor(scenario));
-        const restyled = structuredClone(saved);
-        const style = restyled.package.styles?.styles.find(({ styleId }) => styleId === STYLE_ID);
-        if (!style) {
-          throw new Error("the generated document must carry the paragraph style");
-        }
-        const resolved = { ...style.pPr }[field];
-        const moved = valueOf(field, sameValue(resolved, FIELD_VALUES[field][0]) ? 2 : 1);
-        style.pPr = { ...style.pPr, [field]: moved };
+          const saved = rebuild(documentFor(scenario));
+          const restyled = structuredClone(saved);
+          const style = restyled.package.styles?.styles.find(
+            ({ styleId }) => styleId === STYLE_ID,
+          );
+          if (!style) {
+            throw new Error(
+              "the generated document must carry the paragraph style",
+            );
+          }
+          const resolved = { ...style.pPr }[field];
+          const moved = valueOf(
+            field,
+            sameValue(resolved, FIELD_VALUES[field][0]) ? 2 : 1,
+          );
+          style.pPr = { ...style.pPr, [field]: moved };
 
-        // `direction` is the attr `bidi` resolves into; every other governed
-        // field keeps its own name.
-        const attr = field === "bidi" ? "direction" : field;
-        const before = toProseDoc(saved, { styles: saved.package.styles }).child(0).attrs[attr];
-        const after = toProseDoc(restyled, { styles: restyled.package.styles }).child(0).attrs[
-          attr
-        ];
-        expect(sameValue(after, before), `a style edit must still reach ${field}`).toBe(false);
-      }),
+          // `direction` is the attr `bidi` resolves into; every other governed
+          // field keeps its own name.
+          const attr = field === "bidi" ? "direction" : field;
+          const before = toProseDoc(saved, {
+            styles: saved.package.styles,
+          }).child(0).attrs[attr];
+          const after = toProseDoc(restyled, {
+            styles: restyled.package.styles,
+          }).child(0).attrs[attr];
+          expect(
+            sameValue(after, before),
+            `a style edit must still reach ${field}`,
+          ).toBe(false);
+        },
+      ),
       propertyConfig({ numRuns: 200 }),
     );
   });
@@ -247,11 +292,15 @@ describe("the editor round trip keeps a run's own properties", () => {
   test("an embedded-object run keeps its w:rPr, and merged text keeps its spacing", () => {
     const document = documentFor({ base: {}, style: {}, direct: {} });
     const [paragraph] = bodyParagraphs(rebuild(document));
-    const objectRun = paragraph?.content.findLast((item) => item.type === "run");
+    const objectRun = paragraph?.content.findLast(
+      (item) => item.type === "run",
+    );
     expect(objectRun?.type).toBe("run");
     // Exactly the run's own `w:rPr`: the atom carries the authored value, not
     // the one the style cascade resolved for rendering.
-    expect(objectRun?.type === "run" ? objectRun.formatting : undefined).toEqual({
+    expect(
+      objectRun?.type === "run" ? objectRun.formatting : undefined,
+    ).toEqual({
       language: { val: "en-US" },
     });
     const text = paragraph?.content

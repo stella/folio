@@ -31,10 +31,15 @@ import type {
   ParagraphFormatting,
   ParagraphPropertyChange,
 } from "../../model/document";
-import { asParagraphContent, childNodes, rebuildNode, type InlineNode } from "../leaves";
-import { isTrackedWrapper } from "../review";
 import { applyDocumentOps } from "../apply";
 import { IDENTITY_SPACES, identityKeysIn } from "../ids";
+import {
+  asParagraphContent,
+  childNodes,
+  type InlineNode,
+  rebuildNode,
+} from "../leaves";
+import { isTrackedWrapper } from "../review";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -69,13 +74,23 @@ const documentOf = (...paragraphs: Paragraph[]): Document => ({
   package: { document: { content: [INTRO, ...paragraphs, TAIL] } },
 });
 
-const at = (blockId: string, offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
+const at = (blockId: string, offset: number) => ({
+  story: OP_STORIES.MAIN,
+  blockId,
+  offset,
+});
 
-const edited = (document: Document, ops: readonly DocumentOp[]): BlockContent[] => {
+const edited = (
+  document: Document,
+  ops: readonly DocumentOp[],
+): BlockContent[] => {
   const applied = applyDocumentOps(document, ops);
   if (applied.isErr()) throw applied.error;
   // Every edit is undone exactly.
-  const undone = applyDocumentOps(applied.value.document, applied.value.inverse);
+  const undone = applyDocumentOps(
+    applied.value.document,
+    applied.value.inverse,
+  );
   if (undone.isErr()) throw undone.error;
   expect(undone.value.document).toStrictEqual(document);
   // Reference OOXML shapes omit operation-private cut provenance. The exact
@@ -83,7 +98,10 @@ const edited = (document: Document, ops: readonly DocumentOp[]): BlockContent[] 
   // the resolution-provenance properties.
   const referenceInline = (node: InlineNode): InlineNode => {
     const children = childNodes(node);
-    const mapped = children === undefined ? node : rebuildNode(node, children.map(referenceInline));
+    const mapped =
+      children === undefined
+        ? node
+        : rebuildNode(node, children.map(referenceInline));
     if (!isTrackedWrapper(mapped)) return mapped;
     const { resolutionJoins: _resolutionJoins, ...reference } = mapped;
     return reference;
@@ -91,15 +109,22 @@ const edited = (document: Document, ops: readonly DocumentOp[]): BlockContent[] 
   return applied.value.document.package.document.content.map((block) => {
     if (block.type !== "paragraph") return block;
     const content = asParagraphContent(block.content.map(referenceInline));
-    if (block.pPrMark === undefined) return Object.assign({}, block, { content });
+    if (block.pPrMark === undefined)
+      return Object.assign({}, block, { content });
     const { resolutionJoin: _resolutionJoin, ...pPrMark } = block.pPrMark;
     return Object.assign({}, block, { content, pPrMark });
   });
 };
 
-const change = (id: number, previous?: ParagraphFormatting): ParagraphPropertyChange =>
+const change = (
+  id: number,
+  previous?: ParagraphFormatting,
+): ParagraphPropertyChange =>
   previous === undefined
-    ? { type: "paragraphPropertyChange", info: { id, author: "Reviewer", date: DATE } }
+    ? {
+        type: "paragraphPropertyChange",
+        info: { id, author: "Reviewer", date: DATE },
+      }
     : {
         type: "paragraphPropertyChange",
         info: { id, author: "Reviewer", date: DATE },
@@ -112,7 +137,11 @@ const mark = (kind: "ins" | "del", id: number) => ({
 });
 
 /** The properties the cases vary: one at a time, as the reference suite does. */
-const PROPERTIES: readonly [string, ParagraphFormatting, ParagraphFormatting][] = [
+const PROPERTIES: readonly [
+  string,
+  ParagraphFormatting,
+  ParagraphFormatting,
+][] = [
   ["alignment", { alignment: "center" }, { alignment: "right" }],
   ["indentation", { indentLeft: 720 }, { indentLeft: 1440 }],
   ["spacing", { spaceBefore: 240, spaceAfter: 120 }, { spaceAfter: 360 }],
@@ -133,7 +162,9 @@ describe("Enter inside a paragraph", () => {
       ]);
       expect(content).toEqual([
         INTRO,
-        paragraph("5791F953", [text("Alpha ")], own, { pPrMark: mark("ins", 0) }),
+        paragraph("5791F953", [text("Alpha ")], own, {
+          pPrMark: mark("ins", 0),
+        }),
         paragraph("2A000002", [text("text.")], own),
         TAIL,
       ]);
@@ -142,7 +173,10 @@ describe("Enter inside a paragraph", () => {
 });
 
 describe("Enter at the end of a paragraph", () => {
-  const typeAfter = (newBlockId: string, fields?: Omit<Paragraph, "type" | "paraId" | "content">) =>
+  const typeAfter = (
+    newBlockId: string,
+    fields?: Omit<Paragraph, "type" | "paraId" | "content">,
+  ) =>
     [
       {
         type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
@@ -162,7 +196,9 @@ describe("Enter at the end of a paragraph", () => {
     ] satisfies DocumentOp[];
 
   test("adds a paragraph after it with the same properties", () => {
-    const alpha = paragraph("2A000002", [text("Alpha text.")], { alignment: "center" });
+    const alpha = paragraph("2A000002", [text("Alpha text.")], {
+      alignment: "center",
+    });
     expect(edited(documentOf(alpha), typeAfter("06279B03"))).toEqual([
       INTRO,
       { ...alpha, pPrMark: mark("ins", 0) },
@@ -182,7 +218,9 @@ describe("Enter at the end of a paragraph", () => {
   });
 
   test("records the paragraph's properties on a new paragraph of another style", () => {
-    const alpha = paragraph("2A000002", [text("Alpha text.")], { styleId: "Heading1" });
+    const alpha = paragraph("2A000002", [text("Alpha text.")], {
+      styleId: "Heading1",
+    });
     expect(edited(documentOf(alpha), typeAfter("57B0C177", {}))).toEqual([
       INTRO,
       { ...alpha, pPrMark: mark("ins", 0) },
@@ -255,7 +293,9 @@ describe("Backspace at the start of a paragraph", () => {
       expect(edited(documentOf(alpha, bravo), [backspace])).toEqual([
         INTRO,
         { ...alpha, pPrMark: mark("del", 0) },
-        paragraph("3B000003", [text("Bravo text.")], own, { propertyChanges: [change(1, next)] }),
+        paragraph("3B000003", [text("Bravo text.")], own, {
+          propertyChanges: [change(1, next)],
+        }),
         TAIL,
       ]);
     });
@@ -294,13 +334,19 @@ describe("Backspace at the start of a paragraph", () => {
 // Resolving every change: the reference's accept-all and reject-all results
 // ---------------------------------------------------------------------------
 
-const deleted = (id: number, content: ParagraphContent[]): ParagraphContent => ({
+const deleted = (
+  id: number,
+  content: ParagraphContent[],
+): ParagraphContent => ({
   type: "deletion",
   info: { id, author: "Reviewer", date: DATE },
   content: content.flatMap((item) => (item.type === "run" ? [item] : [])),
 });
 
-const inserted = (id: number, content: ParagraphContent[]): ParagraphContent => ({
+const inserted = (
+  id: number,
+  content: ParagraphContent[],
+): ParagraphContent => ({
   type: "insertion",
   info: { id, author: "Reviewer", date: DATE },
   content: content.flatMap((item) => (item.type === "run" ? [item] : [])),
@@ -328,7 +374,10 @@ const resolvedAll = (
     },
   ]);
   if (applied.isErr()) throw applied.error;
-  const undone = applyDocumentOps(applied.value.document, applied.value.inverse);
+  const undone = applyDocumentOps(
+    applied.value.document,
+    applied.value.inverse,
+  );
   if (undone.isErr()) throw undone.error;
   expect(undone.value.document).toStrictEqual(document);
   // Reference OOXML shapes omit operation-private cut provenance. The exact
@@ -367,14 +416,25 @@ describe("Removing a paragraph mark leaves the paragraph after it", () => {
     });
 
     test(`accepting a deleted mark of an empty paragraph (${name})`, () => {
-      const alpha = paragraph("2A000002", [], own, { pPrMark: mark("del", 101) });
-      expect(resolvedAll(documentOf(alpha, bravo), ACCEPT)).toEqual([INTRO, bravo, TAIL]);
+      const alpha = paragraph("2A000002", [], own, {
+        pPrMark: mark("del", 101),
+      });
+      expect(resolvedAll(documentOf(alpha, bravo), ACCEPT)).toEqual([
+        INTRO,
+        bravo,
+        TAIL,
+      ]);
     });
 
     test(`accepting a deleted mark whose paragraph's text is deleted too (${name})`, () => {
-      const alpha = paragraph("2A000002", [deleted(102, [text("Alpha text.")])], own, {
-        pPrMark: mark("del", 101),
-      });
+      const alpha = paragraph(
+        "2A000002",
+        [deleted(102, [text("Alpha text.")])],
+        own,
+        {
+          pPrMark: mark("del", 101),
+        },
+      );
       const document = documentOf(alpha, bravo);
       expect(resolvedAll(document, ACCEPT)).toEqual([INTRO, bravo, TAIL]);
       expect(resolvedAll(document, REJECT)).toEqual([
@@ -389,7 +449,11 @@ describe("Removing a paragraph mark leaves the paragraph after it", () => {
       const alpha = paragraph("2A000002", [text("Alpha text.")], own, {
         pPrMark: mark("del", 101),
       });
-      const deletedBravo = paragraph("3B000003", [deleted(102, [text("Bravo text.")])], next);
+      const deletedBravo = paragraph(
+        "3B000003",
+        [deleted(102, [text("Bravo text.")])],
+        next,
+      );
       expect(resolvedAll(documentOf(alpha, deletedBravo), ACCEPT)).toEqual([
         INTRO,
         paragraph("3B000003", [text("Alpha text.")], next),
@@ -419,7 +483,11 @@ describe("Removing a paragraph mark leaves the paragraph after it", () => {
       const alpha = paragraph("2A000002", [text("Alpha text.")], own, {
         pPrMark: mark("ins", 101),
       });
-      const insertedBravo = paragraph("3B000003", [inserted(102, [text("Bravo text.")])], next);
+      const insertedBravo = paragraph(
+        "3B000003",
+        [inserted(102, [text("Bravo text.")])],
+        next,
+      );
       expect(resolvedAll(documentOf(alpha, insertedBravo), REJECT)).toEqual([
         INTRO,
         paragraph("3B000003", [text("Alpha text.")], next),
@@ -438,11 +506,15 @@ describe("Removing a paragraph mark leaves the paragraph after it", () => {
         propertyChanges: [change(102)],
       },
     );
-    const bravo = paragraph("3B000003", [text("Bravo text.")], { alignment: "right" });
+    const bravo = paragraph("3B000003", [text("Bravo text.")], {
+      alignment: "right",
+    });
     const document = documentOf(alpha, bravo);
     expect(resolvedAll(document, ACCEPT)).toEqual([
       INTRO,
-      paragraph("3B000003", [text("Alpha text.Bravo text.")], { alignment: "right" }),
+      paragraph("3B000003", [text("Alpha text.Bravo text.")], {
+        alignment: "right",
+      }),
       TAIL,
     ]);
     expect(resolvedAll(document, REJECT)).toEqual([
@@ -520,11 +592,17 @@ describe("Removing a paragraph mark leaves the paragraph after it", () => {
         pPrMark: mark("del", 102),
       },
     );
-    const charlie = paragraph("4C000004", [text("Charlie text.")], { styleId: "BlockQuote" });
-    const document = documentOf(alpha, bravo, charlie);
-    const joined = paragraph("4C000004", [text("Alpha text.Bravo text.Charlie text.")], {
+    const charlie = paragraph("4C000004", [text("Charlie text.")], {
       styleId: "BlockQuote",
     });
+    const document = documentOf(alpha, bravo, charlie);
+    const joined = paragraph(
+      "4C000004",
+      [text("Alpha text.Bravo text.Charlie text.")],
+      {
+        styleId: "BlockQuote",
+      },
+    );
 
     test("at once", () => {
       expect(resolvedAll(document, ACCEPT)).toEqual([INTRO, joined, TAIL]);
@@ -582,7 +660,9 @@ describe("Resolving inline changes", () => {
       {
         type: "insertion",
         info: { id: 201, author: "Author One", date: DATE },
-        content: [text("added ")].flatMap((item) => (item.type === "run" ? [item] : [])),
+        content: [text("added ")].flatMap((item) =>
+          item.type === "run" ? [item] : [],
+        ),
       },
       {
         type: "insertion",
@@ -590,8 +670,14 @@ describe("Resolving inline changes", () => {
         content: [
           {
             type: "deletion",
-            info: { id: 203, author: "Author Two", date: "2026-01-02T00:00:00Z" },
-            content: [text("retracted ")].flatMap((item) => (item.type === "run" ? [item] : [])),
+            info: {
+              id: 203,
+              author: "Author Two",
+              date: "2026-01-02T00:00:00Z",
+            },
+            content: [text("retracted ")].flatMap((item) =>
+              item.type === "run" ? [item] : [],
+            ),
           },
         ],
       },
@@ -668,11 +754,18 @@ describe("Resolving inline changes", () => {
 });
 
 describe("Tracked Enter and Backspace, then every change resolved", () => {
-  const alphaOf = (formatting: ParagraphFormatting, fields: Partial<Paragraph> = {}) =>
-    paragraph("2A000002", [text("Alpha text.")], formatting, fields);
-  const bravo = paragraph("3B000003", [text("Bravo text.")], { alignment: "right" });
+  const alphaOf = (
+    formatting: ParagraphFormatting,
+    fields: Partial<Paragraph> = {},
+  ) => paragraph("2A000002", [text("Alpha text.")], formatting, fields);
+  const bravo = paragraph("3B000003", [text("Bravo text.")], {
+    alignment: "right",
+  });
 
-  const tracked = (document: Document, ops: readonly DocumentOp[]): Document => {
+  const tracked = (
+    document: Document,
+    ops: readonly DocumentOp[],
+  ): Document => {
     const applied = applyDocumentOps(document, ops);
     if (applied.isErr()) throw applied.error;
     return applied.value.document;
@@ -688,7 +781,9 @@ describe("Tracked Enter and Backspace, then every change resolved", () => {
         revision: REVIEWER,
       },
     ]);
-    expect(resolvedAll(split, REJECT)).toEqual(document.package.document.content);
+    expect(resolvedAll(split, REJECT)).toEqual(
+      document.package.document.content,
+    );
     expect(resolvedAll(split, ACCEPT)).toEqual([
       INTRO,
       paragraph("5791F953", [text("Alpha ")], { alignment: "center" }),
@@ -729,7 +824,9 @@ describe("Tracked Enter and Backspace, then every change resolved", () => {
       ]);
       // The pending change is rejected with the rest, which gives the paragraph its old properties.
       const old =
-        fields.propertyChanges === undefined ? formatting : { alignment: "right" as const };
+        fields.propertyChanges === undefined
+          ? formatting
+          : { alignment: "right" as const };
       expect(resolvedAll(split, REJECT)).toEqual([
         INTRO,
         paragraph("06279B03", [text("Alpha text.")], old),
@@ -753,14 +850,21 @@ describe("Tracked Enter and Backspace, then every change resolved", () => {
     ]);
     expect(resolvedAll(joined, ACCEPT)).toEqual([
       INTRO,
-      paragraph("3B000003", [text("Alpha text.Bravo text.")], { alignment: "center" }),
+      paragraph("3B000003", [text("Alpha text.Bravo text.")], {
+        alignment: "center",
+      }),
       TAIL,
     ]);
-    expect(resolvedAll(joined, REJECT)).toEqual(document.package.document.content);
+    expect(resolvedAll(joined, REJECT)).toEqual(
+      document.package.document.content,
+    );
   });
 
   test("Backspace from an empty paragraph: accepting leaves the next paragraph as it was", () => {
-    const document = documentOf(paragraph("2A000002", [], { alignment: "center" }), bravo);
+    const document = documentOf(
+      paragraph("2A000002", [], { alignment: "center" }),
+      bravo,
+    );
     const joined = tracked(document, [
       {
         type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,

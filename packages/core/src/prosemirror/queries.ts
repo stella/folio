@@ -8,8 +8,9 @@
  * future vanilla wrapper) share one implementation.
  */
 
-import type { EditorView } from "prosemirror-view";
 import type { Node as ProseMirrorNode } from "prosemirror-model";
+import type { EditorView } from "prosemirror-view";
+
 import { extractTrackedChanges } from "./utils/extractTrackedChanges";
 
 /** A resolved PM position range — half-open `[from, to)` in PM coordinates. */
@@ -26,8 +27,13 @@ export type PmRange = {
  * `RangeError`. Both adapters' `highlightRange` route raw caller positions
  * through this so the no-op contract holds identically.
  */
-export function clampRangeToDoc(doc: ProseMirrorNode, from: number, to: number): PmRange | null {
-  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < from) return null;
+export function clampRangeToDoc(
+  doc: ProseMirrorNode,
+  from: number,
+  to: number,
+): PmRange | null {
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < from)
+    return null;
   const max = doc.content.size;
   if (from > max) return null;
   return { from, to: Math.min(to, max) };
@@ -44,7 +50,10 @@ export function clampRangeToDoc(doc: ProseMirrorNode, from: number, to: number):
  *
  * Pure read over `view.state`; no dispatch.
  */
-export function findCommentRange(view: EditorView | null, commentId: number): PmRange | null {
+export function findCommentRange(
+  view: EditorView | null,
+  commentId: number,
+): PmRange | null {
   if (!view) return null;
   const commentType = view.state.schema.marks["comment"];
   if (!commentType) return null;
@@ -76,7 +85,10 @@ export function findCommentRange(view: EditorView | null, commentId: number): Pm
  *
  * Pure read over `view.state`; no dispatch.
  */
-export function findChangeRange(view: EditorView | null, revisionId: number): PmRange | null {
+export function findChangeRange(
+  view: EditorView | null,
+  revisionId: number,
+): PmRange | null {
   if (!view) return null;
   const { entries } = extractTrackedChanges(view.state);
   const entry = entries.find(

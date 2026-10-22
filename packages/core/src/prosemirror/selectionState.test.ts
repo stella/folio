@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import { schema } from "./schema";
-import { extractSelectionSnapshot, extractSelectionState } from "./selectionState";
+import {
+  extractSelectionSnapshot,
+  extractSelectionState,
+} from "./selectionState";
 
 const bold = schema.marks["bold"]!;
 const underline = schema.marks["underline"]!;
@@ -26,7 +29,9 @@ function paragraphWithBoldRun() {
 function stateAt(from: number, to: number): EditorState {
   const doc = paragraphWithBoldRun();
   return EditorState.create({ doc }).apply(
-    EditorState.create({ doc }).tr.setSelection(TextSelection.create(doc, from, to)),
+    EditorState.create({ doc }).tr.setSelection(
+      TextSelection.create(doc, from, to),
+    ),
   );
 }
 
@@ -171,11 +176,15 @@ describe("extractSelectionState — underline none", () => {
   test('treats underline style "none" as inactive for toolbar state', () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
-        schema.text("text", [underline.create({ style: "none", color: { rgb: "FF0000" } })]),
+        schema.text("text", [
+          underline.create({ style: "none", color: { rgb: "FF0000" } }),
+        ]),
       ]),
     ]);
     const state = EditorState.create({ doc }).apply(
-      EditorState.create({ doc }).tr.setSelection(TextSelection.create(doc, 3, 3)),
+      EditorState.create({ doc }).tr.setSelection(
+        TextSelection.create(doc, 3, 3),
+      ),
     );
 
     const result = extractSelectionState(state);
@@ -195,7 +204,9 @@ describe("extractSelectionState — underline none", () => {
       selection: TextSelection.create(doc, 1, 14),
     });
 
-    expect(extractSelectionState(state)?.textFormatting.underline).toMatchObject({
+    expect(
+      extractSelectionState(state)?.textFormatting.underline,
+    ).toMatchObject({
       style: "single",
     });
   });

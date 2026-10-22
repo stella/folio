@@ -11,7 +11,7 @@ import type { Command } from "prosemirror-state";
 
 import type { TextFormatting } from "../../types/document";
 import { textFormattingToMarks as _textFormattingToMarks } from "../extensions/marks/markUtils";
-import { singletonManager, schema } from "../schema";
+import { schema, singletonManager } from "../schema";
 import type { TextColorAttrs } from "../schema";
 
 // Utility re-exports from markUtils (used by toolbar, conversion, etc.)
@@ -52,10 +52,13 @@ const cmds = singletonManager;
 // Toggle marks (simple on/off)
 export const toggleBold: Command = cmds.requireCommand("toggleBold")();
 export const toggleItalic: Command = cmds.requireCommand("toggleItalic")();
-export const toggleUnderline: Command = cmds.requireCommand("toggleUnderline")();
+export const toggleUnderline: Command =
+  cmds.requireCommand("toggleUnderline")();
 export const toggleStrike: Command = cmds.requireCommand("toggleStrike")();
-export const toggleSuperscript: Command = cmds.requireCommand("toggleSuperscript")();
-export const toggleSubscript: Command = cmds.requireCommand("toggleSubscript")();
+export const toggleSuperscript: Command =
+  cmds.requireCommand("toggleSuperscript")();
+export const toggleSubscript: Command =
+  cmds.requireCommand("toggleSubscript")();
 
 // Set marks (with attributes)
 export function setTextColor(attrs: TextColorAttrs): Command {
@@ -76,9 +79,13 @@ export const clearFontSize: Command = cmds.requireCommand("clearFontSize")();
 export function setFontFamily(fontName: string): Command {
   return cmds.requireCommand("setFontFamily")(fontName);
 }
-export const clearFontFamily: Command = cmds.requireCommand("clearFontFamily")();
+export const clearFontFamily: Command =
+  cmds.requireCommand("clearFontFamily")();
 
-export function setUnderlineStyle(style: string, color?: TextColorAttrs): Command {
+export function setUnderlineStyle(
+  style: string,
+  color?: TextColorAttrs,
+): Command {
   return cmds.requireCommand("setUnderlineStyle")(style, color);
 }
 
@@ -86,8 +93,13 @@ export function setUnderlineStyle(style: string, color?: TextColorAttrs): Comman
 export function setHyperlink(href: string, tooltip?: string): Command {
   return cmds.requireCommand("setHyperlink")(href, tooltip);
 }
-export const removeHyperlink: Command = cmds.requireCommand("removeHyperlink")();
+export const removeHyperlink: Command =
+  cmds.requireCommand("removeHyperlink")();
 
-export function insertHyperlink(text: string, href: string, tooltip?: string): Command {
+export function insertHyperlink(
+  text: string,
+  href: string,
+  tooltip?: string,
+): Command {
   return cmds.requireCommand("insertHyperlink")(text, href, tooltip);
 }

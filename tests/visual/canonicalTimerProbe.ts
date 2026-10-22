@@ -1,7 +1,8 @@
-import { evaluateCanonicalDocument } from "./canonicalPageNavigation";
 import { expect, type Page } from "@playwright/test";
-import { test as base } from "../parity/canonicalTest";
+
 import { CANONICAL_INPUT_TIMER_OWNER } from "../../packages/core/src/controller/canonicalInputTimer";
+import { test as base } from "../parity/canonicalTest";
+import { evaluateCanonicalDocument } from "./canonicalPageNavigation";
 
 declare global {
   var __folioCanonicalInputTimers: Set<number> | undefined;
@@ -35,7 +36,10 @@ const installCanonicalTimerProbe = (ownerKey: string) => {
 /** Every navigation, including reloads, captures application startup timers. */
 export const test = base.extend({
   page: async ({ page }, use) => {
-    await page.addInitScript(installCanonicalTimerProbe, CANONICAL_INPUT_TIMER_OWNER);
+    await page.addInitScript(
+      installCanonicalTimerProbe,
+      CANONICAL_INPUT_TIMER_OWNER,
+    );
     await use(page);
   },
 });
@@ -45,7 +49,9 @@ export const assertCanonicalInputTimersSettled = async (page: Page) => {
   const pending = await evaluateCanonicalDocument(page, () =>
     page.evaluate(() => {
       if (!globalThis.__folioCanonicalInputTimers)
-        throw new TypeError("Canonical timer instrumentation must be installed before navigation");
+        throw new TypeError(
+          "Canonical timer instrumentation must be installed before navigation",
+        );
       return [...globalThis.__folioCanonicalInputTimers.values()];
     }),
   );

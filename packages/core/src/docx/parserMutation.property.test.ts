@@ -5,12 +5,11 @@
  * combinations and replays them with PROPERTY_TEST_SEED and its reported path.
  */
 
+import { test } from "bun:test";
+import fc from "fast-check";
 import assert from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { test } from "bun:test";
-import fc from "fast-check";
 
 import {
   commentDocument,
@@ -24,11 +23,15 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
-  PARSER_XML_MUTATIONS,
   mutateXml,
+  PARSER_XML_MUTATIONS,
   type ParserXmlMutation,
 } from "./__tests__/parserXmlMutations";
-import { ZIP_MUTATIONS, mutateZip, type ZipMutation } from "./__tests__/parserZipMutations";
+import {
+  mutateZip,
+  ZIP_MUTATIONS,
+  type ZipMutation,
+} from "./__tests__/parserZipMutations";
 
 const CASE_TIMEOUT_MS = 8_000;
 const MAX_MUTATED_BYTES = 512 * 1024;
@@ -46,7 +49,10 @@ type Fixture = keyof typeof FIXTURES;
 type MutationCase = {
   fixture: Fixture;
   part: string;
-} & ({ layer: "zip"; mutation: ZipMutation } | { layer: "xml"; mutation: ParserXmlMutation });
+} & (
+  | { layer: "zip"; mutation: ZipMutation }
+  | { layer: "xml"; mutation: ParserXmlMutation }
+);
 
 const CASES = [
   ...ZIP_MUTATIONS.map((mutation) => ({
@@ -58,27 +64,87 @@ const CASES = [
   ...PARSER_XML_MUTATIONS.map((mutation): MutationCase => {
     switch (mutation) {
       case "outOfRangeId":
-        return { layer: "xml", mutation, fixture: "lists", part: "word/numbering.xml" };
+        return {
+          layer: "xml",
+          mutation,
+          fixture: "lists",
+          part: "word/numbering.xml",
+        };
       case "cyclicStyles":
-        return { layer: "xml", mutation, fixture: "plain", part: "word/styles.xml" };
+        return {
+          layer: "xml",
+          mutation,
+          fixture: "plain",
+          part: "word/styles.xml",
+        };
       case "danglingNumberingId":
-        return { layer: "xml", mutation, fixture: "lists", part: "word/document.xml" };
+        return {
+          layer: "xml",
+          mutation,
+          fixture: "lists",
+          part: "word/document.xml",
+        };
       case "danglingCommentId":
-        return { layer: "xml", mutation, fixture: "comments", part: "word/document.xml" };
+        return {
+          layer: "xml",
+          mutation,
+          fixture: "comments",
+          part: "word/document.xml",
+        };
       case "danglingFootnoteId":
-        return { layer: "xml", mutation, fixture: "notes", part: "word/document.xml" };
+        return {
+          layer: "xml",
+          mutation,
+          fixture: "notes",
+          part: "word/document.xml",
+        };
       case "selfReferencingRelationship":
-        return { layer: "xml", mutation, fixture: "plain", part: "_rels/.rels" };
+        return {
+          layer: "xml",
+          mutation,
+          fixture: "plain",
+          part: "_rels/.rels",
+        };
       case "reorderElements":
-        return { layer: "xml", mutation, fixture: "plain", part: "word/styles.xml" };
+        return {
+          layer: "xml",
+          mutation,
+          fixture: "plain",
+          part: "word/styles.xml",
+        };
       default:
-        return { layer: "xml", mutation, fixture: "plain", part: "word/document.xml" };
+        return {
+          layer: "xml",
+          mutation,
+          fixture: "plain",
+          part: "word/document.xml",
+        };
     }
   }),
-  { layer: "xml", mutation: "dropElement", fixture: "notes", part: "word/footnotes.xml" },
-  { layer: "xml", mutation: "duplicateElement", fixture: "notes", part: "word/footnotes.xml" },
-  { layer: "xml", mutation: "dropElement", fixture: "comments", part: "word/comments.xml" },
-  { layer: "xml", mutation: "duplicateElement", fixture: "comments", part: "word/comments.xml" },
+  {
+    layer: "xml",
+    mutation: "dropElement",
+    fixture: "notes",
+    part: "word/footnotes.xml",
+  },
+  {
+    layer: "xml",
+    mutation: "duplicateElement",
+    fixture: "notes",
+    part: "word/footnotes.xml",
+  },
+  {
+    layer: "xml",
+    mutation: "dropElement",
+    fixture: "comments",
+    part: "word/comments.xml",
+  },
+  {
+    layer: "xml",
+    mutation: "duplicateElement",
+    fixture: "comments",
+    part: "word/comments.xml",
+  },
 ] satisfies MutationCase[];
 
 const fixtureCache = new Map<Fixture, Promise<Uint8Array>>();
@@ -118,26 +184,44 @@ const withCaseTimeout = async (
       new Response(child.stderr).text(),
     ]);
     assert.ok(!timedOut, `${label}: exceeded ${CASE_TIMEOUT_MS} ms`);
-    assert.equal(exitCode, 0, `${label}: ${diagnostic || `case exited ${exitCode}`}`);
-    assert.match(output, /^(?:opened|refused)\n$/u, `${label}: missing case result`);
+    assert.equal(
+      exitCode,
+      0,
+      `${label}: ${diagnostic || `case exited ${exitCode}`}`,
+    );
+    assert.match(
+      output,
+      /^(?:opened|refused)\n$/u,
+      `${label}: missing case result`,
+    );
     return output.trim() === "opened" ? "opened" : "refused";
   } finally {
     clearTimeout(timer);
   }
 };
 
-const applyMutation = (bytes: Uint8Array, { layer, mutation, part }: MutationCase) =>
-  layer === "zip" ? mutateZip(bytes, mutation, part) : mutateXml(bytes, mutation, part);
+const applyMutation = (
+  bytes: Uint8Array,
+  { layer, mutation, part }: MutationCase,
+) =>
+  layer === "zip"
+    ? mutateZip(bytes, mutation, part)
+    : mutateXml(bytes, mutation, part);
 
 const assertSurvives = async (
   mutated: Uint8Array,
   label: string,
 ): Promise<"opened" | "refused"> => {
-  assert.ok(mutated.byteLength <= MAX_MUTATED_BYTES, `${label}: mutation exceeded input budget`);
+  assert.ok(
+    mutated.byteLength <= MAX_MUTATED_BYTES,
+    `${label}: mutation exceeded input budget`,
+  );
   return withCaseTimeout(mutated, label);
 };
 
-const checkCase = async (entry: MutationCase): Promise<"opened" | "refused"> => {
+const checkCase = async (
+  entry: MutationCase,
+): Promise<"opened" | "refused"> => {
   const label = `${entry.layer}/${entry.mutation} on ${entry.fixture}:${entry.part}`;
   const original = await fixtureBytes(entry.fixture);
   const mutated = await applyMutation(original, entry);
@@ -147,11 +231,19 @@ const checkCase = async (entry: MutationCase): Promise<"opened" | "refused"> => 
 
 test("parser mutation matrix covers every declared mutator", () => {
   assert.deepEqual(
-    new Set(CASES.filter(({ layer }) => layer === "zip").map(({ mutation }) => mutation)),
+    new Set(
+      CASES.filter(({ layer }) => layer === "zip").map(
+        ({ mutation }) => mutation,
+      ),
+    ),
     new Set(ZIP_MUTATIONS),
   );
   assert.deepEqual(
-    new Set(CASES.filter(({ layer }) => layer === "xml").map(({ mutation }) => mutation)),
+    new Set(
+      CASES.filter(({ layer }) => layer === "xml").map(
+        ({ mutation }) => mutation,
+      ),
+    ),
     new Set(PARSER_XML_MUTATIONS),
   );
 });
@@ -173,20 +265,37 @@ test("a changed but valid package exercises the save/reopen oracle", async () =>
 });
 
 // These mutations preserve the part and can be composed on the same fixture.
-const COMPOSABLE_XML = ["bom", "emptyText", "hugeText", "unknownNamespace"] as const;
-const COMPOSABLE_ZIP = ["duplicate-part", "bad-crc", "wrong-content-type"] as const;
+const COMPOSABLE_XML = [
+  "bom",
+  "emptyText",
+  "hugeText",
+  "unknownNamespace",
+] as const;
+const COMPOSABLE_ZIP = [
+  "duplicate-part",
+  "bad-crc",
+  "wrong-content-type",
+] as const;
 const composition = fc.oneof(
   fc
-    .uniqueArray(fc.constantFrom(...COMPOSABLE_XML), { minLength: 1, maxLength: 3 })
+    .uniqueArray(fc.constantFrom(...COMPOSABLE_XML), {
+      minLength: 1,
+      maxLength: 3,
+    })
     .map((mutations) => ({ type: "xml" as const, mutations })),
   fc
-    .uniqueArray(fc.constantFrom(...COMPOSABLE_ZIP), { minLength: 1, maxLength: 3 })
+    .uniqueArray(fc.constantFrom(...COMPOSABLE_ZIP), {
+      minLength: 1,
+      maxLength: 3,
+    })
     .map((mutations) => ({ type: "zip" as const, mutations })),
 );
 
 const commitSeed = (): number => {
   const head = process.env["GITHUB_SHA"]?.slice(0, 8);
-  return head && /^[0-9a-f]{8}$/iu.test(head) ? Number.parseInt(head, 16) : DEFAULT_SEED;
+  return head && /^[0-9a-f]{8}$/iu.test(head)
+    ? Number.parseInt(head, 16)
+    : DEFAULT_SEED;
 };
 
 test(

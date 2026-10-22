@@ -37,7 +37,8 @@ export type RangeProjectionContext = {
 
 const pageIndexOf = (el: Element): number => {
   const page = el.closest(".layout-page");
-  const raw = page instanceof HTMLElement ? page.dataset["pageNumber"] : undefined;
+  const raw =
+    page instanceof HTMLElement ? page.dataset["pageNumber"] : undefined;
   return raw ? Number(raw) - 1 : 0;
 };
 
@@ -99,8 +100,13 @@ const domRectsForRange = (
  * horizontally between paint passes while content above reflows. The page's
  * left margin is fixed, so this value holds steady as text is edited.
  */
-export const measureContentLeft = (pagesContainer: HTMLElement, zoom: number): number | null => {
-  const overlay = pagesContainer.parentElement?.querySelector('[data-testid="selection-overlay"]');
+export const measureContentLeft = (
+  pagesContainer: HTMLElement,
+  zoom: number,
+): number | null => {
+  const overlay = pagesContainer.parentElement?.querySelector(
+    '[data-testid="selection-overlay"]',
+  );
   const firstPage = pagesContainer.querySelector(".layout-page");
   if (!overlay || !firstPage) {
     return null;
@@ -159,7 +165,9 @@ export const measureDirectiveGutter = (
   if (zoom <= 0) {
     return null;
   }
-  const overlay = pagesContainer.parentElement?.querySelector('[data-testid="selection-overlay"]');
+  const overlay = pagesContainer.parentElement?.querySelector(
+    '[data-testid="selection-overlay"]',
+  );
   const pages = pagesContainer.querySelectorAll<HTMLElement>(".layout-page");
   if (!overlay || pages.length === 0) {
     return null;
@@ -263,7 +271,9 @@ export const projectRangesToRects = async <T extends ProjectableRange>(
   if (ranges.length === 0) {
     return [];
   }
-  const overlay = pagesContainer.parentElement?.querySelector('[data-testid="selection-overlay"]');
+  const overlay = pagesContainer.parentElement?.querySelector(
+    '[data-testid="selection-overlay"]',
+  );
   const firstPage = pagesContainer.querySelector(".layout-page");
   if (!overlay || !firstPage) {
     return [];
@@ -277,7 +287,13 @@ export const projectRangesToRects = async <T extends ProjectableRange>(
   const result: ProjectedRange<T>[] = [];
   const fallback: T[] = [];
   for (const range of ranges) {
-    const rects = domRectsForRange(pmSpans, overlayRect, zoom, range.from, range.to);
+    const rects = domRectsForRange(
+      pmSpans,
+      overlayRect,
+      zoom,
+      range.from,
+      range.to,
+    );
     if (rects.length > 0) {
       result.push({ range, rects });
     } else {
@@ -286,17 +302,22 @@ export const projectRangesToRects = async <T extends ProjectableRange>(
   }
 
   if (fallback.length > 0 && layout && blocks.length > 0) {
-    const { selectionToRects } = await import("../layout-bridge/engine/selectionRects");
+    const { selectionToRects } =
+      await import("../layout-bridge/engine/selectionRects");
     for (const range of fallback) {
-      const rects = selectionToRects(layout, blocks, measures, range.from, range.to).map(
-        (rect) => ({
-          height: rect.height,
-          pageIndex: rect.pageIndex,
-          width: rect.width,
-          x: rect.x + pageOffsetX,
-          y: rect.y + pageOffsetY,
-        }),
-      );
+      const rects = selectionToRects(
+        layout,
+        blocks,
+        measures,
+        range.from,
+        range.to,
+      ).map((rect) => ({
+        height: rect.height,
+        pageIndex: rect.pageIndex,
+        width: rect.width,
+        x: rect.x + pageOffsetX,
+        y: rect.y + pageOffsetY,
+      }));
       if (rects.length > 0) {
         result.push({ range, rects });
       }

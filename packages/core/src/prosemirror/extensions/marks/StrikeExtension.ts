@@ -4,10 +4,13 @@
 
 import { panic } from "better-result";
 
-import { canonicalRunFormatting, withCanonicalCommand } from "../../canonicalCommands";
+import {
+  canonicalRunFormatting,
+  withCanonicalCommand,
+} from "../../canonicalCommands";
 import { createMarkExtension } from "../create";
-import { isMarkActive, toggleDocumentMark } from "./markUtils";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
+import { isMarkActive, toggleDocumentMark } from "./markUtils";
 
 export const StrikeExtension = createMarkExtension({
   name: "strike",

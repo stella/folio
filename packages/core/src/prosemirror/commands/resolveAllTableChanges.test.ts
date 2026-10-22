@@ -42,8 +42,10 @@ const paragraph = (value: string) =>
   schema.node("paragraph", null, value ? [schema.text(value)] : []);
 const cell = (value: string, attrs?: Record<string, unknown>) =>
   schema.node("tableCell", attrs, [paragraph(value)]);
-const row = (cells: ReturnType<typeof cell>[], attrs?: Record<string, unknown>) =>
-  schema.node("tableRow", attrs, cells);
+const row = (
+  cells: ReturnType<typeof cell>[],
+  attrs?: Record<string, unknown>,
+) => schema.node("tableRow", attrs, cells);
 
 test("batch row removal promotes a crossing cell and reduces its rowspan", () => {
   const table = schema.node("table", null, [
@@ -61,7 +63,9 @@ test("batch row removal promotes a crossing cell and reduces its rowspan", () =>
   expect(result.node?.firstChild?.firstChild?.attrs["rowspan"]).toBe(1);
   expect(result.node?.firstChild?.child(1).textContent).toBe("keep");
   expect(result.paragraphOffsets).toHaveLength(2);
-  expect(result.paragraphOffsets[1].source).toBeGreaterThan(result.paragraphOffsets[1].final);
+  expect(result.paragraphOffsets[1].source).toBeGreaterThan(
+    result.paragraphOffsets[1].final,
+  );
   expect(result.positionMap.map(result.paragraphOffsets[1].source, 1)).toBe(
     result.paragraphOffsets[1].final,
   );
@@ -78,7 +82,10 @@ test("batch cell removal preserves the surviving grid provenance", () => {
     "table",
     {
       columnWidths: [1200, 1800],
-      _originalFormatting: { sourceXml: "<w:tblPr/>", gridSourceXml: "<w:tblGrid/>" },
+      _originalFormatting: {
+        sourceXml: "<w:tblPr/>",
+        gridSourceXml: "<w:tblGrid/>",
+      },
     },
     [
       row([
@@ -101,8 +108,12 @@ test("batch cell removal preserves the surviving grid provenance", () => {
   expect(result.node?.child(0).childCount).toBe(1);
   expect(result.node?.child(1).childCount).toBe(1);
   expect(result.node?.attrs["columnWidths"]).toEqual([1200]);
-  expect(result.node?.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
-  expect(result.changedParagraphRanges).toEqual([{ from: 0, to: result.node?.nodeSize }]);
+  expect(result.node?.attrs["_originalFormatting"]).toEqual({
+    sourceXml: "<w:tblPr/>",
+  });
+  expect(result.changedParagraphRanges).toEqual([
+    { from: 0, to: result.node?.nodeSize },
+  ]);
 });
 
 test("grid widths follow the cell whose removal actually shrinks the table", () => {
@@ -121,7 +132,9 @@ test("grid widths follow the cell whose removal actually shrinks the table", () 
   );
   expect(survivingParagraph).toBeDefined();
   if (survivingParagraph) {
-    expect(result.positionMap.map(survivingParagraph.source, 1)).toBe(survivingParagraph.final);
+    expect(result.positionMap.map(survivingParagraph.source, 1)).toBe(
+      survivingParagraph.final,
+    );
   }
 });
 
@@ -165,7 +178,9 @@ test("rejecting a visible merge restores one spanning cell", () => {
   expect(result.failed).toBe(false);
   expect(result.node?.child(0).firstChild?.attrs["rowspan"]).toBe(2);
   expect(result.node?.child(1).childCount).toBe(0);
-  expect(result.node?.child(0).firstChild?.attrs["_docxVMergeContinuationCells"]).toHaveLength(1);
+  expect(
+    result.node?.child(0).firstChild?.attrs["_docxVMergeContinuationCells"],
+  ).toHaveLength(1);
 });
 
 test("rejecting a collapsed merge restores continuation cells", () => {
@@ -186,7 +201,9 @@ test("rejecting a collapsed merge restores continuation cells", () => {
     ],
   };
   const table = schema.node("table", null, [
-    row([cell("top", { rowspan: 2, _docxVMergeContinuationCells: [continuation] })]),
+    row([
+      cell("top", { rowspan: 2, _docxVMergeContinuationCells: [continuation] }),
+    ]),
     row([]),
   ]);
   const result = resolveAllTableChanges({ table, mode: "reject" });
@@ -241,6 +258,10 @@ test("a chain of visible splits preserves continuation order", () => {
   const continuationCells =
     result.node?.firstChild?.firstChild?.attrs["_docxVMergeContinuationCells"];
   expect(continuationCells).toHaveLength(64);
-  expect(continuationCells[0].content[0].content[0].content[0].text).toBe("continuation 1");
-  expect(continuationCells[63].content[0].content[0].content[0].text).toBe("continuation 64");
+  expect(continuationCells[0].content[0].content[0].content[0].text).toBe(
+    "continuation 1",
+  );
+  expect(continuationCells[63].content[0].content[0].content[0].text).toBe(
+    "continuation 64",
+  );
 });

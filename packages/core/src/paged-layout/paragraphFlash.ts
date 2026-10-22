@@ -4,7 +4,10 @@
 
 import type { ParagraphHighlightOptions } from "./paragraphFlashTypes";
 
-export type { ParagraphHighlightOptions, ScrollToParaIdOptions } from "./paragraphFlashTypes";
+export type {
+  ParagraphHighlightOptions,
+  ScrollToParaIdOptions,
+} from "./paragraphFlashTypes";
 
 /** Default color used by paragraph flashes. */
 export const DEFAULT_PARAGRAPH_FLASH_COLOR = "rgba(255, 235, 59, 0.55)";
@@ -42,13 +45,18 @@ const normalizedDurationMs = (options?: ParagraphHighlightOptions): number => {
 };
 
 /** Find all painted paragraph fragments with a stable `data-para-id`. */
-export const findParagraphFragmentsByParaId = (root: ParentNode, paraId: string): HTMLElement[] => {
+export const findParagraphFragmentsByParaId = (
+  root: ParentNode,
+  paraId: string,
+): HTMLElement[] => {
   if (!paraId || !paraId.trim()) {
     return [];
   }
   const escaped = escapeAttributeValue(paraId);
   return Array.from(
-    root.querySelectorAll<HTMLElement>(`.layout-paragraph[data-para-id="${escaped}"]`),
+    root.querySelectorAll<HTMLElement>(
+      `.layout-paragraph[data-para-id="${escaped}"]`,
+    ),
   );
 };
 
@@ -91,4 +99,8 @@ export const flashParagraphFragmentsByParaId = (
   root: ParentNode,
   paraId: string,
   options?: ParagraphHighlightOptions,
-): boolean => flashParagraphElements(findParagraphFragmentsByParaId(root, paraId), options) > 0;
+): boolean =>
+  flashParagraphElements(
+    findParagraphFragmentsByParaId(root, paraId),
+    options,
+  ) > 0;

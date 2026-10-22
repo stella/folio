@@ -6,7 +6,10 @@ import {
   type RustWasmArtifact,
 } from "./lib/rust-wasm-artifact.ts";
 
-const mode = buildModeFrom(process.argv[2], "bun scripts/build-docx-kernel-wasm.ts");
+const mode = buildModeFrom(
+  process.argv[2],
+  "bun scripts/build-docx-kernel-wasm.ts",
+);
 
 // Review content and UTF-8/UTF-16 spans have an explicit additive budget so
 // unrelated feature growth cannot consume their allowance unnoticed.

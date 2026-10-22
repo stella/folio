@@ -27,6 +27,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import { isStyleSourcedParagraphNumbering } from "../../internal/paragraphFormattingSerialization";
 import type {
   BorderSpec,
   CellMargins,
@@ -38,33 +39,40 @@ import type {
   TablePropertyExceptionFormatting,
   TableRowFormatting,
 } from "../../types/document";
-
-import { isStyleSourcedParagraphNumbering } from "../../internal/paragraphFormattingSerialization";
 import { expectParagraphAttrs } from "../attrs";
+import {
+  hasListRendering,
+  LIST_RENDERING_ATTR_KEYS,
+} from "../listRenderingAttrs";
+import { readParagraphNumberingAttr } from "../numberingAttr";
 import { directParagraphAlignment } from "../paragraphAlignment";
-import { directParagraphIndentation } from "../paragraphIndentation";
+import { directionFromBidi } from "../paragraphDirection";
 import {
   PARAGRAPH_FORMATTING_WRITE_BACK,
   STYLE_RESOLVED_PARAGRAPH_FIELDS,
 } from "../paragraphFormattingProvenance";
-import { sameFormattingValue } from "../runFormattingFromMarks";
+import { directParagraphIndentation } from "../paragraphIndentation";
 import {
   directParagraphSpacing,
   paragraphSpacingAttrPatch,
   paragraphSpacingFromFormatting,
 } from "../paragraphSpacing";
-import { LIST_RENDERING_ATTR_KEYS, hasListRendering } from "../listRenderingAttrs";
-import { readParagraphNumberingAttr } from "../numberingAttr";
-import { directionFromBidi } from "../paragraphDirection";
-import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "../schema/nodes";
+import { sameFormattingValue } from "../runFormattingFromMarks";
+import type {
+  ParagraphAttrs,
+  ParagraphPropertyChangeAttrs,
+} from "../schema/nodes";
 
 /** Editor-only suggestions are rebased away before save; every other entry emits `w:pPrChange`. */
 export const hasSerializableParagraphPropertyChange = (
   changes: readonly ParagraphPropertyChangeAttrs[] | null | undefined,
-): boolean => changes?.some(({ info }) => info.provenance !== "suggested") === true;
+): boolean =>
+  changes?.some(({ info }) => info.provenance !== "suggested") === true;
 
 type AttrPatch = Record<string, unknown>;
-type ParagraphPropertySnapshot = NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]>;
+type ParagraphPropertySnapshot = NonNullable<
+  ParagraphPropertyChangeAttrs["previousFormatting"]
+>;
 
 export type ParagraphPropertyChangeRemoval =
   | { type: "unchanged" }
@@ -125,7 +133,11 @@ export const removeParagraphPropertyChanges = (
   if (!removingRun) {
     return { type: "keep-live", remaining };
   }
-  return { type: "restore-previous", remaining, previousFormatting: removedPrevious };
+  return {
+    type: "restore-previous",
+    remaining,
+    previousFormatting: removedPrevious,
+  };
 };
 
 /**
@@ -175,7 +187,9 @@ export const PPR_CHANGE_SCOPED_ATTR_KEYS = [
   "_autospacingBase",
 ] as const satisfies readonly (keyof ParagraphAttrs)[];
 
-const PPR_CHANGE_SCOPED_ATTR_KEY_SET: ReadonlySet<string> = new Set(PPR_CHANGE_SCOPED_ATTR_KEYS);
+const PPR_CHANGE_SCOPED_ATTR_KEY_SET: ReadonlySet<string> = new Set(
+  PPR_CHANGE_SCOPED_ATTR_KEYS,
+);
 
 /** Effective/bookkeeping attrs whose tracked snapshot must use direct provenance instead. */
 const PPR_SPACING_ATTR_KEYS: ReadonlySet<keyof ParagraphAttrs> = new Set([
@@ -193,7 +207,10 @@ const PPR_SPACING_ATTR_KEYS: ReadonlySet<keyof ParagraphAttrs> = new Set([
  * paragraph does not state it (its source `w:pPr` has no such field) and the
  * value is the style's. The same test a save applies before writing it.
  */
-const styleSuppliedParagraphValue = (attrs: ParagraphAttrs, key: string): boolean => {
+const styleSuppliedParagraphValue = (
+  attrs: ParagraphAttrs,
+  key: string,
+): boolean => {
   if (!STYLE_RESOLVED_ATTR_FIELDS.has(key)) {
     return false;
   }
@@ -215,7 +232,9 @@ const STYLE_RESOLVED_ATTR_FIELDS: ReadonlySet<string> = new Set(
 );
 
 /** The in-scope paragraph properties as they stand, for a `w:pPrChange` record. */
-export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnapshot => {
+export const paragraphPropertiesSnapshot = (
+  node: PMNode,
+): ParagraphPropertySnapshot => {
   const attrs = expectParagraphAttrs(node);
   const snapshot: Record<string, unknown> = {};
   for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
@@ -226,7 +245,8 @@ export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnap
       key === "indentFirstLine" ||
       key === "hangingIndent" ||
       PPR_SPACING_ATTR_KEYS.has(key) ||
-      (key === "numPr" && isStyleSourcedParagraphNumbering(attrs.numPr, attrs.numPrFromStyle))
+      (key === "numPr" &&
+        isStyleSourcedParagraphNumbering(attrs.numPr, attrs.numPrFromStyle))
     ) {
       continue;
     }
@@ -253,7 +273,11 @@ export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnap
       if (value != null) snapshot[key] = value;
     }
   }
-  Object.assign(snapshot, directParagraphSpacing(attrs), directParagraphIndentation(attrs));
+  Object.assign(
+    snapshot,
+    directParagraphSpacing(attrs),
+    directParagraphIndentation(attrs),
+  );
   return snapshot;
 };
 
@@ -337,7 +361,10 @@ export function paragraphRejectAttrPatch(
       patch[key] = null;
     }
   }
-  if (!Object.hasOwn(prev, "indentFirstLine") && !Object.hasOwn(prev, "hangingIndent")) {
+  if (
+    !Object.hasOwn(prev, "indentFirstLine") &&
+    !Object.hasOwn(prev, "hangingIndent")
+  ) {
     patch["hangingIndent"] = inheritedFormatting?.hangingIndent ?? null;
   }
   if (!Object.hasOwn(prev, "alignment")) {
@@ -348,7 +375,10 @@ export function paragraphRejectAttrPatch(
   const inheritedSpacing = paragraphSpacingFromFormatting(inheritedFormatting);
   Object.assign(
     patch,
-    paragraphSpacingAttrPatch({ direct: directSpacing, inherited: inheritedSpacing }),
+    paragraphSpacingAttrPatch({
+      direct: directSpacing,
+      inherited: inheritedSpacing,
+    }),
   );
   // Parser-shaped fallbacks for the two renamed attrs (attr-shaped records
   // carrying `direction` / `_autospacingBase` already won above).
@@ -356,7 +386,10 @@ export function paragraphRejectAttrPatch(
     patch["direction"] = directionFromBidi(prev.bidi);
   }
   for (const [key, value] of Object.entries(prev)) {
-    if (PPR_CHANGE_SCOPED_ATTR_KEY_SET.has(key) || PPR_PARSER_ONLY_KEYS.has(key)) {
+    if (
+      PPR_CHANGE_SCOPED_ATTR_KEY_SET.has(key) ||
+      PPR_PARSER_ONLY_KEYS.has(key)
+    ) {
       continue;
     }
     patch[key] = value ?? null;
@@ -432,9 +465,11 @@ export function sectionRejectProperties({
   const restored: SectionProperties = { ...previousProperties };
   delete restored.propertyChanges;
   const references = previousReferences ?? live;
-  if (references.headerReferences) restored.headerReferences = references.headerReferences;
+  if (references.headerReferences)
+    restored.headerReferences = references.headerReferences;
   else delete restored.headerReferences;
-  if (references.footerReferences) restored.footerReferences = references.footerReferences;
+  if (references.footerReferences)
+    restored.footerReferences = references.footerReferences;
   else delete restored.footerReferences;
   return restored;
 }
@@ -445,7 +480,9 @@ export function sectionRejectProperties({
  * attr resets when absent). `columnWidths` comes from `w:tblGrid`, not tblPr,
  * and is untouched.
  */
-export function tableRejectAttrPatch(previousFormatting: TableFormatting | undefined): AttrPatch {
+export function tableRejectAttrPatch(
+  previousFormatting: TableFormatting | undefined,
+): AttrPatch {
   return {
     styleId: previousFormatting?.styleId ?? null,
     width: previousFormatting?.width?.value ?? null,
@@ -513,19 +550,32 @@ export function tableCellRejectAttrPatch(
     width: previousFormatting?.width?.value ?? null,
     widthType: previousFormatting?.width?.type ?? null,
     _authoredWidth: previousFormatting?.width
-      ? { value: previousFormatting.width.value, type: previousFormatting.width.type }
+      ? {
+          value: previousFormatting.width.value,
+          type: previousFormatting.width.type,
+        }
       : null,
     verticalAlign: previousFormatting?.verticalAlign ?? null,
     backgroundColor: previousFormatting?.shading?.fill?.rgb ?? null,
     textDirection: previousFormatting?.textDirection ?? null,
     noWrap: previousFormatting?.noWrap ?? null,
-    borders: previousFormatting?.borders ? cellBordersToAttr(previousFormatting.borders) : null,
-    margins: previousFormatting?.margins ? cellMarginsToAttr(previousFormatting.margins) : null,
-    _originalFormatting: Object.keys(restoredOriginal).length > 0 ? restoredOriginal : null,
+    borders: previousFormatting?.borders
+      ? cellBordersToAttr(previousFormatting.borders)
+      : null,
+    margins: previousFormatting?.margins
+      ? cellMarginsToAttr(previousFormatting.margins)
+      : null,
+    _originalFormatting:
+      Object.keys(restoredOriginal).length > 0 ? restoredOriginal : null,
   };
 }
 
-type SideMargins = { top?: number; bottom?: number; left?: number; right?: number };
+type SideMargins = {
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
+};
 
 function cellMarginsToAttr(margins: CellMargins): SideMargins {
   const result: SideMargins = {};
@@ -544,9 +594,16 @@ function cellMarginsToAttr(margins: CellMargins): SideMargins {
   return result;
 }
 
-type SideBorders = { top?: BorderSpec; bottom?: BorderSpec; left?: BorderSpec; right?: BorderSpec };
+type SideBorders = {
+  top?: BorderSpec;
+  bottom?: BorderSpec;
+  left?: BorderSpec;
+  right?: BorderSpec;
+};
 
-function cellBordersToAttr(borders: NonNullable<TableCellFormatting["borders"]>): SideBorders {
+function cellBordersToAttr(
+  borders: NonNullable<TableCellFormatting["borders"]>,
+): SideBorders {
   const result: SideBorders = {};
   if (borders.top) {
     result.top = borders.top;

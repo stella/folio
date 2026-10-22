@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+
 import config from "../oxlint.config.ts";
 import fixtureConfig from "../oxlint.fixtures.config.ts";
 
@@ -23,7 +24,8 @@ test("every oxlint fixture self-test selects the fixture config", () => {
     if (
       !/Bun\.spawnSync\s*\(/u.test(source) ||
       !source.includes('"oxlint"') ||
-      (!source.includes('"__fixtures__"') && !source.includes('"test/__fixtures__/'))
+      (!source.includes('"__fixtures__"') &&
+        !source.includes('"test/__fixtures__/'))
     )
       continue;
     invocations += 1;

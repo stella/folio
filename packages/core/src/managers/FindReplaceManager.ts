@@ -12,14 +12,15 @@
  * so a richer adapter match (content index, matched text) round-trips untouched.
  */
 
-import type { FindMatchPosition } from "../prosemirror/findReplaceSelection";
 import type { OpStory } from "@stll/docx-core/ops";
-import {
-  replaceEligibility,
-  type ReplaceEligibility,
-  type ReplaceAllSummary,
-} from "../utils/findReplace";
+
+import type { FindMatchPosition } from "../prosemirror/findReplaceSelection";
 import type { Document } from "../types/document";
+import {
+  type ReplaceAllSummary,
+  type ReplaceEligibility,
+  replaceEligibility,
+} from "../utils/findReplace";
 import { replaceTextInDocument } from "../utils/replaceText";
 
 export type FindDirection = "next" | "previous";
@@ -101,7 +102,11 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
       return null;
     }
 
-    const index = getAdjacentFindIndex(result.currentIndex, result.matches.length, direction);
+    const index = getAdjacentFindIndex(
+      result.currentIndex,
+      result.matches.length,
+      direction,
+    );
     this.result = { ...result, currentIndex: index };
     const match = result.matches[index];
     return match ? { match, index } : null;
@@ -140,7 +145,11 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
     }
 
     try {
-      return replaceTextInDocument(document, toReplaceRange(match), replaceText);
+      return replaceTextInDocument(
+        document,
+        toReplaceRange(match),
+        replaceText,
+      );
     } catch {
       return null;
     }
@@ -176,7 +185,11 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
     let nextDocument = document;
     for (const match of sortedMatches) {
       try {
-        nextDocument = replaceTextInDocument(nextDocument, toReplaceRange(match), replaceText);
+        nextDocument = replaceTextInDocument(
+          nextDocument,
+          toReplaceRange(match),
+          replaceText,
+        );
         replacedCount++;
       } catch {
         skippedCount++;

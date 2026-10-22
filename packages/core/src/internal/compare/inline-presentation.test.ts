@@ -1,8 +1,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type {
   FolioContentBlock,
   FolioContentInlineFormatting,
@@ -28,7 +30,12 @@ type DifferenceFixture = Readonly<{
 
 const PROPERTY_DIFFERENCES = {
   bold: [
-    { label: "effective on", base: {}, revised: { bold: true }, expected: { bold: true } },
+    {
+      label: "effective on",
+      base: {},
+      revised: { bold: true },
+      expected: { bold: true },
+    },
     {
       label: "authored on",
       base: { bold: true },
@@ -43,7 +50,12 @@ const PROPERTY_DIFFERENCES = {
     },
   ],
   italic: [
-    { label: "effective on", base: {}, revised: { italic: true }, expected: { italic: true } },
+    {
+      label: "effective on",
+      base: {},
+      revised: { italic: true },
+      expected: { italic: true },
+    },
     {
       label: "authored on",
       base: { italic: true },
@@ -78,7 +90,12 @@ const PROPERTY_DIFFERENCES = {
     },
   ],
   strike: [
-    { label: "effective on", base: {}, revised: { strike: true }, expected: { strike: true } },
+    {
+      label: "effective on",
+      base: {},
+      revised: { strike: true },
+      expected: { strike: true },
+    },
     {
       label: "authored on",
       base: { strike: true },
@@ -102,12 +119,18 @@ const PROPERTY_DIFFERENCES = {
     {
       label: "authored value",
       base: { fontFamily: "Georgia" },
-      revised: { fontFamily: "Georgia", directFormatting: { fontFamily: "Georgia" } },
+      revised: {
+        fontFamily: "Georgia",
+        directFormatting: { fontFamily: "Georgia" },
+      },
       expected: { fontFamily: "Georgia" },
     },
     {
       label: "authored removal",
-      base: { fontFamily: "Georgia", directFormatting: { fontFamily: "Georgia" } },
+      base: {
+        fontFamily: "Georgia",
+        directFormatting: { fontFamily: "Georgia" },
+      },
       revised: { fontFamily: "Georgia" },
       expected: { fontFamily: null },
     },
@@ -152,9 +175,15 @@ const PROPERTY_DIFFERENCES = {
       expected: { color: null },
     },
   ],
-} as const satisfies Record<keyof FolioContentInlineFormatting, readonly DifferenceFixture[]>;
+} as const satisfies Record<
+  keyof FolioContentInlineFormatting,
+  readonly DifferenceFixture[]
+>;
 
-const block = (text: string, runs: readonly FolioContentRun[]): FolioContentBlock => ({
+const block = (
+  text: string,
+  runs: readonly FolioContentRun[],
+): FolioContentBlock => ({
   id: "block",
   kind: "paragraph",
   text,
@@ -216,7 +245,10 @@ describe("canonical inline presentation ownership", () => {
   });
 
   test("equivalent color spellings and effective false defaults have one projection", () => {
-    const base = singleRunBlock({ color: "#abc", directFormatting: { color: "#aBc" } });
+    const base = singleRunBlock({
+      color: "#abc",
+      directFormatting: { color: "#aBc" },
+    });
     const revised = singleRunBlock({
       bold: false,
       italic: false,
@@ -228,17 +260,28 @@ describe("canonical inline presentation ownership", () => {
 
     expect(sameCanonicalInlinePresentation(base, revised)).toBe(true);
     expect(
-      inlineFormattingSegments({ baseBlock: base, targetBlock: revised, maxSegments: 1 }),
+      inlineFormattingSegments({
+        baseBlock: base,
+        targetBlock: revised,
+        maxSegments: 1,
+      }),
     ).toEqual({ status: "compared", segments: [] });
   });
 
   test("an authored null remains distinct from an absent authored value", () => {
     const base = singleRunBlock({ color: "red", directFormatting: {} });
-    const revised = singleRunBlock({ color: "red", directFormatting: { color: null } });
+    const revised = singleRunBlock({
+      color: "red",
+      directFormatting: { color: null },
+    });
 
     expect(sameCanonicalInlinePresentation(base, revised)).toBe(false);
     expect(
-      inlineFormattingSegments({ baseBlock: base, targetBlock: revised, maxSegments: 1 }),
+      inlineFormattingSegments({
+        baseBlock: base,
+        targetBlock: revised,
+        maxSegments: 1,
+      }),
     ).toEqual({
       status: "compared",
       segments: [
@@ -257,7 +300,11 @@ describe("canonical inline presentation ownership", () => {
 
     expect(sameCanonicalInlinePresentation(base, revised)).toBe(false);
     expect(
-      inlineFormattingSegments({ baseBlock: base, targetBlock: revised, maxSegments: 1 }),
+      inlineFormattingSegments({
+        baseBlock: base,
+        targetBlock: revised,
+        maxSegments: 1,
+      }),
     ).toEqual({
       status: "compared",
       segments: [
@@ -271,10 +318,20 @@ describe("canonical inline presentation ownership", () => {
   });
 
   test("arbitrary UTF-16 repartitioning cannot change presentation", () => {
-    const symbol = fc.constantFrom("A", "é", "e\u0301", "中", "😀", "\uD83D", "\uDE00");
+    const symbol = fc.constantFrom(
+      "A",
+      "é",
+      "e\u0301",
+      "中",
+      "😀",
+      "\uD83D",
+      "\uDE00",
+    );
     fc.assert(
       fc.property(
-        fc.array(symbol, { minLength: 1, maxLength: 40 }).map((parts) => parts.join("")),
+        fc
+          .array(symbol, { minLength: 1, maxLength: 40 })
+          .map((parts) => parts.join("")),
         fc.array(fc.nat(), { maxLength: 30 }),
         (text, rawCuts) => {
           const cuts = [
@@ -300,14 +357,19 @@ describe("canonical inline presentation ownership", () => {
               color: "C00000",
             },
           } as const satisfies RunPresentation;
-          const revisedRuns: FolioContentRun[] = [{ text: "", color: "FFFFFF" }];
+          const revisedRuns: FolioContentRun[] = [
+            { text: "", color: "FFFFFF" },
+          ];
           for (let index = 1; index < cuts.length; index++) {
             const start = cuts[index - 1];
             const end = cuts[index];
             if (start === undefined || end === undefined || start === end) {
               continue;
             }
-            revisedRuns.push({ text: text.slice(start, end), ...richPresentation });
+            revisedRuns.push({
+              text: text.slice(start, end),
+              ...richPresentation,
+            });
           }
           revisedRuns.push({ text: "", bold: false });
           const base = block(text, [{ text, ...richPresentation }]);
@@ -315,7 +377,11 @@ describe("canonical inline presentation ownership", () => {
 
           expect(sameCanonicalInlinePresentation(base, revised)).toBe(true);
           expect(
-            inlineFormattingSegments({ baseBlock: base, targetBlock: revised, maxSegments: 0 }),
+            inlineFormattingSegments({
+              baseBlock: base,
+              targetBlock: revised,
+              maxSegments: 0,
+            }),
           ).toEqual({ status: "compared", segments: [] });
         },
       ),
@@ -325,10 +391,14 @@ describe("canonical inline presentation ownership", () => {
 
   test("formatting segments and their budget threshold survive UTF-16 repartitioning", () => {
     const prefix = "A😀e\u0301Z";
-    const prefixUnits = Array.from({ length: prefix.length }, (_unused, index) =>
-      prefix.slice(index, index + 1),
+    const prefixUnits = Array.from(
+      { length: prefix.length },
+      (_unused, index) => prefix.slice(index, index + 1),
     );
-    const presentationIndex = fc.integer({ min: 0, max: PRESENTATION_STATES.length - 1 });
+    const presentationIndex = fc.integer({
+      min: 0,
+      max: PRESENTATION_STATES.length - 1,
+    });
     const buildPartitionedRuns = (
       text: string,
       presentationIndexes: readonly number[],
@@ -344,7 +414,8 @@ describe("canonical inline presentation ownership", () => {
         const end = boundaries[index];
         if (start === undefined || end === undefined || start === end) continue;
         if (noisySeams.has(start)) runs.push({ text: "", color: "FFFFFF" });
-        const presentation = PRESENTATION_STATES[presentationIndexes[start] ?? 0];
+        const presentation =
+          PRESENTATION_STATES[presentationIndexes[start] ?? 0];
         runs.push({ text: text.slice(start, end), ...presentation });
       }
       runs.push({ text: "", bold: false });
@@ -352,12 +423,15 @@ describe("canonical inline presentation ownership", () => {
     };
     fc.assert(
       fc.property(
-        fc.array(fc.tuple(presentationIndex, presentationIndex), { maxLength: 40 }),
+        fc.array(fc.tuple(presentationIndex, presentationIndex), {
+          maxLength: 40,
+        }),
         fc.array(fc.nat(), { maxLength: 30 }),
         fc.array(fc.nat(), { maxLength: 30 }),
         (suffixPresentations, rawBaseCuts, rawRevisedCuts) => {
-          const suffix = Array.from({ length: suffixPresentations.length }, (_unused, index) =>
-            String.fromCharCode(0x61 + (index % 26)),
+          const suffix = Array.from(
+            { length: suffixPresentations.length },
+            (_unused, index) => String.fromCharCode(0x61 + (index % 26)),
           );
           const text = [...prefixUnits, ...suffix].join("");
           const basePresentationIndexes = [
@@ -372,8 +446,10 @@ describe("canonical inline presentation ownership", () => {
           const mandatoryCuts = new Set([0, 1, text.length]);
           for (let index = 1; index < text.length; index++) {
             if (
-              basePresentationIndexes[index] !== basePresentationIndexes[index - 1] ||
-              revisedPresentationIndexes[index] !== revisedPresentationIndexes[index - 1]
+              basePresentationIndexes[index] !==
+                basePresentationIndexes[index - 1] ||
+              revisedPresentationIndexes[index] !==
+                revisedPresentationIndexes[index - 1]
             ) {
               mandatoryCuts.add(index);
             }
@@ -393,7 +469,10 @@ describe("canonical inline presentation ownership", () => {
             buildPartitionedRuns(
               text,
               basePresentationIndexes,
-              Array.from({ length: text.length + 1 }, (_unused, index) => index),
+              Array.from(
+                { length: text.length + 1 },
+                (_unused, index) => index,
+              ),
               new Set(),
             ),
           );
@@ -402,17 +481,30 @@ describe("canonical inline presentation ownership", () => {
             buildPartitionedRuns(
               text,
               revisedPresentationIndexes,
-              Array.from({ length: text.length + 1 }, (_unused, index) => index),
+              Array.from(
+                { length: text.length + 1 },
+                (_unused, index) => index,
+              ),
               new Set(),
             ),
           );
           const splitBase = block(
             text,
-            buildPartitionedRuns(text, basePresentationIndexes, baseCuts, new Set([2])),
+            buildPartitionedRuns(
+              text,
+              basePresentationIndexes,
+              baseCuts,
+              new Set([2]),
+            ),
           );
           const splitRevised = block(
             text,
-            buildPartitionedRuns(text, revisedPresentationIndexes, revisedCuts, new Set([4])),
+            buildPartitionedRuns(
+              text,
+              revisedPresentationIndexes,
+              revisedCuts,
+              new Set([4]),
+            ),
           );
           const reference = inlineFormattingSegments({
             baseBlock: atomicBase,
@@ -424,8 +516,12 @@ describe("canonical inline presentation ownership", () => {
             throw new Error("The unbounded oracle did not compare.");
           expect(reference.segments.length).toBeGreaterThan(0);
 
-          expect(sameCanonicalInlinePresentation(atomicBase, atomicRevised)).toBe(false);
-          expect(sameCanonicalInlinePresentation(splitBase, splitRevised)).toBe(false);
+          expect(
+            sameCanonicalInlinePresentation(atomicBase, atomicRevised),
+          ).toBe(false);
+          expect(sameCanonicalInlinePresentation(splitBase, splitRevised)).toBe(
+            false,
+          );
           expect(
             inlineFormattingSegments({
               baseBlock: splitBase,
@@ -463,7 +559,11 @@ describe("canonical inline presentation ownership", () => {
 
     expect(sameCanonicalInlinePresentation(valid, missingText)).toBe(false);
     expect(
-      inlineFormattingSegments({ baseBlock: valid, targetBlock: missingText, maxSegments: 1 }),
+      inlineFormattingSegments({
+        baseBlock: valid,
+        targetBlock: missingText,
+        maxSegments: 1,
+      }),
     ).toEqual({ status: "unalignable", side: "revised" });
   });
 
@@ -474,7 +574,9 @@ describe("canonical inline presentation ownership", () => {
       { text: "trac" },
     ]);
 
-    expect(sameCanonicalInlinePresentation(valid, malformedAfterDifference)).toBe(false);
+    expect(
+      sameCanonicalInlinePresentation(valid, malformedAfterDifference),
+    ).toBe(false);
     for (const maxSegments of [0, 1, 2]) {
       expect(
         inlineFormattingSegments({

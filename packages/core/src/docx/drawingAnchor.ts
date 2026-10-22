@@ -16,7 +16,12 @@
  * rather than a value folio chose.
  */
 
-import type { DrawingAnchor, ImagePadding, ImageWrap, WrapDistances } from "../types/document";
+import type {
+  DrawingAnchor,
+  ImagePadding,
+  ImageWrap,
+  WrapDistances,
+} from "../types/document";
 import { intAttr } from "./serializer/xmlUtils";
 import {
   findChildByNamespaceUri,
@@ -27,14 +32,19 @@ import {
 import type { XmlElement } from "./xmlParser";
 
 /** WordprocessingDrawing, Transitional and Strict (ECMA-376 Parts 1 and 4). */
-export const WORDPROCESSING_DRAWING_NAMESPACE_URIS: ReadonlySet<string> = new Set([
-  "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
-  "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing",
-]);
+export const WORDPROCESSING_DRAWING_NAMESPACE_URIS: ReadonlySet<string> =
+  new Set([
+    "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+    "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing",
+  ]);
 
 /** The anchor fields that are a single `ST_OnOff`-style attribute. */
 type DrawingAnchorFlag = {
-  [Key in keyof DrawingAnchor]-?: NonNullable<DrawingAnchor[Key]> extends boolean ? Key : never;
+  [Key in keyof DrawingAnchor]-?: NonNullable<
+    DrawingAnchor[Key]
+  > extends boolean
+    ? Key
+    : never;
 }[keyof DrawingAnchor];
 
 type FlagAttribute = {
@@ -62,7 +72,9 @@ const ANCHOR_FLAGS = {
 } as const satisfies Record<DrawingAnchorFlag, FlagAttribute>;
 
 /** Every boolean the anchor models, from the total map above. */
-export const DRAWING_ANCHOR_FLAG_KEYS = Object.keys(ANCHOR_FLAGS) as DrawingAnchorFlag[];
+export const DRAWING_ANCHOR_FLAG_KEYS = Object.keys(
+  ANCHOR_FLAGS,
+) as DrawingAnchorFlag[];
 
 /**
  * `@relativeHeight` is required and unsigned; this is the value Word writes for
@@ -90,19 +102,27 @@ const WRAP_DISTANCE_KEYS = Object.keys(
  * recording an empty record would make a rebuild write values the source did
  * not.
  */
-export const parseDrawingAnchor = (anchorEl: XmlElement): DrawingAnchor | undefined => {
+export const parseDrawingAnchor = (
+  anchorEl: XmlElement,
+): DrawingAnchor | undefined => {
   const anchor: DrawingAnchor = {};
   let stated = false;
 
   for (const key of DRAWING_ANCHOR_FLAG_KEYS) {
-    const value = parseOnOffValue(getAttribute(anchorEl, null, ANCHOR_FLAGS[key].spelling));
+    const value = parseOnOffValue(
+      getAttribute(anchorEl, null, ANCHOR_FLAGS[key].spelling),
+    );
     if (value !== undefined) {
       anchor[key] = value;
       stated = true;
     }
   }
 
-  const relativeHeight = parseNumericAttribute(anchorEl, null, "relativeHeight");
+  const relativeHeight = parseNumericAttribute(
+    anchorEl,
+    null,
+    "relativeHeight",
+  );
   if (relativeHeight !== undefined) {
     anchor.relativeHeight = relativeHeight;
     stated = true;
@@ -173,7 +193,10 @@ const EFFECT_EXTENT_SIDES = [
 const sameEffectExtent = (
   left: ImagePadding | undefined,
   right: ImagePadding | undefined,
-): boolean => EFFECT_EXTENT_SIDES.every((side) => (left?.[side] ?? 0) === (right?.[side] ?? 0));
+): boolean =>
+  EFFECT_EXTENT_SIDES.every(
+    (side) => (left?.[side] ?? 0) === (right?.[side] ?? 0),
+  );
 
 export type ResolvedEffectExtents = {
   /** `wp:inline` or `wp:anchor`; undefined writes the all-zero reservation. */
@@ -210,14 +233,18 @@ export const resolveEffectExtents = (
 };
 
 /** `wp:effectExtent`, whose four sides `CT_EffectExtent` all requires. */
-export const serializeEffectExtent = (extent: ImagePadding | undefined): string =>
+export const serializeEffectExtent = (
+  extent: ImagePadding | undefined,
+): string =>
   `<wp:effectExtent l="${intAttr(extent?.left ?? 0)}" t="${intAttr(extent?.top ?? 0)}" r="${intAttr(extent?.right ?? 0)}" b="${intAttr(extent?.bottom ?? 0)}"/>`;
 
 /** The inset attributes an element states, in schema order, or nothing. */
 export const serializeWrapDistances = (distances: WrapDistances): string => {
   const attrs = WRAP_DISTANCE_KEYS.flatMap((key) => {
     const value = distances[key];
-    return value === undefined ? [] : [`${WRAP_DISTANCE_ATTRIBUTES[key]}="${intAttr(value)}"`];
+    return value === undefined
+      ? []
+      : [`${WRAP_DISTANCE_ATTRIBUTES[key]}="${intAttr(value)}"`];
   });
   return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
 };
@@ -227,12 +254,14 @@ export const serializeWrapDistances = (distances: WrapDistances): string => {
  * defaults an omitted one to zero, so writing all four would put a value on
  * every drawing that never had one.
  */
-export const serializeWrapDistanceAttributes = (wrap: ImageWrap | undefined): string =>
-  serializeWrapDistances(resolveWrapDistances(wrap).drawing);
+export const serializeWrapDistanceAttributes = (
+  wrap: ImageWrap | undefined,
+): string => serializeWrapDistances(resolveWrapDistances(wrap).drawing);
 
 /** `wp:inline` carries the wrap insets and nothing else of `CT_Anchor`'s set. */
-export const serializeInlineAttributes = (wrap: ImageWrap | undefined): string =>
-  serializeWrapDistanceAttributes(wrap);
+export const serializeInlineAttributes = (
+  wrap: ImageWrap | undefined,
+): string => serializeWrapDistanceAttributes(wrap);
 
 export type AnchorAttributesOptions = {
   anchor: DrawingAnchor | undefined;
@@ -262,7 +291,9 @@ export const serializeAnchorAttributes = ({
     // `@simplePos` opens the set, `@relativeHeight` and `@behindDoc` follow it,
     // and the remaining flags come after those.
     if (key === "useSimplePosition") {
-      attrs.push(`relativeHeight="${intAttr(anchor?.relativeHeight ?? DEFAULT_RELATIVE_HEIGHT)}"`);
+      attrs.push(
+        `relativeHeight="${intAttr(anchor?.relativeHeight ?? DEFAULT_RELATIVE_HEIGHT)}"`,
+      );
       attrs.push(`behindDoc="${behindDoc ? "1" : "0"}"`);
     }
   }
@@ -273,7 +304,9 @@ export const serializeAnchorAttributes = ({
  * `wp:simplePos`, which `CT_Anchor` requires whether or not `@simplePos` says to
  * use it, so an anchor that authored no offsets still writes the origin.
  */
-export const serializeSimplePos = (anchor: DrawingAnchor | undefined): string => {
+export const serializeSimplePos = (
+  anchor: DrawingAnchor | undefined,
+): string => {
   const { x, y } = anchor?.simplePosition ?? { x: 0, y: 0 };
   return `<wp:simplePos x="${intAttr(x)}" y="${intAttr(y)}"/>`;
 };

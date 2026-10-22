@@ -9,12 +9,19 @@ import {
   StepMap,
 } from "prosemirror-transform";
 
-import { composeRevisionResolutionMaps, RevisionResolutionStep } from "./revisionResolutionStep";
+import {
+  composeRevisionResolutionMaps,
+  RevisionResolutionStep,
+} from "./revisionResolutionStep";
 
 const schema = new Schema({
   nodes: {
     doc: { content: "paragraph+" },
-    paragraph: { attrs: { id: { default: null } }, content: "text*", group: "block" },
+    paragraph: {
+      attrs: { id: { default: null } },
+      content: "text*",
+      group: "block",
+    },
     text: { group: "inline" },
   },
   marks: { insertion: {} },
@@ -24,7 +31,9 @@ const paragraph = (id: string, text: string) =>
   schema.node("paragraph", { id }, [schema.text(text)]);
 
 const source = schema.node("doc", null, [
-  schema.node("paragraph", { id: "one" }, [schema.text("abc", [schema.mark("insertion")])]),
+  schema.node("paragraph", { id: "one" }, [
+    schema.text("abc", [schema.mark("insertion")]),
+  ]),
   paragraph("two", "def"),
   paragraph("three", "ghi"),
 ]);
@@ -58,7 +67,11 @@ describe("RevisionResolutionStep", () => {
     [0, 0, Number.MAX_SAFE_INTEGER, 0, 0, 1],
   ])("rejects malformed serialized position ranges %j", (mapRanges) => {
     expect(() =>
-      Step.fromJSON(schema, { stepType: "folioRevisionResolution", steps: [], mapRanges }),
+      Step.fromJSON(schema, {
+        stepType: "folioRevisionResolution",
+        steps: [],
+        mapRanges,
+      }),
     ).toThrow(RangeError);
   });
 
@@ -83,7 +96,10 @@ describe("RevisionResolutionStep", () => {
   });
 
   test("composes a boundary join after deleting its neighboring block", () => {
-    const composed = composeRevisionResolutionMaps(new StepMap([8, 28, 0]), new StepMap([7, 2, 0]));
+    const composed = composeRevisionResolutionMaps(
+      new StepMap([8, 28, 0]),
+      new StepMap([7, 2, 0]),
+    );
     const ranges: number[] = [];
     composed.forEach((oldStart, oldEnd, _newStart, newEnd) => {
       ranges.push(oldStart, oldEnd - oldStart, newEnd);
@@ -125,7 +141,10 @@ describe("RevisionResolutionStep", () => {
         if ((position * 17 + seed * 13) % 11 !== 0) {
           continue;
         }
-        const length = Math.min(1 + ((position + seed) % 3), size - position - 1);
+        const length = Math.min(
+          1 + ((position + seed) % 3),
+          size - position - 1,
+        );
         ranges.push(position, length, 0);
         removed += length;
         position += length - 1;
@@ -142,7 +161,9 @@ describe("RevisionResolutionStep", () => {
       for (let position = 0; position <= 40; position += 1) {
         for (const assoc of [-1, 1]) {
           if (!sequential.mapResult(position, assoc).deleted) {
-            expect(composed.map(position, assoc)).toBe(sequential.map(position, assoc));
+            expect(composed.map(position, assoc)).toBe(
+              sequential.map(position, assoc),
+            );
           }
         }
       }
@@ -150,13 +171,20 @@ describe("RevisionResolutionStep", () => {
   });
 
   test("composed maps retain surviving positions around mixed structural replacements", () => {
-    const mapFor = (size: number, next: (limit: number) => number, deletionsOnly: boolean) => {
+    const mapFor = (
+      size: number,
+      next: (limit: number) => number,
+      deletionsOnly: boolean,
+    ) => {
       const ranges: number[] = [];
       let position = 0;
       while (position < size) {
         position += next(4);
         if (position >= size) break;
-        const oldSize = Math.min(deletionsOnly ? 1 + next(3) : next(4), size - position);
+        const oldSize = Math.min(
+          deletionsOnly ? 1 + next(3) : next(4),
+          size - position,
+        );
         const newSize = deletionsOnly ? 0 : next(4);
         if (oldSize === 0 && newSize === 0) {
           position++;
@@ -236,13 +264,17 @@ describe("RevisionResolutionStep", () => {
       positionMap: new StepMap([7, 1, 0]),
     });
     expect(step.apply(source).doc).toBe(resolved);
-    expect(Step.fromJSON(schema, step.toJSON()).apply(source).doc?.eq(resolved)).toBe(true);
+    expect(
+      Step.fromJSON(schema, step.toJSON()).apply(source).doc?.eq(resolved),
+    ).toBe(true);
     expect(step.getMap().map(12)).toBe(11);
     expect(step.getMap().map(2)).toBe(2);
 
     const inverse = step.invert(source);
     expect(inverse.apply(resolved).doc).toBe(source);
-    expect(Step.fromJSON(schema, inverse.toJSON()).apply(resolved).doc?.eq(source)).toBe(true);
+    expect(
+      Step.fromJSON(schema, inverse.toJSON()).apply(resolved).doc?.eq(source),
+    ).toBe(true);
     expect(inverse.getMap().map(11)).toBe(12);
   });
 
@@ -255,7 +287,11 @@ describe("RevisionResolutionStep", () => {
       positionMap: new StepMap([7, 1, 0]),
     });
     const prefix = paragraph("prefix", "z");
-    const insertion = new ReplaceStep(0, 0, new Slice(Fragment.from(prefix), 0, 0));
+    const insertion = new ReplaceStep(
+      0,
+      0,
+      new Slice(Fragment.from(prefix), 0, 0),
+    );
     const external = insertion.apply(source).doc;
     if (!external) {
       throw new Error("Prefix insertion failed");
@@ -267,7 +303,9 @@ describe("RevisionResolutionStep", () => {
     expect(
       rebased
         ?.apply(external)
-        .doc?.eq(schema.node("doc", null, [prefix, ...resolved.content.content])),
+        .doc?.eq(
+          schema.node("doc", null, [prefix, ...resolved.content.content]),
+        ),
     ).toBe(true);
   });
 
@@ -308,6 +346,8 @@ describe("RevisionResolutionStep", () => {
     const rebased = step.map(externalEdit.getMap());
     expect(rebased).not.toBeNull();
     expect(rebased?.apply(external).doc?.eq(resolved)).toBe(true);
-    expect(rebased?.getMap().map(external.content.size, 1)).toBe(resolved.content.size);
+    expect(rebased?.getMap().map(external.content.size, 1)).toBe(
+      resolved.content.size,
+    );
   });
 });

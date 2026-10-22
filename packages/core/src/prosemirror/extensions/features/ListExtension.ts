@@ -1,52 +1,62 @@
-import { withCanonicalCommand } from "../../canonicalCommands";
+import { panic } from "better-result";
 /**
  * List Extension — list commands + keymaps
  *
  * No schema contribution — lists use paragraph attrs (numPr).
  * Provides: toggle bullet/number, indent/outdent, enter/backspace handling.
  */
-
-import { panic } from "better-result";
 import { InputRule, inputRules, undoInputRule } from "prosemirror-inputrules";
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, type Command, type EditorState, type Transaction } from "prosemirror-state";
+import {
+  type Command,
+  type EditorState,
+  Plugin,
+  type Transaction,
+} from "prosemirror-state";
 
-import { expectParagraphAttrs } from "../../attrs";
+import type { NumberingMap } from "../../../docx/numberingParser";
 import {
   paragraphNumberingLevel,
   paragraphNumberingReferenceId,
 } from "../../../docx/numberingReference";
-import { LIST_MARKER_PATTERN, listRequestsForMarker } from "../../listAutoformatMarkers";
+import { expectParagraphAttrs } from "../../attrs";
+import { withCanonicalCommand } from "../../canonicalCommands";
+import {
+  LIST_MARKER_PATTERN,
+  listRequestsForMarker,
+} from "../../listAutoformatMarkers";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../../listMarker";
 import {
   applyParagraphUpdates,
   continueNumbering,
   listItemAttrs,
-  resolveListTarget,
   type ListRequest,
+  resolveListTarget,
   restartNumbering,
   setNumberingValue,
 } from "../../listNumbering";
-import { resolveListState, type ListType } from "../../listState";
+import { type ListType, resolveListState } from "../../listState";
 import {
-  paragraphNumberingSourcesFromBoundary,
   effectiveParagraphNumberingReference,
+  paragraphNumberingSourcesFromBoundary,
   removedNumberingAttr,
 } from "../../numberingAttr";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
 import {
   makeRevisionInfo,
-  SUGGESTION_META,
   SUGGESTED_TEXT_INPUT_META,
+  SUGGESTION_META,
   suggestRangeDeletion,
 } from "../../plugins/suggestionMode";
-import type { NumberingMap } from "../../../docx/numberingParser";
-import { listLevelAttrPatch, listLevelIndentRemovalPatch } from "../../styles/resolvedStyleAttrs";
+import type { ParagraphAttrs, ParagraphAttrsPatch } from "../../schema/nodes";
+import {
+  listLevelAttrPatch,
+  listLevelIndentRemovalPatch,
+} from "../../styles/resolvedStyleAttrs";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
 import { Priority } from "../types";
 import type { ExtensionRuntime } from "../types";
-import type { ParagraphAttrs, ParagraphAttrsPatch } from "../../schema/nodes";
 
 // ============================================================================
 // CHAIN COMMANDS HELPER
@@ -91,7 +101,11 @@ type ActiveListType = Exclude<ListType, "none">;
 
 type ParagraphInRange = { pos: number; node: PMNode };
 
-const paragraphsBetween = (doc: PMNode, from: number, to: number): ParagraphInRange[] => {
+const paragraphsBetween = (
+  doc: PMNode,
+  from: number,
+  to: number,
+): ParagraphInRange[] => {
   const paragraphs: ParagraphInRange[] = [];
   doc.nodesBetween(from, to, (node, pos) => {
     if (node.type.name !== "paragraph") {
@@ -118,7 +132,13 @@ type NumberParagraphsOptions = {
  * target for the whole range, so a selection of plain paragraphs becomes one
  * list rather than one list apiece.
  */
-const numberParagraphs = ({ state, tr, from, to, requests }: NumberParagraphsOptions): boolean => {
+const numberParagraphs = ({
+  state,
+  tr,
+  from,
+  to,
+  requests,
+}: NumberParagraphsOptions): boolean => {
   const target = resolveListTarget({
     numbering: getDocumentNumbering(state),
     $from: tr.doc.resolve(from),
@@ -193,11 +213,20 @@ function toggleList(intent: ActiveListType): Command {
           .map(({ pos, node }) => ({
             pos,
             node,
-            next: clearListAttrs(expectParagraphAttrs(node), getDocumentNumbering(state)),
+            next: clearListAttrs(
+              expectParagraphAttrs(node),
+              getDocumentNumbering(state),
+            ),
           })),
       });
     } else {
-      numberParagraphs({ state, tr, from: $from.pos, to: $to.pos, requests: [{ kind: intent }] });
+      numberParagraphs({
+        state,
+        tr,
+        from: $from.pos,
+        to: $to.pos,
+        requests: [{ kind: intent }],
+      });
     }
     dispatch(tr.scrollIntoView());
     return true;
@@ -225,7 +254,8 @@ const attrsForListLevel = (
       numPrFromStyle: attrs.numPrFromStyle,
     }),
   );
-  if (numbering === undefined) panic("Cannot change the level of a list without a numbering id");
+  if (numbering === undefined)
+    panic("Cannot change the level of a list without a numbering id");
   return {
     ...attrs,
     ...listLevelAttrPatch(attrs, level, getDocumentNumbering(state)),
@@ -365,7 +395,9 @@ export function isInList(state: EditorState): boolean {
   return hasActiveListNumbering(expectParagraphAttrs(paragraph));
 }
 
-export function getListInfo(state: EditorState): { numId: number; ilvl: number } | null {
+export function getListInfo(
+  state: EditorState,
+): { numId: number; ilvl: number } | null {
   const { $from } = state.selection;
   const paragraph = $from.parent;
 
@@ -457,7 +489,10 @@ function splitListItem(): Command {
         },
       ]);
       if (revision && paragraph.attrs["pPrMark"] == null) {
-        tr.setNodeAttribute(paragraphPos, "pPrMark", { kind: "ins", info: revision });
+        tr.setNodeAttribute(paragraphPos, "pPrMark", {
+          kind: "ins",
+          info: revision,
+        });
         tr.setMeta(SUGGESTION_META, true);
       }
 
@@ -671,7 +706,9 @@ const listAutoformatRule = (): InputRule =>
       return null;
     }
     const tr = state.tr.delete(start, end);
-    return numberParagraphs({ state, tr, from: start, to: start, requests }) ? tr : null;
+    return numberParagraphs({ state, tr, from: start, to: start, requests })
+      ? tr
+      : null;
   });
 
 /**
@@ -686,11 +723,19 @@ const listAutoformatRule = (): InputRule =>
 const suggestedListAutoformat = (autoformat: Plugin): Plugin =>
   new Plugin({
     appendTransaction(transactions, _oldState, state) {
-      if (!transactions.some((tr) => tr.getMeta(SUGGESTED_TEXT_INPUT_META) === " ")) {
+      if (
+        !transactions.some(
+          (tr) => tr.getMeta(SUGGESTED_TEXT_INPUT_META) === " ",
+        )
+      ) {
         return null;
       }
       const { $head, empty } = state.selection;
-      if (!empty || !makeRevisionInfo(state) || !acceptsListMarker($head.parent)) {
+      if (
+        !empty ||
+        !makeRevisionInfo(state) ||
+        !acceptsListMarker($head.parent)
+      ) {
         return null;
       }
       const requests = listRequestsForMarker(
@@ -709,7 +754,12 @@ const suggestedListAutoformat = (autoformat: Plugin): Plugin =>
         return null;
       }
       const caret = tr.mapping.map($head.pos);
-      tr.setMeta(autoformat, { transform: tr, from: caret, to: caret, text: "" });
+      tr.setMeta(autoformat, {
+        transform: tr,
+        from: caret,
+        to: caret,
+        text: "",
+      });
       return tr;
     },
   });
@@ -740,7 +790,8 @@ export const ListExtension = createExtension({
           withCanonicalCommand(decreaseListLevel, () => [
             { type: "changeListLevel", direction: "decrease" },
           ]),
-        removeList: () => withCanonicalCommand(removeList, () => [{ type: "removeList" }]),
+        removeList: () =>
+          withCanonicalCommand(removeList, () => [{ type: "removeList" }]),
         restartNumbering: () => restartNumbering,
         continueNumbering: () => continueNumbering,
         setNumberingValue: (value: number) => setNumberingValue(value),

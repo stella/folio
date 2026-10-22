@@ -23,6 +23,7 @@
  */
 
 import { Result, TaggedError } from "better-result";
+
 import { survivingComments } from "@stll/docx-core/ops";
 
 import { buildDisplayList } from "./display-list/build/buildDisplayList";
@@ -35,10 +36,16 @@ import type {
   DisplayUnsupported,
 } from "./display-list/types";
 import { installHeadlessMeasureProvider } from "./fonts/headlessMeasure";
-import type { HeadlessFontSource, HeadlessFontSubstitution } from "./fonts/headlessMeasure";
+import type {
+  HeadlessFontSource,
+  HeadlessFontSubstitution,
+} from "./fonts/headlessMeasure";
 import { layoutDocxHeadless } from "./headless-layout";
 import type { HeadlessLayoutGap } from "./headless-layout";
-import { getMeasureProvider, setMeasureProvider } from "./layout-engine/measure/measureProvider";
+import {
+  getMeasureProvider,
+  setMeasureProvider,
+} from "./layout-engine/measure/measureProvider";
 import { writePdf } from "./pdf/writePdf";
 import type { PdfSubstitution, PdfUnencodable } from "./pdf/writePdf";
 import type { DocxInput } from "./utils/docxInput";
@@ -198,7 +205,12 @@ export const writeDisplayListPdf = async (
     ...(options.producer === undefined ? {} : { producer: options.producer }),
   });
   if (written.isErr()) {
-    return Result.err(new ExportPdfError({ message: written.error.message, cause: written.error }));
+    return Result.err(
+      new ExportPdfError({
+        message: written.error.message,
+        cause: written.error,
+      }),
+    );
   }
   return Result.ok({
     bytes: written.value.bytes,
@@ -216,7 +228,12 @@ const buildWithHeadlessProvider = async (
 
   const laidOut = await layoutDocxHeadless(input, { pageGap: 0 });
   if (laidOut.isErr()) {
-    return Result.err(new ExportPdfError({ message: laidOut.error.message, cause: laidOut.error }));
+    return Result.err(
+      new ExportPdfError({
+        message: laidOut.error.message,
+        cause: laidOut.error,
+      }),
+    );
   }
 
   const list = buildDisplayList({
@@ -232,7 +249,11 @@ const buildWithHeadlessProvider = async (
     embeddedFonts: laidOut.value.embeddedFonts,
     ...(laidOut.value.document.package.document.comments === undefined
       ? {}
-      : { comments: displayCommentsFrom(survivingComments(laidOut.value.document)) }),
+      : {
+          comments: displayCommentsFrom(
+            survivingComments(laidOut.value.document),
+          ),
+        }),
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
   });
 

@@ -4,7 +4,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { getFloatingMargins, rectsToFloatingZones, type FloatingImageZone } from "./floatingZones";
+import {
+  type FloatingImageZone,
+  getFloatingMargins,
+  rectsToFloatingZones,
+} from "./floatingZones";
 import { findClearLineY } from "./measureParagraph";
 
 describe("rectsToFloatingZones", () => {

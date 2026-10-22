@@ -4,17 +4,27 @@
  * collection, and floating table placement.
  */
 
-import { FOOTNOTE_SEPARATOR_HEIGHT, createPaginator } from "./paginator";
-import type { PageState } from "./paginator";
-import { isEmptyParagraph } from "./paragraphSpacing";
-import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
+import {
+  projectedFootnoteReserveGrowth,
+  RENDERED_BREAK_REFLOW_TOLERANCE_LINES,
+} from "./layoutFlowShared";
 import { resolveFloatingTablePageX } from "./measure/floatingTablePosition";
 import { resolveTableInlineOffset } from "./measure/tableInlinePlacement";
-import type { FlowBlock, TableBlock, TableCell, TableMeasure, TableFragment } from "./types";
+import { createPaginator, FOOTNOTE_SEPARATOR_HEIGHT } from "./paginator";
+import type { PageState } from "./paginator";
+import { isEmptyParagraph } from "./paragraphSpacing";
 import {
-  RENDERED_BREAK_REFLOW_TOLERANCE_LINES,
-  projectedFootnoteReserveGrowth,
-} from "./layoutFlowShared";
+  buildTableRowBreakInfo,
+  getRowContinuationSkip,
+  snapRowBreak,
+} from "./tableRowBreak";
+import type {
+  FlowBlock,
+  TableBlock,
+  TableCell,
+  TableFragment,
+  TableMeasure,
+} from "./types";
 
 /**
  * Count consecutive header rows at the start of a table.
@@ -35,7 +45,10 @@ function countHeaderRows(block: TableBlock): number {
 /**
  * Calculate total height of header rows from their measures.
  */
-export function getHeaderRowsHeight(measure: TableMeasure, headerRowCount: number): number {
+export function getHeaderRowsHeight(
+  measure: TableMeasure,
+  headerRowCount: number,
+): number {
   let height = 0;
   for (let i = 0; i < headerRowCount && i < measure.rows.length; i++) {
     height += measure.rows[i]!.height; // SAFETY: i < measure.rows.length
@@ -43,17 +56,24 @@ export function getHeaderRowsHeight(measure: TableMeasure, headerRowCount: numbe
   return height;
 }
 
-const tableRowStartsWithRenderedPageBreak = (block: TableBlock, rowIndex: number): boolean => {
+const tableRowStartsWithRenderedPageBreak = (
+  block: TableBlock,
+  rowIndex: number,
+): boolean => {
   const row = block.rows[rowIndex];
   const visibleCells = row?.cells.filter((cell) =>
-    cell.blocks.some((cellBlock) => cellBlock.kind !== "paragraph" || !isEmptyParagraph(cellBlock)),
+    cell.blocks.some(
+      (cellBlock) =>
+        cellBlock.kind !== "paragraph" || !isEmptyParagraph(cellBlock),
+    ),
   );
   if (!visibleCells || visibleCells.length === 0) {
     return false;
   }
   const startsWithRenderedPageBreak = (cell: TableCell): boolean => {
     const firstVisibleBlock = cell.blocks.find(
-      (cellBlock) => cellBlock.kind !== "paragraph" || !isEmptyParagraph(cellBlock),
+      (cellBlock) =>
+        cellBlock.kind !== "paragraph" || !isEmptyParagraph(cellBlock),
     );
     return (
       firstVisibleBlock?.kind === "paragraph" &&
@@ -114,8 +134,13 @@ const flowBlockHasTrackedChanges = (block: FlowBlock): boolean => {
   return false;
 };
 
-const tableRowHasTrackedChanges = (block: TableBlock, rowIndex: number): boolean =>
-  block.rows[rowIndex]?.cells.some((cell) => cell.blocks.some(flowBlockHasTrackedChanges)) ?? false;
+const tableRowHasTrackedChanges = (
+  block: TableBlock,
+  rowIndex: number,
+): boolean =>
+  block.rows[rowIndex]?.cells.some((cell) =>
+    cell.blocks.some(flowBlockHasTrackedChanges),
+  ) ?? false;
 
 /**
  * Layout a table block onto pages.
@@ -208,10 +233,18 @@ export function layoutTable(
     );
   };
 
-  const canSplitRow = (rowIndex: number, state = paginator.getCurrentState()): boolean => {
+  const canSplitRow = (
+    rowIndex: number,
+    state = paginator.getCurrentState(),
+  ): boolean => {
     const row = rows[rowIndex];
     const sourceRow = block.rows[rowIndex];
-    if (!row || !sourceRow || sourceRow.isHeader || verticallyMergedRows.has(rowIndex)) {
+    if (
+      !row ||
+      !sourceRow ||
+      sourceRow.isHeader ||
+      verticallyMergedRows.has(rowIndex)
+    ) {
       return false;
     }
     if ((breakInfo.breakOffsets[rowIndex]?.length ?? 0) <= 1) {
@@ -225,29 +258,50 @@ export function layoutTable(
       // w:cantSplit (§17.4.6) keeps the row on one page only while a page can
       // hold it. A taller row first moves to a fresh flow region and splits
       // there; an exact w:trHeight row keeps its fixed box and never splits.
-      return oversized && sourceRow.heightRule !== "exact" && rowOpensFlowRegion(rowIndex, state);
+      return (
+        oversized &&
+        sourceRow.heightRule !== "exact" &&
+        rowOpensFlowRegion(rowIndex, state)
+      );
     }
-    if (!oversized && (state.footnoteHeight > 0 || (rowFootnoteIds[rowIndex]?.length ?? 0) > 0)) {
+    if (
+      !oversized &&
+      (state.footnoteHeight > 0 || (rowFootnoteIds[rowIndex]?.length ?? 0) > 0)
+    ) {
       return false;
     }
 
-    const currentHeaderOverhead = shouldRepeatHeaderRows(rowIndex, 0, state) ? headerRowsHeight : 0;
+    const currentHeaderOverhead = shouldRepeatHeaderRows(rowIndex, 0, state)
+      ? headerRowsHeight
+      : 0;
     const currentAvailableHeight =
-      paginator.getAvailableHeight() - currentHeaderOverhead - state.trailingSpacing;
+      paginator.getAvailableHeight() -
+      currentHeaderOverhead -
+      state.trailingSpacing;
     return oversized || row.height > currentAvailableHeight;
   };
 
   while (currentRowIndex < rows.length) {
     const rowState = paginator.getCurrentState();
-    const rowHeaderOverhead = shouldRepeatHeaderRows(currentRowIndex, 0, rowState)
+    const rowHeaderOverhead = shouldRepeatHeaderRows(
+      currentRowIndex,
+      0,
+      rowState,
+    )
       ? headerRowsHeight
       : 0;
     const rowAvailableHeight =
-      paginator.getAvailableHeight() - rowHeaderOverhead - rowState.trailingSpacing;
+      paginator.getAvailableHeight() -
+      rowHeaderOverhead -
+      rowState.trailingSpacing;
     const rowStartsFreshPage =
-      rowState.cursorY === rowState.topMargin && rowState.page.fragments.length === 0;
+      rowState.cursorY === rowState.topMargin &&
+      rowState.page.fragments.length === 0;
 
-    if (block.rows[currentRowIndex]?.breakBefore === "page" && !rowStartsFreshPage) {
+    if (
+      block.rows[currentRowIndex]?.breakBefore === "page" &&
+      !rowStartsFreshPage
+    ) {
       paginator.forcePageBreak();
       continue;
     }
@@ -272,16 +326,24 @@ export function layoutTable(
     const splittableRow = rows[currentRowIndex]!; // SAFETY: currentRowIndex < rows.length
     if (canSplitRow(currentRowIndex)) {
       let consumed = 0;
-      const renderedBreakHints = tableRowHasTrackedChanges(block, currentRowIndex)
+      const renderedBreakHints = tableRowHasTrackedChanges(
+        block,
+        currentRowIndex,
+      )
         ? []
         : (breakInfo.renderedBreakHints[currentRowIndex] ?? []);
       let renderedBreakHintIndex = 0;
       const discardPassedRenderedBreakHints = (): void => {
-        while ((renderedBreakHints[renderedBreakHintIndex]?.offset ?? Infinity) <= consumed) {
+        while (
+          (renderedBreakHints[renderedBreakHintIndex]?.offset ?? Infinity) <=
+          consumed
+        ) {
           renderedBreakHintIndex += 1;
         }
       };
-      const advanceAfterNaturalFlowBreak = (previousPageNumber: number): void => {
+      const advanceAfterNaturalFlowBreak = (
+        previousPageNumber: number,
+      ): void => {
         discardPassedRenderedBreakHints();
         if (
           paginator.getCurrentState().page.number > previousPageNumber &&
@@ -292,17 +354,27 @@ export function layoutTable(
       };
       while (consumed < splittableRow.height) {
         const sliceState = paginator.getCurrentState();
-        const repeatHeaderRows = shouldRepeatHeaderRows(currentRowIndex, consumed, sliceState);
+        const repeatHeaderRows = shouldRepeatHeaderRows(
+          currentRowIndex,
+          consumed,
+          sliceState,
+        );
         const headerOverhead = repeatHeaderRows ? headerRowsHeight : 0;
         const sliceAvail =
           paginator.getAvailableHeight() -
           headerOverhead -
           (consumed === 0 ? sliceState.trailingSpacing : 0);
-        let slice = snapRowBreak(breakInfo, currentRowIndex, consumed, sliceAvail);
+        let slice = snapRowBreak(
+          breakInfo,
+          currentRowIndex,
+          consumed,
+          sliceAvail,
+        );
         let forceRenderedPageBreak = false;
         if (slice <= 0) {
           const isFreshPage =
-            sliceState.cursorY === sliceState.topMargin && sliceState.page.fragments.length === 0;
+            sliceState.cursorY === sliceState.topMargin &&
+            sliceState.page.fragments.length === 0;
           if (!isFreshPage) {
             // Not even one line fits in the space left; continue in the next
             // column, or on a fresh page when this is the last column.
@@ -314,7 +386,9 @@ export function layoutTable(
           // Fresh page and a single line still exceeds the page height: place
           // the next whole line anyway so the loop always makes progress.
           const from = consumed;
-          const next = breakInfo.breakOffsets[currentRowIndex]?.find((o) => o > from);
+          const next = breakInfo.breakOffsets[currentRowIndex]?.find(
+            (o) => o > from,
+          );
           slice = (next ?? splittableRow.height) - consumed;
         }
         discardPassedRenderedBreakHints();
@@ -323,7 +397,8 @@ export function layoutTable(
           renderedBreakHint &&
           renderedBreakHint.offset <= consumed + slice &&
           sliceAvail - (renderedBreakHint.offset - consumed) <=
-            renderedBreakHint.lineAdvance * RENDERED_BREAK_REFLOW_TOLERANCE_LINES
+            renderedBreakHint.lineAdvance *
+              RENDERED_BREAK_REFLOW_TOLERANCE_LINES
         ) {
           slice = renderedBreakHint.offset - consumed;
           renderedBreakHintIndex += 1;
@@ -334,7 +409,10 @@ export function layoutTable(
           sliceBottom < splittableRow.height
             ? getRowContinuationSkip(breakInfo, currentRowIndex, sliceBottom)
             : 0;
-        const nextConsumed = Math.min(splittableRow.height, sliceBottom + continuationSkip);
+        const nextConsumed = Math.min(
+          splittableRow.height,
+          sliceBottom + continuationSkip,
+        );
         const reachesRowEnd = nextConsumed >= splittableRow.height;
         const moreAfter = !reachesRowEnd || currentRowIndex + 1 < rows.length;
         const fragmentHeight = headerOverhead + slice;
@@ -352,14 +430,23 @@ export function layoutTable(
           toRow: currentRowIndex + 1,
           ...(block.pmStart !== undefined ? { pmStart: block.pmStart } : {}),
           ...(block.pmEnd !== undefined ? { pmEnd: block.pmEnd } : {}),
-          ...(consumed > 0 || currentRowIndex > 0 ? { continuesFromPrev: true } : {}),
+          ...(consumed > 0 || currentRowIndex > 0
+            ? { continuesFromPrev: true }
+            : {}),
           ...(moreAfter ? { continuesOnNext: true } : {}),
           ...(repeatHeaderRows ? { headerRowCount } : {}),
           ...(consumed > 0 ? { topClip: consumed } : {}),
-          ...(sliceBottom >= splittableRow.height ? {} : { bottomClip: sliceBottom }),
+          ...(sliceBottom >= splittableRow.height
+            ? {}
+            : { bottomClip: sliceBottom }),
           ...(block.sdtGroups ? { sdtGroups: block.sdtGroups } : {}),
         };
-        const sliceResult = paginator.addFragment(sliceFragment, fragmentHeight, 0, 0);
+        const sliceResult = paginator.addFragment(
+          sliceFragment,
+          fragmentHeight,
+          0,
+          0,
+        );
         sliceFragment.y = sliceResult.y;
         sliceFragment.x = computeTableX({
           columnIndex: sliceResult.state.columnIndex,
@@ -391,13 +478,21 @@ export function layoutTable(
     // Account for the space addFragment will consume before the fragment, which
     // is max(spaceBefore, trailingSpacing). We pass bandSkip as spaceBefore, so
     // the overhead is the larger of that and the previous block's trailing space.
-    const pendingSpacing = isFirstFragment ? Math.max(bandSkip, state.trailingSpacing) : 0;
+    const pendingSpacing = isFirstFragment
+      ? Math.max(bandSkip, state.trailingSpacing)
+      : 0;
     const availableHeight = rawAvailableHeight - pendingSpacing;
 
-    const repeatHeaderRowsForNormalFragment = shouldRepeatHeaderRows(currentRowIndex, 0, state);
+    const repeatHeaderRowsForNormalFragment = shouldRepeatHeaderRows(
+      currentRowIndex,
+      0,
+      state,
+    );
 
     // For continuation fragments, we need space for header rows + at least one content row.
-    const normalHeaderOverhead = repeatHeaderRowsForNormalFragment ? headerRowsHeight : 0;
+    const normalHeaderOverhead = repeatHeaderRowsForNormalFragment
+      ? headerRowsHeight
+      : 0;
 
     // Calculate how many rows fit (excluding header rows which are prepended separately)
     let rowsHeight = 0;
@@ -417,7 +512,8 @@ export function layoutTable(
       }
       if (
         j > currentRowIndex &&
-        computeTableX({ columnIndex: state.columnIndex, rowIndex: j }) !== fragmentX
+        computeTableX({ columnIndex: state.columnIndex, rowIndex: j }) !==
+          fragmentX
       ) {
         break;
       }
@@ -432,7 +528,8 @@ export function layoutTable(
         fragmentFootnoteIds.push(id);
         rowFootnoteHeight += footnoteHeightById?.get(id) ?? 0;
       }
-      const candidateFootnoteHeight = fragmentFootnoteHeight + rowFootnoteHeight;
+      const candidateFootnoteHeight =
+        fragmentFootnoteHeight + rowFootnoteHeight;
       const separatorHeight =
         state.footnoteDemandHeight === 0 && candidateFootnoteHeight > 0
           ? FOOTNOTE_SEPARATOR_HEIGHT
@@ -441,7 +538,8 @@ export function layoutTable(
         state,
         candidateFootnoteHeight + separatorHeight,
       );
-      const totalWithRow = rowsHeight + rowHeight + normalHeaderOverhead + footnoteGrowth;
+      const totalWithRow =
+        rowsHeight + rowHeight + normalHeaderOverhead + footnoteGrowth;
 
       if (totalWithRow <= availableHeight) {
         rowsHeight += rowHeight;
@@ -449,7 +547,8 @@ export function layoutTable(
         fittingRows++;
       } else if (fittingRows === 0) {
         const isFreshFlowRegion =
-          state.cursorY === state.topMargin && state.page.fragments.length === 0;
+          state.cursorY === state.topMargin &&
+          state.page.fragments.length === 0;
         if (isFreshFlowRegion) {
           rowsHeight += rowHeight;
           fragmentFootnoteHeight += rowFootnoteHeight;
@@ -509,11 +608,17 @@ export function layoutTable(
     if (currentRowIndex < rows.length) {
       if (canSplitRow(currentRowIndex)) {
         const nextState = paginator.getCurrentState();
-        const nextHeaderOverhead = shouldRepeatHeaderRows(currentRowIndex, 0, nextState)
+        const nextHeaderOverhead = shouldRepeatHeaderRows(
+          currentRowIndex,
+          0,
+          nextState,
+        )
           ? headerRowsHeight
           : 0;
         const nextSliceAvail =
-          paginator.getAvailableHeight() - nextHeaderOverhead - nextState.trailingSpacing;
+          paginator.getAvailableHeight() -
+          nextHeaderOverhead -
+          nextState.trailingSpacing;
         if (snapRowBreak(breakInfo, currentRowIndex, 0, nextSliceAvail) > 0) {
           continue;
         }
@@ -522,7 +627,9 @@ export function layoutTable(
       const nextState = paginator.getCurrentState();
       const nextRowHeight =
         rows[currentRowIndex]!.height + // SAFETY: guarded by length check
-        (shouldRepeatHeaderRows(currentRowIndex, 0, nextState) ? headerRowsHeight : 0);
+        (shouldRepeatHeaderRows(currentRowIndex, 0, nextState)
+          ? headerRowsHeight
+          : 0);
       paginator.ensureFits(nextRowHeight);
     }
   }

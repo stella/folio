@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import { buildMcpLaunch, configuredAuthor, FOLIO_MCP_LABEL } from "./mcp";
 
-const runtime = { nodePath: "/editor/node", cliEntry: "/ext/dist/cli/folio.mjs" };
+const runtime = {
+  nodePath: "/editor/node",
+  cliEntry: "/ext/dist/cli/folio.mjs",
+};
 
 describe("buildMcpLaunch", () => {
   test("runs the bundled CLI's mcp command with the editor's Node.js", () => {
@@ -16,7 +19,14 @@ describe("buildMcpLaunch", () => {
     expect(launch).toEqual({
       label: FOLIO_MCP_LABEL,
       command: "/editor/node",
-      args: ["/ext/dist/cli/folio.mjs", "mcp", "--root", "/work/a", "--author", "Ada Lovelace"],
+      args: [
+        "/ext/dist/cli/folio.mjs",
+        "mcp",
+        "--root",
+        "/work/a",
+        "--author",
+        "Ada Lovelace",
+      ],
       env: { ELECTRON_RUN_AS_NODE: "1" },
       cwd: "/work/a",
       version: "1.2.3",
@@ -74,7 +84,9 @@ describe("buildMcpLaunch", () => {
   });
 
   test("offers no server without a folder to root it in", () => {
-    expect(buildMcpLaunch({ runtime, roots: [], author: "Ada", version: "1.0.0" })).toBeNull();
+    expect(
+      buildMcpLaunch({ runtime, roots: [], author: "Ada", version: "1.0.0" }),
+    ).toBeNull();
   });
 });
 

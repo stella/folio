@@ -20,14 +20,23 @@
  * byte-exact.
  */
 
-import type { BlockContent, Document, Endnote, Footnote } from "../../types/document";
 import { noteUsesCustomMark } from "@stll/docx-core/ops";
+
+import type {
+  BlockContent,
+  Document,
+  Endnote,
+  Footnote,
+} from "../../types/document";
 import { hasNoteReferenceMark } from "../noteReferenceMark";
-import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
+import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBookmarkMarker } from "./markupRangeAttributes";
-import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
+import {
+  type OoxmlNamespacePrefix,
+  serializePartElement,
+} from "./partNamespaces";
 import { serializeTable } from "./tableSerializer";
 
 // Prefixes a notes part declares whether or not the bodies use them. Mirrors
@@ -58,7 +67,10 @@ const NOTE_BASELINE_PREFIXES = [
   "wps",
 ] as const satisfies readonly OoxmlNamespacePrefix[];
 
-const serializeNotePart = (elementName: "footnote" | "endnote", body: string): string =>
+const serializeNotePart = (
+  elementName: "footnote" | "endnote",
+  body: string,
+): string =>
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
   serializePartElement({
     partPath: `word/${elementName}s.xml`,
@@ -100,7 +112,10 @@ function serializeBlock(block: BlockContent): string {
  * Serialize a single note element. Footnotes and endnotes share the same
  * structure, differing only in the wrapper element name.
  */
-function serializeNote(elementName: "footnote" | "endnote", note: Footnote | Endnote): string {
+function serializeNote(
+  elementName: "footnote" | "endnote",
+  note: Footnote | Endnote,
+): string {
   const attrs: string[] = [];
   // Word emits w:type before w:id on typed (separator) notes; mirror that
   // ordering. Normal notes carry no type attribute.
@@ -116,7 +131,9 @@ function serializeNote(elementName: "footnote" | "endnote", note: Footnote | End
 const NOTE_SEPARATOR_BODY =
   '<w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>';
 
-function serializeRequiredNoteSeparators(elementName: "footnote" | "endnote"): string {
+function serializeRequiredNoteSeparators(
+  elementName: "footnote" | "endnote",
+): string {
   return (
     `<w:${elementName} w:type="separator" w:id="-1">${NOTE_SEPARATOR_BODY}` +
     `<w:r><w:separator/></w:r></w:p></w:${elementName}>` +
@@ -168,7 +185,11 @@ type NewNotePartOptions = {
   document?: Document;
 };
 
-function serializeNewNotePart({ elementName, notes, document }: NewNotePartOptions): string {
+function serializeNewNotePart({
+  elementName,
+  notes,
+  document,
+}: NewNotePartOptions): string {
   const serializedNotes = notes
     .map((note) =>
       insertNoteReferenceMark({
@@ -205,7 +226,10 @@ export function serializeFootnotes(footnotes: readonly Footnote[]): string {
  * @returns Complete endnotes.xml string.
  */
 export function serializeEndnotes(endnotes: readonly Endnote[]): string {
-  return serializeNotePart("endnote", endnotes.map((en) => serializeNote("endnote", en)).join(""));
+  return serializeNotePart(
+    "endnote",
+    endnotes.map((en) => serializeNote("endnote", en)).join(""),
+  );
 }
 
 /** Serialize a brand-new footnote part, including Word's required separators

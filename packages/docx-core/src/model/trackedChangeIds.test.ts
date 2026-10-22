@@ -17,7 +17,9 @@ describe("normalizeRevisionId (eigenpal #1093)", () => {
   });
 
   test("folds an out-of-range id into the int32 range", () => {
-    expect(normalizeRevisionId(MAX_REVISION_ID + 6)).toBeLessThanOrEqual(MAX_REVISION_ID);
+    expect(normalizeRevisionId(MAX_REVISION_ID + 6)).toBeLessThanOrEqual(
+      MAX_REVISION_ID,
+    );
     expect(normalizeRevisionId(MAX_REVISION_ID + 6)).toBeGreaterThanOrEqual(0);
   });
 

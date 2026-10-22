@@ -10,7 +10,8 @@ import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /** Smallest valid PNG, so the picture resolves to real media. */
 const ONE_PIXEL_PNG_BASE64 =
@@ -24,7 +25,9 @@ const XML_NAMESPACES = [
   'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"',
 ].join(" ");
 
-const picturePartsXml = (graphicFramePr: string): string => `<w:p><w:r><w:drawing>
+const picturePartsXml = (
+  graphicFramePr: string,
+): string => `<w:p><w:r><w:drawing>
   <wp:inline distT="0" distB="0" distL="0" distR="0">
     <wp:extent cx="190500" cy="190500"/>
     <wp:effectExtent l="12700" t="19050" r="6350" b="25400"/>
@@ -42,7 +45,9 @@ const picturePartsXml = (graphicFramePr: string): string => `<w:p><w:r><w:drawin
 </w:drawing></w:r></w:p>`;
 
 /** A body paragraph holding one inline picture, with the given frame properties. */
-const createPictureDocx = async (graphicFramePr: string): Promise<ArrayBuffer> => {
+const createPictureDocx = async (
+  graphicFramePr: string,
+): Promise<ArrayBuffer> => {
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -120,7 +125,12 @@ const AUTHORED_FRAME_PR =
 const AUTHORED_LOCKS = { noChangeAspect: false, noMove: true };
 
 /** The fixture's `wp:effectExtent`, in EMU. */
-const AUTHORED_PADDING = { left: 12_700, top: 19_050, right: 6350, bottom: 25_400 };
+const AUTHORED_PADDING = {
+  left: 12_700,
+  top: 19_050,
+  right: 6350,
+  bottom: 25_400,
+};
 
 /** Everything a regenerated picture must still carry, other than its size. */
 const expectAuthoredFidelity = (drawing: DrawingContent): void => {

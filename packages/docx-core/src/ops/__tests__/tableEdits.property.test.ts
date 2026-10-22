@@ -1,7 +1,11 @@
 /** Table edit laws use an independent slot oracle, never the production grid helper. */
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type {
   BlockContent,
   Document,
@@ -11,14 +15,19 @@ import type {
   TableCell,
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
+import { contractViolation } from "../contract";
 import {
   allocateEditorIntentIds,
   compileEditorIntent,
   type TableIntentOperation,
 } from "../editorIntent";
-import { contractViolation } from "../contract";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
-import { DOCUMENT_OP_TYPES, OP_STORIES, toOpEnvelope, type DocumentOp } from "../types";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+  toOpEnvelope,
+} from "../types";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 const NUM_RUNS = 160;
@@ -26,7 +35,9 @@ const id = (value: number) => value.toString(16).toUpperCase().padStart(8, "0");
 const paragraph = (value: number, empty: boolean): Paragraph => ({
   type: "paragraph",
   paraId: id(value),
-  content: empty ? [] : [{ type: "run", content: [{ type: "text", text: `payload-${value}` }] }],
+  content: empty
+    ? []
+    : [{ type: "run", content: [{ type: "text", text: `payload-${value}` }] }],
 });
 
 // toEqual and JSON equality can erase an own undefined key. Own-key recursion closes that gap.
@@ -45,7 +56,8 @@ const exact = (actual: unknown, expected: unknown): void => {
   expect(Array.isArray(actual)).toBe(Array.isArray(expected));
   const keys = Object.keys(expected).sort();
   expect(Object.keys(actual).sort()).toEqual(keys);
-  for (const key of keys) exact(Reflect.get(actual, key), Reflect.get(expected, key));
+  for (const key of keys)
+    exact(Reflect.get(actual, key), Reflect.get(expected, key));
 };
 const shape = fc.record({
   width: fc.integer({ min: 3, max: 6 }),
@@ -56,7 +68,14 @@ const shape = fc.record({
   explicitGrid: fc.boolean(),
 });
 type Shape = ReturnType<typeof shape.generate>["value"];
-const fixture = ({ width, height, variant, nested, empty, explicitGrid }: Shape) => {
+const fixture = ({
+  width,
+  height,
+  variant,
+  nested,
+  empty,
+  explicitGrid,
+}: Shape) => {
   let next = 0x100;
   const cell = (span: number, row: number): TableCell => ({
     type: "tableCell",
@@ -66,14 +85,18 @@ const fixture = ({ width, height, variant, nested, empty, explicitGrid }: Shape)
       : {
           formatting: {
             ...(span === 1 ? {} : { gridSpan: span }),
-            ...(variant === 2 ? { vMerge: row === 0 ? "restart" : "continue" } : {}),
+            ...(variant === 2
+              ? { vMerge: row === 0 ? "restart" : "continue" }
+              : {}),
           },
         }),
   });
   const table: Table = {
     type: "table",
     formatting: { justification: "center", layout: "fixed" },
-    ...(explicitGrid ? { columnWidths: Array.from({ length: width }, () => 700) } : {}),
+    ...(explicitGrid
+      ? { columnWidths: Array.from({ length: width }, () => 700) }
+      : {}),
     rows: Array.from({ length: height }, (_, row) => {
       const omitted = variant === 3;
       const spans =
@@ -82,7 +105,10 @@ const fixture = ({ width, height, variant, nested, empty, explicitGrid }: Shape)
           : Array.from({ length: width - (omitted ? 2 : 0) }, () => 1);
       return {
         type: "tableRow",
-        formatting: { header: row === 0, ...(omitted ? { gridBefore: 1, gridAfter: 1 } : {}) },
+        formatting: {
+          header: row === 0,
+          ...(omitted ? { gridBefore: 1, gridAfter: 1 } : {}),
+        },
         cells: spans.map((span) => cell(span, row)),
       };
     }),
@@ -93,14 +119,20 @@ const fixture = ({ width, height, variant, nested, empty, explicitGrid }: Shape)
     rows: [
       {
         type: "tableRow",
-        cells: [{ type: "tableCell", content: [table, paragraph(0x20, false)] }],
+        cells: [
+          { type: "tableCell", content: [table, paragraph(0x20, false)] },
+        ],
       },
     ],
   };
   const document: Document = {
     package: {
       document: {
-        content: [paragraph(1, false), nested ? wrapped : table, paragraph(2, false)],
+        content: [
+          paragraph(1, false),
+          nested ? wrapped : table,
+          paragraph(2, false),
+        ],
       },
     },
   };
@@ -116,7 +148,8 @@ const tableOf = (document: Document, nested: boolean): Table => {
 };
 const targetOf = (table: Table): string => {
   const first = table.rows.at(0)?.cells.at(0)?.content.at(0);
-  if (first?.type !== "paragraph" || !first.paraId) throw new Error("Target paragraph missing.");
+  if (first?.type !== "paragraph" || !first.paraId)
+    throw new Error("Target paragraph missing.");
   return first.paraId;
 };
 
@@ -145,9 +178,12 @@ const slots = (table: Table) => {
       const above = rows.at(rowIndex - 1)?.at(column);
       expect(rowIndex).toBeGreaterThan(0);
       expect(
-        above?.formatting?.vMerge === "restart" || above?.formatting?.vMerge === "continue",
+        above?.formatting?.vMerge === "restart" ||
+          above?.formatting?.vMerge === "continue",
       ).toBe(true);
-      expect(above?.formatting?.gridSpan ?? 1).toBe(cell.formatting.gridSpan ?? 1);
+      expect(above?.formatting?.gridSpan ?? 1).toBe(
+        cell.formatting.gridSpan ?? 1,
+      );
       expect(row.indexOf(cell)).toBe(rows.at(rowIndex - 1)?.indexOf(above));
     }
   }
@@ -162,8 +198,10 @@ const invariants = (document: Document) => {
         if (block.paraId) ids.push(block.paraId);
       } else if (block.type === "table") {
         slots(block);
-        for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
-      } else if (block.type === "blockSdt" || block.type === "blockCustomXml") walk(block.content);
+        for (const row of block.rows)
+          for (const cell of row.cells) walk(cell.content);
+      } else if (block.type === "blockSdt" || block.type === "blockCustomXml")
+        walk(block.content);
     }
   };
   walk(document.package.document.content);
@@ -198,7 +236,12 @@ const idsForInsert = (table: Table, column: number, first: number) => {
   let count = 0;
   for (const row of table.rows) {
     let start = row.formatting?.gridBefore ?? 0;
-    const end = start + row.cells.reduce((sum, cell) => sum + (cell.formatting?.gridSpan ?? 1), 0);
+    const end =
+      start +
+      row.cells.reduce(
+        (sum, cell) => sum + (cell.formatting?.gridSpan ?? 1),
+        0,
+      );
     if (column < start || column > end) continue;
     if (column === start || column === end) {
       count++;
@@ -258,7 +301,11 @@ describe("semantic table edit properties", () => {
                   content: [{ type: "text", text }],
                 } satisfies Run;
                 return hyperlink
-                  ? { type: "hyperlink", href: "https://example.org", children: [run] }
+                  ? {
+                      type: "hyperlink",
+                      href: "https://example.org",
+                      children: [run],
+                    }
                   : run;
               }),
             })),
@@ -298,10 +345,13 @@ describe("semantic table edit properties", () => {
           if (tracked.isErr()) throw tracked.error;
           const directOp = direct.value.ops.at(0);
           const trackedOp = tracked.value.ops.at(0);
-          if (!directOp || !trackedOp) throw new Error("Compiled deletion missing.");
+          if (!directOp || !trackedOp)
+            throw new Error("Compiled deletion missing.");
           const deleted = applied(f.document, directOp);
           const suggested = applied(f.document, trackedOp);
-          expect(suggested.revisions.length).toBeGreaterThanOrEqual(rows.length);
+          expect(suggested.revisions.length).toBeGreaterThanOrEqual(
+            rows.length,
+          );
           for (const decision of ["accept", "reject"] as const) {
             const resolved = applyDocumentOp(suggested.document, {
               type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
@@ -310,7 +360,10 @@ describe("semantic table edit properties", () => {
               decision,
             });
             if (resolved.isErr()) throw resolved.error;
-            exact(resolved.value.document, decision === "accept" ? deleted.document : f.document);
+            exact(
+              resolved.value.document,
+              decision === "accept" ? deleted.document : f.document,
+            );
           }
         },
       ),
@@ -341,7 +394,9 @@ describe("semantic table edit properties", () => {
           expect(newSlots.at(rowIndex)?.length).toBe(f.width + 1);
           for (const [oldColumn, cell] of row.entries()) {
             exact(
-              newSlots.at(rowIndex)?.at(oldColumn < column ? oldColumn : oldColumn + 1)?.content,
+              newSlots
+                .at(rowIndex)
+                ?.at(oldColumn < column ? oldColumn : oldColumn + 1)?.content,
               cell?.content,
             );
           }
@@ -365,7 +420,11 @@ describe("semantic table edit properties", () => {
               cell?.content,
               newSlots
                 .at(rowIndex)
-                ?.at(remainingColumn < column ? remainingColumn : remainingColumn + 1)?.content,
+                ?.at(
+                  remainingColumn < column
+                    ? remainingColumn
+                    : remainingColumn + 1,
+                )?.content,
             );
           }
         }
@@ -390,13 +449,17 @@ describe("semantic table edit properties", () => {
           bottom: f.height,
           left: 0,
           right: 2,
-          newBlockIds: Array.from({ length: f.height - 1 }, (_, offset) => id(0x2000 + offset)),
+          newBlockIds: Array.from({ length: f.height - 1 }, (_, offset) =>
+            id(0x2000 + offset),
+          ),
         });
         const table = tableOf(merged.document, f.nested);
         const first = table.rows.at(0)?.cells.at(0);
         exact(
           first?.content,
-          before.rows.flatMap((row) => row.cells.slice(0, 2).flatMap((cell) => cell.content)),
+          before.rows.flatMap((row) =>
+            row.cells.slice(0, 2).flatMap((cell) => cell.content),
+          ),
         );
         expect(first?.formatting?.gridSpan).toBe(2);
         expect(first?.formatting?.vMerge).toBe("restart");
@@ -416,12 +479,18 @@ describe("semantic table edit properties", () => {
             type: DOCUMENT_OP_TYPES.SPLIT_CELL,
             newBlockIds: [],
           });
-          if (refusal.isOk()) throw new Error("Vertical-group split must refuse.");
-          expect(refusal.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
+          if (refusal.isOk())
+            throw new Error("Vertical-group split must refuse.");
+          expect(refusal.error.reason).toBe(
+            DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+          );
           exact(merged.document, mergedSnapshot);
         }
         const horizontal = fixture({ ...value, variant: 0 });
-        const horizontalBefore = tableOf(horizontal.document, horizontal.nested);
+        const horizontalBefore = tableOf(
+          horizontal.document,
+          horizontal.nested,
+        );
         const horizontalMerged = applied(horizontal.document, {
           ...target(horizontal.target),
           type: DOCUMENT_OP_TYPES.MERGE_CELLS,
@@ -431,13 +500,18 @@ describe("semantic table edit properties", () => {
           right: 2,
           newBlockIds: [],
         });
-        const horizontalTable = tableOf(horizontalMerged.document, horizontal.nested);
+        const horizontalTable = tableOf(
+          horizontalMerged.document,
+          horizontal.nested,
+        );
         const topContent = horizontalBefore.rows
           .at(0)
           ?.cells.slice(0, 2)
           .flatMap((cell) => cell.content);
         exact(horizontalTable.rows.at(0)?.cells.at(0)?.content, topContent);
-        expect(horizontalTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+        expect(
+          horizontalTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge,
+        ).toBeUndefined();
         const split = applied(horizontalMerged.document, {
           ...target(horizontal.target),
           type: DOCUMENT_OP_TYPES.SPLIT_CELL,
@@ -455,7 +529,10 @@ describe("semantic table edit properties", () => {
           expect(cell.formatting?.vMerge).toBeUndefined();
         }
         for (let rowIndex = 1; rowIndex < horizontal.height; rowIndex++)
-          exact(splitTable.rows.at(rowIndex), horizontalBefore.rows.at(rowIndex));
+          exact(
+            splitTable.rows.at(rowIndex),
+            horizontalBefore.rows.at(rowIndex),
+          );
       }),
       {
         numRuns: NUM_RUNS,
@@ -474,7 +551,9 @@ describe("semantic table edit properties", () => {
         const op = {
           ...target(f.target),
           type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-          newBlockIds: Array.from({ length: splitHeight }, (_, offset) => id(0x7000 + offset)),
+          newBlockIds: Array.from({ length: splitHeight }, (_, offset) =>
+            id(0x7000 + offset),
+          ),
         } satisfies DocumentOp;
         if (vertical) {
           const refused = applyDocumentOp(f.document, op);
@@ -489,7 +568,10 @@ describe("semantic table edit properties", () => {
         for (let rowIndex = 0; rowIndex < splitHeight; rowIndex++) {
           const row = after.rows.at(rowIndex);
           expect(row?.cells.length).toBe(f.width);
-          exact(row?.cells.at(0)?.content, before.rows.at(rowIndex)?.cells.at(0)?.content);
+          exact(
+            row?.cells.at(0)?.content,
+            before.rows.at(rowIndex)?.cells.at(0)?.content,
+          );
           expect(row?.cells.at(0)?.formatting?.gridSpan ?? 1).toBe(1);
           expect(row?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
           expect(row?.cells.at(1)?.formatting?.vMerge).toBeUndefined();
@@ -509,7 +591,10 @@ describe("semantic table edit properties", () => {
     assertProperty(
       fc.property(
         shape,
-        fc.array(fc.integer({ min: 0, max: 4 }), { minLength: 3, maxLength: 12 }),
+        fc.array(fc.integer({ min: 0, max: 4 }), {
+          minLength: 3,
+          maxLength: 12,
+        }),
         (value, sequence) => {
           const f = fixture(value);
           let document = f.document;
@@ -523,7 +608,10 @@ describe("semantic table edit properties", () => {
                 op = {
                   ...address,
                   type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
-                  patch: { verticalAlign: step % 2 ? "bottom" : "center", noWrap: true },
+                  patch: {
+                    verticalAlign: step % 2 ? "bottom" : "center",
+                    noWrap: true,
+                  },
                 };
                 break;
               case 1:
@@ -563,10 +651,12 @@ describe("semantic table edit properties", () => {
             const after = tableOf(result.document, f.nested);
             switch (op.type) {
               case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
-                expect(after.rows.at(0)?.cells.at(0)?.formatting?.verticalAlign).toBe(
-                  op.patch.verticalAlign,
+                expect(
+                  after.rows.at(0)?.cells.at(0)?.formatting?.verticalAlign,
+                ).toBe(op.patch.verticalAlign);
+                expect(after.rows.at(0)?.cells.at(0)?.formatting?.noWrap).toBe(
+                  true,
                 );
-                expect(after.rows.at(0)?.cells.at(0)?.formatting?.noWrap).toBe(true);
                 break;
               case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
                 expect(after.rows.at(0)?.formatting?.cantSplit).toBe(true);
@@ -580,13 +670,18 @@ describe("semantic table edit properties", () => {
                 exact(after.columnWidths, op.columnWidths);
                 break;
               case DOCUMENT_OP_TYPES.INSERT_COLUMN:
-                expect(slots(after).at(0)?.length).toBe((slots(before).at(0)?.length ?? 0) + 1);
+                expect(slots(after).at(0)?.length).toBe(
+                  (slots(before).at(0)?.length ?? 0) + 1,
+                );
                 break;
             }
             inverseBatches.push(result.inverse);
             document = result.document;
           }
-          const undone = applyDocumentOps(document, inverseBatches.reverse().flat());
+          const undone = applyDocumentOps(
+            document,
+            inverseBatches.reverse().flat(),
+          );
           if (undone.isErr()) throw undone.error;
           exact(undone.value.document, f.document);
         },
@@ -617,14 +712,20 @@ describe("semantic table edit properties", () => {
         const set = applied(f.document, {
           ...target(f.target),
           type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
-          patch: { styleId: "temporary", layout: "autofit", justification: "left" },
+          patch: {
+            styleId: "temporary",
+            layout: "autofit",
+            justification: "left",
+          },
         });
         const cleared = applied(set.document, {
           ...target(f.target),
           type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
           patch: { styleId: null, layout: null, justification: null },
         });
-        expect(tableOf(cleared.document, f.nested).formatting?.styleId).toBeUndefined();
+        expect(
+          tableOf(cleared.document, f.nested).formatting?.styleId,
+        ).toBeUndefined();
         const cellSet = applied(f.document, {
           ...target(f.target),
           type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
@@ -636,7 +737,8 @@ describe("semantic table edit properties", () => {
           patch: { fitText: null, hideMark: null, verticalAlign: null },
         });
         expect(
-          tableOf(cellCleared.document, f.nested).rows.at(0)?.cells.at(0)?.formatting?.fitText,
+          tableOf(cellCleared.document, f.nested).rows.at(0)?.cells.at(0)
+            ?.formatting?.fitText,
         ).toBeUndefined();
         const rowSet = applied(f.document, {
           ...target(f.target),
@@ -665,7 +767,10 @@ describe("semantic table edit properties", () => {
     assertProperty(
       fc.property(
         shape,
-        fc.array(fc.integer({ min: 0, max: 7 }), { minLength: 2, maxLength: 8 }),
+        fc.array(fc.integer({ min: 0, max: 7 }), {
+          minLength: 2,
+          maxLength: 8,
+        }),
         (value, sequence) => {
           const f = fixture({ ...value, explicitGrid: true });
           let document = f.document;
@@ -674,11 +779,13 @@ describe("semantic table edit properties", () => {
             const address = target(targetOf(before));
             const width = slots(before).at(0)?.length ?? 0;
             const column = step % width;
-            const firstSpan = before.rows.at(0)?.cells.at(0)?.formatting?.gridSpan ?? 1;
+            const firstSpan =
+              before.rows.at(0)?.cells.at(0)?.formatting?.gridSpan ?? 1;
             const groupHeight =
               before.rows.at(0)?.cells.at(0)?.formatting?.vMerge === "restart"
-                ? before.rows.filter((row) => row.cells.at(0)?.formatting?.vMerge !== undefined)
-                    .length
+                ? before.rows.filter(
+                    (row) => row.cells.at(0)?.formatting?.vMerge !== undefined,
+                  ).length
                 : 1;
             const trailingInsert = () =>
               ({
@@ -714,7 +821,10 @@ describe("semantic table edit properties", () => {
                 operation = {
                   ...address,
                   type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
-                  columnWidths: Array.from({ length: width }, () => 1100 + step),
+                  columnWidths: Array.from(
+                    { length: width },
+                    () => 1100 + step,
+                  ),
                 };
                 break;
               case 4:
@@ -734,7 +844,11 @@ describe("semantic table edit properties", () => {
                       row.cells.length > 1 ||
                       (row.cells.at(0)?.formatting?.gridSpan ?? 1) > 1,
                   )
-                    ? { ...address, type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 0 }
+                    ? {
+                        ...address,
+                        type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+                        column: 0,
+                      }
                     : trailingInsert();
                 break;
               case 6:
@@ -771,7 +885,8 @@ describe("semantic table edit properties", () => {
             expect(suggesting.value.ops.length).toBe(1);
             const directOp = editing.value.ops.at(0);
             const trackedOp = suggesting.value.ops.at(0);
-            if (!directOp || !trackedOp) throw new Error("Compiler must emit one table operation.");
+            if (!directOp || !trackedOp)
+              throw new Error("Compiler must emit one table operation.");
             const direct = applied(document, directOp);
             const tracked = applied(document, trackedOp);
             if ("newIds" in directOp) {
@@ -779,7 +894,9 @@ describe("semantic table edit properties", () => {
               expect(directOp.newIds?.control ?? []).toEqual([]);
             }
             if ("newIds" in trackedOp) {
-              expect((trackedOp.newIds?.revision ?? []).toSorted((a, b) => a - b)).toEqual(
+              expect(
+                (trackedOp.newIds?.revision ?? []).toSorted((a, b) => a - b),
+              ).toEqual(
                 tracked.revisions
                   .filter((revisionId) => revisionId !== revision.id)
                   .toSorted((a, b) => a - b),
@@ -788,18 +905,25 @@ describe("semantic table edit properties", () => {
             }
             // Physical model serialization is an additional oracle, separate from operation-envelope serialization.
             exact(JSON.parse(JSON.stringify(document)), document);
-            exact(JSON.parse(JSON.stringify(tracked.document)), tracked.document);
+            exact(
+              JSON.parse(JSON.stringify(tracked.document)),
+              tracked.document,
+            );
             invariants(JSON.parse(JSON.stringify(tracked.document)));
             const liveIds: string[] = [];
             const collect = (blocks: readonly BlockContent[]) => {
               for (const block of blocks) {
-                if (block.type === "paragraph" && block.paraId) liveIds.push(block.paraId);
+                if (block.type === "paragraph" && block.paraId)
+                  liveIds.push(block.paraId);
                 else if (block.type === "table")
-                  for (const row of block.rows) for (const cell of row.cells) collect(cell.content);
+                  for (const row of block.rows)
+                    for (const cell of row.cells) collect(cell.content);
               }
             };
             collect(direct.document.package.document.content);
-            expect(liveIds.includes(editing.value.selection.blockId)).toBe(true);
+            expect(liveIds.includes(editing.value.selection.blockId)).toBe(
+              true,
+            );
             expect(editing.value.selection.offset).toBe(0);
             for (const decision of ["accept", "reject"] as const) {
               if ((tracked.revisions?.length ?? 0) === 0) {
@@ -813,7 +937,10 @@ describe("semantic table edit properties", () => {
                   decision,
                 });
                 if (resolved.isErr()) throw resolved.error;
-                exact(resolved.value.document, decision === "accept" ? direct.document : document);
+                exact(
+                  resolved.value.document,
+                  decision === "accept" ? direct.document : document,
+                );
                 invariants(resolved.value.document);
               }
             }
@@ -839,7 +966,8 @@ describe("semantic table edit properties", () => {
         const expected = structuredClone(f.document);
         if (f.nested) {
           const outer = expected.package.document.content.at(1);
-          if (outer?.type !== "table") throw new Error("Fixture outer table missing.");
+          if (outer?.type !== "table")
+            throw new Error("Fixture outer table missing.");
           const carrier = outer.rows.at(0)?.cells.at(0);
           if (!carrier) throw new Error("Fixture carrier missing.");
           carrier.content = carrier.content.slice(1);
@@ -852,20 +980,33 @@ describe("semantic table edit properties", () => {
           column: 0,
         } as const;
         const intent = { type: "table", operation } as const;
-        const editing = compileEditorIntent(f.document, { intent, mode: { type: "editing" } });
+        const editing = compileEditorIntent(f.document, {
+          intent,
+          mode: { type: "editing" },
+        });
         const suggesting = compileEditorIntent(f.document, {
           intent,
           mode: {
             type: "suggesting",
-            revision: { id: 0x70000, author: "Reviewer", date: "2026-10-02T10:00:00Z" },
-            newIds: { revision: Array.from({ length: 64 }, (_, offset) => 0x70001 + offset) },
+            revision: {
+              id: 0x70000,
+              author: "Reviewer",
+              date: "2026-10-02T10:00:00Z",
+            },
+            newIds: {
+              revision: Array.from(
+                { length: 64 },
+                (_, offset) => 0x70001 + offset,
+              ),
+            },
           },
         });
         if (editing.isErr()) throw editing.error;
         if (suggesting.isErr()) throw suggesting.error;
         const directOp = editing.value.ops.at(0);
         const trackedOp = suggesting.value.ops.at(0);
-        if (!directOp || !trackedOp) throw new Error("Compiler must emit column deletion.");
+        if (!directOp || !trackedOp)
+          throw new Error("Compiler must emit column deletion.");
         const direct = applied(f.document, directOp);
         const tracked = applied(f.document, trackedOp);
         exact(direct.document, expected);
@@ -882,7 +1023,10 @@ describe("semantic table edit properties", () => {
             decision,
           });
           if (result.isErr()) throw result.error;
-          exact(result.value.document, decision === "accept" ? expected : f.document);
+          exact(
+            result.value.document,
+            decision === "accept" ? expected : f.document,
+          );
           invariants(result.value.document);
         }
       }),
@@ -897,7 +1041,12 @@ describe("semantic table edit properties", () => {
     // A tracked merge that replaces continuation paragraphs can still look correct; pin every physical id.
     assertProperty(
       fc.property(shape, (value) => {
-        const f = fixture({ ...value, variant: 0, empty: true, explicitGrid: true });
+        const f = fixture({
+          ...value,
+          variant: 0,
+          empty: true,
+          explicitGrid: true,
+        });
         const before = tableOf(f.document, f.nested);
         const operation = {
           ...target(f.target),
@@ -916,20 +1065,33 @@ describe("semantic table edit properties", () => {
           intent: { type: "table", operation },
           mode: {
             type: "suggesting",
-            revision: { id: 0x60000, author: "Reviewer", date: "2026-10-02T10:00:00Z" },
-            newIds: { revision: Array.from({ length: 24 }, (_, offset) => 0x60001 + offset) },
+            revision: {
+              id: 0x60000,
+              author: "Reviewer",
+              date: "2026-10-02T10:00:00Z",
+            },
+            newIds: {
+              revision: Array.from(
+                { length: 24 },
+                (_, offset) => 0x60001 + offset,
+              ),
+            },
           },
         });
         if (editing.isErr()) throw editing.error;
         if (suggesting.isErr()) throw suggesting.error;
         const directOp = editing.value.ops.at(0);
         const trackedOp = suggesting.value.ops.at(0);
-        if (!directOp || !trackedOp) throw new Error("Compiler must emit table merge.");
+        if (!directOp || !trackedOp)
+          throw new Error("Compiler must emit table merge.");
         const direct = applied(f.document, directOp);
         const tracked = applied(f.document, trackedOp);
         const table = tableOf(tracked.document, f.nested);
         for (const [rowIndex, row] of table.rows.entries()) {
-          exact(row.cells.at(0)?.content, before.rows.at(rowIndex)?.cells.at(0)?.content);
+          exact(
+            row.cells.at(0)?.content,
+            before.rows.at(rowIndex)?.cells.at(0)?.content,
+          );
         }
         for (const decision of ["accept", "reject"] as const) {
           const result = applyDocumentOp(tracked.document, {
@@ -939,7 +1101,10 @@ describe("semantic table edit properties", () => {
             decision,
           });
           if (result.isErr()) throw result.error;
-          exact(result.value.document, decision === "accept" ? direct.document : f.document);
+          exact(
+            result.value.document,
+            decision === "accept" ? direct.document : f.document,
+          );
         }
       }),
       {
@@ -1008,7 +1173,8 @@ describe("semantic table edit properties", () => {
         const snapshot = structuredClone(f.document);
         for (const { op, reason } of cases) {
           const result = applyDocumentOp(f.document, op);
-          if (result.isOk()) throw new Error(`Expected ${reason} for ${op.type}.`);
+          if (result.isOk())
+            throw new Error(`Expected ${reason} for ${op.type}.`);
           expect(result.error.reason).toBe(reason);
           exact(f.document, snapshot);
         }
@@ -1026,7 +1192,11 @@ describe("semantic table edit properties", () => {
       fc.property(shape, (value) => {
         const f = fixture(value);
         const before = tableOf(f.document, f.nested);
-        const revision = { id: 0x12000, author: "Reviewer", date: "2026-10-02T10:00:00Z" };
+        const revision = {
+          id: 0x12000,
+          author: "Reviewer",
+          date: "2026-10-02T10:00:00Z",
+        };
         const cell = applied(f.document, {
           ...target(f.target),
           type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
@@ -1039,14 +1209,19 @@ describe("semantic table edit properties", () => {
           ?.propertyChanges?.at(0);
         expect(cellChange?.type).toBe("tableCellPropertyChange");
         expect(cellChange?.info.id).toBe(revision.id);
-        exact(cellChange?.previousFormatting, before.rows.at(0)?.cells.at(0)?.formatting);
+        exact(
+          cellChange?.previousFormatting,
+          before.rows.at(0)?.cells.at(0)?.formatting,
+        );
         const row = applied(f.document, {
           ...target(f.target),
           type: DOCUMENT_OP_TYPES.SET_ROW_PROPS,
           patch: { cantSplit: true },
           revision,
         });
-        const rowChange = tableOf(row.document, f.nested).rows.at(0)?.propertyChanges?.at(0);
+        const rowChange = tableOf(row.document, f.nested)
+          .rows.at(0)
+          ?.propertyChanges?.at(0);
         expect(rowChange?.type).toBe("tableRowPropertyChange");
         exact(rowChange?.previousFormatting, before.rows.at(0)?.formatting);
         const table = applied(f.document, {
@@ -1055,7 +1230,10 @@ describe("semantic table edit properties", () => {
           patch: { styleId: "tracked" },
           revision,
         });
-        const tableChange = tableOf(table.document, f.nested).propertyChanges?.at(0);
+        const tableChange = tableOf(
+          table.document,
+          f.nested,
+        ).propertyChanges?.at(0);
         expect(tableChange?.type).toBe("tablePropertyChange");
         exact(tableChange?.previousFormatting, before.formatting);
       }),
@@ -1080,7 +1258,9 @@ describe("semantic table edit properties", () => {
           type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
           column: 0,
           width: 800,
-          newBlockIds: Array.from({ length: f.height }, (_, offset) => id(0x6000 + offset)),
+          newBlockIds: Array.from({ length: f.height }, (_, offset) =>
+            id(0x6000 + offset),
+          ),
         });
         const changed = applied(inserted.document, {
           ...target(targetOf(tableOf(inserted.document, f.nested))),
@@ -1142,17 +1322,26 @@ describe("semantic table edit properties", () => {
               left: 0,
               right: 2,
               newBlockIds: [],
-              revision: { id: 8000, author: "Reviewer", date: "2026-10-02T10:00:00Z" },
+              revision: {
+                id: 8000,
+                author: "Reviewer",
+                date: "2026-10-02T10:00:00Z",
+              },
             } satisfies DocumentOp,
             reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
           },
-          { document: changed.document, op: inverse, reason: DOCUMENT_OP_REFUSAL_REASONS.STALE },
+          {
+            document: changed.document,
+            op: inverse,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
+          },
         ];
         for (const { document, op, reason } of cases) {
           const snapshot = structuredClone(document);
           const result = applyDocumentOp(document, op);
           attempts++;
-          if (result.isOk()) throw new Error(`Expected ${reason} for ${op.type}.`);
+          if (result.isOk())
+            throw new Error(`Expected ${reason} for ${op.type}.`);
           expect(result.error.reason).toBe(reason);
           tallies.set(reason, (tallies.get(reason) ?? 0) + 1);
           exact(document, snapshot);
@@ -1171,9 +1360,13 @@ describe("semantic table edit properties", () => {
         DOCUMENT_OP_REFUSAL_REASONS.STALE,
       ].sort(),
     );
-    expect([...tallies.values()].reduce((sum, count) => sum + count, 0)).toBe(attempts);
+    expect([...tallies.values()].reduce((sum, count) => sum + count, 0)).toBe(
+      attempts,
+    );
     // Each reason has a fixed maximum share, making reason drift visible rather than skipped.
-    expect(tallies.get(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH)).toBe(attempts / 2);
+    expect(tallies.get(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH)).toBe(
+      attempts / 2,
+    );
     for (const reason of [
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
@@ -1186,26 +1379,46 @@ describe("semantic table edit properties", () => {
 
 test("table semantic allocation excludes lifetime-retired paragraph ids", () => {
   assertProperty(
-    fc.property(fc.integer({ min: 2, max: 4 }), fc.boolean(), (height, nested) => {
-      const f = fixture({ width: 3, height, variant: 0, nested, empty: true, explicitGrid: true });
-      const reservedBlockIds = new Set(Array.from({ length: 20 }, (_, index) => id(index + 3)));
-      const intent = {
-        type: "table",
-        operation: {
-          type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
-          ...target(f.target),
-          column: 0,
-          width: 700,
-        },
-      } as const;
-      const compiled = compileEditorIntent(f.document, {
-        intent,
-        mode: { type: "editing", reservedBlockIds },
-      }).unwrap();
-      const changed = applyDocumentOps(f.document, compiled.ops).unwrap();
-      expect(changed.touched.inserted.length).toBeGreaterThan(0);
-      expect(changed.touched.inserted.some((blockId) => reservedBlockIds.has(blockId))).toBe(false);
-    }),
-    { numRuns: 12, id: "table semantic allocation excludes lifetime-retired paragraph ids" },
+    fc.property(
+      fc.integer({ min: 2, max: 4 }),
+      fc.boolean(),
+      (height, nested) => {
+        const f = fixture({
+          width: 3,
+          height,
+          variant: 0,
+          nested,
+          empty: true,
+          explicitGrid: true,
+        });
+        const reservedBlockIds = new Set(
+          Array.from({ length: 20 }, (_, index) => id(index + 3)),
+        );
+        const intent = {
+          type: "table",
+          operation: {
+            type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+            ...target(f.target),
+            column: 0,
+            width: 700,
+          },
+        } as const;
+        const compiled = compileEditorIntent(f.document, {
+          intent,
+          mode: { type: "editing", reservedBlockIds },
+        }).unwrap();
+        const changed = applyDocumentOps(f.document, compiled.ops).unwrap();
+        expect(changed.touched.inserted.length).toBeGreaterThan(0);
+        expect(
+          changed.touched.inserted.some((blockId) =>
+            reservedBlockIds.has(blockId),
+          ),
+        ).toBe(false);
+      },
+    ),
+    {
+      numRuns: 12,
+      id: "table semantic allocation excludes lifetime-retired paragraph ids",
+    },
   );
 });

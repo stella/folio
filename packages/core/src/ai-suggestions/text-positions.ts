@@ -32,7 +32,10 @@ export type PositionalText = {
    * Resolve a text span without absorbing an explicit zero-width structure.
    * Returns `null` when the span crosses one.
    */
-  pmRangeAt: (startTextIndex: number, endTextIndex: number) => { from: number; to: number } | null;
+  pmRangeAt: (
+    startTextIndex: number,
+    endTextIndex: number,
+  ) => { from: number; to: number } | null;
 };
 
 /**
@@ -65,7 +68,10 @@ export function buildPositionalText(
       if (resultText.length === 0 || pos < from || pos + node.nodeSize > to) {
         return false;
       }
-      structuralBoundaries.push({ textOffset: textLength, length: resultText.length });
+      structuralBoundaries.push({
+        textOffset: textLength,
+        length: resultText.length,
+      });
       chunks.push(resultText);
       for (let index = 0; index < resultText.length; index++) {
         offsets.push(pos);
@@ -129,7 +135,8 @@ export function buildPositionalText(
         structuralBoundaries.some(({ textOffset, length }) =>
           length === 0
             ? textOffset > startTextIndex && textOffset < endTextIndex
-            : (startTextIndex > textOffset && startTextIndex < textOffset + length) ||
+            : (startTextIndex > textOffset &&
+                startTextIndex < textOffset + length) ||
               (endTextIndex > textOffset && endTextIndex < textOffset + length),
         )
       ) {

@@ -3,7 +3,11 @@ import { createHash } from "node:crypto";
 
 import type { EditFailure } from "../../test/corpus-edit-fuzz-contract.ts";
 
-export type EditCase = EditFailure & { document: string; sha256: string; seed: number };
+export type EditCase = EditFailure & {
+  document: string;
+  sha256: string;
+  seed: number;
+};
 export type Incomplete = {
   document: string;
   sha256: string;
@@ -64,7 +68,13 @@ const duplicateIds = (ids: readonly string[]): string[] => {
   return [...duplicates].toSorted();
 };
 
-const incompleteIdentity = ({ document, sha256, seed, reason, detail }: Incomplete): string =>
+const incompleteIdentity = ({
+  document,
+  sha256,
+  seed,
+  reason,
+  detail,
+}: Incomplete): string =>
   JSON.stringify({ document, sha256, seed, reason, detail });
 
 /** A sampled run may find no new case; a full run must match in both directions. */
@@ -82,15 +92,21 @@ export const compareBaseline = (
     baseline.schemaVersion !== 2 ||
     reports.some(({ lockDigest }) => lockDigest !== baseline.lockDigest)
   ) {
-    throw new Error("edit fuzz report and baseline versions or lock digests differ");
+    throw new Error(
+      "edit fuzz report and baseline versions or lock digests differ",
+    );
   }
-  const fullRun = reports.length === 1 && reports[0]?.shard === null && reports[0]?.sample === null;
+  const fullRun =
+    reports.length === 1 &&
+    reports[0]?.shard === null &&
+    reports[0]?.sample === null;
   const allShards =
     reports.length > 1 &&
     reports.every(({ sample }) => sample === null) &&
-    Array.from({ length: reports.length }, (_, index) => `${index + 1}/${reports.length}`).every(
-      (shard) => reports.some((report) => report.shard === shard),
-    );
+    Array.from(
+      { length: reports.length },
+      (_, index) => `${index + 1}/${reports.length}`,
+    ).every((shard) => reports.some((report) => report.shard === shard));
   if (!fullRun && !allShards && reports.length > 1) {
     throw new Error("edit fuzz check needs every shard exactly once");
   }
@@ -98,7 +114,9 @@ export const compareBaseline = (
   const incomplete = reports.flatMap(({ incomplete: cases }) => cases);
   const baselineIds = new Set(baseline.identities);
   const observedIds = new Set(observed);
-  const knownIncomplete = new Set(baseline.knownIncomplete.map(incompleteIdentity));
+  const knownIncomplete = new Set(
+    baseline.knownIncomplete.map(incompleteIdentity),
+  );
   const observedIncomplete = new Set(incomplete.map(incompleteIdentity));
   const baselineDuplicates = duplicateIds(baseline.identities);
   if (baselineDuplicates.length > 0) {
@@ -108,16 +126,23 @@ export const compareBaseline = (
   }
   if (
     baseline.knownIncomplete.some(
-      ({ reason, finding }) => reason !== "timeout" || !Object.hasOwn(FINDINGS, finding),
+      ({ reason, finding }) =>
+        reason !== "timeout" || !Object.hasOwn(FINDINGS, finding),
     ) ||
     duplicateIds(baseline.knownIncomplete.map(incompleteIdentity)).length > 0
   ) {
-    throw new Error("edit fuzz baseline has an invalid or duplicate incomplete disposition");
+    throw new Error(
+      "edit fuzz baseline has an invalid or duplicate incomplete disposition",
+    );
   }
   return {
-    introduced: [...observedIds].filter((id) => !baselineIds.has(id)).toSorted(),
+    introduced: [...observedIds]
+      .filter((id) => !baselineIds.has(id))
+      .toSorted(),
     missing:
-      fullRun || allShards ? [...baselineIds].filter((id) => !observedIds.has(id)).toSorted() : [],
+      fullRun || allShards
+        ? [...baselineIds].filter((id) => !observedIds.has(id)).toSorted()
+        : [],
     duplicates: duplicateIds(observed),
     unexpectedIncomplete: incomplete.filter(
       (item) => !knownIncomplete.has(incompleteIdentity(item)),

@@ -2,14 +2,18 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { serializeParagraphFormatting } from "../docx/serializer/paragraphSerializer";
 import type { ParagraphFormatting } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 import {
-  modelParagraphFormattingEmission,
   isStyleSourcedParagraphNumbering,
   type ModeledParagraphFormattingEmission,
+  modelParagraphFormattingEmission,
 } from "./paragraphFormattingSerialization";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -79,7 +83,9 @@ const PRESENT_BUT_EMPTY_MARK_PROPERTIES = [
 ] as const satisfies readonly ParagraphFormatting[];
 
 /** The mark's element as the serializer writes it, from the emission's three answers. */
-const markPropertiesXml = (modeled: ModeledParagraphFormattingEmission): string => {
+const markPropertiesXml = (
+  modeled: ModeledParagraphFormattingEmission,
+): string => {
   const inner = modeled.paragraphMarkPropertiesInnerXml;
   if (inner === undefined) {
     return "";
@@ -99,11 +105,14 @@ describe("paragraph formatting emission model", () => {
     });
   });
 
-  test.each(NO_OP_FORMATTINGS)("normalizes emission-empty formatting %#", (formatting) => {
-    expect(Object.keys(formatting).length).toBeGreaterThan(0);
-    expect(modelParagraphFormattingEmission(formatting)).toEqual({});
-    expect(serializeParagraphFormatting(formatting)).toBe("");
-  });
+  test.each(NO_OP_FORMATTINGS)(
+    "normalizes emission-empty formatting %#",
+    (formatting) => {
+      expect(Object.keys(formatting).length).toBeGreaterThan(0);
+      expect(modelParagraphFormattingEmission(formatting)).toEqual({});
+      expect(serializeParagraphFormatting(formatting)).toBe("");
+    },
+  );
 
   test.each(PRESENT_BUT_EMPTY_MARK_PROPERTIES)(
     "keeps an empty mark property set %#",
@@ -111,7 +120,9 @@ describe("paragraph formatting emission model", () => {
       expect(modelParagraphFormattingEmission(formatting)).toEqual({
         paragraphMarkPropertiesInnerXml: "",
       });
-      expect(serializeParagraphFormatting(formatting)).toBe("<w:pPr><w:rPr/></w:pPr>");
+      expect(serializeParagraphFormatting(formatting)).toBe(
+        "<w:pPr><w:rPr/></w:pPr>",
+      );
     },
   );
 
@@ -130,16 +141,27 @@ describe("paragraph formatting emission model", () => {
     );
   });
 
-  test.each([{ fontFamily: {} }, { styleId: "" }, { language: {} }, { color: {} }] as const)(
+  test.each([
+    { fontFamily: {} },
+    { styleId: "" },
+    { language: {} },
+    { color: {} },
+  ] as const)(
     "normalizes nested empty run formatting %# alongside emitted formatting",
     (empty) => {
-      const formatting = { runProperties: { bold: true, ...empty } } satisfies ParagraphFormatting;
-      const bold = { runProperties: { bold: true } } satisfies ParagraphFormatting;
+      const formatting = {
+        runProperties: { bold: true, ...empty },
+      } satisfies ParagraphFormatting;
+      const bold = {
+        runProperties: { bold: true },
+      } satisfies ParagraphFormatting;
 
       expect(modelParagraphFormattingEmission(formatting)).toEqual(
         modelParagraphFormattingEmission(bold),
       );
-      expect(serializeParagraphFormatting(formatting)).toBe(serializeParagraphFormatting(bold));
+      expect(serializeParagraphFormatting(formatting)).toBe(
+        serializeParagraphFormatting(bold),
+      );
     },
   );
 
@@ -160,11 +182,16 @@ describe("paragraph formatting emission model", () => {
         formattingArbitrary,
         fc.subarray(NO_OP_FORMATTINGS, { minLength: 1 }),
         (formatting, noOps) => {
-          const equivalentFormatting = Object.assign({ ...formatting }, ...noOps);
-          expect(canonicalJson(equivalentFormatting)).not.toBe(canonicalJson(formatting));
-          expect(modelParagraphFormattingEmission(equivalentFormatting)).toEqual(
-            modelParagraphFormattingEmission(formatting),
+          const equivalentFormatting = Object.assign(
+            { ...formatting },
+            ...noOps,
           );
+          expect(canonicalJson(equivalentFormatting)).not.toBe(
+            canonicalJson(formatting),
+          );
+          expect(
+            modelParagraphFormattingEmission(equivalentFormatting),
+          ).toEqual(modelParagraphFormattingEmission(formatting));
           expect(serializeParagraphFormatting(equivalentFormatting)).toBe(
             serializeParagraphFormatting(formatting),
           );
@@ -173,9 +200,9 @@ describe("paragraph formatting emission model", () => {
             ...equivalentFormatting,
             keepNext: !formatting.keepNext,
           };
-          expect(modelParagraphFormattingEmission(changedFormatting)).not.toEqual(
-            modelParagraphFormattingEmission(formatting),
-          );
+          expect(
+            modelParagraphFormattingEmission(changedFormatting),
+          ).not.toEqual(modelParagraphFormattingEmission(formatting));
           expect(serializeParagraphFormatting(changedFormatting)).not.toBe(
             serializeParagraphFormatting(formatting),
           );
@@ -197,13 +224,19 @@ describe("paragraph formatting emission model", () => {
       "direct",
       { kind: "reference", numId: 7, ilvl: 1 },
       undefined,
-      { propertiesXml: '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>' },
+      {
+        propertiesXml:
+          '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>',
+      },
     ],
     [
       "authored reference equal to its style",
       { kind: "reference", numId: 7, ilvl: 1 },
       { kind: "reference", numId: 7, ilvl: 1 },
-      { propertiesXml: '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>' },
+      {
+        propertiesXml:
+          '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>',
+      },
     ],
     [
       "authored id equal to its style",
@@ -211,7 +244,12 @@ describe("paragraph formatting emission model", () => {
       { kind: "reference", numId: 7, ilvl: 0 },
       { propertiesXml: '<w:numPr><w:numId w:val="7"/></w:numPr>' },
     ],
-    ["inherited style reference", undefined, { kind: "reference", numId: 7, ilvl: 0 }, {}],
+    [
+      "inherited style reference",
+      undefined,
+      { kind: "reference", numId: 7, ilvl: 0 },
+      {},
+    ],
     [
       "level stated without an id",
       { kind: "levelOnly", ilvl: 2 },
@@ -222,12 +260,17 @@ describe("paragraph formatting emission model", () => {
       "changed from style",
       { kind: "reference", numId: 7, ilvl: 1 },
       { kind: "reference", numId: 8, ilvl: 1 },
-      { propertiesXml: '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>' },
+      {
+        propertiesXml:
+          '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>',
+      },
     ],
   ] as const)(
     "resolves %s numbering into emitted numPr",
     (_name, numPr, numPrFromStyle, expected) => {
-      expect(modelParagraphFormattingEmission({ numPr, numPrFromStyle })).toEqual(expected);
+      expect(
+        modelParagraphFormattingEmission({ numPr, numPrFromStyle }),
+      ).toEqual(expected);
     },
   );
 
@@ -238,11 +281,18 @@ describe("paragraph formatting emission model", () => {
         fc.integer({ min: 0, max: 8 }),
         (numId, ilvl) => {
           const inherited = { kind: "reference", numId, ilvl } as const;
-          expect(isStyleSourcedParagraphNumbering(inherited, inherited)).toBe(false);
-          expect(isStyleSourcedParagraphNumbering({ kind: "levelOnly", ilvl }, inherited)).toBe(
+          expect(isStyleSourcedParagraphNumbering(inherited, inherited)).toBe(
             false,
           );
-          expect(isStyleSourcedParagraphNumbering(undefined, inherited)).toBe(true);
+          expect(
+            isStyleSourcedParagraphNumbering(
+              { kind: "levelOnly", ilvl },
+              inherited,
+            ),
+          ).toBe(false);
+          expect(isStyleSourcedParagraphNumbering(undefined, inherited)).toBe(
+            true,
+          );
         },
       ),
       propertyConfig({ numRuns: 128 }),

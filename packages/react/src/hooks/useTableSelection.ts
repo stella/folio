@@ -14,7 +14,10 @@ import {
   type TableSelectionState,
 } from "@stll/folio-core/managers/TableSelectionManager";
 import type { Document } from "@stll/folio-core/types/document";
-import type { TableAction, TableContext } from "@stll/folio-core/utils/tableOperations";
+import type {
+  TableAction,
+  TableContext,
+} from "@stll/folio-core/utils/tableOperations";
 
 // ============================================================================
 // TYPES
@@ -24,10 +27,18 @@ export type { TableSelectionState } from "@stll/folio-core/managers/TableSelecti
 
 export type UseTableSelectionReturn = {
   state: TableSelectionState;
-  handleCellClick: (tableIndex: number, rowIndex: number, columnIndex: number) => void;
+  handleCellClick: (
+    tableIndex: number,
+    rowIndex: number,
+    columnIndex: number,
+  ) => void;
   handleAction: (action: TableAction) => void;
   clearSelection: () => void;
-  isCellSelected: (tableIndex: number, rowIndex: number, columnIndex: number) => boolean;
+  isCellSelected: (
+    tableIndex: number,
+    rowIndex: number,
+    columnIndex: number,
+  ) => boolean;
   tableContext: TableContext | null;
 };
 
@@ -54,7 +65,11 @@ export function useTableSelection({
       if (!doc) {
         return;
       }
-      const context = manager.selectCell(doc, { tableIndex, rowIndex, columnIndex });
+      const context = manager.selectCell(doc, {
+        tableIndex,
+        rowIndex,
+        columnIndex,
+      });
       if (context) {
         onSelectionChange?.(context);
       }

@@ -13,7 +13,9 @@ const QUERY = "(prefers-color-scheme: dark)";
 
 /** Whether `matchMedia` is usable in the current environment (false under SSR). */
 function canMatchMedia(): boolean {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function";
+  return (
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+  );
 }
 
 /**
@@ -32,7 +34,10 @@ export function prefersColorSchemeDark(): boolean {
  *
  * @public
  */
-export function resolveIsDark(colorMode: ColorMode, systemDark: boolean): boolean {
+export function resolveIsDark(
+  colorMode: ColorMode,
+  systemDark: boolean,
+): boolean {
   return colorMode === "dark" || (colorMode === "system" && systemDark);
 }
 
@@ -43,7 +48,9 @@ export function resolveIsDark(colorMode: ColorMode, systemDark: boolean): boolea
  *
  * @public
  */
-export function subscribeSystemDark(onChange: (dark: boolean) => void): () => void {
+export function subscribeSystemDark(
+  onChange: (dark: boolean) => void,
+): () => void {
   if (!canMatchMedia()) return () => {};
   const media = window.matchMedia(QUERY);
   onChange(media.matches);

@@ -1,7 +1,7 @@
-import { normalizeNoteOccurrenceIds } from "../../../../test/note-occurrence-oracle";
+import { panic } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
+
 import {
   findStoryBody,
   normalizeForOps,
@@ -9,24 +9,32 @@ import {
   paragraphLogicalText,
   validateOpsDocument,
 } from "@stll/docx-core/ops";
-import { schema } from "../prosemirror/schema";
+
+import { normalizeNoteOccurrenceIds } from "../../../../test/note-occurrence-oracle";
 import {
-  footnoteToProseDoc,
-  toProseDoc,
-  collectPairedBookmarkIds,
-} from "../prosemirror/conversion/toProseDoc";
-import type { ParagraphContent, RunContent } from "../types/document";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
-import { CanonicalSessionError, createCanonicalSession } from "./canonicalSession";
-import { projectCanonicalInline } from "./canonicalInlineProjection";
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   CANONICAL_PARAGRAPH_SHAPE_FACTORIES,
   CANONICAL_RUN_SHAPE_FACTORIES,
   canonicalInlineShapeDocument,
   type CanonicalInlineShapeFixture,
 } from "../../typecheck/canonical-inline-shapes.typecheck";
+import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
+import {
+  collectPairedBookmarkIds,
+  footnoteToProseDoc,
+  toProseDoc,
+} from "../prosemirror/conversion/toProseDoc";
+import { schema } from "../prosemirror/schema";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import type { ParagraphContent, RunContent } from "../types/document";
+import { projectCanonicalInline } from "./canonicalInlineProjection";
+import {
+  CanonicalSessionError,
+  createCanonicalSession,
+} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 
@@ -38,13 +46,17 @@ const fixturesFor = (text: string) => [
     .map((factory) => factory(text))
     .flat(),
 ];
-const refusalExpected = ({ item }: CanonicalInlineShapeFixture<ParagraphContent | RunContent>) =>
+const refusalExpected = ({
+  item,
+}: CanonicalInlineShapeFixture<ParagraphContent | RunContent>) =>
   item.type === "inlineSdt" ||
   item.type === "fieldChar" ||
   item.type === "instrText" ||
   item.type === "renderedPageBreak";
 
-const checkShape = (fixture: CanonicalInlineShapeFixture<ParagraphContent | RunContent>) => {
+const checkShape = (
+  fixture: CanonicalInlineShapeFixture<ParagraphContent | RunContent>,
+) => {
   const source = normalizeForOps(canonicalInlineShapeDocument(fixture));
   expect(validateOpsDocument(source).isOk()).toBe(true);
   const story =
@@ -54,7 +66,10 @@ const checkShape = (fixture: CanonicalInlineShapeFixture<ParagraphContent | RunC
   const body = findStoryBody(source, story);
   expect(body).toBeDefined();
   if (body === undefined) panic("Fixture story is absent");
-  const legacy = fixture.story === "main" ? toProseDoc(source) : footnoteToProseDoc(body.content);
+  const legacy =
+    fixture.story === "main"
+      ? toProseDoc(source)
+      : footnoteToProseDoc(body.content);
   legacy.check();
   const activated = createCanonicalSession(source);
   if (refusalExpected(fixture)) {
@@ -63,7 +78,9 @@ const checkShape = (fixture: CanonicalInlineShapeFixture<ParagraphContent | RunC
       expect(activated.error).toBeInstanceOf(CanonicalSessionError);
       expect(activated.error.reason).toBe("refused");
       expect(activated.error.gap).toBe(CANONICAL_GAP.dispatch);
-      expect(activated.error.message).not.toBe("The projection changed paragraph structure.");
+      expect(activated.error.message).not.toBe(
+        "The projection changed paragraph structure.",
+      );
       expect(activated.error.message.length).toBeGreaterThan(25);
     }
     return;
@@ -77,10 +94,13 @@ const checkShape = (fixture: CanonicalInlineShapeFixture<ParagraphContent | RunC
   expect(normalizeNoteOccurrenceIds(projection.doc.toJSON())).toEqual(
     normalizeNoteOccurrenceIds(legacy.toJSON()),
   );
-  expect(schema.nodeFromJSON(projection.doc.toJSON()).eq(projection.doc)).toBe(true);
+  expect(schema.nodeFromJSON(projection.doc.toJSON()).eq(projection.doc)).toBe(
+    true,
+  );
   let start = 1;
   for (const paragraph of body.content) {
-    if (paragraph.type !== "paragraph") panic("Fixture contains a nonparagraph");
+    if (paragraph.type !== "paragraph")
+      panic("Fixture contains a nonparagraph");
     const native = projection.doc.nodeAt(start - 1);
     if (native === null) panic("Fixture native paragraph is absent");
     const mapped = projectCanonicalInline({
@@ -90,7 +110,12 @@ const checkShape = (fixture: CanonicalInlineShapeFixture<ParagraphContent | RunC
     }).unwrap();
     expect(mapped.text).toBe(paragraphLogicalText(paragraph));
     for (let position = 0; position <= native.content.size; position += 1) {
-      if (mapped.boundaries.some((gaps) => gaps.some((gap) => gap.position === position))) continue;
+      if (
+        mapped.boundaries.some((gaps) =>
+          gaps.some((gap) => gap.position === position),
+        )
+      )
+        continue;
       expect(projection.addressAt(start + position).isErr()).toBe(true);
     }
     for (const [offset, gaps] of mapped.boundaries.entries()) {
@@ -147,7 +172,9 @@ test("structured field caches keep text safety checks despite atomic projection"
       ...CANONICAL_PARAGRAPH_SHAPE_FACTORIES.simpleField(text),
       ...CANONICAL_PARAGRAPH_SHAPE_FACTORIES.complexField(text),
     ]) {
-      const refused = createCanonicalSession(canonicalInlineShapeDocument(fixture));
+      const refused = createCanonicalSession(
+        canonicalInlineShapeDocument(fixture),
+      );
       expect(refused.isErr()).toBe(true);
       if (refused.isErr()) expect(refused.error.reason).toBe("refused");
     }
@@ -168,7 +195,12 @@ test("input inside retained deletion maps through preceding zero-width source ma
           {
             type: "deletion",
             info: { id: 42, author: "Other" },
-            content: [{ type: "run", content: [{ type: "text", text: "a".repeat(length) }] }],
+            content: [
+              {
+                type: "run",
+                content: [{ type: "text", text: "a".repeat(length) }],
+              },
+            ],
           },
           end,
         ],

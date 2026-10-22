@@ -9,16 +9,24 @@
  */
 
 import type { EditorView } from "prosemirror-view";
-import { executeEditorCommand } from "./executeEditorCommand";
 
-import { generateTableOfContents, insertPageBreak, insertTable } from "./commands";
+import {
+  generateTableOfContents,
+  insertPageBreak,
+  insertTable,
+} from "./commands";
 import type { GenerateTableOfContentsOptions } from "./commands";
 import { insertImageFromFile } from "./commands/image";
+import { executeEditorCommand } from "./executeEditorCommand";
 
 export { insertImageFromFile };
 
 /** Insert a `rows × columns` table at the current selection. */
-export function insertTableInView(view: EditorView, rows: number, columns: number): boolean {
+export function insertTableInView(
+  view: EditorView,
+  rows: number,
+  columns: number,
+): boolean {
   return insertTable(rows, columns)(view.state, view.dispatch);
 }
 

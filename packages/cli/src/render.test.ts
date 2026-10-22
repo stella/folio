@@ -1,11 +1,15 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Result } from "better-result";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import { CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
+import {
+  CONTRACT_PARAGRAPHS,
+  makeTempDir,
+  writeDocx,
+} from "./__tests__/fixtures";
 import { captureIo, dataOf, envelopeOf } from "./__tests__/io";
 import { runFolioCli } from "./cli";
 
@@ -30,19 +34,26 @@ const render = async (...args: string[]) => {
 
 /** Whether this machine can run the PNG path: playwright-core and its Chromium. */
 const chromiumAvailable = (): boolean => {
-  const loaded = Result.try((): unknown => createRequire(import.meta.url)("playwright-core"));
+  const loaded = Result.try((): unknown =>
+    createRequire(import.meta.url)("playwright-core"),
+  );
   if (loaded.isErr()) return false;
   const module = loaded.value;
-  if (typeof module !== "object" || module === null || !("chromium" in module)) return false;
+  if (typeof module !== "object" || module === null || !("chromium" in module))
+    return false;
   const { chromium } = module;
-  if (typeof chromium !== "object" || chromium === null || !("executablePath" in chromium)) {
+  if (
+    typeof chromium !== "object" ||
+    chromium === null ||
+    !("executablePath" in chromium)
+  ) {
     return false;
   }
   const { executablePath } = chromium;
   if (typeof executablePath !== "function") return false;
-  const executable: unknown = Result.try((): unknown => executablePath.call(chromium)).unwrapOr(
-    null,
-  );
+  const executable: unknown = Result.try((): unknown =>
+    executablePath.call(chromium),
+  ).unwrapOr(null);
   return typeof executable === "string" && existsSync(executable);
 };
 
@@ -53,17 +64,28 @@ describe("folio render", () => {
     "writes a PDF of every page, or one page, and never touches the document",
     async () => {
       const before = await readFile(file);
-      const all = await render("-o", path.join(dir, "all.pdf"), "--date", "2026-01-02T03:04:05Z");
+      const all = await render(
+        "-o",
+        path.join(dir, "all.pdf"),
+        "--date",
+        "2026-01-02T03:04:05Z",
+      );
       const one = await render("-o", path.join(dir, "one.pdf"), "--page", "1");
 
       expect(all.exit).toBe(0);
       expect(dataOf(all.stdout)["pageCount"]).toBe(1);
       expect(
-        new TextDecoder().decode((await readFile(path.join(dir, "all.pdf"))).slice(0, 5)),
+        new TextDecoder().decode(
+          (await readFile(path.join(dir, "all.pdf"))).slice(0, 5),
+        ),
       ).toBe("%PDF-");
       expect(dataOf(one.stdout)["format"]).toBe("pdf");
       expect(Buffer.compare(await readFile(file), before)).toBe(0);
-      expect((await readdir(dir)).toSorted()).toEqual(["all.pdf", "contract.docx", "one.pdf"]);
+      expect((await readdir(dir)).toSorted()).toEqual([
+        "all.pdf",
+        "contract.docx",
+        "one.pdf",
+      ]);
     },
     RENDER_TIMEOUT_MS,
   );
@@ -95,10 +117,10 @@ describe("folio render", () => {
       ];
       for (const [args, code] of cases) {
         const result = await render(...args);
-        expect([args, JSON.stringify(envelopeOf(result.stdout)["error"])]).toEqual([
+        expect([
           args,
-          expect.stringContaining(`"code":"${code}"`),
-        ]);
+          JSON.stringify(envelopeOf(result.stdout)["error"]),
+        ]).toEqual([args, expect.stringContaining(`"code":"${code}"`)]);
       }
       expect(await readFile(path.join(dir, "taken.pdf"), "utf8")).toBe("keep");
     },
@@ -108,7 +130,12 @@ describe("folio render", () => {
   test.skipIf(!chromiumAvailable())(
     "screenshots one page as a PNG through Chromium",
     async () => {
-      const result = await render("-o", path.join(dir, "page.png"), "--scale", "1");
+      const result = await render(
+        "-o",
+        path.join(dir, "page.png"),
+        "--scale",
+        "1",
+      );
 
       expect(result.exit).toBe(0);
       const png = await readFile(path.join(dir, "page.png"));

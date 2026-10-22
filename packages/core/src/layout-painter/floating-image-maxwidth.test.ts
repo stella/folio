@@ -8,7 +8,10 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { renderFloatingImagesLayer, type PageFloatingImage } from "./renderPage";
+import {
+  type PageFloatingImage,
+  renderFloatingImagesLayer,
+} from "./renderPage";
 
 class FakeElement {
   className = "";
@@ -64,7 +67,10 @@ function floatImg(): PageFloatingImage {
 
 describe("floating image rendering", () => {
   test("keeps explicit OOXML size and opts out of the max-width reset", () => {
-    const layer = renderFloatingImagesLayer([floatImg()], fakeDocument) as unknown as FakeElement;
+    const layer = renderFloatingImagesLayer(
+      [floatImg()],
+      fakeDocument,
+    ) as unknown as FakeElement;
 
     const img = findImg(layer);
     expect(img).toBeDefined();

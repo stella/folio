@@ -8,12 +8,16 @@ export type GeneratedFlowOperation = Extract<
   { type: "insertAfterBlock" | "replaceInBlock" }
 >;
 
-type ReceiptTarget = FolioDocumentOperationResult["receipts"][number]["affected"][number];
+type ReceiptTarget =
+  FolioDocumentOperationResult["receipts"][number]["affected"][number];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const assertReceiptTarget = (value: unknown, operation: GeneratedFlowOperation): void => {
+const assertReceiptTarget = (
+  value: unknown,
+  operation: GeneratedFlowOperation,
+): void => {
   if (!isRecord(value)) throw new Error("Receipt target is not an object");
 
   const expected = (() => {
@@ -40,12 +44,20 @@ const assertReceiptTarget = (value: unknown, operation: GeneratedFlowOperation):
     }
   })();
 
-  if (!Object.entries(expected).every(([key, expectedValue]) => value[key] === expectedValue)) {
+  if (
+    !Object.entries(expected).every(
+      ([key, expectedValue]) => value[key] === expectedValue,
+    )
+  ) {
     switch (operation.type) {
       case "insertAfterBlock":
-        throw new Error("Insert operation receipt does not describe its insertion");
+        throw new Error(
+          "Insert operation receipt does not describe its insertion",
+        );
       case "replaceInBlock":
-        throw new Error("Replace operation receipt does not describe its block update");
+        throw new Error(
+          "Replace operation receipt does not describe its block update",
+        );
       default: {
         const exhaustive: never = operation;
         throw new Error(`Unhandled generated operation: ${exhaustive}`);
@@ -55,7 +67,10 @@ const assertReceiptTarget = (value: unknown, operation: GeneratedFlowOperation):
 };
 
 // Validate effectiveness separately from equality: four no-op hosts must fail.
-export const assertGeneratedFlowReceipt = (value: unknown, operation: GeneratedFlowOperation) => {
+export const assertGeneratedFlowReceipt = (
+  value: unknown,
+  operation: GeneratedFlowOperation,
+) => {
   if (!isRecord(value)) throw new Error("Operation result is not an object");
   if (!Array.isArray(value["skipped"]) || value["skipped"].length !== 0) {
     throw new Error("Generated operation was skipped");
@@ -74,7 +89,10 @@ export const assertGeneratedFlowReceipt = (value: unknown, operation: GeneratedF
   }
   const receipt: unknown = receipts.at(0);
   if (!isRecord(receipt)) throw new Error("Missing operation receipt");
-  if (receipt["operationId"] !== operation.id || receipt["operationIndex"] !== 0) {
+  if (
+    receipt["operationId"] !== operation.id ||
+    receipt["operationIndex"] !== 0
+  ) {
     throw new Error("Operation receipt does not match generated operation");
   }
   const affected: unknown = receipt["affected"];

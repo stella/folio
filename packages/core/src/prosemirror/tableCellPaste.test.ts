@@ -1,7 +1,11 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
-import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
-import { EditorState as PMEditorState, TextSelection, type EditorState } from "prosemirror-state";
+import { describe, expect, test } from "bun:test";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
+import {
+  type EditorState,
+  EditorState as PMEditorState,
+  TextSelection,
+} from "prosemirror-state";
 import { CellSelection, TableMap } from "prosemirror-tables";
 
 import { documentShape } from "../__tests__/documentShapes";
@@ -72,7 +76,9 @@ const layout = (doc: PMNode): string[][] => {
 const pastedTable = (state: EditorState): Slice => {
   const { schema } = state;
   const cell = (text: string) =>
-    schema.node("tableCell", null, [schema.node("paragraph", null, schema.text(text))]);
+    schema.node("tableCell", null, [
+      schema.node("paragraph", null, schema.text(text)),
+    ]);
   return new Slice(
     Fragment.from(
       schema.node("table", null, [
@@ -85,8 +91,16 @@ const pastedTable = (state: EditorState): Slice => {
   );
 };
 
-const pasteAtCell = (base: Document, mode: "editing" | "suggesting", text: string) => {
-  const state = placeSelection(createHarnessState(base, mode), text, "caret-middle");
+const pasteAtCell = (
+  base: Document,
+  mode: "editing" | "suggesting",
+  text: string,
+) => {
+  const state = placeSelection(
+    createHarnessState(base, mode),
+    text,
+    "caret-middle",
+  );
   if (!state) {
     throw new Error(`No caret in ${text}`);
   }
@@ -99,7 +113,11 @@ describe("pasting table cells into a merged table", () => {
   // Single-paste tests missed retraction of a previous paste's paragraph
   // marks. Cross sequence lengths and clipboard heights with both resolution
   // oracles, before and after serialization.
-  test.each([1, 2, 3].flatMap((count) => [1, 2].map((height) => [count, height] as const)))(
+  test.each(
+    [1, 2, 3].flatMap((count) =>
+      [1, 2].map((height) => [count, height] as const),
+    ),
+  )(
     "%s pastes of %s rows over selected merged cells preserve resolution equivalence",
     async (count, height) => {
       const base = await loadTables();
@@ -111,9 +129,12 @@ describe("pasting table cells into a merged table", () => {
           return node.type.name !== "tableCell";
         });
         const [anchor, head] = cells;
-        if (anchor === undefined || head === undefined) panic("Missing selected cells");
+        if (anchor === undefined || head === undefined)
+          panic("Missing selected cells");
         view.dispatch(
-          view.state.tr.setSelection(CellSelection.create(view.state.doc, anchor, head)),
+          view.state.tr.setSelection(
+            CellSelection.create(view.state.doc, anchor, head),
+          ),
         );
         for (let index = 0; index < count; index++) {
           const { schema } = view.state;
@@ -123,19 +144,28 @@ describe("pasting table cells into a merged table", () => {
               null,
               ["Left", "Right"].map((text) =>
                 schema.node("tableCell", null, [
-                  schema.node("paragraph", null, schema.text(`${text} ${index}:${row}`)),
+                  schema.node(
+                    "paragraph",
+                    null,
+                    schema.text(`${text} ${index}:${row}`),
+                  ),
                 ]),
               ),
             ),
           );
-          view.paste(new Slice(Fragment.from(schema.node("table", null, rows)), 0, 0));
+          view.paste(
+            new Slice(Fragment.from(schema.node("table", null, rows)), 0, 0),
+          );
         }
         return view;
       });
       const [editing, suggesting] = views;
       if (!editing || !suggesting) panic("Missing paste views");
       const saved = await saveHarnessState(suggesting.state, base);
-      const reopened = createHarnessState(await parseShapeDocument(saved.bytes), "suggesting");
+      const reopened = createHarnessState(
+        await parseShapeDocument(saved.bytes),
+        "suggesting",
+      );
       for (const state of [suggesting.state, reopened]) {
         expect(summarizeState(resolveAllChanges(state, "accept"))).toEqual(
           summarizeState(editing.state),
@@ -179,13 +209,15 @@ describe("pasting table cells into a merged table", () => {
     const suggesting = pasteAtCell(base, "suggesting", "Cell C2");
     const original = createHarnessState(base, "suggesting");
 
-    expect(summarizeState(resolveAllChanges(suggesting.state, "reject"))).toEqual(
-      summarizeState(original),
+    expect(
+      summarizeState(resolveAllChanges(suggesting.state, "reject")),
+    ).toEqual(summarizeState(original));
+    expect(
+      summarizeState(resolveAllChanges(suggesting.state, "accept")),
+    ).toEqual(summarizeState(editing.state));
+    expect(layout(resolveAllChanges(suggesting.state, "reject").doc)).toEqual(
+      layout(original.doc),
     );
-    expect(summarizeState(resolveAllChanges(suggesting.state, "accept"))).toEqual(
-      summarizeState(editing.state),
-    );
-    expect(layout(resolveAllChanges(suggesting.state, "reject").doc)).toEqual(layout(original.doc));
     await saveHarnessState(suggesting.state, base);
   });
 
@@ -208,17 +240,29 @@ describe("pasting table cells into a merged table", () => {
 
   test("fills every cell of a cell selection without changing the table's shape", async () => {
     const base = await loadTables();
-    const state = placeSelection(createHarnessState(base, "editing"), "Cell C2", "cross-paragraph");
+    const state = placeSelection(
+      createHarnessState(base, "editing"),
+      "Cell C2",
+      "cross-paragraph",
+    );
     if (!(state?.selection instanceof CellSelection)) {
       throw new Error("Expected a cell selection");
     }
-    const before = layout(state.doc).map((row) => row.map((cell) => cell.replace(/^.*@/u, "@")));
+    const before = layout(state.doc).map((row) =>
+      row.map((cell) => cell.replace(/^.*@/u, "@")),
+    );
     const view = new HeadlessEditorView(state);
-    view.paste(new Slice(Fragment.from(view.state.schema.text("Filled")), 0, 0));
+    view.paste(
+      new Slice(Fragment.from(view.state.schema.text("Filled")), 0, 0),
+    );
 
     const after = layout(view.state.doc);
-    expect(after.map((row) => row.map((cell) => cell.replace(/^.*@/u, "@")))).toEqual(before);
-    const filled = textblocks(view.state.doc).filter(({ node }) => node.textContent === "Filled");
+    expect(
+      after.map((row) => row.map((cell) => cell.replace(/^.*@/u, "@"))),
+    ).toEqual(before);
+    const filled = textblocks(view.state.doc).filter(
+      ({ node }) => node.textContent === "Filled",
+    );
     expect(filled.length).toBeGreaterThan(1);
     await saveHarnessState(view.state, base);
   });
@@ -227,28 +271,44 @@ describe("pasting table cells into a merged table", () => {
     "copied merged blocks accept as direct paste and reject as original (%s)",
     async (placement) => {
       const base = await loadTables();
-      const state = placeSelection(createHarnessState(base, "suggesting"), "Cell C2", placement);
+      const state = placeSelection(
+        createHarnessState(base, "suggesting"),
+        "Cell C2",
+        placement,
+      );
       if (!state) {
         throw new Error("No caret");
       }
       const view = new HeadlessEditorView(state);
       const blocks = textblocks(view.state.doc);
-      const index = blocks.findIndex(({ node }) => node.textContent === "Cell C2");
+      const index = blocks.findIndex(
+        ({ node }) => node.textContent === "Cell C2",
+      );
       const first = blocks[index];
       const second = blocks[index + 1];
       if (!first || !second) {
         throw new Error("No blocks to copy");
       }
       // "Cell C2" through "Cell A3", whose cell stores the continuation of A3:A4.
-      const slice = view.state.doc.slice(first.pos + 1, second.pos + 1 + second.node.content.size);
+      const slice = view.state.doc.slice(
+        first.pos + 1,
+        second.pos + 1 + second.node.content.size,
+      );
       view.paste(slice);
-      const direct = placeSelection(createHarnessState(base, "editing"), "Cell C2", placement);
+      const direct = placeSelection(
+        createHarnessState(base, "editing"),
+        "Cell C2",
+        placement,
+      );
       if (!direct) throw new Error("No direct selection");
       const editing = new HeadlessEditorView(direct);
       editing.paste(slice);
 
       const saved = await saveHarnessState(view.state, base);
-      const reopened = createHarnessState(await parseShapeDocument(saved.bytes), "suggesting");
+      const reopened = createHarnessState(
+        await parseShapeDocument(saved.bytes),
+        "suggesting",
+      );
       for (const candidate of [view.state, reopened]) {
         expect(summarizeState(resolveAllChanges(candidate, "accept"))).toEqual(
           summarizeState(editing.state),
@@ -267,7 +327,11 @@ describe("pasting table cells into a merged table", () => {
       ]);
     const doc = documentSchema.node("doc", null, [
       documentSchema.node("table", { columnWidths: [1000, 1000, 1000] }, [
-        documentSchema.node("tableRow", null, [cell("x"), cell("y"), cell("z")]),
+        documentSchema.node("tableRow", null, [
+          cell("x"),
+          cell("y"),
+          cell("z"),
+        ]),
         documentSchema.node("tableRow", null, [cell("A", 2), cell("C")]),
       ]),
     ]);
@@ -277,7 +341,10 @@ describe("pasting table cells into a merged table", () => {
         caret = pos;
       }
     });
-    let state = PMEditorState.create({ doc, selection: TextSelection.create(doc, caret) });
+    let state = PMEditorState.create({
+      doc,
+      selection: TextSelection.create(doc, caret),
+    });
     expect(
       pasteTableCells(state, pastedTable(state), (tr) => {
         state = state.apply(tr);

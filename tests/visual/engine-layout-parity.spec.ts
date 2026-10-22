@@ -20,10 +20,9 @@
  * kerning, and which font stack each document actually resolved.
  */
 
+import { expect, type Page, test } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-
-import { test, expect, type Page } from "@playwright/test";
 
 import {
   diffRecords,
@@ -35,7 +34,9 @@ import {
 const REFERENCE_DIR = path.resolve(
   process.env["FOLIO_ENGINE_PARITY_REFERENCE"] ?? "engine-parity-ref",
 );
-const OUT_DIR = path.resolve(process.env["FOLIO_ENGINE_PARITY_OUT"] ?? "engine-parity-out");
+const OUT_DIR = path.resolve(
+  process.env["FOLIO_ENGINE_PARITY_OUT"] ?? "engine-parity-out",
+);
 
 /**
  * Served by the playground from `tests/visual/fixtures`. Chosen to cover plain
@@ -68,7 +69,10 @@ async function openFixture(page: Page, fixture: string): Promise<void> {
  * Read every page. Long documents virtualise their pages, so each page is
  * scrolled into view and given a moment to paint before its lines are read.
  */
-async function recordDocument(page: Page, fixture: string): Promise<DocumentRecord> {
+async function recordDocument(
+  page: Page,
+  fixture: string,
+): Promise<DocumentRecord> {
   const pageCount = await page.locator(".layout-page").count();
   const pages: PageRecord[] = [];
   const fonts = new Map<string, FontResolution>();
@@ -98,21 +102,30 @@ async function recordDocument(page: Page, fixture: string): Promise<DocumentReco
       continue;
     }
     const read = await pageEl.evaluate((el) => {
-      const lines = [...el.querySelectorAll<HTMLElement>(".layout-line")].map((lineEl) => {
-        const content = [...lineEl.querySelectorAll<HTMLElement>("[data-pm-start]")];
-        const words = content
-          .map((span) => span.textContent ?? "")
-          .join("")
-          .split(/\s+/u)
-          .filter((word) => word.length > 0);
-        const claimed = Number(lineEl.dataset["measuredWidth"]);
-        return {
-          first: words.at(0) ?? "",
-          last: words.at(-1) ?? "",
-          width: Number.isFinite(claimed) && lineEl.dataset["measuredWidth"] ? claimed : null,
-        };
-      });
-      const stacks = [...el.querySelectorAll<HTMLElement>("[data-pm-start]")].map((span) => {
+      const lines = [...el.querySelectorAll<HTMLElement>(".layout-line")].map(
+        (lineEl) => {
+          const content = [
+            ...lineEl.querySelectorAll<HTMLElement>("[data-pm-start]"),
+          ];
+          const words = content
+            .map((span) => span.textContent ?? "")
+            .join("")
+            .split(/\s+/u)
+            .filter((word) => word.length > 0);
+          const claimed = Number(lineEl.dataset["measuredWidth"]);
+          return {
+            first: words.at(0) ?? "",
+            last: words.at(-1) ?? "",
+            width:
+              Number.isFinite(claimed) && lineEl.dataset["measuredWidth"]
+                ? claimed
+                : null,
+          };
+        },
+      );
+      const stacks = [
+        ...el.querySelectorAll<HTMLElement>("[data-pm-start]"),
+      ].map((span) => {
         const style = getComputedStyle(span);
         return { stack: style.fontFamily, weight: style.fontWeight };
       });
@@ -125,10 +138,10 @@ async function recordDocument(page: Page, fixture: string): Promise<DocumentReco
       fonts.set(key, {
         stack,
         weight,
-        loaded: await page.evaluate(([w, s]) => document.fonts.check(`${w} 16px ${s}`), [
-          weight,
-          stack,
-        ] as const),
+        loaded: await page.evaluate(
+          ([w, s]) => document.fonts.check(`${w} 16px ${s}`),
+          [weight, stack] as const,
+        ),
       });
     }
   }
@@ -137,10 +150,14 @@ async function recordDocument(page: Page, fixture: string): Promise<DocumentReco
 
 const readReference = (fixture: string): DocumentRecord => {
   const file = path.join(REFERENCE_DIR, `${fixture}.json`);
-  if (!fs.existsSync(file)) throw new Error(`reference record missing: ${file}`);
+  if (!fs.existsSync(file))
+    throw new Error(`reference record missing: ${file}`);
   // SAFETY: the file is written only by this spec under the reference engine.
-  const record = JSON.parse(fs.readFileSync(file, "utf8")) as DocumentRecord & { status: string };
-  if (record.status !== "recorded") throw new Error(`reference record unusable: ${file}`);
+  const record = JSON.parse(fs.readFileSync(file, "utf8")) as DocumentRecord & {
+    status: string;
+  };
+  if (record.status !== "recorded")
+    throw new Error(`reference record unusable: ${file}`);
   return record;
 };
 
@@ -163,8 +180,11 @@ test.describe("layout under this engine vs the Chromium record", () => {
         const actual = await recordDocument(page, fixture);
         // Zero pages, a page that never painted, or no lines at all is a broken
         // harness, never "no differences".
-        if (actual.pages.length === 0) throw new Error("document produced no pages");
-        const unpainted = actual.pages.flatMap((p, i) => (p.rendered ? [] : [i + 1]));
+        if (actual.pages.length === 0)
+          throw new Error("document produced no pages");
+        const unpainted = actual.pages.flatMap((p, i) =>
+          p.rendered ? [] : [i + 1],
+        );
         if (unpainted.length > 0) {
           throw new Error(`pages never painted: ${unpainted.join(", ")}`);
         }
@@ -182,7 +202,10 @@ test.describe("layout under this engine vs the Chromium record", () => {
           status: "compared",
           fixture,
           engine: browserName,
-          pageCount: { expected: expected.pages.length, actual: actual.pages.length },
+          pageCount: {
+            expected: expected.pages.length,
+            actual: actual.pages.length,
+          },
           differences: diffRecords(expected, actual),
           fonts: { expected: expected.fonts, actual: actual.fonts },
         });
@@ -197,7 +220,10 @@ test.describe("layout under this engine vs the Chromium record", () => {
     });
   }
 
-  test("records whether fontKerning none changes measureText", async ({ page, browserName }) => {
+  test("records whether fontKerning none changes measureText", async ({
+    page,
+    browserName,
+  }) => {
     await openFixture(page, FIXTURES[0]);
     const result = await page.evaluate(async () => {
       const families = ["Arimo", "Carlito", "Tinos", "serif"];
@@ -224,11 +250,15 @@ test.describe("layout under this engine vs the Chromium record", () => {
       }
       return rows;
     });
-    writeJson(browserName === "chromium" ? REFERENCE_DIR : OUT_DIR, "_kerning.json", {
-      engine: browserName,
-      text: "kerning pairs",
-      result,
-    });
+    writeJson(
+      browserName === "chromium" ? REFERENCE_DIR : OUT_DIR,
+      "_kerning.json",
+      {
+        engine: browserName,
+        text: "kerning pairs",
+        result,
+      },
+    );
     expect(result.length).toBeGreaterThan(0);
   });
 });

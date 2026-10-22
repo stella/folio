@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test";
+
 import { FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE } from "../document-operations";
-import { paragraph } from "../docx/server/build";
 import { createDocx } from "../docx/rezip";
+import { paragraph } from "../docx/server/build";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 
 test("paragraph merges use the boundary after batch annotations", async () => {
-  for (const mode of FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE.mergeBlockWithNext.filter((candidate) =>
-    FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE.commentOnBlock.includes(candidate),
+  for (const mode of FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE.mergeBlockWithNext.filter(
+    (candidate) =>
+      FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE.commentOnBlock.includes(candidate),
   )) {
     for (const quote of ["First", "part", "end"] as const) {
       const source = createEmptyDocument();
@@ -16,8 +18,12 @@ test("paragraph merges use the boundary after batch annotations", async () => {
         paragraph("Second"),
         paragraph("Third"),
       ];
-      const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(source));
-      const first = reviewer.getContent().find(({ text }) => text === "First part end");
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createDocx(source),
+      );
+      const first = reviewer
+        .getContent()
+        .find(({ text }) => text === "First part end");
       if (!first) throw new Error("Expected first paragraph");
       const result = reviewer.applyDocumentOperations(
         {
@@ -31,20 +37,32 @@ test("paragraph merges use the boundary after batch annotations", async () => {
               quote,
               comment: { text: "Comment" },
             },
-            { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
+            {
+              id: "merge",
+              type: "mergeBlockWithNext",
+              blockId: first.id,
+              separator: " ",
+            },
           ],
         },
         { undefinedReferences: "refuse" },
       );
       expect(result.skipped).toEqual([]);
-      expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["annotate", "merge"]);
+      expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+        "annotate",
+        "merge",
+      ]);
       reviewer.acceptAll();
-      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
       expect(reopened.getContent().map(({ text }) => text)).toEqual([
         "First part end Second",
         "Third",
       ]);
-      expect(reopened.getComments().map(({ anchoredText }) => anchoredText)).toEqual([quote]);
+      expect(
+        reopened.getComments().map(({ anchoredText }) => anchoredText),
+      ).toEqual([quote]);
     }
   }
 });

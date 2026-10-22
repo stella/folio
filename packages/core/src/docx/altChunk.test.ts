@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { compareDocx } from "../compare/compare";
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
-import { ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES, getAltChunkRelationshipId } from "./altChunk";
+import {
+  ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES,
+  getAltChunkRelationshipId,
+} from "./altChunk";
 import { inspectDocxCompatibility } from "./compatibility";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
@@ -12,7 +16,8 @@ import { docxToMarkdown } from "./server/docxToMarkdown";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const PACKAGE_RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships";
+const PACKAGE_RELATIONSHIPS =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
 const CHUNK = '<w:altChunk r:id="rIdChunk"/>';
 
 type BuildDocxOptions = {
@@ -23,7 +28,10 @@ type BuildDocxOptions = {
   defaultContentType?: string;
 };
 
-const buildDocx = async (chunk: string, options: BuildDocxOptions = {}): Promise<ArrayBuffer> => {
+const buildDocx = async (
+  chunk: string,
+  options: BuildDocxOptions = {},
+): Promise<ArrayBuffer> => {
   const {
     contentType = "text/html",
     payload = "<html><body>Imported payload sentinel</body></html>",
@@ -37,7 +45,9 @@ const buildDocx = async (chunk: string, options: BuildDocxOptions = {}): Promise
       ? "http://purl.oclc.org/ooxml/officeDocument/relationships"
       : "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
   const target =
-    relationshipMode === "External" ? "https://example.test/afchunk.txt" : `afchunk.${extension}`;
+    relationshipMode === "External"
+      ? "https://example.test/afchunk.txt"
+      : `afchunk.${extension}`;
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   zip.file(
     "word/document.xml",
@@ -67,14 +77,20 @@ const buildDocx = async (chunk: string, options: BuildDocxOptions = {}): Promise
 };
 
 const documentXml = async (bytes: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(bytes)).file("word/document.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(bytes)
+  )
+    .file("word/document.xml")
+    ?.async("text")) ?? "";
 
 describe("w:altChunk", () => {
   test("resolves the relationship id by expanded name", () => {
     expect(getAltChunkRelationshipId(CHUNK)).toBe("rIdChunk");
-    expect(getAltChunkRelationshipId('<x:altChunk xmlns:x="urn:foreign" r:id="rIdChunk"/>')).toBe(
-      undefined,
-    );
+    expect(
+      getAltChunkRelationshipId(
+        '<x:altChunk xmlns:x="urn:foreign" r:id="rIdChunk"/>',
+      ),
+    ).toBe(undefined);
   });
 
   test("keeps the payload opaque, reports it to readers, and preserves its XML on save", async () => {
@@ -83,7 +99,9 @@ describe("w:altChunk", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(input);
 
     expect(
-      parsed.parseWarnings?.filter(({ code }) => code === PARSE_WARNING_CODES.altChunkUnsupported),
+      parsed.parseWarnings?.filter(
+        ({ code }) => code === PARSE_WARNING_CODES.altChunkUnsupported,
+      ),
     ).toEqual([
       expect.objectContaining({
         count: 1,
@@ -93,16 +111,24 @@ describe("w:altChunk", () => {
     expect(parsed.warnings?.join(" ")).toContain("diagnostic marker");
     expect(inspectDocxCompatibility(parsed).canSafelyEdit).toBe(false);
     expect(reviewer.getContentAsText()).toContain("Visible");
-    expect(reviewer.getContentAsText()).toContain("Unsupported w:altChunk content");
+    expect(reviewer.getContentAsText()).toContain(
+      "Unsupported w:altChunk content",
+    );
     expect(
-      reviewer.getContent().some(({ text }) => text.includes("Unsupported w:altChunk content")),
+      reviewer
+        .getContent()
+        .some(({ text }) => text.includes("Unsupported w:altChunk content")),
     ).toBe(true);
     expect(
       reviewer
         .snapshot()
-        .blocks.some(({ text }) => text.includes("Unsupported w:altChunk content")),
+        .blocks.some(({ text }) =>
+          text.includes("Unsupported w:altChunk content"),
+        ),
     ).toBe(true);
-    expect(await docxToMarkdown(input)).toContain("Unsupported w:altChunk content");
+    expect(await docxToMarkdown(input)).toContain(
+      "Unsupported w:altChunk content",
+    );
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     expect(await documentXml(saved)).toContain(CHUNK);
@@ -110,14 +136,17 @@ describe("w:altChunk", () => {
     expect(await savedZip.file("word/afchunk.htm")?.async("text")).toBe(
       "<html><body>Imported payload sentinel</body></html>",
     );
-    expect(await savedZip.file("word/_rels/document.xml.rels")?.async("text")).toContain(
-      'Id="rIdChunk"',
-    );
+    expect(
+      await savedZip.file("word/_rels/document.xml.rels")?.async("text"),
+    ).toContain('Id="rIdChunk"');
   });
 
   test("extracts a bounded internal text/plain payload for readers", async () => {
     const payload = "Plain imported sentinel.";
-    const input = await buildDocx(CHUNK, { contentType: "text/plain", payload });
+    const input = await buildDocx(CHUNK, {
+      contentType: "text/plain",
+      payload,
+    });
     const reviewer = await FolioDocxReviewer.fromBuffer(input);
     const reads = [
       reviewer
@@ -161,7 +190,9 @@ describe("w:altChunk", () => {
         defaultContentType,
         payload: "Override precedence sentinel",
       });
-      const text = (await FolioDocxReviewer.fromBuffer(input)).getContentAsText();
+      const text = (
+        await FolioDocxReviewer.fromBuffer(input)
+      ).getContentAsText();
       expect(text.includes("Override precedence sentinel")).toBe(exposed);
     }
   });
@@ -208,7 +239,9 @@ describe("w:altChunk", () => {
         `<w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/>` +
         `<w:footerReference w:type="default" r:id="rIdFooter"/></w:sectPr></w:body></w:document>`,
     );
-    const documentRels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    const documentRels = await zip
+      .file("word/_rels/document.xml.rels")
+      ?.async("text");
     const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
     if (!documentRels || !contentTypes) {
       throw new Error("The fixture is missing its package declarations");
@@ -247,7 +280,10 @@ describe("w:altChunk", () => {
         kind === "footnote" || kind === "endnote"
           ? `<w:${kind} w:id="1">${CHUNK}</w:${kind}>`
           : CHUNK;
-      zip.file(`word/${file}`, `<w:${root} xmlns:w="${W}" xmlns:r="${R}">${content}</w:${root}>`);
+      zip.file(
+        `word/${file}`,
+        `<w:${root} xmlns:w="${W}" xmlns:r="${R}">${content}</w:${root}>`,
+      );
       zip.file(
         `word/_rels/${file}.rels`,
         `<Relationships xmlns="${PACKAGE_RELATIONSHIPS}">` +
@@ -261,16 +297,22 @@ describe("w:altChunk", () => {
       preloadFonts: false,
     });
     expect(
-      parsed.package.document.content.find(({ type }) => type === "preservedBlock"),
+      parsed.package.document.content.find(
+        ({ type }) => type === "preservedBlock",
+      ),
     ).toMatchObject({
       type: "preservedBlock",
       readerText: "Body payload",
     });
-    expect(parsed.package.headers?.get("rIdHeader")?.content.at(0)).toMatchObject({
+    expect(
+      parsed.package.headers?.get("rIdHeader")?.content.at(0),
+    ).toMatchObject({
       type: "preservedBlock",
       readerText: "Header payload",
     });
-    expect(parsed.package.footers?.get("rIdFooter")?.content.at(0)).toMatchObject({
+    expect(
+      parsed.package.footers?.get("rIdFooter")?.content.at(0),
+    ).toMatchObject({
       type: "preservedBlock",
       readerText: "Footer payload",
     });
@@ -302,11 +344,15 @@ describe("w:altChunk", () => {
   });
 
   test("shares the plain-text byte limit between document and header stories", async () => {
-    const largeText = "x".repeat(Math.floor(ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES / 2) + 1);
+    const largeText = "x".repeat(
+      Math.floor(ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES / 2) + 1,
+    );
     const zip = await JSZip.loadAsync(
       await buildDocx(CHUNK, { contentType: "text/plain", payload: largeText }),
     );
-    const documentRels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    const documentRels = await zip
+      .file("word/_rels/document.xml.rels")
+      ?.async("text");
     const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
     if (!documentRels || !contentTypes) {
       throw new Error("The fixture is missing its package declarations");
@@ -327,7 +373,10 @@ describe("w:altChunk", () => {
           '<Override PartName="/word/header.txt" ContentType="text/plain"/></Types>',
       ),
     );
-    zip.file("word/header1.xml", `<w:hdr xmlns:w="${W}" xmlns:r="${R}">${CHUNK}</w:hdr>`);
+    zip.file(
+      "word/header1.xml",
+      `<w:hdr xmlns:w="${W}" xmlns:r="${R}">${CHUNK}</w:hdr>`,
+    );
     zip.file(
       "word/_rels/header1.xml.rels",
       `<Relationships xmlns="${PACKAGE_RELATIONSHIPS}">` +
@@ -335,26 +384,35 @@ describe("w:altChunk", () => {
         "</Relationships>",
     );
     zip.file("word/header.txt", largeText);
-    const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-      preloadFonts: false,
-    });
+    const parsed = await parseDocx(
+      await zip.generateAsync({ type: "arraybuffer" }),
+      {
+        preloadFonts: false,
+      },
+    );
     expect(
-      parsed.package.document.content.find(({ type }) => type === "preservedBlock"),
+      parsed.package.document.content.find(
+        ({ type }) => type === "preservedBlock",
+      ),
     ).toMatchObject({
       type: "preservedBlock",
       readerText: largeText,
     });
-    expect(parsed.package.headers?.get("rIdHeader")?.content.at(0)).toMatchObject({
+    expect(
+      parsed.package.headers?.get("rIdHeader")?.content.at(0),
+    ).toMatchObject({
       type: "preservedBlock",
       xml: CHUNK,
     });
-    expect(parsed.package.headers?.get("rIdHeader")?.content.at(0)).not.toHaveProperty(
-      "readerText",
-    );
+    expect(
+      parsed.package.headers?.get("rIdHeader")?.content.at(0),
+    ).not.toHaveProperty("readerText");
   });
 
   test("limits extracted plain text across repeated chunks", async () => {
-    const payload = "x".repeat(Math.floor(ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES / 2) + 1);
+    const payload = "x".repeat(
+      Math.floor(ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES / 2) + 1,
+    );
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildDocx(CHUNK + CHUNK, { contentType: "text/plain", payload }),
     );
@@ -369,7 +427,10 @@ describe("w:altChunk", () => {
       `<w:tr><w:tc><w:tcPr/>${CHUNK}</w:tc></w:tr></w:tbl>`;
     const nestedPayload = "Nested imported text.";
     const nestedReader = await FolioDocxReviewer.fromBuffer(
-      await buildDocx(nested, { contentType: "text/plain", payload: nestedPayload }),
+      await buildDocx(nested, {
+        contentType: "text/plain",
+        payload: nestedPayload,
+      }),
     );
     expect(nestedReader.getContentAsText()).toContain(nestedPayload);
 
@@ -390,8 +451,12 @@ describe("w:altChunk", () => {
         relationshipMode: "External",
       }),
     );
-    expect(externalReader.getContentAsText()).toContain("Unsupported w:altChunk content");
-    expect(externalReader.getContentAsText()).not.toContain("Do not read external content.");
+    expect(externalReader.getContentAsText()).toContain(
+      "Unsupported w:altChunk content",
+    );
+    expect(externalReader.getContentAsText()).not.toContain(
+      "Do not read external content.",
+    );
 
     const oversizedReader = await FolioDocxReviewer.fromBuffer(
       await buildDocx(CHUNK, {
@@ -399,15 +464,22 @@ describe("w:altChunk", () => {
         payload: "x".repeat(ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES + 1),
       }),
     );
-    expect(oversizedReader.getContentAsText()).toContain("Unsupported w:altChunk content");
+    expect(oversizedReader.getContentAsText()).toContain(
+      "Unsupported w:altChunk content",
+    );
     expect(oversizedReader.getContentAsText()).not.toContain(
       "x".repeat(ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES),
     );
 
     const invalidUtf8Reader = await FolioDocxReviewer.fromBuffer(
-      await buildDocx(CHUNK, { contentType: "text/plain", payload: new Uint8Array([0xff, 0xfe]) }),
+      await buildDocx(CHUNK, {
+        contentType: "text/plain",
+        payload: new Uint8Array([0xff, 0xfe]),
+      }),
     );
-    expect(invalidUtf8Reader.getContentAsText()).toContain("Unsupported w:altChunk content");
+    expect(invalidUtf8Reader.getContentAsText()).toContain(
+      "Unsupported w:altChunk content",
+    );
     expect(invalidUtf8Reader.getContentAsText()).not.toContain("��");
   });
 

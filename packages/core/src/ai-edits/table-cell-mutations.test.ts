@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "prosemirror-model";
 import { history, undo } from "prosemirror-history";
+import { Schema } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
 import { standaloneTableCellFromProseMirror } from "../prosemirror/conversion/fromProseDoc";
-import { mergeTableRectangle, splitTableRectangle } from "./table-cell-mutations";
+import {
+  mergeTableRectangle,
+  splitTableRectangle,
+} from "./table-cell-mutations";
 
 const schema = new Schema({
   nodes: {
@@ -40,7 +43,9 @@ const schema = new Schema({
 });
 
 const cell = (text: string) =>
-  schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text(text)])]);
+  schema.node("tableCell", null, [
+    schema.node("paragraph", null, [schema.text(text)]),
+  ]);
 
 type WidthCellOptions = {
   text: string;
@@ -78,7 +83,10 @@ const table = schema.node("table", null, [
 
 describe("table cell mutations", () => {
   test("merges and splits one rectangle without losing cell content", () => {
-    let state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    let state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const rectangle = { left: 0, top: 0, right: 2, bottom: 2 };
     const merged = mergeTableRectangle({
       tr: state.tr,
@@ -93,7 +101,10 @@ describe("table cell mutations", () => {
 
     const mergedTable = state.doc.child(0);
     expect(TableMap.get(mergedTable)).toMatchObject({ width: 3, height: 2 });
-    expect(mergedTable.firstChild?.firstChild?.attrs).toMatchObject({ colspan: 2, rowspan: 2 });
+    expect(mergedTable.firstChild?.firstChild?.attrs).toMatchObject({
+      colspan: 2,
+      rowspan: 2,
+    });
     expect(mergedTable.textContent).toBe("ABCDXY");
 
     const split = splitTableRectangle({
@@ -115,7 +126,10 @@ describe("table cell mutations", () => {
   });
 
   test("rejects an invalid rectangle without adding transaction steps", () => {
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const tr = state.tr;
 
     expect(
@@ -132,8 +146,18 @@ describe("table cell mutations", () => {
   test("sums compatible preferred widths and restores them on undo", () => {
     const bilingualRow = schema.node("table", null, [
       schema.node("tableRow", null, [
-        widthCell({ text: "Source", width: 2500, widthType: "pct", colwidth: 4860 }),
-        widthCell({ text: "Translation", width: 2500, widthType: "pct", colwidth: 4860 }),
+        widthCell({
+          text: "Source",
+          width: 2500,
+          widthType: "pct",
+          colwidth: 4860,
+        }),
+        widthCell({
+          text: "Translation",
+          width: 2500,
+          widthType: "pct",
+          colwidth: 4860,
+        }),
       ]),
     ]);
     let state = EditorState.create({
@@ -159,7 +183,9 @@ describe("table cell mutations", () => {
       width: 5000,
       widthType: "pct",
     });
-    expect(standaloneTableCellFromProseMirror(mergedCell).formatting?.width).toEqual({
+    expect(
+      standaloneTableCellFromProseMirror(mergedCell).formatting?.width,
+    ).toEqual({
       value: 5000,
       type: "pct",
     });
@@ -213,7 +239,10 @@ describe("table cell mutations", () => {
   test("a merge of cells that state no width states none", () => {
     // `width` also carries the width the table grid resolved, so a merge that
     // summed it would give the merged cell a `w:tcW` no source cell wrote.
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const merged = mergeTableRectangle({
       tr: state.tr,
       tablePosition: 0,
@@ -225,8 +254,13 @@ describe("table cell mutations", () => {
     }
 
     const mergedCell = merged.doc.child(0).child(0).child(0);
-    expect(mergedCell.attrs).toMatchObject({ width: null, _authoredWidth: null });
-    expect(standaloneTableCellFromProseMirror(mergedCell).formatting?.width).toBeUndefined();
+    expect(mergedCell.attrs).toMatchObject({
+      width: null,
+      _authoredWidth: null,
+    });
+    expect(
+      standaloneTableCellFromProseMirror(mergedCell).formatting?.width,
+    ).toBeUndefined();
   });
 
   test("clears incompatible preferred widths instead of retaining the first cell width", () => {
@@ -252,7 +286,9 @@ describe("table cell mutations", () => {
 
     const mergedCell = merged.doc.child(0).child(0).child(0);
     expect(mergedCell.attrs).toMatchObject({ width: null, widthType: null });
-    expect(standaloneTableCellFromProseMirror(mergedCell).formatting?.width).toBeUndefined();
+    expect(
+      standaloneTableCellFromProseMirror(mergedCell).formatting?.width,
+    ).toBeUndefined();
   });
 
   test("omits an incompatible merged width when no original cell formatting exists", () => {
@@ -287,6 +323,8 @@ describe("table cell mutations", () => {
     }
 
     const mergedCell = merged.doc.child(0).child(0).child(0);
-    expect(standaloneTableCellFromProseMirror(mergedCell).formatting).toEqual({ gridSpan: 2 });
+    expect(standaloneTableCellFromProseMirror(mergedCell).formatting).toEqual({
+      gridSpan: 2,
+    });
   });
 });

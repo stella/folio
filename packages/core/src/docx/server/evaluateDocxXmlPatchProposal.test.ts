@@ -1,7 +1,6 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import { createHash } from "node:crypto";
 
 import { createEmptyDocx } from "../rezip";
 import {
@@ -37,7 +36,9 @@ const packageFixture = async (): Promise<PackageFixture> => {
 
 const proposalFor = (baseSha256: string) => ({
   version: FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION,
-  replacements: [{ path: DOCUMENT_PATH, baseSha256, replacementXml: REPLACEMENT_XML }],
+  replacements: [
+    { path: DOCUMENT_PATH, baseSha256, replacementXml: REPLACEMENT_XML },
+  ],
 });
 
 describe("parseFolioDocxXmlPatchProposal", () => {
@@ -49,7 +50,10 @@ describe("parseFolioDocxXmlPatchProposal", () => {
 
   test("rejects unsupported versions and unexpected properties", () => {
     expect(() =>
-      parseFolioDocxXmlPatchProposal({ ...proposalFor("0".repeat(64)), version: 2 }),
+      parseFolioDocxXmlPatchProposal({
+        ...proposalFor("0".repeat(64)),
+        version: 2,
+      }),
     ).toThrow(InvalidFolioDocxXmlPatchProposalError);
     expect(() =>
       parseFolioDocxXmlPatchProposal({
@@ -88,8 +92,11 @@ describe("evaluateDocxXmlPatchProposal", () => {
         path: DOCUMENT_PATH,
         baseSha256: documentSha256,
         currentSha256: documentSha256,
-        replacementSha256: createHash("sha256").update(REPLACEMENT_XML).digest("hex"),
-        replacementByteLength: new TextEncoder().encode(REPLACEMENT_XML).byteLength,
+        replacementSha256: createHash("sha256")
+          .update(REPLACEMENT_XML)
+          .digest("hex"),
+        replacementByteLength: new TextEncoder().encode(REPLACEMENT_XML)
+          .byteLength,
         encoding: "utf-8",
       },
     ]);
@@ -109,7 +116,8 @@ describe("evaluateDocxXmlPatchProposal", () => {
     expect(evaluation.replacements).toEqual([]);
     expect(evaluation.issues).toContainEqual({
       code: "base-hash-mismatch",
-      message: "The package part changed after the proposal base was inspected.",
+      message:
+        "The package part changed after the proposal base was inspected.",
       proposalPath: "$.replacements[0].baseSha256",
       part: DOCUMENT_PATH,
     });
@@ -225,9 +233,15 @@ describe("evaluateDocxXmlPatchProposal", () => {
       allowedParts: ["custom.xml"],
     });
 
-    expect(doctype.issues.map(({ code }) => code)).toEqual(["xml-doctype-forbidden"]);
-    expect(malformed.issues.map(({ code }) => code)).toEqual(["xml-not-well-formed"]);
-    expect(encodingMismatch.issues.map(({ code }) => code)).toEqual(["xml-encoding-mismatch"]);
+    expect(doctype.issues.map(({ code }) => code)).toEqual([
+      "xml-doctype-forbidden",
+    ]);
+    expect(malformed.issues.map(({ code }) => code)).toEqual([
+      "xml-not-well-formed",
+    ]);
+    expect(encodingMismatch.issues.map(({ code }) => code)).toEqual([
+      "xml-encoding-mismatch",
+    ]);
     expect(unknownEntity.issues).toContainEqual({
       code: "xml-not-well-formed",
       message: "Replacement XML contains an invalid entity reference.",

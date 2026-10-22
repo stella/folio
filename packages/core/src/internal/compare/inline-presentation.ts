@@ -27,7 +27,10 @@ const normalizeInlinePresentationColor = (color: string): string =>
   HEX_COLOR.test(color) ? color.replace(/^#/u, "").toUpperCase() : color;
 
 type InlineFormattingProperty = keyof FolioContentInlineFormatting;
-type InlineRunFormattingProperty = Exclude<keyof FolioContentRun, "directFormatting" | "text">;
+type InlineRunFormattingProperty = Exclude<
+  keyof FolioContentRun,
+  "directFormatting" | "text"
+>;
 type InlineBooleanProperty = FolioContentInlineBooleanProperty;
 type InlineNumberProperty = {
   [Property in InlineFormattingProperty]-?: Exclude<
@@ -43,7 +46,9 @@ type InlineStringProperty = Exclude<
 >;
 type InlineColorProperty = Extract<InlineFormattingProperty, "color">;
 
-type SamePropertySet<Left, Right> = [Left, Right] extends [Right, Left] ? unknown : never;
+type SamePropertySet<Left, Right> = [Left, Right] extends [Right, Left]
+  ? unknown
+  : never;
 
 /**
  * The one grammar for every modeled run-presentation property. The
@@ -65,20 +70,23 @@ const INLINE_PRESENTATION_GRAMMAR = {
 type GrammarProperty =
   (typeof INLINE_PRESENTATION_GRAMMAR)[keyof typeof INLINE_PRESENTATION_GRAMMAR][number];
 
-type InlineStringValue = FolioContentInlineFormatting[InlineStringProperty | InlineColorProperty];
+type InlineStringValue = FolioContentInlineFormatting[
+  InlineStringProperty | InlineColorProperty];
 
-const INLINE_PRESENTATION_HOT_PATH_GRAMMAR = INLINE_PRESENTATION_GRAMMAR satisfies Readonly<{
-  boolean: readonly InlineBooleanProperty[];
-  string: readonly [InlineStringProperty];
-  number: readonly [InlineNumberProperty];
-  color: readonly [InlineColorProperty];
-}> &
-  SamePropertySet<InlineFormattingProperty, GrammarProperty> &
-  SamePropertySet<InlineFormattingProperty, InlineRunFormattingProperty> &
-  (FolioContentInlineFormatting[InlineBooleanProperty] extends boolean | undefined
-    ? unknown
-    : never) &
-  (InlineStringValue extends string | null | undefined ? unknown : never);
+const INLINE_PRESENTATION_HOT_PATH_GRAMMAR =
+  INLINE_PRESENTATION_GRAMMAR satisfies Readonly<{
+    boolean: readonly InlineBooleanProperty[];
+    string: readonly [InlineStringProperty];
+    number: readonly [InlineNumberProperty];
+    color: readonly [InlineColorProperty];
+  }> &
+    SamePropertySet<InlineFormattingProperty, GrammarProperty> &
+    SamePropertySet<InlineFormattingProperty, InlineRunFormattingProperty> &
+    (FolioContentInlineFormatting[InlineBooleanProperty] extends
+      boolean | undefined
+      ? unknown
+      : never) &
+    (InlineStringValue extends string | null | undefined ? unknown : never);
 
 /**
  * Derived from the descriptor grammar; tests use it to prove full coverage.
@@ -96,8 +104,12 @@ export const CANONICAL_INLINE_PRESENTATION_PROPERTIES: readonly InlineFormatting
     ...INLINE_PRESENTATION_GRAMMAR.color,
   ] satisfies InlineFormattingProperty[]);
 
-const canonicalColor = (value: string | null | undefined): string | null | undefined =>
-  value === null || value === undefined ? value : normalizeInlinePresentationColor(value);
+const canonicalColor = (
+  value: string | null | undefined,
+): string | null | undefined =>
+  value === null || value === undefined
+    ? value
+    : normalizeInlinePresentationColor(value);
 
 const writeCanonicalInlinePresentationDifferences = (
   base: FolioContentRun | undefined,
@@ -116,7 +128,10 @@ const writeCanonicalInlinePresentationDifferences = (
     let value;
     if (baseAuthored !== revisedAuthored) {
       value = revisedAuthored ?? null;
-    } else if (presentationBasis === "authored" || baseEffective === revisedEffective) {
+    } else if (
+      presentationBasis === "authored" ||
+      baseEffective === revisedEffective
+    ) {
       value = NO_PRESENTATION_DIFFERENCE;
     } else {
       value = revisedEffective;
@@ -166,7 +181,10 @@ const writeCanonicalInlinePresentationDifferences = (
   let color;
   if (baseAuthoredColor !== revisedAuthoredColor) {
     color = revisedAuthoredColor ?? null;
-  } else if (presentationBasis === "authored" || baseEffectiveColor === revisedEffectiveColor) {
+  } else if (
+    presentationBasis === "authored" ||
+    baseEffectiveColor === revisedEffectiveColor
+  ) {
     color = NO_PRESENTATION_DIFFERENCE;
   } else {
     color = revisedEffectiveColor ?? null;
@@ -189,7 +207,12 @@ const changedCanonicalInlinePresentation = (
   presentationBasis: "full" | "authored",
 ): FolioContentInlineFormattingPatch | null => {
   const patch: FolioContentInlineFormattingPatch = {};
-  return writeCanonicalInlinePresentationDifferences(base, revised, patch, presentationBasis)
+  return writeCanonicalInlinePresentationDifferences(
+    base,
+    revised,
+    patch,
+    presentationBasis,
+  )
     ? patch
     : null;
 };
@@ -215,7 +238,8 @@ const sameCanonicalInlinePresentationPatch = (
 
 type InlinePresentationBlock = Pick<FolioContentBlock, "previewRuns" | "text">;
 
-type AlignedRunRangeResult = "budget-exceeded" | "complete" | "stopped" | "unalignable";
+type AlignedRunRangeResult =
+  "budget-exceeded" | "complete" | "stopped" | "unalignable";
 
 type VisitAlignedRunRangesOptions =
   | {
@@ -236,7 +260,9 @@ type VisitAlignedRunRangesOptions =
  * Walk the shared UTF-16 coordinate space once. Run boundaries may differ;
  * malformed run streams never yield a trusted projection.
  */
-const visitAlignedRunRanges = (options: VisitAlignedRunRangesOptions): AlignedRunRangeResult => {
+const visitAlignedRunRanges = (
+  options: VisitAlignedRunRangesOptions,
+): AlignedRunRangeResult => {
   const { baseBlock, revisedBlock } = options;
   if (baseBlock.text !== revisedBlock.text) {
     return "unalignable";
@@ -260,13 +286,19 @@ const visitAlignedRunRanges = (options: VisitAlignedRunRangesOptions): AlignedRu
       baseRunText = baseRuns[baseRunIndex]?.text;
     }
     let revisedRunText = revisedRuns[revisedRunIndex]?.text;
-    while (revisedRunText !== undefined && revisedRunOffset === revisedRunText.length) {
+    while (
+      revisedRunText !== undefined &&
+      revisedRunOffset === revisedRunText.length
+    ) {
       revisedRunIndex++;
       revisedRunOffset = 0;
       revisedRunText = revisedRuns[revisedRunIndex]?.text;
     }
 
-    if (baseRunIndex === baseRuns.length || revisedRunIndex === revisedRuns.length) {
+    if (
+      baseRunIndex === baseRuns.length ||
+      revisedRunIndex === revisedRuns.length
+    ) {
       const fullyConsumed =
         baseRunIndex === baseRuns.length &&
         revisedRunIndex === revisedRuns.length &&
@@ -280,8 +312,10 @@ const visitAlignedRunRanges = (options: VisitAlignedRunRangesOptions): AlignedRu
       return "unalignable";
     }
     if (
-      (baseRunOffset === 0 && !baseBlock.text.startsWith(baseRunText, baseBlockOffset)) ||
-      (revisedRunOffset === 0 && !revisedBlock.text.startsWith(revisedRunText, revisedBlockOffset))
+      (baseRunOffset === 0 &&
+        !baseBlock.text.startsWith(baseRunText, baseBlockOffset)) ||
+      (revisedRunOffset === 0 &&
+        !revisedBlock.text.startsWith(revisedRunText, revisedBlockOffset))
     ) {
       return "unalignable";
     }
@@ -374,12 +408,15 @@ export const canonicalInlinePresentationSegments = ({
       // Only refusal needs a full per-side diagnosis; successful walks stay single-pass.
       const baseAligned = hasAlignedRunStream(baseBlock);
       const revisedAligned = hasAlignedRunStream(revisedBlock);
-      if (baseAligned === revisedAligned) return { status: "unalignable", side: "both" };
+      if (baseAligned === revisedAligned)
+        return { status: "unalignable", side: "both" };
       if (baseAligned) return { status: "unalignable", side: "revised" };
       return { status: "unalignable", side: "base" };
     }
     case "stopped":
-      return panic("A segment traversal cannot stop at a presentation difference");
+      return panic(
+        "A segment traversal cannot stop at a presentation difference",
+      );
     default: {
       const exhaustive: never = result;
       return exhaustive;

@@ -5,10 +5,13 @@
  * Supports fill color, outline, transforms, and selection.
  */
 
-import { expectShapeAttrs } from "../../attrs";
-import type { ImagePositionAttrs, ShapeAttrs as SchemaShapeAttrs } from "../../schema/nodes";
-import { parseShapeGeometryAdjustments } from "../../shapeGeometryAdjustments";
 import type { ShapeGeometryAdjustment } from "../../../types/document";
+import { expectShapeAttrs } from "../../attrs";
+import type {
+  ImagePositionAttrs,
+  ShapeAttrs as SchemaShapeAttrs,
+} from "../../schema/nodes";
+import { parseShapeGeometryAdjustments } from "../../shapeGeometryAdjustments";
 import { createNodeExtension } from "../create";
 
 export type ShapeAttrs = SchemaShapeAttrs;
@@ -26,7 +29,13 @@ const SVG_NS = "http://www.w3.org/2000/svg";
  */
 const HEX_COLOR_ATTR_RE = /^#[0-9A-Fa-f]{6}$/u;
 const VAR_COLOR_RE = /^var\(--[a-z0-9-]+(?:,\s*#[0-9A-Fa-f]{6})?\)$/iu;
-const NAMED_COLORS = new Set(["none", "transparent", "black", "white", "currentColor"]);
+const NAMED_COLORS = new Set([
+  "none",
+  "transparent",
+  "black",
+  "white",
+  "currentColor",
+]);
 
 export function sanitizeColor(value: string | null | undefined): string | null {
   if (!value) {
@@ -45,17 +54,28 @@ export function sanitizeColor(value: string | null | undefined): string | null {
   return null;
 }
 
-const DISPLAY_MODES = new Set<NonNullable<ShapeAttrs["displayMode"]>>(["inline", "float", "block"]);
-const CSS_FLOATS = new Set<NonNullable<ShapeAttrs["cssFloat"]>>(["left", "right", "none"]);
+const DISPLAY_MODES = new Set<NonNullable<ShapeAttrs["displayMode"]>>([
+  "inline",
+  "float",
+  "block",
+]);
+const CSS_FLOATS = new Set<NonNullable<ShapeAttrs["cssFloat"]>>([
+  "left",
+  "right",
+  "none",
+]);
 
 /**
  * CSS transform values for shape rotation/flips. Allow only the function calls
  * the parser actually emits (`rotate(Ndeg)`, `scaleX(-1)`, `scaleY(-1)`) so
  * a crafted DOCX cannot inject arbitrary CSS via the inline `style` attribute.
  */
-const SAFE_TRANSFORM_TOKEN_RE = /^(?:rotate\(-?\d+(?:\.\d+)?deg\)|scaleX\(-1\)|scaleY\(-1\))$/u;
+const SAFE_TRANSFORM_TOKEN_RE =
+  /^(?:rotate\(-?\d+(?:\.\d+)?deg\)|scaleX\(-1\)|scaleY\(-1\))$/u;
 
-export function sanitizeTransform(value: string | null | undefined): string | null {
+export function sanitizeTransform(
+  value: string | null | undefined,
+): string | null {
   if (!value) {
     return null;
   }
@@ -97,7 +117,9 @@ function finiteNumber(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function parseShapePosition(raw: string | undefined): ImagePositionAttrs | undefined {
+function parseShapePosition(
+  raw: string | undefined,
+): ImagePositionAttrs | undefined {
   if (!raw) {
     return undefined;
   }
@@ -137,7 +159,10 @@ export function sanitizeSvgId(value: string | null | undefined): string | null {
   return sanitized.length > 0 ? sanitized : null;
 }
 
-export function sanitizeShapeDimension(value: number | null | undefined, fallback: number): number {
+export function sanitizeShapeDimension(
+  value: number | null | undefined,
+  fallback: number,
+): number {
   return typeof value === "number" && !Number.isNaN(value) ? value : fallback;
 }
 
@@ -211,13 +236,22 @@ export function buildRightBracePaths(
   const shortSide = Math.min(w, h);
   const cuspAdjustment = Math.min(
     GEOMETRY_PERCENT_SCALE,
-    Math.max(0, geometryAdjustment(adjustments, "adj2", RIGHT_BRACE_DEFAULT_CUSP)),
+    Math.max(
+      0,
+      geometryAdjustment(adjustments, "adj2", RIGHT_BRACE_DEFAULT_CUSP),
+    ),
   );
-  const nearestEdge = Math.min(cuspAdjustment, GEOMETRY_PERCENT_SCALE - cuspAdjustment);
+  const nearestEdge = Math.min(
+    cuspAdjustment,
+    GEOMETRY_PERCENT_SCALE - cuspAdjustment,
+  );
   const maxThickness = ((nearestEdge / 2) * h) / shortSide;
   const thicknessAdjustment = Math.min(
     maxThickness,
-    Math.max(0, geometryAdjustment(adjustments, "adj1", RIGHT_BRACE_DEFAULT_THICKNESS)),
+    Math.max(
+      0,
+      geometryAdjustment(adjustments, "adj1", RIGHT_BRACE_DEFAULT_THICKNESS),
+    ),
   );
   const radius = (shortSide * thicknessAdjustment) / GEOMETRY_PERCENT_SCALE;
   const halfWidth = w / 2;
@@ -248,7 +282,11 @@ export function buildRightBracePaths(
  * Pure and DOM-free so it can be unit tested without a happy-dom / jsdom
  * setup; `createShapeElement` wraps the result in an `<svg:polygon>` node.
  */
-export function buildShapePolygonPoints(type: string, w: number, h: number): string | null {
+export function buildShapePolygonPoints(
+  type: string,
+  w: number,
+  h: number,
+): string | null {
   switch (type) {
     case "triangle":
     case "isosTriangle":
@@ -399,12 +437,17 @@ function createShapeElement(
 
 type GradientStop = { position: number; color: string };
 
-function isGradientStopShape(value: unknown): value is { position: number; color: string } {
+function isGradientStopShape(
+  value: unknown,
+): value is { position: number; color: string } {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const candidate = value as { position?: unknown; color?: unknown };
-  return typeof candidate.position === "number" && typeof candidate.color === "string";
+  return (
+    typeof candidate.position === "number" &&
+    typeof candidate.color === "string"
+  );
 }
 
 export function parseGradientStops(raw: string | undefined): GradientStop[] {
@@ -431,16 +474,23 @@ export function parseGradientStops(raw: string | undefined): GradientStop[] {
 /**
  * Create a gradient <defs> element. Returns null when stops are empty/invalid.
  */
-function createGradientElement(gradId: string, attrs: ShapeAttrs): SVGElement | null {
+function createGradientElement(
+  gradId: string,
+  attrs: ShapeAttrs,
+): SVGElement | null {
   const stops = parseGradientStops(attrs.gradientStops);
   if (stops.length === 0) {
     return null;
   }
 
   const gType = attrs.gradientType ?? "linear";
-  const isRadial = gType === "radial" || gType === "rectangular" || gType === "path";
+  const isRadial =
+    gType === "radial" || gType === "rectangular" || gType === "path";
 
-  const grad = document.createElementNS(SVG_NS, isRadial ? "radialGradient" : "linearGradient");
+  const grad = document.createElementNS(
+    SVG_NS,
+    isRadial ? "radialGradient" : "linearGradient",
+  );
   grad.setAttribute("id", gradId);
 
   if (isRadial) {
@@ -550,29 +600,45 @@ export const ShapeExtension = createNodeExtension({
           const outlineTailEnd = parseShapeLineEnd(d["outlineTailEnd"]);
           return {
             shapeType: d["shapeType"] || "rect",
-            ...(d["geometryAdjustments"] ? { geometryAdjustments: d["geometryAdjustments"] } : {}),
+            ...(d["geometryAdjustments"]
+              ? { geometryAdjustments: d["geometryAdjustments"] }
+              : {}),
             ...(d["shapeId"] ? { shapeId: d["shapeId"] } : {}),
             ...(d["width"] ? { width: Number(d["width"]) } : {}),
             ...(d["height"] ? { height: Number(d["height"]) } : {}),
             ...(d["fillColor"] ? { fillColor: d["fillColor"] } : {}),
-            fillType: (d["fillType"] || "solid") as NonNullable<ShapeAttrs["fillType"]>,
+            fillType: (d["fillType"] || "solid") as NonNullable<
+              ShapeAttrs["fillType"]
+            >,
             ...(d["gradientType"]
               ? {
-                  gradientType: d["gradientType"] as NonNullable<ShapeAttrs["gradientType"]>,
+                  gradientType: d["gradientType"] as NonNullable<
+                    ShapeAttrs["gradientType"]
+                  >,
                 }
               : {}),
-            ...(d["gradientAngle"] ? { gradientAngle: Number(d["gradientAngle"]) } : {}),
-            ...(d["gradientStops"] ? { gradientStops: d["gradientStops"] } : {}),
-            ...(d["outlineWidth"] ? { outlineWidth: Number(d["outlineWidth"]) } : {}),
+            ...(d["gradientAngle"]
+              ? { gradientAngle: Number(d["gradientAngle"]) }
+              : {}),
+            ...(d["gradientStops"]
+              ? { gradientStops: d["gradientStops"] }
+              : {}),
+            ...(d["outlineWidth"]
+              ? { outlineWidth: Number(d["outlineWidth"]) }
+              : {}),
             ...(d["outlineColor"] ? { outlineColor: d["outlineColor"] } : {}),
             ...(d["outlineStyle"]
               ? {
-                  outlineStyle: d["outlineStyle"] as NonNullable<ShapeAttrs["outlineStyle"]>,
+                  outlineStyle: d["outlineStyle"] as NonNullable<
+                    ShapeAttrs["outlineStyle"]
+                  >,
                 }
               : {}),
             ...(d["outlineCap"]
               ? {
-                  outlineCap: d["outlineCap"] as NonNullable<ShapeAttrs["outlineCap"]>,
+                  outlineCap: d["outlineCap"] as NonNullable<
+                    ShapeAttrs["outlineCap"]
+                  >,
                 }
               : {}),
             ...(outlineHeadEnd ? { outlineHeadEnd } : {}),
@@ -580,22 +646,30 @@ export const ShapeExtension = createNodeExtension({
             ...(d["transform"] ? { transform: d["transform"] } : {}),
             ...(d["displayMode"]
               ? {
-                  displayMode: d["displayMode"] as NonNullable<ShapeAttrs["displayMode"]>,
+                  displayMode: d["displayMode"] as NonNullable<
+                    ShapeAttrs["displayMode"]
+                  >,
                 }
               : {}),
             ...(d["cssFloat"]
               ? {
-                  cssFloat: d["cssFloat"] as NonNullable<ShapeAttrs["cssFloat"]>,
+                  cssFloat: d["cssFloat"] as NonNullable<
+                    ShapeAttrs["cssFloat"]
+                  >,
                 }
               : {}),
             ...(d["wrapType"]
               ? {
-                  wrapType: d["wrapType"] as NonNullable<ShapeAttrs["wrapType"]>,
+                  wrapType: d["wrapType"] as NonNullable<
+                    ShapeAttrs["wrapType"]
+                  >,
                 }
               : {}),
             ...(d["wrapText"]
               ? {
-                  wrapText: d["wrapText"] as NonNullable<ShapeAttrs["wrapText"]>,
+                  wrapText: d["wrapText"] as NonNullable<
+                    ShapeAttrs["wrapText"]
+                  >,
                 }
               : {}),
             ...(d["distTop"] ? { distTop: Number(d["distTop"]) } : {}),
@@ -605,8 +679,12 @@ export const ShapeExtension = createNodeExtension({
             ...(position ? { position } : {}),
             ...(d["shadowColor"] ? { shadowColor: d["shadowColor"] } : {}),
             ...(d["shadowBlur"] ? { shadowBlur: Number(d["shadowBlur"]) } : {}),
-            ...(d["shadowOffsetX"] ? { shadowOffsetX: Number(d["shadowOffsetX"]) } : {}),
-            ...(d["shadowOffsetY"] ? { shadowOffsetY: Number(d["shadowOffsetY"]) } : {}),
+            ...(d["shadowOffsetX"]
+              ? { shadowOffsetX: Number(d["shadowOffsetX"]) }
+              : {}),
+            ...(d["shadowOffsetY"]
+              ? { shadowOffsetY: Number(d["shadowOffsetY"]) }
+              : {}),
             ...(d["glowColor"] ? { glowColor: d["glowColor"] } : {}),
             ...(d["glowRadius"] ? { glowRadius: Number(d["glowRadius"]) } : {}),
           };
@@ -660,10 +738,14 @@ export const ShapeExtension = createNodeExtension({
         domAttrs["data-outline-cap"] = attrs.outlineCap;
       }
       if (attrs.outlineHeadEnd) {
-        domAttrs["data-outline-head-end"] = JSON.stringify(attrs.outlineHeadEnd);
+        domAttrs["data-outline-head-end"] = JSON.stringify(
+          attrs.outlineHeadEnd,
+        );
       }
       if (attrs.outlineTailEnd) {
-        domAttrs["data-outline-tail-end"] = JSON.stringify(attrs.outlineTailEnd);
+        domAttrs["data-outline-tail-end"] = JSON.stringify(
+          attrs.outlineTailEnd,
+        );
       }
       if (attrs.transform) {
         domAttrs["data-transform"] = attrs.transform;
@@ -738,7 +820,11 @@ export const ShapeExtension = createNodeExtension({
         styles.push(`transform: ${safeTransform}`);
       }
 
-      if (safeDisplayMode === "float" && safeCssFloat && safeCssFloat !== "none") {
+      if (
+        safeDisplayMode === "float" &&
+        safeCssFloat &&
+        safeCssFloat !== "none"
+      ) {
         styles.push(`float: ${safeCssFloat}`);
         styles.push("margin: 4px 8px");
       } else if (safeDisplayMode === "block") {
@@ -766,7 +852,8 @@ export const ShapeExtension = createNodeExtension({
       // isn't a known color shape so it can't break out of the SVG attribute.
       const safeFillColor = sanitizeColor(attrs.fillColor) ?? "#ffffff";
       const safeStrokeColor =
-        sanitizeColor(attrs.outlineColor) ?? "var(--doc-shape-outline, #000000)";
+        sanitizeColor(attrs.outlineColor) ??
+        "var(--doc-shape-outline, #000000)";
       const strokeWidth = finiteNumber(attrs.outlineWidth) ?? 1;
 
       // Build SVG via DOM APIs so attribute values are escaped by the browser.
@@ -783,7 +870,9 @@ export const ShapeExtension = createNodeExtension({
       let gradient: SVGElement | null = null;
       let fillAttr: string;
       if (attrs.fillType === "gradient" && attrs.gradientStops) {
-        const safeShapeId = sanitizeSvgId(attrs.shapeId) ?? Math.random().toString(36).slice(2, 8);
+        const safeShapeId =
+          sanitizeSvgId(attrs.shapeId) ??
+          Math.random().toString(36).slice(2, 8);
         const gradId = `grad-${safeShapeId}`;
         gradient = createGradientElement(gradId, attrs);
         fillAttr = gradient ? `url(#${gradId})` : safeFillColor;
@@ -793,7 +882,8 @@ export const ShapeExtension = createNodeExtension({
 
       // `outlineStyle === "none"` is the explicit no-outline sentinel: draw no
       // stroke even if a width/colour lingers (mirrors `fillType === "none"`).
-      const strokeAttr = attrs.outlineStyle === "none" ? "none" : safeStrokeColor;
+      const strokeAttr =
+        attrs.outlineStyle === "none" ? "none" : safeStrokeColor;
       svg.setAttribute(
         "style",
         `fill:${fillAttr};stroke:${strokeAttr};stroke-width:${strokeWidth};overflow:visible`,
@@ -805,9 +895,17 @@ export const ShapeExtension = createNodeExtension({
         svg.append(defs);
       }
 
-      const geometryAdjustments = parseShapeGeometryAdjustments(attrs.geometryAdjustments) ?? [];
-      const shapeEl = createShapeElement(attrs.shapeType || "rect", w, h, geometryAdjustments);
-      const strokeDasharray = strokeDashArrayForOutlineStyle(attrs.outlineStyle);
+      const geometryAdjustments =
+        parseShapeGeometryAdjustments(attrs.geometryAdjustments) ?? [];
+      const shapeEl = createShapeElement(
+        attrs.shapeType || "rect",
+        w,
+        h,
+        geometryAdjustments,
+      );
+      const strokeDasharray = strokeDashArrayForOutlineStyle(
+        attrs.outlineStyle,
+      );
       if (strokeDasharray) {
         shapeEl.setAttribute("stroke-dasharray", strokeDasharray);
       }

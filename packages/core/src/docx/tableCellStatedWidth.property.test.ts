@@ -15,6 +15,7 @@
  * width a resize or a merge states is written.
  */
 
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import {
   afterAll,
   afterEach,
@@ -24,13 +25,14 @@ import {
   setDefaultTimeout,
   test,
 } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { commitColumnResize } from "../prosemirror/tableResize";
@@ -45,7 +47,10 @@ setDefaultTimeout(propertyTestTimeout(30_000));
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /** What a column's cell states, `null` for a cell that states no width. */
-type StatedWidth = { readonly value: number; readonly type: "dxa" | "pct" } | null;
+type StatedWidth = {
+  readonly value: number;
+  readonly type: "dxa" | "pct";
+} | null;
 
 const statedWidth = fc.option(
   fc.record({
@@ -56,7 +61,10 @@ const statedWidth = fc.option(
 );
 
 const cellXml = (stated: StatedWidth, index: number): string => {
-  const width = stated === null ? "" : `<w:tcW w:w="${stated.value}" w:type="${stated.type}"/>`;
+  const width =
+    stated === null
+      ? ""
+      : `<w:tcW w:w="${stated.value}" w:type="${stated.type}"/>`;
   // A property set on every cell, so the ones that state no width still reach
   // the serializer with a `w:tcPr` to acquire one in.
   return (
@@ -85,7 +93,9 @@ const parsed = (xml: string): Table => {
 };
 
 const documentOf = (table: Table) =>
-  ({ package: { document: { content: [table], finalSectionProperties: {} } } }) as never;
+  ({
+    package: { document: { content: [table], finalSectionProperties: {} } },
+  }) as never;
 
 /** The `w:tcW` each cell carries after the save, in column order. */
 const statedWidthsOf = (saved: string): (string | null)[] =>
@@ -105,9 +115,14 @@ const throughEditor = (columns: readonly StatedWidth[]): string => {
 const views: EditorView[] = [];
 
 const mount = (columns: readonly StatedWidth[]): EditorView => {
-  const view = new EditorView(document.body.appendChild(document.createElement("div")), {
-    state: EditorState.create({ doc: toProseDoc(documentOf(parsed(tableXml(columns)))) }),
-  });
+  const view = new EditorView(
+    document.body.appendChild(document.createElement("div")),
+    {
+      state: EditorState.create({
+        doc: toProseDoc(documentOf(parsed(tableXml(columns)))),
+      }),
+    },
+  );
   views.push(view);
   return view;
 };
@@ -128,24 +143,34 @@ afterAll(() => GlobalRegistrator.unregister());
 describe("a cell's preferred width is the one it states", () => {
   test("a save writes `w:tcW` on exactly the cells that stated one", () => {
     fc.assert(
-      fc.property(fc.array(statedWidth, { minLength: 1, maxLength: 4 }), (columns) => {
-        expect(statedWidthsOf(throughEditor(columns)).map((width) => width !== null)).toEqual(
-          columns.map((stated) => stated !== null),
-        );
-      }),
+      fc.property(
+        fc.array(statedWidth, { minLength: 1, maxLength: 4 }),
+        (columns) => {
+          expect(
+            statedWidthsOf(throughEditor(columns)).map(
+              (width) => width !== null,
+            ),
+          ).toEqual(columns.map((stated) => stated !== null));
+        },
+      ),
       propertyConfig({ numRuns: 100 }),
     );
   });
 
   test("a stated width comes back with its own value and unit", () => {
     fc.assert(
-      fc.property(fc.array(statedWidth, { minLength: 1, maxLength: 4 }), (columns) => {
-        expect(statedWidthsOf(throughEditor(columns))).toEqual(
-          columns.map((stated) =>
-            stated === null ? null : `<w:tcW w:w="${stated.value}" w:type="${stated.type}"/>`,
-          ),
-        );
-      }),
+      fc.property(
+        fc.array(statedWidth, { minLength: 1, maxLength: 4 }),
+        (columns) => {
+          expect(statedWidthsOf(throughEditor(columns))).toEqual(
+            columns.map((stated) =>
+              stated === null
+                ? null
+                : `<w:tcW w:w="${stated.value}" w:type="${stated.type}"/>`,
+            ),
+          );
+        },
+      ),
       propertyConfig({ numRuns: 100 }),
     );
   });
@@ -155,12 +180,19 @@ describe("a cell's preferred width is the one it states", () => {
     const view = mount(columns);
     const document_ = documentOf(parsed(tableXml(columns)));
 
-    commitColumnResize(view, { pmStart: 0, colIdx: 0, newLeft: 3000, newRight: 1800 });
+    commitColumnResize(view, {
+      pmStart: 0,
+      colIdx: 0,
+      newLeft: 3000,
+      newRight: 1800,
+    });
 
     const projected = fromProseDoc(view.state.doc, document_, {
       stylesheetSource: { type: "package" },
     }).package.document.content[0] as Table;
-    expect(statedWidthsOf(serializeTable(projected, serializeParagraph))).toEqual([
+    expect(
+      statedWidthsOf(serializeTable(projected, serializeParagraph)),
+    ).toEqual([
       '<w:tcW w:w="3000" w:type="dxa"/>',
       '<w:tcW w:w="1800" w:type="dxa"/>',
       null,

@@ -6,7 +6,12 @@ import {
   getParagraphSpacingAfter,
   getParagraphSpacingBefore,
 } from "../paragraphSpacing";
-import type { ParagraphBlock, ParagraphMeasure, TableBlock, TableMeasure } from "../types";
+import type {
+  ParagraphBlock,
+  ParagraphMeasure,
+  TableBlock,
+  TableMeasure,
+} from "../types";
 
 export type TextBoxContentPlacement = {
   leadingSpacing: number;
@@ -61,7 +66,11 @@ export function layoutTextBoxContent(
       before: getParagraphSpacingBefore(block),
       after: trailingSpacing,
     });
-    const contentHeight = measuredLineRangeHeight(measure.lines, 0, measure.lines.length);
+    const contentHeight = measuredLineRangeHeight(
+      measure.lines,
+      0,
+      measure.lines.length,
+    );
     placements.push({ leadingSpacing, contentHeight });
     totalHeight += leadingSpacing + contentHeight;
     trailingSpacing = getParagraphSpacingAfter(block);

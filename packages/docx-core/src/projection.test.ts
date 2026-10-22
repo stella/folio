@@ -1,19 +1,21 @@
+import { beforeAll, describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 import { readFile } from "node:fs/promises";
-import { beforeAll, describe, expect, test } from "bun:test";
 
 import {
   DocxProjectionError,
   docxProjectionSchemaVersion,
   initializeDocxProjection,
   projectCompressedDocx,
-  projectMainDocumentXml,
   projectCompressedDocxWithReviewFacts,
+  projectMainDocumentXml,
 } from "./projection";
-import type { DocxAttributedComment, DocxReviewFactsWire, DocxReviewFactSet } from "./projection";
 import type {
+  DocxAttributedComment,
   DocxProjectionFormattingFamily,
   DocxProjectionFormattingFamilyStatus,
+  DocxReviewFactSet,
+  DocxReviewFactsWire,
 } from "./projection";
 
 const unavailableStylesFormatting = {
@@ -21,21 +23,30 @@ const unavailableStylesFormatting = {
   highlight: ["known"],
   superscript: ["unknown-missing-styles", "styles-part-unavailable"],
   alignment: ["unknown-missing-styles", "styles-part-unavailable"],
-} as const satisfies Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>;
+} as const satisfies Record<
+  DocxProjectionFormattingFamily,
+  DocxProjectionFormattingFamilyStatus
+>;
 
 const documentOnlyFormatting = {
   bold: ["unknown-missing-styles", "document-part-only"],
   highlight: ["known"],
   superscript: ["unknown-missing-styles", "document-part-only"],
   alignment: ["unknown-missing-styles", "document-part-only"],
-} as const satisfies Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>;
+} as const satisfies Record<
+  DocxProjectionFormattingFamily,
+  DocxProjectionFormattingFamilyStatus
+>;
 
 const unreadFormatting = {
   bold: ["unknown-unread", "unsupported-styles"],
   highlight: ["unknown-unread", "unsupported-styles"],
   superscript: ["unknown-unread", "unsupported-styles"],
   alignment: ["known"],
-} as const satisfies Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>;
+} as const satisfies Record<
+  DocxProjectionFormattingFamily,
+  DocxProjectionFormattingFamilyStatus
+>;
 
 const documentXml = `<?xml version="1.0" encoding="UTF-8"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -60,7 +71,9 @@ const addStylesPart = (archive: JSZip, stylesXml: string) => {
 };
 
 beforeAll(async () => {
-  const wasm = await readFile(new URL("./generated/docx_kernel_bg.wasm", import.meta.url));
+  const wasm = await readFile(
+    new URL("./generated/docx_kernel_bg.wasm", import.meta.url),
+  );
   await initializeDocxProjection({ wasm });
 });
 
@@ -70,13 +83,18 @@ describe("DOCX projection TypeScript binding", () => {
 
     expect(projection[0]).toBe(await docxProjectionSchemaVersion());
     expect(projection[1].map(([, text]) => text)).toEqual(["Before", "Inside"]);
-    expect(projection[1].map((paragraph) => paragraph[7])).toEqual(["body", "tableCell"]);
+    expect(projection[1].map((paragraph) => paragraph[7])).toEqual([
+      "body",
+      "tableCell",
+    ]);
     expect(projection[1][1]?.[4]).toEqual(["table", "table-0", 0, 0]);
     expect(projection[4]).toEqual(unavailableStylesFormatting);
   });
 
   test("projects raw main-document paragraphs exactly like compressed input", async () => {
-    const projection = await projectMainDocumentXml(new TextEncoder().encode(documentXml));
+    const projection = await projectMainDocumentXml(
+      new TextEncoder().encode(documentXml),
+    );
     const compressed = await projectCompressedDocx(await createDocument());
     const schemaVersion = await docxProjectionSchemaVersion();
     expect(projection[0]).toBe(schemaVersion);
@@ -87,9 +105,12 @@ describe("DOCX projection TypeScript binding", () => {
   });
 
   test("selects the related main part from a multipart Flat OPC package", async () => {
-    const documentNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-    const packageNamespace = "http://schemas.microsoft.com/office/2006/xmlPackage";
-    const relationshipNamespace = "http://schemas.openxmlformats.org/package/2006/relationships";
+    const documentNamespace =
+      "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const packageNamespace =
+      "http://schemas.microsoft.com/office/2006/xmlPackage";
+    const relationshipNamespace =
+      "http://schemas.openxmlformats.org/package/2006/relationships";
     const documentRelationship =
       "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
     const mainXml = `<doc:document xmlns:doc="${documentNamespace}"><doc:body><doc:p><doc:r><doc:t>Main</doc:t></doc:r></doc:p></doc:body></doc:document>`;
@@ -113,9 +134,14 @@ describe("DOCX projection TypeScript binding", () => {
       <flat:part flat:name="/content/numbering.xml" flat:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"><flat:xmlData>${numberingXml}</flat:xmlData></flat:part>
       <flat:part flat:name="/content/_rels/main.xml.rels" flat:contentType="application/vnd.openxmlformats-package.relationships+xml"><flat:xmlData>${documentRelationships}</flat:xmlData></flat:part>
     </flat:package>`;
-    const projection = await projectMainDocumentXml(new TextEncoder().encode(flat));
+    const projection = await projectMainDocumentXml(
+      new TextEncoder().encode(flat),
+    );
     const compressed = await projectCompressedDocx(
-      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+      await archive.generateAsync({
+        compression: "DEFLATE",
+        type: "uint8array",
+      }),
     );
     expect(projection).toEqual(compressed);
     expect(projection[1].map(([, text]) => text)).toEqual(["Main"]);
@@ -123,9 +149,12 @@ describe("DOCX projection TypeScript binding", () => {
   });
 
   test("direct table-cell highlight is known without a styles part", async () => {
-    const mainNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-    const packageNamespace = "http://schemas.microsoft.com/office/2006/xmlPackage";
-    const relationshipNamespace = "http://schemas.openxmlformats.org/package/2006/relationships";
+    const mainNamespace =
+      "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const packageNamespace =
+      "http://schemas.microsoft.com/office/2006/xmlPackage";
+    const relationshipNamespace =
+      "http://schemas.openxmlformats.org/package/2006/relationships";
     const relationshipType =
       "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
     const main = `<w:document xmlns:w="${mainNamespace}" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body><w:tbl><w:tr><w:tc><w:p w14:paraId="00000001"><w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t>Highlighted clause</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`;
@@ -133,7 +162,9 @@ describe("DOCX projection TypeScript binding", () => {
       <pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/xml"><pkg:xmlData><Relationships xmlns="${relationshipNamespace}"><Relationship Type="${relationshipType}" Target="content/main.xml"/></Relationships></pkg:xmlData></pkg:part>
       <pkg:part pkg:name="/content/main.xml" pkg:contentType="application/xml"><pkg:xmlData>${main}</pkg:xmlData></pkg:part>
     </pkg:package>`;
-    const projection = await projectMainDocumentXml(new TextEncoder().encode(flat));
+    const projection = await projectMainDocumentXml(
+      new TextEncoder().encode(flat),
+    );
     expect(projection[4]).toEqual(unavailableStylesFormatting);
     expect(projection[1]).toHaveLength(1);
     expect(projection[1][0]?.[2]).toBe("00000001");
@@ -147,9 +178,9 @@ describe("DOCX projection TypeScript binding", () => {
   ])("rejects invalid main-document body cardinality: %s", async (xml) => {
     const flat = `<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage"><pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml"><pkg:xmlData><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="main" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="document.xml"/></Relationships></pkg:xmlData></pkg:part><pkg:part pkg:name="/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"><pkg:xmlData>${xml}</pkg:xmlData></pkg:part></pkg:package>`;
     for (const input of [xml, flat]) {
-      await expect(projectMainDocumentXml(new TextEncoder().encode(input))).rejects.toBeInstanceOf(
-        DocxProjectionError,
-      );
+      await expect(
+        projectMainDocumentXml(new TextEncoder().encode(input)),
+      ).rejects.toBeInstanceOf(DocxProjectionError);
     }
   });
 
@@ -161,7 +192,10 @@ describe("DOCX projection TypeScript binding", () => {
     );
 
     const projection = await projectCompressedDocx(
-      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+      await archive.generateAsync({
+        compression: "DEFLATE",
+        type: "uint8array",
+      }),
     );
 
     expect(projection[1][0]?.[3]).toEqual([
@@ -173,7 +207,10 @@ describe("DOCX projection TypeScript binding", () => {
 
   test("reports only direct highlights for every colour through regular and fused projection", async () => {
     const contract = await readFile(
-      new URL("../../../crates/docx-kernel/fixtures/ooxml-highlight-colors.tsv", import.meta.url),
+      new URL(
+        "../../../crates/docx-kernel/fixtures/ooxml-highlight-colors.tsv",
+        import.meta.url,
+      ),
       "utf8",
     );
     const colours = contract
@@ -198,15 +235,26 @@ describe("DOCX projection TypeScript binding", () => {
           <w:style w:type="character" w:styleId="MarkedCharacter"><w:rPr><w:b/><w:highlight w:val="${colour}"/></w:rPr></w:style>
         </w:styles>`,
       );
-      const bytes = await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
+      const bytes = await archive.generateAsync({
+        compression: "DEFLATE",
+        type: "uint8array",
+      });
       const projection = await projectCompressedDocx(bytes);
       const fused = await projectCompressedDocxWithReviewFacts(bytes);
       expect(fused[1]).toEqual(projection);
       expect(
-        projection[1].map((paragraph) => paragraph[3].filter((span) => span[2] === "highlight")),
-      ).toEqual([[], [], classification === "semantic" ? [[0, 3, "highlight"]] : []]);
+        projection[1].map((paragraph) =>
+          paragraph[3].filter((span) => span[2] === "highlight"),
+        ),
+      ).toEqual([
+        [],
+        [],
+        classification === "semantic" ? [[0, 3, "highlight"]] : [],
+      ]);
       expect(
-        projection[1].map((paragraph) => paragraph[3].filter((span) => span[2] === "bold")),
+        projection[1].map((paragraph) =>
+          paragraph[3].filter((span) => span[2] === "bold"),
+        ),
       ).toEqual([[[0, 3, "bold"]], [[0, 3, "bold"]], [[0, 3, "bold"]]]);
     }
   });
@@ -223,7 +271,10 @@ describe("DOCX projection TypeScript binding", () => {
     );
 
     const projection = await projectCompressedDocx(
-      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+      await archive.generateAsync({
+        compression: "DEFLATE",
+        type: "uint8array",
+      }),
     );
 
     expect(projection[1][0]?.[1]).toBe("ABx&1●");
@@ -242,7 +293,10 @@ describe("DOCX projection TypeScript binding", () => {
     );
 
     const projection = await projectCompressedDocx(
-      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+      await archive.generateAsync({
+        compression: "DEFLATE",
+        type: "uint8array",
+      }),
     );
 
     expect(projection[1][0]?.[1]).toBe("AعAعxy");
@@ -264,10 +318,16 @@ describe("DOCX projection TypeScript binding", () => {
     );
 
     const projection = await projectCompressedDocx(
-      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+      await archive.generateAsync({
+        compression: "DEFLATE",
+        type: "uint8array",
+      }),
     );
 
-    expect(projection[1].map((paragraph) => paragraph[5])).toEqual(["Derived", "Derived"]);
+    expect(projection[1].map((paragraph) => paragraph[5])).toEqual([
+      "Derived",
+      "Derived",
+    ]);
     expect(projection[2][4]).toEqual([
       "known",
       [
@@ -289,10 +349,15 @@ describe("DOCX projection TypeScript binding", () => {
     );
 
     const projection = await projectCompressedDocx(
-      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+      await archive.generateAsync({
+        compression: "DEFLATE",
+        type: "uint8array",
+      }),
     );
 
-    expect(projection[1].map((paragraph) => paragraph.length)).toEqual([8, 8, 8]);
+    expect(projection[1].map((paragraph) => paragraph.length)).toEqual([
+      8, 8, 8,
+    ]);
     expect(projection[1].map((paragraph) => paragraph[6])).toEqual([
       ["center", "direct"],
       ["justify", "style"],
@@ -305,14 +370,21 @@ describe("DOCX projection TypeScript binding", () => {
     for (const [properties, alignment, status] of [
       ['<w:jc w:val="right"/>', ["right", "direct"], ["known"]],
       ["", null, ["unknown-missing-styles", "styles-part-unavailable"]],
-      ['<w:jc w:val="start"/>', null, ["unknown-unread", "unsupported-alignment"]],
+      [
+        '<w:jc w:val="start"/>',
+        null,
+        ["unknown-unread", "unsupported-alignment"],
+      ],
     ] as const) {
       const archive = new JSZip();
       archive.file(
         "word/document.xml",
         `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr>${properties}</w:pPr><w:r><w:t>Alignment</w:t></w:r></w:p></w:body></w:document>`,
       );
-      const bytes = await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
+      const bytes = await archive.generateAsync({
+        compression: "DEFLATE",
+        type: "uint8array",
+      });
       const projection = await projectCompressedDocx(bytes);
       const fused = await projectCompressedDocxWithReviewFacts(bytes);
       expect(fused[1]).toEqual(projection);
@@ -347,15 +419,51 @@ describe("DOCX projection TypeScript binding", () => {
     );
 
     const projection = await projectCompressedDocxWithReviewFacts(
-      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+      await archive.generateAsync({
+        compression: "DEFLATE",
+        type: "uint8array",
+      }),
     );
 
     expect(projection[0]).toBe(2);
     expect(projection[1][1][0]?.[1]).toBe("new");
     const expectedReviewFacts = [
       2,
-      ["known", [["insertion", "Ada", null, "7", "known", 0, 0, 0, 0, 3, 3, "new", "text"]]],
-      ["known", [["1", "Lin", null, null, null, "resolved", "unknown", "unsupported-location"]]],
+      [
+        "known",
+        [
+          [
+            "insertion",
+            "Ada",
+            null,
+            "7",
+            "known",
+            0,
+            0,
+            0,
+            0,
+            3,
+            3,
+            "new",
+            "text",
+          ],
+        ],
+      ],
+      [
+        "known",
+        [
+          [
+            "1",
+            "Lin",
+            null,
+            null,
+            null,
+            "resolved",
+            "unknown",
+            "unsupported-location",
+          ],
+        ],
+      ],
     ] as const satisfies DocxReviewFactsWire;
     expect(projection[2]).toEqual(expectedReviewFacts);
   });
@@ -371,13 +479,44 @@ describe("DOCX projection TypeScript binding", () => {
         `<w:document xmlns:w="${namespace}"><w:body><w:tbl><w:tr><w:tblPrEx><w:tblPrExChange w:id="1" w:author="A"><w:tblPrEx/></w:tblPrExChange></w:tblPrEx><w:tc><w:p><w:r><w:rPr><w:rPrChange w:id="2" w:author="A"><w:rPr><w:b/></w:rPr></w:rPrChange></w:rPr><w:t>é😀</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`,
       );
       addStylesPart(archive, `<w:styles xmlns:w="${namespace}"/>`);
-      const bytes = await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
+      const bytes = await archive.generateAsync({
+        compression: "DEFLATE",
+        type: "uint8array",
+      });
       const projection = await projectCompressedDocxWithReviewFacts(bytes);
       const expectedRevisions = [
         "known",
         [
-          ["tblPrExChange", "A", null, "1", "known", 0, 0, 0, 0, 6, 3, "", "formatting-only"],
-          ["rPrChange", "A", null, "2", "known", 0, 0, 0, 0, 6, 3, "", "formatting-only"],
+          [
+            "tblPrExChange",
+            "A",
+            null,
+            "1",
+            "known",
+            0,
+            0,
+            0,
+            0,
+            6,
+            3,
+            "",
+            "formatting-only",
+          ],
+          [
+            "rPrChange",
+            "A",
+            null,
+            "2",
+            "known",
+            0,
+            0,
+            0,
+            0,
+            6,
+            3,
+            "",
+            "formatting-only",
+          ],
         ],
       ] as const satisfies DocxReviewFactsWire[1];
       expect(projection[2][1]).toEqual(expectedRevisions);
@@ -392,13 +531,32 @@ describe("DOCX projection TypeScript binding", () => {
     );
 
     const projection = await projectCompressedDocxWithReviewFacts(
-      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+      await archive.generateAsync({
+        compression: "DEFLATE",
+        type: "uint8array",
+      }),
     );
 
     expect(projection[1][1].map((paragraph) => paragraph[1])).toEqual(["AB"]);
     const expectedRevisions = [
       "known",
-      [["deletion", "Lin", null, "3", "known", 0, 1, 1, 0, 1, 1, "", "paragraph-mark"]],
+      [
+        [
+          "deletion",
+          "Lin",
+          null,
+          "3",
+          "known",
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          "",
+          "paragraph-mark",
+        ],
+      ],
     ] as const satisfies DocxReviewFactsWire[1];
     expect(projection[2][1]).toEqual(expectedRevisions);
   });
@@ -417,7 +575,10 @@ describe("DOCX projection TypeScript binding", () => {
       "word/_rels/document.xml.rels",
       `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="comments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>`,
     );
-    const bytes = await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
+    const bytes = await archive.generateAsync({
+      compression: "DEFLATE",
+      type: "uint8array",
+    });
 
     const host = await projectCompressedDocxWithReviewFacts(bytes);
     const readable = await projectCompressedDocxWithReviewFacts(bytes, {
@@ -450,7 +611,25 @@ describe("DOCX projection TypeScript binding", () => {
     ] as const satisfies DocxReviewFactSet<DocxAttributedComment>;
     const expectedReadableComments = [
       "known",
-      [["1", "Ada", null, null, null, "open", "known", 0, 0, 0, 0, 9, 7, "Review", "Tit😀le"]],
+      [
+        [
+          "1",
+          "Ada",
+          null,
+          null,
+          null,
+          "open",
+          "known",
+          0,
+          0,
+          0,
+          0,
+          9,
+          7,
+          "Review",
+          "Tit😀le",
+        ],
+      ],
     ] as const satisfies DocxReviewFactSet<DocxAttributedComment>;
     expect(host[2][2]).toEqual(expectedHostComments);
     expect(readable[2][2]).toEqual(expectedReadableComments);

@@ -69,15 +69,16 @@ describe("serializeComments", () => {
       planCommentParts([makeComment(2, 1), makeComment(1), makeComment(3)]),
     );
 
-    expect([...xml.matchAll(/<w:comment w:id="(\d+)"/gu)].map(([, id]) => id)).toEqual([
-      "2",
-      "1",
-      "3",
-    ]);
+    expect(
+      [...xml.matchAll(/<w:comment w:id="(\d+)"/gu)].map(([, id]) => id),
+    ).toEqual(["2", "1", "3"]);
   });
 
   test("writes a duplicate w:id once, keeping the definition markers resolve to", () => {
-    const [first, second] = [makeComment(1), { ...makeComment(1), author: "Second" }];
+    const [first, second] = [
+      makeComment(1),
+      { ...makeComment(1), author: "Second" },
+    ];
 
     const xml = serializeComments(planCommentParts([first, second]));
 
@@ -86,7 +87,9 @@ describe("serializeComments", () => {
   });
 
   test("preserves an explicitly empty author attribute", () => {
-    const xml = serializeComments(planCommentParts([{ ...makeComment(1), author: "" }]));
+    const xml = serializeComments(
+      planCommentParts([{ ...makeComment(1), author: "" }]),
+    );
 
     expect(xml).toContain('<w:comment w:id="1" w:author=""');
   });
@@ -96,7 +99,9 @@ describe("serializeComments", () => {
     const xml = serializeComments(planCommentParts([comment]));
 
     expect(xml).toContain('w:initials=""');
-    expect(parseComments(xml, null, null, new Map(), new Map()).at(0)?.initials).toBe("");
+    expect(
+      parseComments(xml, null, null, new Map(), new Map()).at(0)?.initials,
+    ).toBe("");
   });
 
   test("escapes a paragraph paraId that carries markup instead of a real Word id", () => {
@@ -133,7 +138,9 @@ describe("serializeComments", () => {
     const xml = serializeComments(planCommentParts([comment]));
 
     expect(xml).not.toContain("<w:t>injected</w:t>");
-    expect(xml).toContain('r:id="rId1&quot;/&gt;&lt;w:r&gt;&lt;w:t&gt;injected');
+    expect(xml).toContain(
+      'r:id="rId1&quot;/&gt;&lt;w:r&gt;&lt;w:t&gt;injected',
+    );
     expect(xml).toContain("<w:t>linked</w:t>");
   });
 
@@ -161,7 +168,9 @@ describe("serializeComments", () => {
       new Map(),
     );
     const reparsedParagraph = reparsed[0]?.content[0];
-    const reparsedRun = reparsedParagraph?.content.find((item) => item.type === "run");
+    const reparsedRun = reparsedParagraph?.content.find(
+      (item) => item.type === "run",
+    );
 
     expect(reparsed[0]?.annotationReferenceFormatting).toBeUndefined();
     expect(reparsedParagraph?.formatting).toMatchObject(paragraph.formatting);
@@ -185,13 +194,19 @@ describe("serializeComments", () => {
       </w:comments>`;
     const parsed = parseComments(commentsXml, null, null, new Map(), new Map());
 
-    expect(parsed[0]?.annotationReferenceFormatting?.styleId).toBe("LocalizedCommentReference");
+    expect(parsed[0]?.annotationReferenceFormatting?.styleId).toBe(
+      "LocalizedCommentReference",
+    );
     expect(parsed[0]?.content[0]?.content.at(0)?.type).toBe("bookmarkStart");
 
     const serialized = serializeComments(planCommentParts(parsed));
     expect(serialized.match(/<w:annotationRef\/>/gu)).toHaveLength(1);
-    expect(serialized).toContain('<w:rStyle w:val="LocalizedCommentReference"/>');
-    expect(parseComments(serialized, null, null, new Map(), new Map())).toEqual(parsed);
+    expect(serialized).toContain(
+      '<w:rStyle w:val="LocalizedCommentReference"/>',
+    );
+    expect(parseComments(serialized, null, null, new Map(), new Map())).toEqual(
+      parsed,
+    );
   });
 
   test("preserves localized annotation-reference formatting for an empty comment", () => {
@@ -203,10 +218,20 @@ describe("serializeComments", () => {
     };
 
     const serialized = serializeComments(planCommentParts([comment]));
-    expect(serialized).toContain('<w:rStyle w:val="LocalizedCommentReference"/>');
+    expect(serialized).toContain(
+      '<w:rStyle w:val="LocalizedCommentReference"/>',
+    );
 
-    const reparsed = parseComments(serialized, null, null, new Map(), new Map()).at(0);
-    expect(reparsed?.annotationReferenceFormatting).toEqual(comment.annotationReferenceFormatting);
+    const reparsed = parseComments(
+      serialized,
+      null,
+      null,
+      new Map(),
+      new Map(),
+    ).at(0);
+    expect(reparsed?.annotationReferenceFormatting).toEqual(
+      comment.annotationReferenceFormatting,
+    );
     expect(reparsed?.content).toHaveLength(1);
     expect(reparsed?.content.at(0)?.content).toEqual([]);
   });
@@ -230,10 +255,14 @@ describe("serializeCommentsExtended", () => {
     laterRoot.content[0]!.paraId = "0000CCC1";
     laterRoot.done = true;
 
-    const xml = serializeCommentsExtended(planCommentParts([root, reply, laterRoot]));
+    const xml = serializeCommentsExtended(
+      planCommentParts([root, reply, laterRoot]),
+    );
 
     expect(xml).not.toBeNull();
-    expect([...(xml ?? "").matchAll(/<w15:commentEx w15:paraId="([^"]+)"/gu)]).toHaveLength(3);
+    expect([
+      ...(xml ?? "").matchAll(/<w15:commentEx w15:paraId="([^"]+)"/gu),
+    ]).toHaveLength(3);
     expect(xml).toContain(
       '<w15:commentEx w15:paraId="0000AAA2"/>' +
         '<w15:commentEx w15:paraId="0000BBB1" w15:paraIdParent="0000AAA2"/>' +

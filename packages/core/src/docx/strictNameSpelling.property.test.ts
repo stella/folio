@@ -24,12 +24,17 @@ import { describe, expect, test } from "bun:test";
 
 import { parseNumbering } from "./numberingParser";
 import { parseParagraphProperties } from "./paragraphProperties";
-import { STRICT_NAMES, type StrictName, TRANSITIONAL_NAME_BY_STRICT_NAME } from "./strictNames.gen";
+import {
+  STRICT_NAMES,
+  type StrictName,
+  TRANSITIONAL_NAME_BY_STRICT_NAME,
+} from "./strictNames.gen";
 import { parseStylesPackage } from "./styleParser";
 import { parseTableCellProperties, parseTableProperties } from "./tableParser";
 import { parseXmlDocument } from "./xmlParser";
 
-const WML = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const WML =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 /** One place folio reads a renamed slot: the markup, in a named spelling, and what folio makes of it. */
 type ReadSite = {
@@ -45,22 +50,30 @@ const fromFragment =
   (markup: string): Model =>
     read(parseXmlDocument(markup));
 
-const paragraphProperties = fromFragment((pPr) => parseParagraphProperties(pPr, null));
+const paragraphProperties = fromFragment((pPr) =>
+  parseParagraphProperties(pPr, null),
+);
 const tableProperties = fromFragment(parseTableProperties);
 const cellProperties = fromFragment(parseTableCellProperties);
 
 /** Styles reach the model as two records; a fixture that moved neither would prove nothing. */
 const styles = (markup: string): unknown => {
-  const { styleDefinitions, styles: styleMap } = parseStylesPackage(markup, null);
+  const { styleDefinitions, styles: styleMap } = parseStylesPackage(
+    markup,
+    null,
+  );
   return { definitions: styleDefinitions, styles: [...styleMap.entries()] };
 };
 
-const numbering = (markup: string): unknown => parseNumbering(markup).definitions;
+const numbering = (markup: string): unknown =>
+  parseNumbering(markup).definitions;
 
-const stylesPart = (body: string): string => `<w:styles ${WML}>${body}</w:styles>`;
+const stylesPart = (body: string): string =>
+  `<w:styles ${WML}>${body}</w:styles>`;
 
 const indent = (name: string): string => `<w:ind w:${name}="720"/>`;
-const border = (name: string): string => `<w:${name} w:val="single" w:sz="8" w:color="FF0000"/>`;
+const border = (name: string): string =>
+  `<w:${name} w:val="single" w:sz="8" w:color="FF0000"/>`;
 const margin = (name: string): string => `<w:${name} w:w="113" w:type="dxa"/>`;
 
 /** The `w:ind` of a paragraph, a style, the document defaults, a conditional region and a list level. */
@@ -106,12 +119,14 @@ const INDENT_SITES: readonly ReadSite[] = [
 const BORDER_SITES: readonly ReadSite[] = [
   {
     site: "a table's w:tblBorders",
-    markup: (name) => `<w:tblPr ${WML}><w:tblBorders>${border(name)}</w:tblBorders></w:tblPr>`,
+    markup: (name) =>
+      `<w:tblPr ${WML}><w:tblBorders>${border(name)}</w:tblBorders></w:tblPr>`,
     read: tableProperties,
   },
   {
     site: "a cell's w:tcBorders",
-    markup: (name) => `<w:tcPr ${WML}><w:tcBorders>${border(name)}</w:tcBorders></w:tcPr>`,
+    markup: (name) =>
+      `<w:tcPr ${WML}><w:tcBorders>${border(name)}</w:tcBorders></w:tcPr>`,
     read: cellProperties,
   },
   {
@@ -136,12 +151,14 @@ const BORDER_SITES: readonly ReadSite[] = [
 const MARGIN_SITES: readonly ReadSite[] = [
   {
     site: "a table's w:tblCellMar",
-    markup: (name) => `<w:tblPr ${WML}><w:tblCellMar>${margin(name)}</w:tblCellMar></w:tblPr>`,
+    markup: (name) =>
+      `<w:tblPr ${WML}><w:tblCellMar>${margin(name)}</w:tblCellMar></w:tblPr>`,
     read: tableProperties,
   },
   {
     site: "a cell's w:tcMar",
-    markup: (name) => `<w:tcPr ${WML}><w:tcMar>${margin(name)}</w:tcMar></w:tcPr>`,
+    markup: (name) =>
+      `<w:tcPr ${WML}><w:tcMar>${margin(name)}</w:tcMar></w:tcPr>`,
     read: cellProperties,
   },
   {
@@ -201,11 +218,15 @@ const respell = (value: unknown, from: string, to: string): unknown => {
       return current.map(walk);
     }
     if (current instanceof Map) {
-      return new Map([...current.entries()].map(([key, held]) => [key, walk(held)]));
+      return new Map(
+        [...current.entries()].map(([key, held]) => [key, walk(held)]),
+      );
     }
     if (typeof current === "object" && current !== null) {
       return Object.fromEntries(
-        Object.entries(current).map(([key, held]) => [key, walk(held)] as const),
+        Object.entries(current).map(
+          ([key, held]) => [key, walk(held)] as const,
+        ),
       );
     }
     return current;
@@ -236,7 +257,10 @@ describe("a renamed name reads the same in either spelling", () => {
           site,
           model: respell(read(markup(UNREAD_NAME)), UNREAD_NAME, transitional),
         });
-        expect({ site, model: respell(read(markup(strict)), strict, transitional) }).toEqual({
+        expect({
+          site,
+          model: respell(read(markup(strict)), strict, transitional),
+        }).toEqual({
           site,
           model: written,
         });

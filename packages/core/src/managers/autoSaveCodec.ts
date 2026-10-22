@@ -1,7 +1,7 @@
-import { base64ToBytes } from "../utils/textEncoding";
-import type { Document } from "../types/document";
 import { validateFolioDocumentModel } from "../docx/modelValidation";
+import type { Document } from "../types/document";
 import { bytesToBase64 } from "../utils/base64";
+import { base64ToBytes } from "../utils/textEncoding";
 
 /**
  * Version 3 renamed the model's `bidiWrapper` to `inlineWrapper` and gave it a
@@ -35,7 +35,8 @@ export type EncodedAutoSaveDocument = {
   json: string;
 };
 
-const decodeBase64 = (value: string): ArrayBuffer => base64ToBytes(value).buffer;
+const decodeBase64 = (value: string): ArrayBuffer =>
+  base64ToBytes(value).buffer;
 
 const encodeValue = (value: unknown): EncodedValue => {
   if (value === undefined) {
@@ -58,7 +59,10 @@ const encodeValue = (value: unknown): EncodedValue => {
   if (value instanceof Map) {
     return {
       type: "map",
-      value: [...value.entries()].map(([key, entry]) => [encodeValue(key), encodeValue(entry)]),
+      value: [...value.entries()].map(([key, entry]) => [
+        encodeValue(key),
+        encodeValue(entry),
+      ]),
     };
   }
   if (Array.isArray(value)) {
@@ -127,7 +131,11 @@ const decodeValue = (value: unknown): unknown => {
     );
   }
   if (type === "object") {
-    if (!("value" in value) || typeof value.value !== "object" || !value.value) {
+    if (
+      !("value" in value) ||
+      typeof value.value !== "object" ||
+      !value.value
+    ) {
       throw new TypeError("Invalid auto-save object");
     }
     const decoded: Record<string, unknown> = Object.create(null);
@@ -145,7 +153,9 @@ const decodeValue = (value: unknown): unknown => {
   throw new TypeError("Unknown auto-save encoded value");
 };
 
-export const encodeAutoSaveDocument = (document: Document): EncodedAutoSaveDocument => {
+export const encodeAutoSaveDocument = (
+  document: Document,
+): EncodedAutoSaveDocument => {
   const snapshot = { ...document, originalBuffer: null };
   return { json: JSON.stringify(encodeValue(snapshot)) };
 };
@@ -156,10 +166,15 @@ export const encodeAutoSaveEnvelopeFromDocument = (
 ): string =>
   `{"document":${document.json},"savedAt":${JSON.stringify(savedAt)},"version":${AUTOSAVE_FORMAT_VERSION}}`;
 
-export const encodeAutoSaveEnvelope = (document: Document, savedAt: string): string =>
+export const encodeAutoSaveEnvelope = (
+  document: Document,
+  savedAt: string,
+): string =>
   encodeAutoSaveEnvelopeFromDocument(encodeAutoSaveDocument(document), savedAt);
 
-export const decodeAutoSaveEnvelope = (json: string): DecodedAutoSave | null => {
+export const decodeAutoSaveEnvelope = (
+  json: string,
+): DecodedAutoSave | null => {
   try {
     const parsed: unknown = JSON.parse(json);
     if (

@@ -14,10 +14,10 @@
  */
 
 import { expect, test } from "bun:test";
-import type { Document } from "../../model/document";
-import { paragraphLogicalText } from "../offsets";
+
+import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOpEnvelope } from "../apply";
-import type { Paragraph } from "../../model/document";
+import { paragraphLogicalText } from "../offsets";
 import { DOCUMENT_OP_SCHEMA_VERSION, DOCUMENT_OP_TYPES } from "../types";
 import { envelopes, wireFixturePath } from "./wireFixtures";
 
@@ -28,12 +28,17 @@ const expectParagraphReviewCardinality = (value: unknown): void => {
     return;
   }
   if (value === null || typeof value !== "object") return;
-  if ("type" in value && value.type === "paragraph" && "propertyChanges" in value) {
+  if (
+    "type" in value &&
+    value.type === "paragraph" &&
+    "propertyChanges" in value
+  ) {
     expect(Array.isArray(value.propertyChanges)).toBe(true);
     if (Array.isArray(value.propertyChanges))
       expect(value.propertyChanges.length).toBeLessThanOrEqual(1);
   }
-  for (const entry of Object.values(value)) expectParagraphReviewCardinality(entry);
+  for (const entry of Object.values(value))
+    expectParagraphReviewCardinality(entry);
 };
 
 test("the wire cardinality guard rejects two property reviews on an identified paragraph", () => {
@@ -42,7 +47,10 @@ test("the wire cardinality guard rejects two property reviews on an identified p
     paraId: "00000001",
     content: [],
     propertyChanges: [
-      { type: "paragraphPropertyChange", info: { id: 7, author: "Original reviewer" } },
+      {
+        type: "paragraphPropertyChange",
+        info: { id: 7, author: "Original reviewer" },
+      },
     ],
   } satisfies Paragraph;
   expect(() => expectParagraphReviewCardinality(valid)).not.toThrow();
@@ -50,7 +58,10 @@ test("the wire cardinality guard rejects two property reviews on an identified p
     ...valid,
     propertyChanges: [
       ...valid.propertyChanges,
-      { type: "paragraphPropertyChange", info: { id: 8, author: "Latest reviewer" } },
+      {
+        type: "paragraphPropertyChange",
+        info: { id: 8, author: "Latest reviewer" },
+      },
     ],
   } satisfies Paragraph;
   expect(() => expectParagraphReviewCardinality(invalid)).toThrow();
@@ -73,8 +84,12 @@ test("every operation kind and its inverse keep their persisted JSON", async () 
   }
   expect(JSON.parse(written)).toStrictEqual(pinned);
   const kinds = new Set(envelopes().map(({ op }) => op.type));
-  expect([...kinds].toSorted()).toEqual(Object.values(DOCUMENT_OP_TYPES).toSorted());
-  expect(envelopes().every(({ schema }) => schema === DOCUMENT_OP_SCHEMA_VERSION)).toBe(true);
+  expect([...kinds].toSorted()).toEqual(
+    Object.values(DOCUMENT_OP_TYPES).toSorted(),
+  );
+  expect(
+    envelopes().every(({ schema }) => schema === DOCUMENT_OP_SCHEMA_VERSION),
+  ).toBe(true);
 });
 
 test("semantic table wire fixtures exercise geometry, ids, patches and tracked payloads", () => {
@@ -162,7 +177,9 @@ test("semantic table wire fixtures exercise geometry, ids, patches and tracked p
     const exercised = new Set(matching.flatMap((op) => Object.keys(op)));
     expect([...exercised].toSorted()).toEqual(Object.keys(declared).toSorted());
   }
-  const restorations = fixtures.filter((op) => op.type === DOCUMENT_OP_TYPES.SET_TABLE);
+  const restorations = fixtures.filter(
+    (op) => op.type === DOCUMENT_OP_TYPES.SET_TABLE,
+  );
   expect(restorations.length).toBeGreaterThan(0);
   for (const op of restorations) {
     expect(op.expected.type).toBe("table");
@@ -172,7 +189,11 @@ test("semantic table wire fixtures exercise geometry, ids, patches and tracked p
 
 test("older envelopes are refused structurally and current envelopes apply", async () => {
   const document: Document = {
-    package: { document: { content: [{ type: "paragraph", paraId: "00000001", content: [] }] } },
+    package: {
+      document: {
+        content: [{ type: "paragraph", paraId: "00000001", content: [] }],
+      },
+    },
   };
   const op = {
     type: DOCUMENT_OP_TYPES.INSERT_TEXT,
@@ -185,7 +206,17 @@ test("older envelopes are refused structurally and current envelopes apply", asy
     new URL("./__fixtures__/ops-v4.json", import.meta.url),
   ).json();
   expect(Array.isArray(older)).toBe(true);
-  for (const schema of [1, 2, 3, 4, 5, 6, 7, 8, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  for (const schema of [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    DOCUMENT_OP_SCHEMA_VERSION + 1,
+  ]) {
     const refused = applyDocumentOpEnvelope(document, { schema, op });
     expect(refused.isErr()).toBe(true);
     if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
@@ -197,13 +228,20 @@ test("older envelopes are refused structurally and current envelopes apply", asy
   }).unwrap();
   const paragraph = current.document.package.document.content.at(0);
   expect(paragraph?.type).toBe("paragraph");
-  if (paragraph?.type === "paragraph") expect(paragraphLogicalText(paragraph)).toBe("x");
+  if (paragraph?.type === "paragraph")
+    expect(paragraphLogicalText(paragraph)).toBe("x");
   expect(current.inverse.length).toBe(1);
 });
 
 test("lifecycle wire fixtures exercise each declared own-undefined target", () => {
-  const targets = { body: true, package: true, section: true } as const satisfies Record<
-    NonNullable<import("../types").StoryParts["undefinedFields"]>[number]["target"],
+  const targets = {
+    body: true,
+    package: true,
+    section: true,
+  } as const satisfies Record<
+    NonNullable<
+      import("../types").StoryParts["undefinedFields"]
+    >[number]["target"],
     true
   >;
   const restorations = envelopes()
@@ -211,9 +249,10 @@ test("lifecycle wire fixtures exercise each declared own-undefined target", () =
     .filter((op) => op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS);
   const exercised = new Set(
     restorations.flatMap((op) =>
-      [...(op.expected.undefinedFields ?? []), ...(op.parts.undefinedFields ?? [])].map(
-        ({ target }) => target,
-      ),
+      [
+        ...(op.expected.undefinedFields ?? []),
+        ...(op.parts.undefinedFields ?? []),
+      ].map(({ target }) => target),
     ),
   );
   expect([...exercised].toSorted()).toEqual(Object.keys(targets).toSorted());
@@ -225,7 +264,9 @@ test("clipboard package resources remain pinned in the schema-10 wire contract",
   );
   expect(resources.length).toBeGreaterThan(0);
   const clipboard = resources.find(
-    ({ op }) => op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES && op.media.entries.length > 0,
+    ({ op }) =>
+      op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES &&
+      op.media.entries.length > 0,
   );
   expect(clipboard).toBeDefined();
   if (clipboard?.op.type !== DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES) return;
@@ -238,7 +279,10 @@ test("clipboard package resources remain pinned in the schema-10 wire contract",
         expected: { type: "absent" },
         next: {
           type: "present",
-          value: expect.objectContaining({ mimeType: "image/png", data: [137, 80, 78, 71] }),
+          value: expect.objectContaining({
+            mimeType: "image/png",
+            data: [137, 80, 78, 71],
+          }),
         },
       },
     ],

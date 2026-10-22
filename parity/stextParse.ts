@@ -15,8 +15,8 @@
  * `<char>` children at all.
  */
 
-import { normalizeLineText } from "./textNorm";
 import { firstStrongTextDirection } from "./textDirection";
+import { normalizeLineText } from "./textNorm";
 import type { LineBox, PageGeom } from "./types";
 
 const PAGE_RE = /<page\b([^>]*)>([\s\S]*?)<\/page>/g;
@@ -48,7 +48,9 @@ const decodeXmlEntities = (raw: string): string =>
     .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) =>
       String.fromCodePoint(Number.parseInt(hex, 16)),
     )
-    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(Number.parseInt(dec, 10)))
+    .replace(/&#(\d+);/g, (_, dec: string) =>
+      String.fromCodePoint(Number.parseInt(dec, 10)),
+    )
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
@@ -62,13 +64,22 @@ const parseBbox = (bboxAttr: string): Bbox | null => {
   const parts = bboxAttr.trim().split(/\s+/).map(Number);
   if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return null;
   const [x0, y0, x1, y1] = parts;
-  if (x0 === undefined || y0 === undefined || x1 === undefined || y1 === undefined) return null;
+  if (
+    x0 === undefined ||
+    y0 === undefined ||
+    x1 === undefined ||
+    y1 === undefined
+  )
+    return null;
   return { x0, y0, x1, y1 };
 };
 
 type LineFont = { name?: string; sizePt?: number };
 
-export const normalizeFontEncodedText = (text: string, fontName: string | undefined): string => {
+export const normalizeFontEncodedText = (
+  text: string,
+  fontName: string | undefined,
+): string => {
   // mutool exposes the character code behind Word's Wingdings square marker
   // as a section sign even though the rendered glyph is a black square.
   if (
@@ -81,7 +92,10 @@ export const normalizeFontEncodedText = (text: string, fontName: string | undefi
   // Word stores an empty Wingdings checkbox as w:sym F0A8. Chromium keeps
   // that private-use code point, while mutool exposes the font's character
   // code as U+00A8 even though both renderers paint the same square.
-  if (fontName !== undefined && /^(?:[A-Z]{6}\+)?Wingdings(?:-|$)/iu.test(fontName)) {
+  if (
+    fontName !== undefined &&
+    /^(?:[A-Z]{6}\+)?Wingdings(?:-|$)/iu.test(fontName)
+  ) {
     return text.replaceAll("¨", "\uf0a8");
   }
   return text;
@@ -101,7 +115,11 @@ const extractFirstFont = (lineContent: string): LineFont => {
   };
 };
 
-type ParsedChars = { text: string; inkBbox: Bbox | null; baselinePt: number | null };
+type ParsedChars = {
+  text: string;
+  inkBbox: Bbox | null;
+  baselinePt: number | null;
+};
 
 /** Reconstruct line text from `<char c="...">` elements (reading order) and
  * compute the ink bbox as the union of the NON-whitespace chars' quads. The
@@ -187,7 +205,8 @@ const parseLines = (pageContent: string): LineBox[] => {
 
     const { text: charText, inkBbox, baselinePt } = parseChars(lineContent);
     const font = extractFirstFont(lineContent);
-    const extractedText = charText !== "" ? charText : (extractAttr(lineAttrs, "text") ?? "");
+    const extractedText =
+      charText !== "" ? charText : (extractAttr(lineAttrs, "text") ?? "");
     const text = normalizeFontEncodedText(extractedText, font.name);
     const bbox = inkBbox ?? lineBbox;
     if (bbox === null) continue;

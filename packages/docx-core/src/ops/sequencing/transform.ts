@@ -2,11 +2,13 @@ import { panic, Result } from "better-result";
 
 import {
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   INHERIT_RUN_PROPS,
   SPLIT_HALVES,
-  type DocumentOp,
   type TextPosition,
 } from "../types";
+import { captureDocumentOp, restoreDocumentOp } from "../wire";
+import { sameStory } from "./address";
 import {
   BATCH_REJECTION_REASONS,
   BatchRejection,
@@ -14,8 +16,6 @@ import {
   type SequencedBatch,
   type SequencedOpEffect,
 } from "./envelope";
-import { sameStory } from "./address";
-import { captureDocumentOp, restoreDocumentOp } from "../wire";
 
 type TransformOptions = { order?: "before" | "after" };
 
@@ -79,7 +79,10 @@ const operationStory = (op: DocumentOp) => {
 };
 
 type ParagraphAddress = Pick<TextPosition, "story" | "blockId">;
-const sameParagraph = (left: ParagraphAddress, right: ParagraphAddress): boolean =>
+const sameParagraph = (
+  left: ParagraphAddress,
+  right: ParagraphAddress,
+): boolean =>
   sameStory(left.story, right.story) && left.blockId === right.blockId;
 
 const targets = (op: DocumentOp): readonly string[] | undefined => {
@@ -95,7 +98,10 @@ const targets = (op: DocumentOp): readonly string[] | undefined => {
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
       return [op.blockId, op.nextBlockId];
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
-      return [op.at.blockId, ...op.blocks.flatMap((p) => (p.paraId ? [p.paraId] : []))];
+      return [
+        op.at.blockId,
+        ...op.blocks.flatMap((p) => (p.paraId ? [p.paraId] : [])),
+      ];
     default:
       return undefined;
   }
@@ -104,7 +110,11 @@ const targets = (op: DocumentOp): readonly string[] | undefined => {
 const independent = (a: DocumentOp, b: DocumentOp): boolean => {
   const left = targets(a);
   const right = targets(b);
-  return left !== undefined && right !== undefined && !left.some((id) => right.includes(id));
+  return (
+    left !== undefined &&
+    right !== undefined &&
+    !left.some((id) => right.includes(id))
+  );
 };
 
 const refusal = (op: DocumentOp, over: DocumentOp, message: string) =>
@@ -139,10 +149,18 @@ const transformRestoredOp = ({
     );
   if (!sameStory(story, overStory)) return Result.ok([op]);
   if (independent(op, over)) return Result.ok([op]);
-  if (effect?.type === "touchedBlocks" && op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION) {
+  if (
+    effect?.type === "touchedBlocks" &&
+    op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION
+  ) {
     const addressed = targets(op);
-    if (addressed && addressed.every((id) => !effect.blockIds.includes(id))) return Result.ok([op]);
-    return refusal(op, over, "The operation targets a structurally changed block.");
+    if (addressed && addressed.every((id) => !effect.blockIds.includes(id)))
+      return Result.ok([op]);
+    return refusal(
+      op,
+      over,
+      "The operation targets a structurally changed block.",
+    );
   }
   if (
     op.type === DOCUMENT_OP_TYPES.RESOLVE_REVISION &&
@@ -176,7 +194,8 @@ const transformRestoredOp = ({
     }
     if (order === "before") {
       const patch = { ...op.patch };
-      for (const key of Object.keys(over.patch)) Reflect.deleteProperty(patch, key);
+      for (const key of Object.keys(over.patch))
+        Reflect.deleteProperty(patch, key);
       return Result.ok([{ ...op, patch }]);
     }
     return Result.ok([op]);
@@ -205,20 +224,30 @@ const transformRestoredOp = ({
   ) {
     if (op.at.type !== over.at.type || op.at.blockId !== over.at.blockId)
       return refusal(op, over, "Overlapping block insertion identities.");
-    if ((order === "before") === (op.at.type === "after")) return Result.ok([op]);
-    const anchor = op.at.type === "after" ? over.blocks.at(-1) : over.blocks.at(0);
-    if (!anchor?.paraId) return refusal(op, over, "Inserted paragraph has no identity.");
-    return Result.ok([{ ...op, at: { type: op.at.type, blockId: anchor.paraId } }]);
+    if ((order === "before") === (op.at.type === "after"))
+      return Result.ok([op]);
+    const anchor =
+      op.at.type === "after" ? over.blocks.at(-1) : over.blocks.at(0);
+    if (!anchor?.paraId)
+      return refusal(op, over, "Inserted paragraph has no identity.");
+    return Result.ok([
+      { ...op, at: { type: op.at.type, blockId: anchor.paraId } },
+    ]);
   }
   if (
     op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS &&
     over.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS
   ) {
     if (op.expected || over.expected || op.revision || over.revision)
-      return refusal(op, over, "Tracked or conditional run properties need an unchanged range.");
+      return refusal(
+        op,
+        over,
+        "Tracked or conditional run properties need an unchanged range.",
+      );
     if (
       Object.keys(op.patch).some((key) => key in over.patch) &&
-      Math.max(op.from.offset, over.from.offset) < Math.min(op.to.offset, over.to.offset) &&
+      Math.max(op.from.offset, over.from.offset) <
+        Math.min(op.to.offset, over.to.offset) &&
       (op.from.offset !== over.from.offset || op.to.offset !== over.to.offset)
     )
       return refusal(
@@ -226,11 +255,18 @@ const transformRestoredOp = ({
         over,
         "Partially overlapping competing keys require captured run boundaries.",
       );
-    if (order === "before" && Object.keys(op.patch).some((key) => key in over.patch)) {
-      if (Math.max(op.from.offset, over.from.offset) >= Math.min(op.to.offset, over.to.offset))
+    if (
+      order === "before" &&
+      Object.keys(op.patch).some((key) => key in over.patch)
+    ) {
+      if (
+        Math.max(op.from.offset, over.from.offset) >=
+        Math.min(op.to.offset, over.to.offset)
+      )
         return Result.ok([op]);
       const patch = { ...op.patch };
-      for (const key of Object.keys(over.patch)) Reflect.deleteProperty(patch, key);
+      for (const key of Object.keys(over.patch))
+        Reflect.deleteProperty(patch, key);
       return Result.ok(Object.keys(patch).length > 0 ? [{ ...op, patch }] : []);
     }
     return Result.ok([op]);
@@ -244,19 +280,26 @@ const transformRestoredOp = ({
     return refusal(op, over, "This operation pair has no position transform.");
   }
   if (
-    (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && (op.expected || op.join !== undefined)) ||
+    (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+      (op.expected || op.join !== undefined)) ||
     (op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS &&
       (op.expected || op.joinStart !== undefined || op.joinEnd !== undefined))
   ) {
     let outside = false;
     if (over.type === DOCUMENT_OP_TYPES.INSERT_TEXT) {
-      outside = over.at.offset < op.from.offset || over.at.offset > op.to.offset;
+      outside =
+        over.at.offset < op.from.offset || over.at.offset > op.to.offset;
     }
     if (over.type === DOCUMENT_OP_TYPES.DELETE_RANGE) {
-      outside = over.to.offset < op.from.offset || over.from.offset > op.to.offset;
+      outside =
+        over.to.offset < op.from.offset || over.from.offset > op.to.offset;
     }
     if (!outside)
-      return refusal(op, over, "Structural inverse preconditions require an unchanged range.");
+      return refusal(
+        op,
+        over,
+        "Structural inverse preconditions require an unchanged range.",
+      );
   }
   if (
     op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS &&
@@ -265,7 +308,11 @@ const transformRestoredOp = ({
     over.at.offset >= op.from.offset &&
     over.at.offset <= op.to.offset
   )
-    return refusal(op, over, "Explicit inserted formatting needs a range partition.");
+    return refusal(
+      op,
+      over,
+      "Explicit inserted formatting needs a range partition.",
+    );
   if (
     op.type === DOCUMENT_OP_TYPES.INSERT_TEXT &&
     over.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS &&
@@ -273,7 +320,11 @@ const transformRestoredOp = ({
     op.at.offset >= over.from.offset &&
     op.at.offset <= over.to.offset
   )
-    return refusal(op, over, "Explicit inserted formatting needs a range partition.");
+    return refusal(
+      op,
+      over,
+      "Explicit inserted formatting needs a range partition.",
+    );
   if (
     over.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
     over.revision &&
@@ -281,7 +332,11 @@ const transformRestoredOp = ({
     op.at.offset > over.from.offset &&
     op.at.offset < over.to.offset
   )
-    return refusal(op, over, "Insertion inside tracked-deleted content requires wrapper affinity.");
+    return refusal(
+      op,
+      over,
+      "Insertion inside tracked-deleted content requires wrapper affinity.",
+    );
   if (
     op.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
     op.revision &&
@@ -289,10 +344,15 @@ const transformRestoredOp = ({
     over.at.offset > op.from.offset &&
     over.at.offset < op.to.offset
   )
-    return refusal(op, over, "Tracking a concurrent insertion requires a revision partition.");
+    return refusal(
+      op,
+      over,
+      "Tracking a concurrent insertion requires a revision partition.",
+    );
   if (
     over.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
-    ((over.from.zeroWidthBefore ?? 0) !== 0 || (over.to.zeroWidthBefore ?? 0) !== 0)
+    ((over.from.zeroWidthBefore ?? 0) !== 0 ||
+      (over.to.zeroWidthBefore ?? 0) !== 0)
   ) {
     return refusal(
       op,
@@ -307,8 +367,11 @@ const transformRestoredOp = ({
     if (over.type === DOCUMENT_OP_TYPES.INSERT_TEXT) {
       if (!sameParagraph(point, over.at)) return point;
       const shift =
-        point.offset > over.at.offset || (point.offset === over.at.offset && order === "after");
-      return shift ? { ...point, offset: point.offset + over.text.length } : point;
+        point.offset > over.at.offset ||
+        (point.offset === over.at.offset && order === "after");
+      return shift
+        ? { ...point, offset: point.offset + over.text.length }
+        : point;
     }
     if (over.type === DOCUMENT_OP_TYPES.DELETE_RANGE) {
       if (!sameParagraph(point, over.from)) return point;
@@ -324,15 +387,24 @@ const transformRestoredOp = ({
         offset:
           point.offset <= over.from.offset
             ? point.offset
-            : Math.max(over.from.offset, point.offset - (over.to.offset - over.from.offset)),
+            : Math.max(
+                over.from.offset,
+                point.offset - (over.to.offset - over.from.offset),
+              ),
       };
     }
     if (over.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK) {
       if (!sameParagraph(point, over.at)) return point;
       const half =
         over.newHalf ??
-        (effect?.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK ? effect.newHalf : undefined);
-      if (!half || (point.zeroWidthBefore ?? 0) !== 0 || (over.at.zeroWidthBefore ?? 0) !== 0)
+        (effect?.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK
+          ? effect.newHalf
+          : undefined);
+      if (
+        !half ||
+        (point.zeroWidthBefore ?? 0) !== 0 ||
+        (over.at.zeroWidthBefore ?? 0) !== 0
+      )
         return undefined;
       const second =
         point.offset > over.at.offset ||
@@ -341,7 +413,10 @@ const transformRestoredOp = ({
           (op.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK || order === "after"));
       return {
         ...point,
-        blockId: second === (half === SPLIT_HALVES.SECOND) ? over.newBlockId : over.at.blockId,
+        blockId:
+          second === (half === SPLIT_HALVES.SECOND)
+            ? over.newBlockId
+            : over.at.blockId,
         offset: second ? point.offset - over.at.offset : point.offset,
       };
     }
@@ -353,21 +428,35 @@ const transformRestoredOp = ({
         return point;
       if (over.revision) return point;
       const length =
-        effect?.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS ? effect.firstLength : undefined;
+        effect?.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS
+          ? effect.firstLength
+          : undefined;
       if (length === undefined) return undefined;
-      const survivor = over.survivor === SPLIT_HALVES.FIRST ? over.blockId : over.nextBlockId;
+      const survivor =
+        over.survivor === SPLIT_HALVES.FIRST ? over.blockId : over.nextBlockId;
       return {
         ...point,
         blockId: survivor,
-        offset: point.offset + (point.blockId === over.nextBlockId ? length : 0),
+        offset:
+          point.offset + (point.blockId === over.nextBlockId ? length : 0),
       };
     }
     if (over.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS) return point;
     return undefined;
   };
-  if (op.type === DOCUMENT_OP_TYPES.INSERT_TEXT || op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK) {
-    if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK && over.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS)
-      return refusal(op, over, "Splitting a joined boundary requires an exclusive edit.");
+  if (
+    op.type === DOCUMENT_OP_TYPES.INSERT_TEXT ||
+    op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK
+  ) {
+    if (
+      op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK &&
+      over.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS
+    )
+      return refusal(
+        op,
+        over,
+        "Splitting a joined boundary requires an exclusive edit.",
+      );
     if (
       op.type === DOCUMENT_OP_TYPES.INSERT_TEXT &&
       over.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS &&
@@ -376,11 +465,19 @@ const transformRestoredOp = ({
       op.at.blockId === over.nextBlockId &&
       op.at.offset === 0
     )
-      return refusal(op, over, "Insertion at a retained run boundary needs explicit affinity.");
+      return refusal(
+        op,
+        over,
+        "Insertion at a retained run boundary needs explicit affinity.",
+      );
     const at = map(op.at);
     return at
       ? Result.ok([{ ...op, at }])
-      : refusal(op, over, "Position cannot be mapped without structural context.");
+      : refusal(
+          op,
+          over,
+          "Position cannot be mapped without structural context.",
+        );
   }
   // Keep a concurrent insertion out of a direct deletion, even inside its range.
   if (
@@ -391,7 +488,11 @@ const transformRestoredOp = ({
     over.at.offset < op.to.offset
   ) {
     if (op.newIds || over.revision)
-      return refusal(op, over, "Splitting this deletion requires new revision identities.");
+      return refusal(
+        op,
+        over,
+        "Splitting this deletion requires new revision identities.",
+      );
     return Result.ok([
       {
         ...op,
@@ -427,7 +528,11 @@ const transformRestoredOp = ({
   )
     to = { ...to, offset: op.to.offset };
   if (!adjustedFrom || !to)
-    return refusal(op, over, "Range cannot be mapped without structural context.");
+    return refusal(
+      op,
+      over,
+      "Range cannot be mapped without structural context.",
+    );
   if (!sameParagraph(adjustedFrom, to)) {
     if (!sameStory(adjustedFrom.story, to.story))
       return refusal(op, over, "A range cannot cross stories.");
@@ -437,19 +542,34 @@ const transformRestoredOp = ({
       op.from.offset >= over.at.offset ||
       op.to.offset <= over.at.offset
     )
-      return refusal(op, over, "Range crosses an unsupported paragraph boundary.");
-    const first = { ...op, from: adjustedFrom, to: { ...adjustedFrom, offset: over.at.offset } };
+      return refusal(
+        op,
+        over,
+        "Range crosses an unsupported paragraph boundary.",
+      );
+    const first = {
+      ...op,
+      from: adjustedFrom,
+      to: { ...adjustedFrom, offset: over.at.offset },
+    };
     const second = { ...op, from: { ...to, offset: 0 }, to };
     return Result.ok(
-      op.type === DOCUMENT_OP_TYPES.DELETE_RANGE ? [second, first] : [first, second],
+      op.type === DOCUMENT_OP_TYPES.DELETE_RANGE
+        ? [second, first]
+        : [first, second],
     );
   }
-  if (adjustedFrom.offset === to.offset && op.type === DOCUMENT_OP_TYPES.DELETE_RANGE)
+  if (
+    adjustedFrom.offset === to.offset &&
+    op.type === DOCUMENT_OP_TYPES.DELETE_RANGE
+  )
     return Result.ok([]);
   return Result.ok([{ ...op, from: adjustedFrom, to }]);
 };
 
-const restoreForTransform = (op: DocumentOp): Result<DocumentOp, BatchRejection> => {
+const restoreForTransform = (
+  op: DocumentOp,
+): Result<DocumentOp, BatchRejection> => {
   const restored = restoreDocumentOp(op);
   if (restored.isErr()) {
     return Result.err(
@@ -463,12 +583,18 @@ const restoreForTransform = (op: DocumentOp): Result<DocumentOp, BatchRejection>
   return Result.ok(restored.value);
 };
 
-const transformOp = (options: PairOptions): Result<readonly DocumentOp[], BatchRejection> => {
+const transformOp = (
+  options: PairOptions,
+): Result<readonly DocumentOp[], BatchRejection> => {
   const op = restoreForTransform(options.op);
   if (op.isErr()) return op;
   const over = restoreForTransform(options.over);
   if (over.isErr()) return over;
-  const transformed = transformRestoredOp({ ...options, op: op.value, over: over.value });
+  const transformed = transformRestoredOp({
+    ...options,
+    op: op.value,
+    over: over.value,
+  });
   if (transformed.isErr()) return transformed;
   return Result.ok(transformed.value.map(captureDocumentOp));
 };
@@ -521,7 +647,11 @@ export const transformBatch = (
         next.push(...local);
         if (opIndex === ops.length - 1) continue;
         if (remote.length > 1)
-          return refusal(op, other, "An expanded foreign deletion requires a sequence partition.");
+          return refusal(
+            op,
+            other,
+            "An expanded foreign deletion requires a sequence partition.",
+          );
         // The next local operation is addressed after this original local
         // operation. Move the foreign operation into that coordinate space.
         const reciprocal: DocumentOp[] = [];
@@ -542,7 +672,10 @@ export const transformBatch = (
             story !== undefined &&
             sameStory(story, remoteOp.story)
           ) {
-            if (op.type === DOCUMENT_OP_TYPES.INSERT_TEXT && op.at.blockId === remoteOp.blockId) {
+            if (
+              op.type === DOCUMENT_OP_TYPES.INSERT_TEXT &&
+              op.at.blockId === remoteOp.blockId
+            ) {
               remoteEffect = {
                 type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
                 firstLength: remoteEffect.firstLength + op.text.length,
@@ -556,7 +689,8 @@ export const transformBatch = (
             ) {
               remoteEffect = {
                 type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
-                firstLength: remoteEffect.firstLength - (op.to.offset - op.from.offset),
+                firstLength:
+                  remoteEffect.firstLength - (op.to.offset - op.from.offset),
               };
             }
           }
@@ -573,5 +707,9 @@ export const transformBatch = (
     if (restored.isErr()) return restored;
     captured.push(captureDocumentOp(restored.value));
   }
-  return Result.ok({ ...batch, baseRev: last?.revision ?? batch.baseRev, ops: captured });
+  return Result.ok({
+    ...batch,
+    baseRev: last?.revision ?? batch.baseRev,
+    ops: captured,
+  });
 };

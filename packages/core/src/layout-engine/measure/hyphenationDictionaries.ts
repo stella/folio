@@ -25,7 +25,8 @@ export type HyphenateWord = (text: string) => string;
 
 const HYPHENATION_DICTIONARY_IDS = ["cs", "en-gb", "en-us", "sk"] as const;
 
-export type HyphenationDictionaryId = (typeof HYPHENATION_DICTIONARY_IDS)[number];
+export type HyphenationDictionaryId =
+  (typeof HYPHENATION_DICTIONARY_IDS)[number];
 
 export type HyphenationDictionaryLoaders = Readonly<
   Record<HyphenationDictionaryId, () => Promise<HyphenateWord>>
@@ -39,9 +40,12 @@ const HYPHENATION_DICTIONARY_LOADERS = {
   sk: async () => (await import("hyphen/sk")).default.hyphenateSync,
 } as const satisfies HyphenationDictionaryLoaders;
 
-let dictionaryLoaders: HyphenationDictionaryLoaders = HYPHENATION_DICTIONARY_LOADERS;
+let dictionaryLoaders: HyphenationDictionaryLoaders =
+  HYPHENATION_DICTIONARY_LOADERS;
 
-export class HyphenationDictionaryError extends TaggedError("HyphenationDictionaryError")<{
+export class HyphenationDictionaryError extends TaggedError(
+  "HyphenationDictionaryError",
+)<{
   message: string;
   dictionary: HyphenationDictionaryId;
   cause: unknown;
@@ -55,10 +59,16 @@ export type SettledHyphenationDictionary =
 
 type HyphenationDictionaryState =
   | Readonly<{ status: "unloaded" }>
-  | Readonly<{ status: "loading"; promise: Promise<SettledHyphenationDictionary> }>
+  | Readonly<{
+      status: "loading";
+      promise: Promise<SettledHyphenationDictionary>;
+    }>
   | SettledHyphenationDictionary;
 
-const createInitialStates = (): Record<HyphenationDictionaryId, HyphenationDictionaryState> => ({
+const createInitialStates = (): Record<
+  HyphenationDictionaryId,
+  HyphenationDictionaryState
+> => ({
   cs: { status: "unloaded" },
   "en-gb": { status: "unloaded" },
   "en-us": { status: "unloaded" },
@@ -95,13 +105,17 @@ export const hyphenationDictionaryFor = (
 };
 
 /** Changes whenever a dictionary finishes loading, so measurement caches cannot go stale. */
-export const getHyphenationDictionaryGeneration = (): number => dictionaryGeneration;
+export const getHyphenationDictionaryGeneration = (): number =>
+  dictionaryGeneration;
 
 const importDictionary = (
   dictionary: HyphenationDictionaryId,
 ): Promise<SettledHyphenationDictionary> =>
   dictionaryLoaders[dictionary]().then(
-    (hyphenate): SettledHyphenationDictionary => ({ status: "loaded", hyphenate }),
+    (hyphenate): SettledHyphenationDictionary => ({
+      status: "loaded",
+      hyphenate,
+    }),
     (cause: unknown): SettledHyphenationDictionary => ({
       status: "failed",
       error: new HyphenationDictionaryError({
@@ -112,7 +126,9 @@ const importDictionary = (
     }),
   );
 
-const startLoad = (dictionary: HyphenationDictionaryId): Promise<SettledHyphenationDictionary> => {
+const startLoad = (
+  dictionary: HyphenationDictionaryId,
+): Promise<SettledHyphenationDictionary> => {
   const promise = importDictionary(dictionary).then((settled) => {
     // A reset (tests) while the import was in flight owns the state now.
     if (dictionaryStates[dictionary].status !== "loading") {

@@ -17,7 +17,10 @@ export const RtlExtension = createMarkExtension({
         // HTML's `dir` attribute is case-insensitive; ProseMirror may also hand
         // us a tag-string in some pipelines, so guard before reading attrs.
         getAttrs: (dom) =>
-          typeof dom !== "string" && dom.getAttribute("dir")?.toLowerCase() === "rtl" ? {} : false,
+          typeof dom !== "string" &&
+          dom.getAttribute("dir")?.toLowerCase() === "rtl"
+            ? {}
+            : false,
       },
     ],
     toDOM() {

@@ -22,7 +22,6 @@
  */
 
 import { createNodeExtension } from "../create";
-
 import {
   bookmarkBoundaryAttrSpec,
   bookmarkBoundaryDomAttributes,

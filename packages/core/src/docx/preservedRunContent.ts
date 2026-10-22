@@ -1,4 +1,4 @@
-import { sliceText } from "../utils/sliceText";
+import type { PreservedInline, PreservedXmlContent } from "../types/document";
 /**
  * The run-level arm of the verbatim sink.
  *
@@ -15,9 +15,7 @@ import { sliceText } from "../utils/sliceText";
  * visible text alongside the markup and text extraction, markdown and layout
  * keep working.
  */
-
-import type { PreservedInline, PreservedXmlContent } from "../types/document";
-
+import { sliceText } from "../utils/sliceText";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   findChildrenByLocalName,
@@ -44,7 +42,10 @@ const MAX_PRESERVED_TEXT_LENGTH = 100_000;
 
 const collectTextContent = (element: XmlElement, into: string[]): void => {
   for (const child of getChildElements(element)) {
-    if (getLocalName(child.name) === "t" || getLocalName(child.name) === "delText") {
+    if (
+      getLocalName(child.name) === "t" ||
+      getLocalName(child.name) === "delText"
+    ) {
       into.push(getTextContent(child));
       continue;
     }
@@ -68,7 +69,11 @@ export const preservedRunChildText = (element: XmlElement): string => {
       collectTextContent(source, parts);
     }
   }
-  return sliceText({ text: parts.join(""), units: "codeUnits", end: MAX_PRESERVED_TEXT_LENGTH });
+  return sliceText({
+    text: parts.join(""),
+    units: "codeUnits",
+    end: MAX_PRESERVED_TEXT_LENGTH,
+  });
 };
 
 /**
@@ -133,6 +138,10 @@ export const preserveInlineChild = (element: XmlElement): PreservedInline => {
   return {
     type: "preservedInline",
     xml: captureVerbatimXml(element),
-    text: sliceText({ text: parts.join(""), units: "codeUnits", end: MAX_PRESERVED_TEXT_LENGTH }),
+    text: sliceText({
+      text: parts.join(""),
+      units: "codeUnits",
+      end: MAX_PRESERVED_TEXT_LENGTH,
+    }),
   };
 };

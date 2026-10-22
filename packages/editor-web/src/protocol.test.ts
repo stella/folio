@@ -11,13 +11,21 @@ const document = {
 
 /** One of every host message; `satisfies` keeps the list honest as the union grows. */
 const HOST_MESSAGES = {
-  load: { type: "load", document, author: "Ada", mode: "editing", locale: "cs" },
+  load: {
+    type: "load",
+    document,
+    author: "Ada",
+    mode: "editing",
+    locale: "cs",
+  },
   reload: { type: "reload", document },
   serialize: { type: "serialize", requestId: 7 },
   undo: { type: "undo" },
   redo: { type: "redo" },
   setMode: { type: "setMode", mode: "suggesting" },
-} as const satisfies { [Type in HostMessage["type"]]: Extract<HostMessage, { type: Type }> };
+} as const satisfies {
+  [Type in HostMessage["type"]]: Extract<HostMessage, { type: Type }>;
+};
 
 const EDITOR_MESSAGES = {
   ready: { type: "ready" },
@@ -35,7 +43,9 @@ const EDITOR_MESSAGES = {
   },
   serializeFailed: { type: "serializeFailed", requestId: 7, message: "Failed" },
   error: { type: "error", message: "Font failed to load" },
-} as const satisfies { [Type in EditorMessage["type"]]: Extract<EditorMessage, { type: Type }> };
+} as const satisfies {
+  [Type in EditorMessage["type"]]: Extract<EditorMessage, { type: Type }>;
+};
 
 describe("isHostMessage", () => {
   test("accepts every host message", () => {
@@ -67,7 +77,10 @@ describe("isEditorMessage", () => {
       expect(isEditorMessage(message)).toBe(true);
     }
     expect(
-      isEditorMessage({ ...EDITOR_MESSAGES.serialized, strategy: { type: "selective-first" } }),
+      isEditorMessage({
+        ...EDITOR_MESSAGES.serialized,
+        strategy: { type: "selective-first" },
+      }),
     ).toBe(true);
   });
 
@@ -78,7 +91,10 @@ describe("isEditorMessage", () => {
       { type: "modeChanged", mode: "edit" },
       { ...EDITOR_MESSAGES.serialized, bytes: new ArrayBuffer(2) },
       { ...EDITOR_MESSAGES.serialized, strategy: { type: "full-repack" } },
-      { ...EDITOR_MESSAGES.serialized, strategy: { type: "full-repack", reason: "hunch" } },
+      {
+        ...EDITOR_MESSAGES.serialized,
+        strategy: { type: "full-repack", reason: "hunch" },
+      },
       { type: "serializeFailed", requestId: 7 },
     ]) {
       expect(isEditorMessage(message)).toBe(false);

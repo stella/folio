@@ -14,7 +14,10 @@ import { randomBytes } from "node:crypto";
 
 export const createNonce = (): string => randomBytes(18).toString("base64");
 
-export const editorContentSecurityPolicy = (nonce: string, cspSource: string): string =>
+export const editorContentSecurityPolicy = (
+  nonce: string,
+  cspSource: string,
+): string =>
   [
     "default-src 'none'",
     `script-src 'nonce-${nonce}' ${cspSource}`,
@@ -89,7 +92,9 @@ export const editorShellHtml = ({
     `<link rel="stylesheet" href="${escapeAttribute(styleUri)}">`,
     "</head><body>",
     ...(testMode
-      ? [`<script nonce="${escapeAttribute(nonce)}">${EDITOR_TEST_SCRIPT}</script>`]
+      ? [
+          `<script nonce="${escapeAttribute(nonce)}">${EDITOR_TEST_SCRIPT}</script>`,
+        ]
       : []),
     `<script nonce="${escapeAttribute(nonce)}" src="${escapeAttribute(scriptUri)}"></script>`,
     "</body></html>",

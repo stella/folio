@@ -26,7 +26,10 @@ const ATOM_FIXTURES = [
 const marked = (doc: PMNode, nodeType: string, markType: string): boolean => {
   let found = false;
   doc.descendants((node) => {
-    if (node.type.name === nodeType && node.marks.some(({ type }) => type.name === markType)) {
+    if (
+      node.type.name === nodeType &&
+      node.marks.some(({ type }) => type.name === markType)
+    ) {
       found = true;
     }
     return !found;
@@ -69,7 +72,9 @@ describe("suggestion mode uses tracked-run atom ownership", () => {
     test(`catch-all marks an inserted ${name}`, () => {
       const plugin = createSuggestionModePlugin(true, "Reviewer");
       let state = EditorState.create({
-        doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("ab")])]),
+        doc: schema.node("doc", null, [
+          schema.node("paragraph", null, [schema.text("ab")]),
+        ]),
         plugins: [plugin],
       });
 
@@ -81,10 +86,14 @@ describe("suggestion mode uses tracked-run atom ownership", () => {
     test(`paste marks an inserted ${name}`, () => {
       const plugin = createSuggestionModePlugin(true, "Reviewer");
       let state = EditorState.create({
-        doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("x")])]),
+        doc: schema.node("doc", null, [
+          schema.node("paragraph", null, [schema.text("x")]),
+        ]),
         plugins: [plugin],
       });
-      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 2)));
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, 1, 2)),
+      );
       const view = fakeView(state);
       const pluginState = suggestionModeKey.getState(state);
       expect(pluginState).toBeDefined();
@@ -100,16 +109,27 @@ describe("suggestion mode uses tracked-run atom ownership", () => {
         ),
       ).toBe(true);
 
-      expect(marked(view.state.doc, create().type.name, "insertion")).toBe(true);
+      expect(marked(view.state.doc, create().type.name, "insertion")).toBe(
+        true,
+      );
     });
 
     test(`selection deletion marks a ${name}`, () => {
       const plugin = createSuggestionModePlugin(true, "Reviewer");
-      let state = EditorState.create({ doc: documentWithAtom(create()), plugins: [plugin] });
-      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2, 3)));
+      let state = EditorState.create({
+        doc: documentWithAtom(create()),
+        plugins: [plugin],
+      });
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, 2, 3)),
+      );
       const view = fakeView(state);
 
-      const handled = plugin.props.handleKeyDown?.call(plugin, editorView(view), backspaceEvent());
+      const handled = plugin.props.handleKeyDown?.call(
+        plugin,
+        editorView(view),
+        backspaceEvent(),
+      );
 
       expect(handled).toBe(true);
       expect(marked(view.state.doc, create().type.name, "deletion")).toBe(true);
@@ -117,11 +137,20 @@ describe("suggestion mode uses tracked-run atom ownership", () => {
 
     test(`single deletion marks a ${name}`, () => {
       const plugin = createSuggestionModePlugin(true, "Reviewer");
-      let state = EditorState.create({ doc: documentWithAtom(create()), plugins: [plugin] });
-      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 3)));
+      let state = EditorState.create({
+        doc: documentWithAtom(create()),
+        plugins: [plugin],
+      });
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, 3)),
+      );
       const view = fakeView(state);
 
-      const handled = plugin.props.handleKeyDown?.call(plugin, editorView(view), backspaceEvent());
+      const handled = plugin.props.handleKeyDown?.call(
+        plugin,
+        editorView(view),
+        backspaceEvent(),
+      );
 
       expect(handled).toBe(true);
       expect(marked(view.state.doc, create().type.name, "deletion")).toBe(true);

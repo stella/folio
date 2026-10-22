@@ -9,14 +9,23 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { createPageComposer } from "./regions";
-import { walkRegions } from "../primitives";
-import { BLACK } from "../primitives";
+import { BLACK, walkRegions } from "../primitives";
 import type { DisplayHitRegion, DisplayPrimitive } from "../types";
+import { createPageComposer } from "./regions";
 
-const rect = (xPx: number): DisplayRectLike => ({ xPx, yPx: 0, widthPx: 10, heightPx: 10 });
+const rect = (xPx: number): DisplayRectLike => ({
+  xPx,
+  yPx: 0,
+  widthPx: 10,
+  heightPx: 10,
+});
 
-type DisplayRectLike = { xPx: number; yPx: number; widthPx: number; heightPx: number };
+type DisplayRectLike = {
+  xPx: number;
+  yPx: number;
+  widthPx: number;
+  heightPx: number;
+};
 
 const primitive = (xPx: number): DisplayPrimitive => ({
   kind: "rect",
@@ -55,7 +64,11 @@ describe("a page's regions index its primitives", () => {
     const regions = composer.regions();
     expect(regions).toHaveLength(1);
     expect(regions.at(0)).toMatchObject({ kind: "paragraph", from: 1, to: 5 });
-    expect(regions.at(0)?.children.at(0)).toMatchObject({ kind: "line", from: 2, to: 4 });
+    expect(regions.at(0)?.children.at(0)).toMatchObject({
+      kind: "line",
+      from: 2,
+      to: 4,
+    });
   });
 
   test("a walk yields every primitive once, in paint order", () => {
@@ -71,9 +84,19 @@ describe("a page's regions index its primitives", () => {
     });
     composer.push([primitive(3)]);
 
-    const { order, entered } = walked(composer.primitives(), composer.regions());
+    const { order, entered } = walked(
+      composer.primitives(),
+      composer.regions(),
+    );
     expect(order).toEqual([0, 1, 2, 3]);
-    expect(entered).toEqual(["+paragraph", "+line", "-line", "+line", "-line", "-paragraph"]);
+    expect(entered).toEqual([
+      "+paragraph",
+      "+line",
+      "-line",
+      "+line",
+      "-line",
+      "-paragraph",
+    ]);
   });
 
   test("a region that painted nothing still bounds a click", () => {
@@ -82,7 +105,11 @@ describe("a page's regions index its primitives", () => {
       // A paragraph with no text paints nothing and still takes a caret.
     });
 
-    expect(composer.regions().at(0)).toMatchObject({ kind: "emptyRun", from: 0, to: 0 });
+    expect(composer.regions().at(0)).toMatchObject({
+      kind: "emptyRun",
+      from: 0,
+      to: 0,
+    });
     expect(walked(composer.primitives(), composer.regions()).order).toEqual([]);
   });
 

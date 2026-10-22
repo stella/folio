@@ -35,8 +35,7 @@ original work against the OOXML spec and the existing folio code.
 
 ## WI-1: `ensureParaIds` (implemented)
 
-`ensureParaIds(docx: Uint8Array | ArrayBuffer) -> Promise<{ docx: Uint8Array,
-assigned, deduplicated, alreadyComplete }>`. Hosts call it once at
+`ensureParaIds(docx: Uint8Array | ArrayBuffer) -> Promise<{ docx: Uint8Array, assigned, deduplicated, alreadyComplete }>`. Hosts call it once at
 ingest/upload, before deriving or storing any block anchors, so every stored
 working version has full ID coverage. Word 2010+ writes
 paraIds; Google Docs exports, LibreOffice, and python-docx/docx4j output
@@ -144,8 +143,8 @@ ever needed for UI purposes, it must be clearly non-persistent.
 For downstream per-block blame (host-side, keyed by entity + paraId + author
 
 - timestamp), folio needs to report which blocks a change touched.
-  `applyAIEditOperations` / `applyDocumentOperations` return `{ applied,
-  skipped }` where each applied entry carries `revisionIds` (note: nested per
+  `applyAIEditOperations` / `applyDocumentOperations` return
+  `{ applied, skipped }` where each applied entry carries `revisionIds` (note: nested per
   entry, not top-level). Design: extend each applied entry with the affected
   `blockIds` (paragraph-granular), and add a ref method returning paraIds
   touched since a given snapshot. Implement when the host blame schema lands;

@@ -29,7 +29,10 @@ const documentWith = (content: Paragraph["content"]): Document => {
   };
 };
 
-const markNamesOverText = (content: Paragraph["content"], text: string): string[] => {
+const markNamesOverText = (
+  content: Paragraph["content"],
+  text: string,
+): string[] => {
   const names: string[] = [];
   toProseDoc(documentWith(content)).descendants((node) => {
     if (node.isText && node.text === text) {
@@ -39,11 +42,15 @@ const markNamesOverText = (content: Paragraph["content"], text: string): string[
   return names;
 };
 
-const wrapperStackOverText = (content: Paragraph["content"], text: string): unknown => {
+const wrapperStackOverText = (
+  content: Paragraph["content"],
+  text: string,
+): unknown => {
   let stack: unknown;
   toProseDoc(documentWith(content)).descendants((node) => {
     if (node.isText && node.text === text) {
-      stack = node.marks.find((mark) => mark.type.name === "inlineWrapper")?.attrs["stack"];
+      stack = node.marks.find((mark) => mark.type.name === "inlineWrapper")
+        ?.attrs["stack"];
     }
   });
   return stack;

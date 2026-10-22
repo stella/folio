@@ -11,19 +11,25 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../../test/property-testing";
 import { HyperlinkExtension } from "./HyperlinkExtension";
 
 const ALLOWED_TARGETS = ["_blank", "_self", "_parent", "_top"];
 
 /** `getAttrs` reads attributes and nothing else, so this stands in for a pasted anchor. */
 const pastedAnchor = (attrs: Record<string, string>): HTMLElement =>
-  ({ getAttribute: (name: string) => attrs[name] ?? null }) as unknown as HTMLElement;
+  ({
+    getAttribute: (name: string) => attrs[name] ?? null,
+  }) as unknown as HTMLElement;
 
 const markSpec = HyperlinkExtension().config.markSpec;
 
-const renderedAnchorAttrs = (attrs: Record<string, unknown>): Record<string, string> => {
+const renderedAnchorAttrs = (
+  attrs: Record<string, unknown>,
+): Record<string, string> => {
   const toDOM = markSpec.toDOM;
   if (!toDOM) {
     throw new Error("HyperlinkExtension must define toDOM");
@@ -38,7 +44,14 @@ const renderedAnchorAttrs = (attrs: Record<string, unknown>): Record<string, str
 
 const frameArbitrary = fc.oneof(
   fc.constantFrom(...ALLOWED_TARGETS),
-  fc.constantFrom("_top ", "topFrame", "__proto__", "javascript:alert(1)", "", "MainWindow"),
+  fc.constantFrom(
+    "_top ",
+    "topFrame",
+    "__proto__",
+    "javascript:alert(1)",
+    "",
+    "MainWindow",
+  ),
   fc.string({ maxLength: 24 }),
 );
 
@@ -49,14 +62,20 @@ describe("hyperlink anchors (property)", () => {
       fc.assert(
         fc.property(frameArbitrary, fc.webUrl(), (frame, href) => {
           // Authored: a frame the parser kept verbatim off `w:tgtFrame`.
-          const authored = renderedAnchorAttrs({ href, tooltip: null, target: frame });
+          const authored = renderedAnchorAttrs({
+            href,
+            tooltip: null,
+            target: frame,
+          });
           // Pasted: an anchor carrying its own `target` through `parseDOM`.
           const pastedAttrs = markSpec.parseDOM?.[0]?.getAttrs?.(
             pastedAnchor({ href, target: frame }),
           );
           const pasted = renderedAnchorAttrs({
             tooltip: null,
-            ...(pastedAttrs === false || pastedAttrs === null || pastedAttrs === undefined
+            ...(pastedAttrs === false ||
+            pastedAttrs === null ||
+            pastedAttrs === undefined
               ? { href }
               : pastedAttrs),
           });
@@ -67,7 +86,9 @@ describe("hyperlink anchors (property)", () => {
             target: frame,
             rel: "",
           });
-          const expectedTarget = ALLOWED_TARGETS.includes(frame) ? frame : "_blank";
+          const expectedTarget = ALLOWED_TARGETS.includes(frame)
+            ? frame
+            : "_blank";
 
           for (const anchor of [authored, pasted, collaborated]) {
             expect(anchor["target"]).toBe(expectedTarget);

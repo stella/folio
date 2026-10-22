@@ -10,7 +10,10 @@ import { fileURLToPath } from "node:url";
  * (scripts/consumer-scenarios.ts) under CI.
  */
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 let cachedSha: string | null | undefined;
 

@@ -19,21 +19,21 @@ const limits = {
 
 describe("assertXmlResourceLimits", () => {
   test("counts UTF-8 bytes rather than JavaScript code units", () => {
-    expect(() => assertXmlResourceLimits({ xml: "é", limits: { ...limits, maxBytes: 1 } })).toThrow(
-      XmlResourceLimitError,
-    );
+    expect(() =>
+      assertXmlResourceLimits({ xml: "é", limits: { ...limits, maxBytes: 1 } }),
+    ).toThrow(XmlResourceLimitError);
   });
 
   test("rejects excessive element count before parsing", () => {
-    expect(() => assertXmlResourceLimits({ xml: "<root><a/><b/><c/><d/></root>", limits })).toThrow(
-      XmlResourceLimitError,
-    );
+    expect(() =>
+      assertXmlResourceLimits({ xml: "<root><a/><b/><c/><d/></root>", limits }),
+    ).toThrow(XmlResourceLimitError);
   });
 
   test("rejects excessive nesting before recursive tree conversion", () => {
-    expect(() => assertXmlResourceLimits({ xml: "<a><b><c><d/></c></b></a>", limits })).toThrow(
-      XmlResourceLimitError,
-    );
+    expect(() =>
+      assertXmlResourceLimits({ xml: "<a><b><c><d/></c></b></a>", limits }),
+    ).toThrow(XmlResourceLimitError);
   });
 
   test("ignores markup-like content in comments, CDATA, and quoted attributes", () => {
@@ -49,12 +49,17 @@ describe("assertXmlResourceLimits", () => {
     // One element, many attributes: an element budget alone leaves this
     // unbounded, and each attribute retains roughly 18 bytes of tree.
     expect(() =>
-      assertXmlResourceLimits({ xml: `<root a="1" b="2" c="3" d="4" e="5"/>`, limits }),
+      assertXmlResourceLimits({
+        xml: `<root a="1" b="2" c="3" d="4" e="5"/>`,
+        limits,
+      }),
     ).toThrow(XmlResourceLimitError);
   });
 
   test("does not count an `=` inside a quoted attribute value", () => {
-    expect(() => assertXmlResourceLimits({ xml: `<root a="x=y=z=w=v=u"/>`, limits })).not.toThrow();
+    expect(() =>
+      assertXmlResourceLimits({ xml: `<root a="x=y=z=w=v=u"/>`, limits }),
+    ).not.toThrow();
   });
 
   test("reports the part path, the count reached, and the bound", () => {
@@ -81,11 +86,20 @@ describe("assertXmlResourceLimits", () => {
     const part = "<root><a/><b/></root>";
     // Three elements a part, six allowed a package: the third part is refused
     // although no part on its own comes near the per-part bound of four.
-    expect(() => assertXmlResourceLimits({ xml: part, limits, budget })).not.toThrow();
-    expect(() => assertXmlResourceLimits({ xml: part, limits, budget })).not.toThrow();
+    expect(() =>
+      assertXmlResourceLimits({ xml: part, limits, budget }),
+    ).not.toThrow();
+    expect(() =>
+      assertXmlResourceLimits({ xml: part, limits, budget }),
+    ).not.toThrow();
     expect(budget.elements).toBe(6);
     try {
-      assertXmlResourceLimits({ xml: part, limits, budget, partPath: "word/header3.xml" });
+      assertXmlResourceLimits({
+        xml: part,
+        limits,
+        budget,
+        partPath: "word/header3.xml",
+      });
       expect.unreachable();
     } catch (error) {
       const refusal = error as XmlResourceLimitError;
@@ -98,14 +112,20 @@ describe("assertXmlResourceLimits", () => {
   test("charges the budget only for input it accepted", () => {
     const budget = createXmlPackageBudget();
     expect(() =>
-      assertXmlResourceLimits({ xml: "<root><a/><b/><c/><d/></root>", limits, budget }),
+      assertXmlResourceLimits({
+        xml: "<root><a/><b/><c/><d/></root>",
+        limits,
+        budget,
+      }),
     ).toThrow(XmlResourceLimitError);
     expect(budget.elements).toBe(0);
     expect(budget.attributes).toBe(0);
   });
 
   test("returns what it counted", () => {
-    expect(assertXmlResourceLimits({ xml: `<root x="1"><a y="2"/></root>`, limits })).toEqual({
+    expect(
+      assertXmlResourceLimits({ xml: `<root x="1"><a y="2"/></root>`, limits }),
+    ).toEqual({
       elements: 2,
       attributes: 2,
       maxDepth: 2,

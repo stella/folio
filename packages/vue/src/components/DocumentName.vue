@@ -8,7 +8,9 @@
       @input="handleInput"
       @blur="handleBlur"
     />
-    <span v-else class="doc-name__text">{{ displayName || "Untitled document" }}</span>
+    <span v-else class="doc-name__text">{{
+      displayName || "Untitled document"
+    }}</span>
   </div>
 </template>
 

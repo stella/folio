@@ -1,7 +1,12 @@
 export { reconcileDocumentPartRelationships } from "./comments";
 export { noteUsesCustomMark } from "./noteMarks";
 export { sectionPropertiesAt } from "./storyLifecycle";
-export { storyBody, findStoryBody, documentStories, sameStory } from "./stories";
+export {
+  storyBody,
+  findStoryBody,
+  documentStories,
+  sameStory,
+} from "./stories";
 /**
  * `@stll/docx-core/ops`: document operations over the typed model.
  *
@@ -29,7 +34,12 @@ export {
   applyDocumentOps,
   type AppliedDocumentOp,
 } from "./apply";
-export { formattingEquals, isTextOnlyRun, runsMergeable, mergeRunContent } from "./runMerge";
+export {
+  formattingEquals,
+  isTextOnlyRun,
+  runsMergeable,
+  mergeRunContent,
+} from "./runMerge";
 export {
   compileEditorIntent,
   createEditorIntentIdAllocator,
@@ -42,9 +52,20 @@ export {
   type TableIntentOperation,
   type EditorIntentMode,
 } from "./editorIntent";
-export { DocumentOpsContractError, normalizeForOps, validateOpsDocument } from "./contract";
-export { OBJECT_REPLACEMENT_CHARACTER, paragraphLength, paragraphLogicalText } from "./offsets";
-export { planTrackedReplace, type PlanTrackedReplaceOptions } from "./rangeReplacement";
+export {
+  DocumentOpsContractError,
+  normalizeForOps,
+  validateOpsDocument,
+} from "./contract";
+export {
+  OBJECT_REPLACEMENT_CHARACTER,
+  paragraphLength,
+  paragraphLogicalText,
+} from "./offsets";
+export {
+  planTrackedReplace,
+  type PlanTrackedReplaceOptions,
+} from "./rangeReplacement";
 export {
   BATCH_REJECTION_REASONS,
   BATCH_WIRE_OP_TYPES,

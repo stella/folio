@@ -15,7 +15,7 @@
 
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
@@ -33,25 +33,36 @@ import {
 } from "../xmlParser";
 
 const CORPUS_DIR = path.join(import.meta.dir, "__fixtures__", "corpus");
-const VISUAL_FIXTURES_DIR = path.resolve(import.meta.dir, "../../../../../tests/visual/fixtures");
+const VISUAL_FIXTURES_DIR = path.resolve(
+  import.meta.dir,
+  "../../../../../tests/visual/fixtures",
+);
 
 const CORPUS_FIXTURES: string[] = readdirSync(CORPUS_DIR)
   .filter((name) => name.endsWith(".docx"))
   .sort()
   .map((name) => path.join(CORPUS_DIR, name));
 
-const VISUAL_FIXTURES = ["sample.docx", "docx-editor-demo.docx", "podily-bps.docx"].map((name) =>
-  path.join(VISUAL_FIXTURES_DIR, name),
-);
+const VISUAL_FIXTURES = [
+  "sample.docx",
+  "docx-editor-demo.docx",
+  "podily-bps.docx",
+].map((name) => path.join(VISUAL_FIXTURES_DIR, name));
 
 const FIXTURES = [...CORPUS_FIXTURES, ...VISUAL_FIXTURES];
 
 const readFixture = (file: string): ArrayBuffer => {
   const bytes = readFileSync(file);
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 };
 
-const resolvePrefix = (scope: XmlNamespaceScope | undefined, prefix: string): boolean => {
+const resolvePrefix = (
+  scope: XmlNamespaceScope | undefined,
+  prefix: string,
+): boolean => {
   for (let current = scope; current; current = current.parent) {
     if (current.bindings.has(prefix)) {
       return true;
@@ -75,7 +86,10 @@ const namespaceDefects = (xml: string): Set<string> => {
   const visit = (element: XmlElement): void => {
     const { namespaceScope } = element;
     const elementPrefix = getNamespacePrefix(element.name ?? "");
-    if (elementPrefix !== null && !resolvePrefix(namespaceScope, elementPrefix)) {
+    if (
+      elementPrefix !== null &&
+      !resolvePrefix(namespaceScope, elementPrefix)
+    ) {
       defects.add(`unbound element prefix ${elementPrefix}`);
     }
     for (const attribute of Object.keys(element.attributes ?? {})) {
@@ -124,7 +138,9 @@ const packageDefects = async (buffer: ArrayBuffer): Promise<PartDefects> => {
 
 const roundTrip = async (original: Document): Promise<ArrayBuffer> =>
   repackDocx(
-    fromProseDoc(toProseDoc(original), original, { stylesheetSource: { type: "package" } }),
+    fromProseDoc(toProseDoc(original), original, {
+      stylesheetSource: { type: "package" },
+    }),
     { updateModifiedDate: false },
   );
 
@@ -140,7 +156,9 @@ describe("saved package namespace declarations", () => {
 
       const introduced = [...after].flatMap(([part, defects]) => {
         const known = before.get(part) ?? new Set<string>();
-        return [...defects].filter((defect) => !known.has(defect)).map((d) => `${part}: ${d}`);
+        return [...defects]
+          .filter((defect) => !known.has(defect))
+          .map((d) => `${part}: ${d}`);
       });
       expect(introduced).toEqual([]);
     },

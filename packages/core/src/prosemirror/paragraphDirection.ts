@@ -26,18 +26,23 @@
  * belongs in `w:pPr`. Use `directionToBidi` for layout/rendering and
  * `directionToAuthoredBidi` for anything that gets serialized.
  */
-export type ParagraphDirection = { source: "auto" } | { source: "manual"; value: "rtl" | "ltr" };
+export type ParagraphDirection =
+  { source: "auto" } | { source: "manual"; value: "rtl" | "ltr" };
 
 /** Whether the paragraph lays out and exports right-to-left. */
-export const directionIsRtl = (direction: ParagraphDirection | null | undefined): boolean =>
-  direction?.source === "auto" || (direction?.source === "manual" && direction.value === "rtl");
+export const directionIsRtl = (
+  direction: ParagraphDirection | null | undefined,
+): boolean =>
+  direction?.source === "auto" ||
+  (direction?.source === "manual" && direction.value === "rtl");
 
 /**
  * Auto-managed paragraphs (undecided, or previously auto-set) are the ones
  * AutoBidiDetection may (re-)evaluate. A manual decision is left untouched.
  */
-export const directionIsAutoManaged = (direction: ParagraphDirection | null | undefined): boolean =>
-  direction == null || direction.source === "auto";
+export const directionIsAutoManaged = (
+  direction: ParagraphDirection | null | undefined,
+): boolean => direction == null || direction.source === "auto";
 
 /**
  * Map a direction to the OOXML `w:bidi` tri-state for layout/rendering: an
@@ -80,7 +85,9 @@ export const directionToAuthoredBidi = (
  * Reconstruct a direction from a model `bidi` value (DOCX import / load): an
  * explicit `true`/`false` is a manual decision, absence is undecided.
  */
-export const directionFromBidi = (bidi: boolean | null | undefined): ParagraphDirection | null => {
+export const directionFromBidi = (
+  bidi: boolean | null | undefined,
+): ParagraphDirection | null => {
   if (bidi == null) {
     return null;
   }
@@ -88,7 +95,9 @@ export const directionFromBidi = (bidi: boolean | null | undefined): ParagraphDi
 };
 
 /** Runtime guard for the PM attribute validator. */
-export const isParagraphDirection = (value: unknown): value is ParagraphDirection => {
+export const isParagraphDirection = (
+  value: unknown,
+): value is ParagraphDirection => {
   if (typeof value !== "object" || value === null || !("source" in value)) {
     return false;
   }

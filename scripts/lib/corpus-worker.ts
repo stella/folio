@@ -34,7 +34,12 @@ for await (const line of console) {
         kind: "checked" as const,
         failures: [failureFromError(CORPUS_INVARIANTS.completes, bytes.error)],
         producer: "unknown",
-        cost: { bytes: 0, parseMs: 0, peakRssBytes: process.memoryUsage.rss(), referenceMs: 0 },
+        cost: {
+          bytes: 0,
+          parseMs: 0,
+          peakRssBytes: process.memoryUsage.rss(),
+          referenceMs: 0,
+        },
         timings: {},
       }
     : await runCorpusChecks(bytes.value, {

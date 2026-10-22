@@ -192,14 +192,18 @@ describe("parseParagraph tracked-change hardening", () => {
       </w:p>
     `);
 
-    expect(paragraph.content.map((content) => content.type)).toEqual(["insertion"]);
+    expect(paragraph.content.map((content) => content.type)).toEqual([
+      "insertion",
+    ]);
     const insertion = paragraph.content.at(0);
     expect(insertion?.type).toBe("insertion");
     if (!insertion || insertion.type !== "insertion") {
       return;
     }
     expect(insertion.info).toMatchObject({ id: 12, author: "Reviewer" });
-    expect(insertion.content).toEqual([{ type: "bookmarkStart", id: 5, name: "insertedMarker" }]);
+    expect(insertion.content).toEqual([
+      { type: "bookmarkStart", id: 5, name: "insertedMarker" },
+    ]);
   });
 
   test("preserves inline SDT metadata for marker-only controls", () => {
@@ -217,7 +221,9 @@ describe("parseParagraph tracked-change hardening", () => {
       </w:p>
     `);
 
-    expect(paragraph.content.map((content) => content.type)).toEqual(["inlineSdt"]);
+    expect(paragraph.content.map((content) => content.type)).toEqual([
+      "inlineSdt",
+    ]);
     const sdt = paragraph.content.at(0);
     expect(sdt?.type).toBe("inlineSdt");
     if (!sdt || sdt.type !== "inlineSdt") {
@@ -227,7 +233,9 @@ describe("parseParagraph tracked-change hardening", () => {
       alias: "Clause marker",
       tag: "clause-marker",
     });
-    expect(sdt.content).toEqual([{ type: "bookmarkStart", id: 9, name: "controlledMarker" }]);
+    expect(sdt.content).toEqual([
+      { type: "bookmarkStart", id: 9, name: "controlledMarker" },
+    ]);
   });
 
   test("reads inline date-SDT format from <w:dateFormat>, not <w:date w:fullDate>", () => {
@@ -290,7 +298,10 @@ describe("parseParagraph tracked-change hardening", () => {
       </w:p>
     `);
 
-    expect(paragraph.content.map((content) => content.type)).toEqual(["bookmarkStart", "deletion"]);
+    expect(paragraph.content.map((content) => content.type)).toEqual([
+      "bookmarkStart",
+      "deletion",
+    ]);
     const deletion = paragraph.content.at(1);
     expect(deletion?.type).toBe("deletion");
     if (deletion?.type !== "deletion") {
@@ -357,7 +368,9 @@ describe("parseParagraph whitespace normalization", () => {
     ]);
     // The serializer re-derives `xml:space` from the text, so the attribute
     // comes back on exactly the three texts that need it.
-    expect(serializeParagraph(parsed).match(/xml:space="preserve"/gu)).toHaveLength(3);
+    expect(
+      serializeParagraph(parsed).match(/xml:space="preserve"/gu),
+    ).toHaveLength(3);
 
     const serialized = serializeParagraph(parsed);
     expect(parseParagraphXml(serialized)).toEqual(parsed);
@@ -478,7 +491,9 @@ describe("parseParagraph empty-run normalization", () => {
 
     expect(hyperlink.children).toHaveLength(5);
     expect(
-      hyperlink.children.some((child) => child.type === "run" && child.content.length === 0),
+      hyperlink.children.some(
+        (child) => child.type === "run" && child.content.length === 0,
+      ),
     ).toBe(false);
 
     const serialized = serializeParagraph(paragraph);
@@ -553,7 +568,10 @@ describe("parseParagraph rendered page break markers", () => {
     expect(paragraph.renderedPageBreakBefore).toBeUndefined();
     expect(paragraph.content.at(0)).toMatchObject({
       type: "run",
-      content: [{ type: "text", text: "Previous page text" }, { type: "renderedPageBreak" }],
+      content: [
+        { type: "text", text: "Previous page text" },
+        { type: "renderedPageBreak" },
+      ],
     });
   });
 
@@ -676,7 +694,10 @@ describe("parseParagraph SDT content preservation", () => {
     if (sdt?.type !== "inlineSdt") {
       return;
     }
-    expect(sdt.content.map((content) => content.type)).toEqual(["insertion", "deletion"]);
+    expect(sdt.content.map((content) => content.type)).toEqual([
+      "insertion",
+      "deletion",
+    ]);
   });
 
   test("keeps a simple field that lives inside an inline SDT", () => {
@@ -863,7 +884,9 @@ describe("parseParagraph legacy form checkboxes", () => {
         </w:p>
       `);
 
-      const field = paragraph.content.find((content) => content.type === "complexField");
+      const field = paragraph.content.find(
+        (content) => content.type === "complexField",
+      );
       expect(field?.type).toBe("complexField");
       if (field?.type !== "complexField") {
         return;
@@ -902,7 +925,9 @@ describe("parseParagraph legacy form checkboxes", () => {
       </w:p>
     `);
 
-    const field = paragraph.content.find((content) => content.type === "complexField");
+    const field = paragraph.content.find(
+      (content) => content.type === "complexField",
+    );
     expect(field?.type).toBe("complexField");
     if (field?.type !== "complexField") {
       return;

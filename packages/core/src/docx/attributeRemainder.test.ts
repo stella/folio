@@ -6,9 +6,8 @@ import {
   NO_MODELLED_ATTRIBUTES,
   serializePreservedAttributes,
 } from "./attributeRemainder";
-
-import { parseXmlDocument } from "./xmlParser";
 import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
+import { parseXmlDocument } from "./xmlParser";
 
 test("namespace binding projections stay outside every element's attribute remainder", () => {
   for (const name of ["p", "r", "tr", "sectPr"]) {
@@ -17,7 +16,9 @@ test("namespace binding projections stay outside every element's attribute remai
         `<w:${name} xmlns:w="${OOXML_NAMESPACES.w.uri}" xmlns:${prefix}="${OOXML_NAMESPACES.mc.uri}" ${prefix}:Ignorable="w14" w:rsidR="00112233"/>`,
       );
       if (!node) throw new Error("Expected element");
-      expect(attributeRemainder({ element: node, modelled: NO_MODELLED_ATTRIBUTES })).toEqual([
+      expect(
+        attributeRemainder({ element: node, modelled: NO_MODELLED_ATTRIBUTES }),
+      ).toEqual([
         { namespace: OOXML_NAMESPACES.w.uri, name: "rsidR", value: "00112233" },
       ]);
     }
@@ -26,9 +27,9 @@ test("namespace binding projections stay outside every element's attribute remai
 
 describe("preserved attribute serialization", () => {
   test("escapes a valid resolved attribute", () => {
-    expect(serializePreservedAttributes([], [{ name: "vendorFlag", value: 'a&"b' }])).toEqual([
-      'vendorFlag="a&amp;&quot;b"',
-    ]);
+    expect(
+      serializePreservedAttributes([], [{ name: "vendorFlag", value: 'a&"b' }]),
+    ).toEqual(['vendorFlag="a&amp;&quot;b"']);
   });
 
   test.each([

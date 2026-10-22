@@ -42,15 +42,15 @@
  */
 
 import assert from "node:assert/strict";
+import { inflateRawSync } from "node:zlib";
+
 import { validateDocxPackage } from "@stll/docx-core";
 import {
+  type BatchOrderAddress,
   contentRank,
   groupInsertionRuns,
   orderBatchOperations,
-  type BatchOrderAddress,
 } from "@stll/docx-core/ops";
-import { inflateRawSync } from "node:zlib";
-
 import { createReviewerBridge } from "@stll/folio-agents";
 import { toMarkdown } from "@stll/folio-core/markdown";
 import {
@@ -62,13 +62,13 @@ import {
 
 import { openReviewer } from "./documents.ts";
 import { projectContentPair, projectSnapshotIdentities } from "./identity.ts";
-import { comparableMarkdown } from "./markdown-comparison.ts";
-import { assertReviewRoundTrip } from "./review-comparison.ts";
 import type { Finding } from "./known-issues.ts";
+import { comparableMarkdown } from "./markdown-comparison.ts";
 import type { Mode } from "./operations.ts";
 import { resolvedState, type Row } from "./oracle.ts";
 import { createRandom, type Random } from "./random.ts";
-import { RELATIONS, type Relation } from "./relation-contract.ts";
+import { type Relation, RELATIONS } from "./relation-contract.ts";
+import { assertReviewRoundTrip } from "./review-comparison.ts";
 import { blocksOfStory } from "./targets.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
@@ -81,7 +81,8 @@ const MAIN: Story = { type: "main" };
 export { RELATIONS, type Relation } from "./relation-contract.ts";
 
 const parseRelations = (value: string | undefined): ReadonlySet<Relation> => {
-  if (value === undefined || value === "" || value === "all") return new Set(RELATIONS);
+  if (value === undefined || value === "" || value === "all")
+    return new Set(RELATIONS);
   if (value === "none") return new Set();
   const names = value
     .split(",")
@@ -97,7 +98,9 @@ const parseRelations = (value: string | undefined): ReadonlySet<Relation> => {
   return new Set(names as Relation[]);
 };
 
-export const ENABLED_RELATIONS = parseRelations(process.env["FOLIO_SCENARIO_RELATIONS"]);
+export const ENABLED_RELATIONS = parseRelations(
+  process.env["FOLIO_SCENARIO_RELATIONS"],
+);
 const FULL = process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"] === "full";
 /** The share of batches `batchSequential` checks when not `full`. */
 const SEQUENTIAL_SHARE = 0.35;
@@ -113,7 +116,8 @@ const LEDGER = new Map<Relation, Tally>(
 
 const tally = (relation: Relation): Tally => LEDGER.get(relation) as Tally;
 /** Snapshot before a probe so earlier flows cannot satisfy its execution assertion. */
-export const relationCheckCount = (relation: Relation): number => tally(relation).checked;
+export const relationCheckCount = (relation: Relation): number =>
+  tally(relation).checked;
 const checked = (relation: Relation): void => {
   tally(relation).checked += 1;
 };
@@ -129,11 +133,15 @@ export const relationSummary = (): string =>
     ...RELATIONS.map((relation) => {
       if (!ENABLED_RELATIONS.has(relation)) return `  ${relation}: off`;
       const { checked: count, skipped: reasons } = tally(relation);
-      const why = [...reasons].map(([reason, times]) => `${reason} ×${times}`).join("; ");
+      const why = [...reasons]
+        .map(([reason, times]) => `${reason} ×${times}`)
+        .join("; ");
       return `  ${relation}: ${count} checked${why ? `; skipped: ${why}` : ""}`;
     }),
     "tolerated findings (comparisons each let pass that would have failed without it):",
-    ...[...ABSORBED].map(([{ finding, what }, absorbed]) => `  ${finding}: ${what}: ${absorbed}`),
+    ...[...ABSORBED].map(
+      ([{ finding, what }, absorbed]) => `  ${finding}: ${what}: ${absorbed}`,
+    ),
   ].join("\n");
 
 // ---------------------------------------------------------------------------
@@ -152,7 +160,9 @@ const save = async (reviewer: Reviewer): Promise<Uint8Array> => {
 };
 
 /** What a reader sees of a block, ids aside: a new block's id is the allocator's choice. */
-const blockView = (row: Row & { statedNumbering?: Record<string, unknown> }) => {
+const blockView = (
+  row: Row & { statedNumbering?: Record<string, unknown> },
+) => {
   const table = row.table && {
     tableIndex: row.table.tableIndex,
     rowIndex: row.table.rowIndex,
@@ -188,7 +198,10 @@ type Comment = { text: string; anchor: string };
 const commentView = (comments: readonly Comment[]): string[] =>
   comments.map(({ text, anchor }) => `${text} @ ${anchor}`).sort();
 
-const settledView = (state: { rows: readonly Row[]; comments: readonly Comment[] }) => ({
+const settledView = (state: {
+  rows: readonly Row[];
+  comments: readonly Comment[];
+}) => ({
   blocks: state.rows.map(blockView),
   comments: commentView(state.comments),
 });
@@ -203,9 +216,10 @@ const resolvedView = async (
 const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] =>
   blocksOfStory(reviewer, story) as unknown as Row[];
 const commentsOf = (reviewer: Reviewer): Comment[] =>
-  reviewer
-    .getComments()
-    .map((comment) => ({ text: comment.text, anchor: comment.anchoredText ?? "" }));
+  reviewer.getComments().map((comment) => ({
+    text: comment.text,
+    anchor: comment.anchoredText ?? "",
+  }));
 
 /** Everything the reviewer exposes, exactly, for an undo to restore. */
 const exactState = (reviewer: Reviewer): string =>
@@ -223,7 +237,9 @@ const exactState = (reviewer: Reviewer): string =>
 /** `:<type>` for an entry with a string `type` (a change, a block), else nothing. */
 const typeTag = (value: unknown): string => {
   const type =
-    typeof value === "object" && value !== null ? (value as { type?: unknown }).type : undefined;
+    typeof value === "object" && value !== null
+      ? (value as { type?: unknown }).type
+      : undefined;
   return typeof type === "string" ? `:${type}` : "";
 };
 
@@ -232,16 +248,28 @@ const typeTag = (value: unknown): string => {
  * An array entry with a `type` shows it in the path (`[2:insertion].text`),
  * so which kind of change differs is part of the failure's fingerprint.
  */
-export const differences = (a: unknown, b: unknown, path = "", limit = 6): string[] => {
+export const differences = (
+  a: unknown,
+  b: unknown,
+  path = "",
+  limit = 6,
+): string[] => {
   const out: string[] = [];
   const walk = (x: unknown, y: unknown, at: string): void => {
     if (out.length >= limit || Object.is(x, y)) return;
-    if (typeof x === "object" && x !== null && typeof y === "object" && y !== null) {
+    if (
+      typeof x === "object" &&
+      x !== null &&
+      typeof y === "object" &&
+      y !== null
+    ) {
       const keys = [...new Set([...Object.keys(x), ...Object.keys(y)])];
       for (const key of keys) {
         const left = (x as Record<string, unknown>)[key];
         const right = (y as Record<string, unknown>)[key];
-        const step = Array.isArray(x) ? `[${key}${typeTag(left) || typeTag(right)}]` : `.${key}`;
+        const step = Array.isArray(x)
+          ? `[${key}${typeTag(left) || typeTag(right)}]`
+          : `.${key}`;
         walk(left, right, `${at}${step}`);
       }
       return;
@@ -267,9 +295,14 @@ export const differences = (a: unknown, b: unknown, path = "", limit = 6): strin
 };
 
 /** Throw `message` with where `actual` differs from `expected`, if it does. */
-const assertSame = (actual: unknown, expected: unknown, message: string): void => {
+const assertSame = (
+  actual: unknown,
+  expected: unknown,
+  message: string,
+): void => {
   const found = differences(expected, actual);
-  if (found.length > 0) throw new Error(`${message}:\n    ${found.join("\n    ")}`);
+  if (found.length > 0)
+    throw new Error(`${message}:\n    ${found.join("\n    ")}`);
 };
 
 // ---------------------------------------------------------------------------
@@ -298,7 +331,11 @@ const ABSORBED = new Map<ToleranceName, number>();
  * tolerances reconcile is counted against each tolerance it needed (every
  * one of them when no single one is needed on its own).
  */
-const tolerantDifferences = <T>(a: T, b: T, tolerances: readonly Tolerance<T>[]): string[] => {
+const tolerantDifferences = <T>(
+  a: T,
+  b: T,
+  tolerances: readonly Tolerance<T>[],
+): string[] => {
   const through = (value: T, list: readonly Tolerance<T>[]): T => {
     let current = value;
     for (const tolerance of list) current = tolerance.apply(current);
@@ -345,11 +382,20 @@ export const packageParts = (bytes: Uint8Array): Map<string, string> => {
     const extraLength = view.getUint16(offset + 30, true);
     const commentLength = view.getUint16(offset + 32, true);
     const local = view.getUint32(offset + 42, true);
-    const name = decoder.decode(bytes.subarray(offset + 46, offset + 46 + nameLength));
-    const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
+    const name = decoder.decode(
+      bytes.subarray(offset + 46, offset + 46 + nameLength),
+    );
+    const start =
+      local +
+      30 +
+      view.getUint16(local + 26, true) +
+      view.getUint16(local + 28, true);
     const data = bytes.subarray(start, start + size);
     if (/\.(?:xml|rels)$/u.test(name)) {
-      parts.set(name, decoder.decode(method === 0 ? data : inflateRawSync(data)));
+      parts.set(
+        name,
+        decoder.decode(method === 0 ? data : inflateRawSync(data)),
+      );
     } else {
       parts.set(name, `<${String(size)} bytes, method ${String(method)}>`);
     }
@@ -362,7 +408,10 @@ export const packageParts = (bytes: Uint8Array): Map<string, string> => {
 const VOLATILE_PART = /^docProps\//u;
 
 /** Where two packages' parts differ, or null. */
-export const partDifference = (left: Uint8Array, right: Uint8Array): string | null => {
+export const partDifference = (
+  left: Uint8Array,
+  right: Uint8Array,
+): string | null => {
   const a = packageParts(left);
   const b = packageParts(right);
   const names = [...new Set([...a.keys(), ...b.keys()])]
@@ -377,7 +426,8 @@ export const partDifference = (left: Uint8Array, right: Uint8Array): string | nu
     }
     let at = 0;
     while (at < x.length && x[at] === y[at]) at += 1;
-    const around = (text: string) => JSON.stringify(text.slice(Math.max(0, at - 80), at + 120));
+    const around = (text: string) =>
+      JSON.stringify(text.slice(Math.max(0, at - 80), at + 120));
     return `${name} differs at ${String(at)}:\n    first:  ${around(x)}\n    second: ${around(y)}`;
   }
   return null;
@@ -387,8 +437,16 @@ export const partDifference = (left: Uint8Array, right: Uint8Array): string | nu
 // Batch ≡ one at a time
 // ---------------------------------------------------------------------------
 
-const INSERTIONS = new Set(["insertAfterBlock", "insertBeforeBlock", "insertTable"]);
-const ANNOTATIONS = new Set(["formatRange", "commentOnRange", "commentOnBlock"]);
+const INSERTIONS = new Set([
+  "insertAfterBlock",
+  "insertBeforeBlock",
+  "insertTable",
+]);
+const ANNOTATIONS = new Set([
+  "formatRange",
+  "commentOnRange",
+  "commentOnBlock",
+]);
 const RANGED = new Set(["replaceRange", "formatRange", "commentOnRange"]);
 
 type Handle = { blockId: string; startOffset: number; endOffset: number };
@@ -401,7 +459,12 @@ const blockIdOf = (operation: AnyOperation): string =>
  * Where an offset of `before` stands in `after`, when the edit between them
  * lies wholly on one side of `[start, end)`; null when it touches the span.
  */
-const rebase = (before: string, after: string, start: number, end: number): number | null => {
+const rebase = (
+  before: string,
+  after: string,
+  start: number,
+  end: number,
+): number | null => {
   if (before === after) return 0;
   let prefix = 0;
   const limit = Math.min(before.length, after.length);
@@ -433,10 +496,14 @@ export const restate = (
   const now = rows.find((row) => row.id === blockId);
   if (!pre || !now) return null;
   const restated: AnyOperation = { ...operation };
-  const precondition = operation["precondition"] as { blockTextHash?: string } | undefined;
+  const precondition = operation["precondition"] as
+    { blockTextHash?: string } | undefined;
   if (precondition?.blockTextHash !== undefined) {
     // What a caller re-reading the document would send: the block's hash now.
-    restated["precondition"] = { ...precondition, blockTextHash: textHashOf(blockId) };
+    restated["precondition"] = {
+      ...precondition,
+      blockTextHash: textHashOf(blockId),
+    };
   }
   // A batch resolves find against the document as read, before any edit.
   // A merge may append another occurrence; re-searching then changes the
@@ -445,11 +512,19 @@ export const restate = (
   if (operation.type === "replaceInBlock") {
     const find = String(operation["find"]);
     const startOffset = pre.text.indexOf(find);
-    if (!find || startOffset < 0 || pre.text.indexOf(find, startOffset + 1) >= 0) return null;
+    if (
+      !find ||
+      startOffset < 0 ||
+      pre.text.indexOf(find, startOffset + 1) >= 0
+    )
+      return null;
     handle = { blockId, startOffset, endOffset: startOffset + find.length };
   }
   if (operation.type === "replaceBlock" && now.text !== pre.text) {
-    if (operation["styleId"] !== undefined || operation["preserveFormatting"] === false) {
+    if (
+      operation["styleId"] !== undefined ||
+      operation["preserveFormatting"] === false
+    ) {
       return null;
     }
     const shift = rebase(pre.text, now.text, 0, pre.text.length);
@@ -460,12 +535,32 @@ export const restate = (
       startOffset: shift,
       endOffset: pre.text.length + shift,
     });
-    if (!range || now.text.slice(range.startOffset, range.endOffset) !== pre.text) return null;
-    const { type: _type, blockId: _blockId, text: replace, ...metadata } = restated;
-    return { ...metadata, id: operation.id, type: "replaceRange", range, replace };
+    if (
+      !range ||
+      now.text.slice(range.startOffset, range.endOffset) !== pre.text
+    )
+      return null;
+    const {
+      type: _type,
+      blockId: _blockId,
+      text: replace,
+      ...metadata
+    } = restated;
+    return {
+      ...metadata,
+      id: operation.id,
+      type: "replaceRange",
+      range,
+      replace,
+    };
   }
   if (handle) {
-    const shift = rebase(pre.text, now.text, handle.startOffset, handle.endOffset);
+    const shift = rebase(
+      pre.text,
+      now.text,
+      handle.startOffset,
+      handle.endOffset,
+    );
     if (shift === null) return null;
     const range = createFolioAITextRangeHandle({
       blockId,
@@ -481,7 +576,12 @@ export const restate = (
       return null;
     }
     if (operation.type === "replaceInBlock") {
-      const { type: _type, blockId: _blockId, find: _find, ...metadata } = restated;
+      const {
+        type: _type,
+        blockId: _blockId,
+        find: _find,
+        ...metadata
+      } = restated;
       return { ...metadata, id: operation.id, type: "replaceRange", range };
     }
     restated["range"] = range;
@@ -494,13 +594,21 @@ export const restate = (
   }
   for (const key of ["find", "quote"]) {
     const value = operation[key];
-    if (typeof value === "string" && value.length > 0 && !now.text.includes(value)) return null;
+    if (
+      typeof value === "string" &&
+      value.length > 0 &&
+      !now.text.includes(value)
+    )
+      return null;
   }
   return restated;
 };
 
 /** Where the batch places an operation, in the pre-state: [block, inside, offset]. */
-const placement = (operation: AnyOperation, preRows: readonly Row[]): [number, number, number] => {
+const placement = (
+  operation: AnyOperation,
+  preRows: readonly Row[],
+): [number, number, number] => {
   const index = preRows.findIndex((row) => row.id === blockIdOf(operation));
   const text = preRows[index]?.text ?? "";
   const handle = handleOf(operation);
@@ -544,9 +652,14 @@ const PARAGRAPH_PROPERTY_REPLAY = {
   deleteTableColumn: "other",
   mergeTableCells: "other",
   splitTableCell: "other",
-} as const satisfies Record<FolioDocumentOperation["type"], "patch" | "restyle" | "other">;
+} as const satisfies Record<
+  FolioDocumentOperation["type"],
+  "patch" | "restyle" | "other"
+>;
 
-const isOperationType = (type: string): type is FolioDocumentOperation["type"] =>
+const isOperationType = (
+  type: string,
+): type is FolioDocumentOperation["type"] =>
   Object.hasOwn(PARAGRAPH_PROPERTY_REPLAY, type);
 
 type SequentialGroupsOptions = {
@@ -563,7 +676,9 @@ export const sequentialGroups = ({
 }: SequentialGroupsOptions): AnyOperation[][] => {
   const indexed = applied.map((operation, index) => ({ operation, index }));
   const deleted = new Set(
-    applied.filter((operation) => operation.type === "deleteBlock").map(blockIdOf),
+    applied
+      .filter((operation) => operation.type === "deleteBlock")
+      .map(blockIdOf),
   );
   const containers = new Map<string, Row[]>();
   for (const row of preRows) {
@@ -579,7 +694,9 @@ export const sequentialGroups = ({
     const last = rows.at(-1);
     if (!last || (container === "story" && last !== preRows.at(-1))) continue;
     const appended = applied.some(
-      (operation) => operation.type === "insertAfterBlock" && blockIdOf(operation) === last.id,
+      (operation) =>
+        operation.type === "insertAfterBlock" &&
+        blockIdOf(operation) === last.id,
     );
     if (appended || !deleted.has(last.id)) continue;
     const carrier = rows.findLast((row) => !deleted.has(row.id));
@@ -589,7 +706,10 @@ export const sequentialGroups = ({
     if (!isOperationType(operation.type)) {
       throw new Error(`Sequential replay has no policy for ${operation.type}`);
     }
-    if (mode !== "tracked-changes" || !retiringCarriers.has(blockIdOf(operation) ?? "")) {
+    if (
+      mode !== "tracked-changes" ||
+      !retiringCarriers.has(blockIdOf(operation) ?? "")
+    ) {
       return false;
     }
     const disposition = PARAGRAPH_PROPERTY_REPLAY[operation.type];
@@ -599,20 +719,24 @@ export const sequentialGroups = ({
       case "restyle":
         return (
           operation["styleId"] !== undefined &&
-          operation["styleId"] !== preRows.find((row) => row.id === blockIdOf(operation))?.styleId
+          operation["styleId"] !==
+            preRows.find((row) => row.id === blockIdOf(operation))?.styleId
         );
       case "other":
         return false;
       default: {
         const unhandled: never = disposition;
-        throw new Error(`Unhandled paragraph property replay policy: ${unhandled}`);
+        throw new Error(
+          `Unhandled paragraph property replay policy: ${unhandled}`,
+        );
       }
     }
   };
   const earlyProperties = applied.filter(beforeFinalBreakRetirement);
   const earlyIds = new Set(earlyProperties.map(({ id }) => id));
   const isColumnEdit = (operation: AnyOperation): boolean =>
-    operation.type === "insertTableColumn" || operation.type === "deleteTableColumn";
+    operation.type === "insertTableColumn" ||
+    operation.type === "deleteTableColumn";
   const deletedSplitTargets = new Set(
     applied
       .filter(
@@ -632,17 +756,21 @@ export const sequentialGroups = ({
     const targetId = blockIdOf(operation);
     const target = preRows.find((row) => row.id === targetId);
     if (!target?.table)
-      throw new Error(`Applied ${operation.type} anchor ${targetId} has no source table.`);
+      throw new Error(
+        `Applied ${operation.type} anchor ${targetId} has no source table.`,
+      );
     const sourceColumn = target.table.gridColumnIndex;
     const column =
-      operation.type === "insertTableColumn" && operation["position"] !== "before"
+      operation.type === "insertTableColumn" &&
+      operation["position"] !== "before"
         ? sourceColumn + target.table.columnSpan
         : sourceColumn;
     return [target.table.tableIndex, column];
   };
   const ordered = orderBatchOperations(
     indexed.filter(
-      ({ operation }) => !ANNOTATIONS.has(operation.type) && !earlyIds.has(operation.id),
+      ({ operation }) =>
+        !ANNOTATIONS.has(operation.type) && !earlyIds.has(operation.id),
     ),
     ({ operation, index }): BatchOrderAddress => {
       if (isColumnEdit(operation)) {
@@ -687,7 +815,9 @@ export const sequentialGroups = ({
     ),
   );
   return [
-    ...applied.filter((operation) => ANNOTATIONS.has(operation.type)).map((one) => [one]),
+    ...applied
+      .filter((operation) => ANNOTATIONS.has(operation.type))
+      .map((one) => [one]),
     // A tracked batch retires final breaks only after admissible property edits.
     // Separate deletions retire them immediately, so replay those edits first.
     ...earlyProperties.map((one) => [one]),
@@ -700,22 +830,32 @@ export const sequentialGroups = ({
   ];
 };
 
-const batchOf = (batch: Batch, mode: Mode, operations: readonly AnyOperation[]): Batch =>
-  ({ ...batch, mode, operations }) as unknown as Batch;
+const batchOf = (
+  batch: Batch,
+  mode: Mode,
+  operations: readonly AnyOperation[],
+): Batch => ({ ...batch, mode, operations }) as unknown as Batch;
 const operationsOf = (batch: Batch): AnyOperation[] =>
   batch.operations as unknown as AnyOperation[];
-const appliedIds = (result: Result): Set<string> => new Set(result.applied.map(({ id }) => id));
+const appliedIds = (result: Result): Set<string> =>
+  new Set(result.applied.map(({ id }) => id));
 const types = (operations: readonly AnyOperation[]): string =>
   operations.map((operation) => operation.type).join(", ");
 
 /** What a batch left, as the relation compares it in `mode`. */
 const outcomeView = async (reviewer: Reviewer, mode: Mode, story: Story) => {
   if (mode === "suggested")
-    return settledView({ rows: rowsOf(reviewer, story), comments: commentsOf(reviewer) });
+    return settledView({
+      rows: rowsOf(reviewer, story),
+      comments: commentsOf(reviewer),
+    });
   const bytes = await save(reviewer);
   if (mode !== "direct") return resolvedView(bytes, "accept", story);
   const reopened = await openReviewer(bytes);
-  return settledView({ rows: rowsOf(reopened, story), comments: commentsOf(reopened) });
+  return settledView({
+    rows: rowsOf(reopened, story),
+    comments: commentsOf(reopened),
+  });
 };
 
 // ---------------------------------------------------------------------------
@@ -734,7 +874,10 @@ type Shadows = {
   trace: TraceEntry[];
 };
 
-const openShadows = async (fixture: Uint8Array, suggested: boolean): Promise<Shadows> => ({
+const openShadows = async (
+  fixture: Uint8Array,
+  suggested: boolean,
+): Promise<Shadows> => ({
   direct: await openReviewer(fixture),
   tracked: await openReviewer(fixture),
   suggested: suggested ? await openReviewer(fixture) : null,
@@ -742,15 +885,29 @@ const openShadows = async (fixture: Uint8Array, suggested: boolean): Promise<Sha
   trace: [],
 });
 
-const contractBatch = (mode: Mode, operations: readonly AnyOperation[]): Batch =>
-  ({ version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, mode, operations }) as unknown as Batch;
+const contractBatch = (
+  mode: Mode,
+  operations: readonly AnyOperation[],
+): Batch =>
+  ({
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    mode,
+    operations,
+  }) as unknown as Batch;
 
 /** What an operation names reads as in `reviewer`: its block, and the next one a merge pulls in. */
-const targetText = (reviewer: Reviewer, story: Story, operation: AnyOperation): string => {
+const targetText = (
+  reviewer: Reviewer,
+  story: Story,
+  operation: AnyOperation,
+): string => {
   const blocks = rowsOf(reviewer, story);
   const index = blocks.findIndex((block) => block.id === blockIdOf(operation));
   if (index === -1) return "(absent)";
-  const next = operation.type === "mergeBlockWithNext" ? `\u0000${blocks[index + 1]?.text}` : "";
+  const next =
+    operation.type === "mergeBlockWithNext"
+      ? `\u0000${blocks[index + 1]?.text}`
+      : "";
   return `${blocks[index]?.text}${next}`;
 };
 
@@ -758,20 +915,36 @@ const targetText = (reviewer: Reviewer, story: Story, operation: AnyOperation): 
  * Replay one batch: tracked (and suggested) as sent, direct with only what
  * tracked applied. Whether tracked applied anything.
  */
-const replayInto = (shadows: Shadows, entry: TraceEntry, context: string): boolean => {
+const replayInto = (
+  shadows: Shadows,
+  entry: TraceEntry,
+  context: string,
+): boolean => {
   const { story, operations } = entry;
   // An operation means the same in both documents only while what it names
   // reads the same in both: tracked, a merged paragraph reads apart from the
   // next one until the join is accepted, directly it has joined already.
   const targetsBefore = (reviewer: Reviewer) =>
     operations.map((operation) => targetText(reviewer, story, operation));
-  const directTargets = shadows.parted === null ? targetsBefore(shadows.direct) : [];
-  const trackedTargets = shadows.parted === null ? targetsBefore(shadows.tracked) : [];
-  const apply = (reviewer: Reviewer, mode: Mode, selected: readonly AnyOperation[]): Result => {
+  const directTargets =
+    shadows.parted === null ? targetsBefore(shadows.direct) : [];
+  const trackedTargets =
+    shadows.parted === null ? targetsBefore(shadows.tracked) : [];
+  const apply = (
+    reviewer: Reviewer,
+    mode: Mode,
+    selected: readonly AnyOperation[],
+  ): Result => {
     const batch = contractBatch(mode, selected);
     return story.type === "main"
-      ? reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" })
-      : reviewer.applyDocumentOperationsToStory({ undefinedReferences: "refuse", story, batch });
+      ? reviewer.applyDocumentOperations(batch, {
+          undefinedReferences: "refuse",
+        })
+      : reviewer.applyDocumentOperationsToStory({
+          undefinedReferences: "refuse",
+          story,
+          batch,
+        });
   };
   const tracked = apply(shadows.tracked, "tracked-changes", operations);
   if (shadows.suggested) apply(shadows.suggested, "suggested", operations);
@@ -781,7 +954,8 @@ const replayInto = (shadows: Shadows, entry: TraceEntry, context: string): boole
   if (shadows.parted === null) {
     const differing = operations.filter(
       (operation, index) =>
-        applied.has(operation.id) && directTargets[index] !== trackedTargets[index],
+        applied.has(operation.id) &&
+        directTargets[index] !== trackedTargets[index],
     );
     if (differing.length > 0) {
       shadows.parted = `${context}: ${differing.map(({ id }) => id).join(", ")} name blocks that read otherwise`;
@@ -816,7 +990,9 @@ const shadowProblems = async (
   const suggested = shadows.suggested;
   if (check === "rejectSuggested" && suggested === null) return [];
   if (check === "rejectSuggested") suggested?.rejectAll();
-  const stories = new Map(shadows.trace.map(({ story }) => [JSON.stringify(story), story]));
+  const stories = new Map(
+    shadows.trace.map(({ story }) => [JSON.stringify(story), story]),
+  );
   const problems: string[] = [];
   for (const [name, story] of stories) {
     let found: string[];
@@ -831,7 +1007,11 @@ const shadowProblems = async (
       case "rejectTracked":
         found = tolerantDifferences<BlocksView>(
           { blocks: (await resolvedView(fixture, "reject", story)).blocks },
-          { blocks: (await resolvedView(await save(shadows.tracked), "reject", story)).blocks },
+          {
+            blocks: (
+              await resolvedView(await save(shadows.tracked), "reject", story)
+            ).blocks,
+          },
           [],
         );
         break;
@@ -839,7 +1019,10 @@ const shadowProblems = async (
         if (!suggested) return [];
         found = tolerantDifferences<BlocksView>(
           { blocks: (await resolvedView(fixture, "reject", story)).blocks },
-          { blocks: (await resolvedView(await save(suggested), "accept", story)).blocks },
+          {
+            blocks: (await resolvedView(await save(suggested), "accept", story))
+              .blocks,
+          },
           [],
         );
         break;
@@ -899,7 +1082,11 @@ const cloneReviewer = (reviewer: Reviewer): Reviewer => {
   // every own field. Its EditorState copies have independent plugin state.
   const copy = Object.create(Object.getPrototypeOf(reviewer)) as Reviewer;
   for (const key of Reflect.ownKeys(reviewer)) {
-    if (key === "applyDocumentOperations" || key === "applyDocumentOperationsToStory") continue;
+    if (
+      key === "applyDocumentOperations" ||
+      key === "applyDocumentOperationsToStory"
+    )
+      continue;
     const descriptor = Object.getOwnPropertyDescriptor(reviewer, key);
     if (!descriptor) continue;
     const value = descriptor.value;
@@ -978,7 +1165,12 @@ export const startRelations = async ({
     target.applyDocumentOperations = (batch, options) => {
       const pre = cloneReviewer(target);
       const result = apply(batch, options);
-      recorded.push({ story: MAIN, batch: structuredClone(batch), result, pre });
+      recorded.push({
+        story: MAIN,
+        batch: structuredClone(batch),
+        result,
+        pre,
+      });
       return result;
     };
     const applyToStory = target.applyDocumentOperationsToStory.bind(target);
@@ -998,8 +1190,15 @@ export const startRelations = async ({
 
   // The replays of `directTracked` and `rejectAll`.
   const shadows =
-    on("directTracked") || on("rejectAll") ? await openShadows(fixture, on("rejectAll")) : null;
-  const check = async (relation: Relation, which: ShadowCheck, context: string, what: string) => {
+    on("directTracked") || on("rejectAll")
+      ? await openShadows(fixture, on("rejectAll"))
+      : null;
+  const check = async (
+    relation: Relation,
+    which: ShadowCheck,
+    context: string,
+    what: string,
+  ) => {
     if (!shadows) return;
     const problems = await shadowProblems(shadows, which, fixture);
     if (problems === null) {
@@ -1036,15 +1235,29 @@ export const startRelations = async ({
     }
   };
 
-  const replay = async ({ story, batch }: Recorded, context: string): Promise<void> => {
+  const replay = async (
+    { story, batch }: Recorded,
+    context: string,
+  ): Promise<void> => {
     if (!shadows) return;
-    if (replayInto(shadows, { story, operations: operationsOf(batch) }, context) && FULL)
+    if (
+      replayInto(
+        shadows,
+        { story, operations: operationsOf(batch) },
+        context,
+      ) &&
+      FULL
+    )
       await compareShadows(context);
   };
 
   /** `undo` and `batchSequential` on copies of the document before the batch. */
-  const onCopies = async ({ story, batch, result, pre }: Recorded, context: string) => {
-    const sequential = on("batchSequential") && (FULL || random.chance(SEQUENTIAL_SHARE));
+  const onCopies = async (
+    { story, batch, result, pre }: Recorded,
+    context: string,
+  ) => {
+    const sequential =
+      on("batchSequential") && (FULL || random.chance(SEQUENTIAL_SHARE));
     if (!on("undo") && !sequential) return;
     const batchMode = (batch.mode ?? "tracked-changes") as Mode;
     const copy = cloneReviewer(pre);
@@ -1052,25 +1265,34 @@ export const startRelations = async ({
     const preState = exactState(copy);
     const applyToCopy = (target: Reviewer, operations: Batch): Result =>
       story.type === "main"
-        ? target.applyDocumentOperations(operations, { undefinedReferences: "refuse" })
+        ? target.applyDocumentOperations(operations, {
+            undefinedReferences: "refuse",
+          })
         : target.applyDocumentOperationsToStory({
             undefinedReferences: "refuse",
             story,
             batch: operations,
           });
     const again = applyToCopy(copy, structuredClone(batch));
-    const applied = operationsOf(batch).filter((operation) => appliedIds(again).has(operation.id));
+    const applied = operationsOf(batch).filter((operation) =>
+      appliedIds(again).has(operation.id),
+    );
     assert.deepEqual(
       [...appliedIds(again)].sort(),
       [...appliedIds(result)].sort(),
       `${context}: the live pre-batch copy answered differently than the flow reviewer`,
     );
     const batchOutcome =
-      sequential && applied.length >= 2 ? await outcomeView(copy, batchMode, story) : null;
+      sequential && applied.length >= 2
+        ? await outcomeView(copy, batchMode, story)
+        : null;
 
     if (on("undo")) {
       if (again.undoHandle === null) {
-        skipped("undo", applied.length === 0 ? "nothing applied" : "no undo handle");
+        skipped(
+          "undo",
+          applied.length === 0 ? "nothing applied" : "no undo handle",
+        );
       } else {
         const undone = copy.undoDocumentOperations(again.undoHandle);
         assert.equal(
@@ -1094,25 +1316,47 @@ export const startRelations = async ({
     }
     const oneByOne = cloneReviewer(pre);
     const problems: string[] = [];
-    for (const group of sequentialGroups({ applied, preRows, mode: batchMode })) {
-      const snapshot = story.type === "main" ? oneByOne.snapshot() : oneByOne.snapshotStory(story);
-      if (!snapshot) throw new Error(`${context}: the story disappeared before sequential replay`);
+    for (const group of sequentialGroups({
+      applied,
+      preRows,
+      mode: batchMode,
+    })) {
+      const snapshot =
+        story.type === "main"
+          ? oneByOne.snapshot()
+          : oneByOne.snapshotStory(story);
+      if (!snapshot)
+        throw new Error(
+          `${context}: the story disappeared before sequential replay`,
+        );
       const rows = snapshot.blocks as unknown as Row[];
-      const textHashOf = (blockId: string) => snapshot.anchors[blockId]?.textHash;
-      const restated = group.map((operation) => restate(operation, preRows, rows, textHashOf));
+      const textHashOf = (blockId: string) =>
+        snapshot.anchors[blockId]?.textHash;
+      const restated = group.map((operation) =>
+        restate(operation, preRows, rows, textHashOf),
+      );
       if (restated.some((operation) => operation === null)) {
-        skipped("batchSequential", "an operation does not re-resolve one at a time");
+        skipped(
+          "batchSequential",
+          "an operation does not re-resolve one at a time",
+        );
         return;
       }
-      const alone = applyToCopy(oneByOne, batchOf(batch, batchMode, restated as AnyOperation[]));
+      const alone = applyToCopy(
+        oneByOne,
+        batchOf(batch, batchMode, restated as AnyOperation[]),
+      );
       for (const { id, reason } of alone.skipped) {
-        if (reason !== "noopOperation") problems.push(`${id} refused one at a time: ${reason}`);
+        if (reason !== "noopOperation")
+          problems.push(`${id} refused one at a time: ${reason}`);
       }
     }
     const sequentialOutcome = await outcomeView(oneByOne, batchMode, story);
     if (problems.length === 0) {
       problems.push(
-        ...differences(batchOutcome, sequentialOutcome).map((d) => `batch → one at a time ${d}`),
+        ...differences(batchOutcome, sequentialOutcome).map(
+          (d) => `batch → one at a time ${d}`,
+        ),
       );
     }
     if (problems.length > 0) {
@@ -1139,10 +1383,15 @@ export const startRelations = async ({
         createReviewerBridge(target).snapshot(),
         content[side === "left" ? "leftAliases" : "rightAliases"],
       ),
-      toMarkdown: comparableMarkdown(toMarkdown(target.toDocument())) as unknown,
+      toMarkdown: comparableMarkdown(
+        toMarkdown(target.toDocument()),
+      ) as unknown,
       getComments: target.getComments() as unknown,
     });
-    const tolerances: Record<keyof ReturnType<typeof views>, Tolerance<unknown>[]> = {
+    const tolerances: Record<
+      keyof ReturnType<typeof views>,
+      Tolerance<unknown>[]
+    > = {
       getContent: [],
       snapshot: [],
       toMarkdown: [],
@@ -1151,7 +1400,11 @@ export const startRelations = async ({
     const a = views(live, "left");
     const b = views(reopened, "right");
     for (const reader of Object.keys(a) as (keyof typeof a)[]) {
-      const found = tolerantDifferences(a[reader], b[reader], tolerances[reader]);
+      const found = tolerantDifferences(
+        a[reader],
+        b[reader],
+        tolerances[reader],
+      );
       if (found.length > 0) {
         throw new Error(
           `${context}: [readerStability] ${reader} reads otherwise after the save than before it (before → after):\n    ${found.join("\n    ")}`,
@@ -1171,7 +1424,10 @@ export const startRelations = async ({
         await onCopies(entry, context);
       }
       if (on("saveIdempotent")) {
-        const difference = partDifference(saved.bytes, await save(saved.reopened));
+        const difference = partDifference(
+          saved.bytes,
+          await save(saved.reopened),
+        );
         assert.equal(
           difference,
           null,
@@ -1180,7 +1436,11 @@ export const startRelations = async ({
         checked("saveIdempotent");
       }
       if (on("readerStability")) {
-        if (pending) skipped("readerStability", "pending suggestions stay out of the package");
+        if (pending)
+          skipped(
+            "readerStability",
+            "pending suggestions stay out of the package",
+          );
         else await readerStability(live, saved.reopened, context);
       }
     },

@@ -38,7 +38,8 @@ export type FolioEditorInit = {
  * `noBodyView` (the body editor never started, so there was no change tracker
  * to patch from).
  */
-export type FolioEditorRepackReason = "structuralChange" | "untrackedChange" | "noBodyView";
+export type FolioEditorRepackReason =
+  "structuralChange" | "untrackedChange" | "noBodyView";
 
 /**
  * How a serialization wrote the package, as far as the editor can tell before

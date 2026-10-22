@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import type { ParagraphBlock } from "../types";
-import { fixedCharWidth, withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
+import {
+  fixedCharWidth,
+  withFakeTextMeasure,
+} from "./__tests__/fakeTextMeasure";
 import {
   DEFAULT_TAB_STOP_TWIPS,
   getListMarkerInlineWidth,
@@ -32,7 +35,9 @@ describe("getListMarkerInlineWidth", () => {
   test("hidden marker → 0", () => {
     withFakeTextMeasure(() => {
       expect(
-        getListMarkerInlineWidth(listBlock({ listMarker: "1.", listMarkerHidden: true })),
+        getListMarkerInlineWidth(
+          listBlock({ listMarker: "1.", listMarkerHidden: true }),
+        ),
       ).toBe(0);
     }, fakeMeasure);
   });
@@ -294,7 +299,8 @@ describe("getListMarkerInlineWidth", () => {
       // minBodyStart = 24+80 = 104. Hanging is consumed → search past
       // indentLeft=60. Next default-grid stop past max(104,60)=104 is
       // ceil(104/48)*48 = 144. marker = 144 - 24 = 120.
-      const expectedBodyStart = Math.ceil(104 / DEFAULT_TAB_STOP_PX) * DEFAULT_TAB_STOP_PX;
+      const expectedBodyStart =
+        Math.ceil(104 / DEFAULT_TAB_STOP_PX) * DEFAULT_TAB_STOP_PX;
       expect(width).toBeCloseTo(expectedBodyStart - 24, 5);
     }, fakeMeasure);
   });
@@ -344,19 +350,27 @@ describe("numbering suffix tab with custom stops (w:suff=tab)", () => {
   // Hanging slot: left 60 px, hanging 36 px → marker starts at 24 px.
   // "1." is 20 px wide, so the marker ends at 44 px, inside the slot.
   const hangingList = (overrides: ParagraphBlock["attrs"]): ParagraphBlock =>
-    listBlock({ listMarker: "1.", indent: { left: 60, hanging: 36 }, ...overrides });
+    listBlock({
+      listMarker: "1.",
+      indent: { left: 60, hanging: 36 },
+      ...overrides,
+    });
 
   test("a stop between the marker end and w:ind@left wins over the hanging indent", () => {
     withFakeTextMeasure(() => {
       // 750 twips = 50 px.
-      const width = getListMarkerInlineWidth(hangingList({ tabs: [{ val: "start", pos: 750 }] }));
+      const width = getListMarkerInlineWidth(
+        hangingList({ tabs: [{ val: "start", pos: 750 }] }),
+      );
       expect(width).toBeCloseTo(50 - 24, 5);
     }, fakeMeasure);
   });
 
   test("a legacy num stop inside the slot is used by the number", () => {
     withFakeTextMeasure(() => {
-      const width = getListMarkerInlineWidth(hangingList({ tabs: [{ val: "num", pos: 750 }] }));
+      const width = getListMarkerInlineWidth(
+        hangingList({ tabs: [{ val: "num", pos: 750 }] }),
+      );
       expect(width).toBeCloseTo(50 - 24, 5);
     }, fakeMeasure);
   });
@@ -364,7 +378,9 @@ describe("numbering suffix tab with custom stops (w:suff=tab)", () => {
   test("a stop before the marker end is skipped", () => {
     withFakeTextMeasure(() => {
       // 600 twips = 40 px, left of the marker end at 44 px.
-      const width = getListMarkerInlineWidth(hangingList({ tabs: [{ val: "start", pos: 600 }] }));
+      const width = getListMarkerInlineWidth(
+        hangingList({ tabs: [{ val: "start", pos: 600 }] }),
+      );
       expect(width).toBeCloseTo(36, 5);
     }, fakeMeasure);
   });
@@ -372,7 +388,9 @@ describe("numbering suffix tab with custom stops (w:suff=tab)", () => {
   test("a stop past w:ind@left leaves the hanging indent as the number's tab", () => {
     withFakeTextMeasure(() => {
       // 1080 twips = 72 px.
-      const width = getListMarkerInlineWidth(hangingList({ tabs: [{ val: "start", pos: 1080 }] }));
+      const width = getListMarkerInlineWidth(
+        hangingList({ tabs: [{ val: "start", pos: 1080 }] }),
+      );
       expect(width).toBeCloseTo(36, 5);
     }, fakeMeasure);
   });
@@ -391,7 +409,9 @@ describe("numbering suffix tab with custom stops (w:suff=tab)", () => {
 
   test("w:doNotUseIndentAsNumberingTabStop without stops falls back to the indent", () => {
     withFakeTextMeasure(() => {
-      const width = getListMarkerInlineWidth(hangingList({ listNumberingTabIgnoresIndent: true }));
+      const width = getListMarkerInlineWidth(
+        hangingList({ listNumberingTabIgnoresIndent: true }),
+      );
       expect(width).toBeCloseTo(36, 5);
     }, fakeMeasure);
   });
@@ -455,7 +475,9 @@ describe("resolveListMarkerFont", () => {
       },
     ];
 
-    expect(resolveListMarkerFont(block)).toMatchObject({ fontFamily: "Marker Face" });
+    expect(resolveListMarkerFont(block)).toMatchObject({
+      fontFamily: "Marker Face",
+    });
     expect(resolveListMarkerFont(block).alternateFontFamily).toBeUndefined();
   });
 });

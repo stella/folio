@@ -9,12 +9,12 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { createDocx } from "../docx/rezip";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-  parseFolioDocumentOperationBatch,
   type FolioDocumentOperationMode,
+  parseFolioDocumentOperationBatch,
 } from "../document-operations";
+import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 
@@ -67,32 +67,41 @@ const insertedAfterReopen = async (
     await createDocx(fromMarkdown(`# ${HEADING}\n\n${BODY}`)),
     { author: "AI" },
   );
-  const blockId = reviewer.getContent().find((block) => block.text === anchor)?.id;
+  const blockId = reviewer
+    .getContent()
+    .find((block) => block.text === anchor)?.id;
   if (blockId === undefined) throw new Error(`fixture must expose "${anchor}"`);
   // Through the wire parser, so the field is part of the accepted contract.
   const batch = parseFolioDocumentOperationBatch({
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
     mode,
-    operations: [{ id: "op", type, blockId, text: INSERTED, styleId: null, outlineLevel }],
+    operations: [
+      { id: "op", type, blockId, text: INSERTED, styleId: null, outlineLevel },
+    ],
   });
-  const result = reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" });
+  const result = reviewer.applyDocumentOperations(batch, {
+    undefinedReferences: "refuse",
+  });
   expect(result.skipped).toEqual([]);
   if (mode !== "direct") reviewer.acceptAll();
-  const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  const reopened = await FolioDocxReviewer.fromBuffer(
+    await reviewer.toBuffer(),
+  );
   return reopened.getContent().find((block) => block.text === INSERTED);
 };
 
 describe("an insertion states its outline level", () => {
-  test.each(CASES.flatMap((entry) => MODES.map((mode) => ({ entry, mode, label: entry.label }))))(
-    "$label, $mode",
-    async ({ entry, mode }) => {
-      const inserted = await insertedAfterReopen(entry, mode);
-      expect(inserted).toMatchObject(entry.expected);
-      if (entry.expected.headingLevel === undefined) {
-        expect(inserted?.headingLevel).toBeUndefined();
-      }
-    },
-  );
+  test.each(
+    CASES.flatMap((entry) =>
+      MODES.map((mode) => ({ entry, mode, label: entry.label })),
+    ),
+  )("$label, $mode", async ({ entry, mode }) => {
+    const inserted = await insertedAfterReopen(entry, mode);
+    expect(inserted).toMatchObject(entry.expected);
+    if (entry.expected.headingLevel === undefined) {
+      expect(inserted?.headingLevel).toBeUndefined();
+    }
+  });
 
   test("an invalid outline level is refused by the parser", () => {
     expect(() =>

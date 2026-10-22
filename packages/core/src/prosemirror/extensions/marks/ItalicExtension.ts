@@ -3,6 +3,7 @@
  */
 
 import { panic } from "better-result";
+
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 import { toggleMarkForAllScripts } from "./markUtils";

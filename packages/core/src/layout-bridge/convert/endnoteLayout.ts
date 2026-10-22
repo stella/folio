@@ -22,14 +22,15 @@ import { panic } from "better-result";
 import { calculateColumnWidths } from "../../layout-engine/paginator";
 import { resolveEffectiveParagraphSpacingTree } from "../../layout-engine/paragraphSpacing";
 import {
-  stripFlowBlockPmAnchors,
   type FlowBlock,
   type Measure,
   type NoteAreaLayout,
   type NoteSeparatorKind,
   type ParagraphBlock,
   type ParagraphMeasure,
+  stripFlowBlockPmAnchors,
 } from "../../layout-engine/types";
+import { getMargins, getPageSize } from "../../paged-layout/sectionGeometry";
 import type {
   BlockContent,
   Endnote,
@@ -37,13 +38,12 @@ import type {
   SectionProperties,
 } from "../../types/document";
 import type { NoteStoryKey } from "../../types/editor-story";
-import { getMargins, getPageSize } from "../../paged-layout/sectionGeometry";
 import { getColumns } from "../sectionColumns";
 import {
   collectEndnoteRefs,
+  type ConvertFootnoteOptions,
   convertFootnoteToContent,
   convertNoteStoryToFlowBlocks,
-  type ConvertFootnoteOptions,
   type MeasureBlocksFn,
 } from "./footnoteLayout";
 
@@ -123,7 +123,11 @@ export function prepareEndnoteAreas(
     }
     const section =
       input.position === "sectEnd"
-        ? collectingSection(referenceSection.get(noteId) ?? finalSection, finalSection, input)
+        ? collectingSection(
+            referenceSection.get(noteId) ?? finalSection,
+            finalSection,
+            input,
+          )
         : finalSection;
     const noteIds = notesBySection.get(section) ?? [];
     noteIds.push(noteId);
@@ -134,24 +138,40 @@ export function prepareEndnoteAreas(
   const noteStoryByBlockId = new Map<string, NoteStoryKey>();
   const areas: EndnoteArea[] = [];
 
-  for (const [section, noteIds] of [...notesBySection].sort(([left], [right]) => left - right)) {
+  for (const [section, noteIds] of [...notesBySection].sort(
+    ([left], [right]) => left - right,
+  )) {
     const width = endnoteAreaWidth(
-      section === finalSection ? input.sections.at(-1) : input.sections[section],
+      section === finalSection
+        ? input.sections.at(-1)
+        : input.sections[section],
     );
     const areaKey = `endnote-area-${String(section)}`;
-    const separator = convertSeparatorStory(`${areaKey}-separator`, width, input.options);
+    const separator = convertSeparatorStory(
+      `${areaKey}-separator`,
+      width,
+      input.options,
+    );
     // The separator never ends a page on its own: it travels with the first note.
     const blocks: FlowBlock[] = [
-      { ...separator.block, attrs: { ...separator.block.attrs, keepNext: true } },
+      {
+        ...separator.block,
+        attrs: { ...separator.block.attrs, keepNext: true },
+      },
     ];
     const measures: Measure[] = [separator.measure];
     separatorBlockIds.set(String(separator.block.id), "separator");
     for (const noteId of noteIds) {
       const note = notesById.get(noteId)!; // SAFETY: filtered above
-      const content = convertFootnoteToContent(note, input.displayNumbers.get(noteId) ?? 0, width, {
-        ...input.options,
-        displayText: input.displayTexts.get(noteId) ?? String(noteId),
-      });
+      const content = convertFootnoteToContent(
+        note,
+        input.displayNumbers.get(noteId) ?? 0,
+        width,
+        {
+          ...input.options,
+          displayText: input.displayTexts.get(noteId) ?? String(noteId),
+        },
+      );
       for (const [index, block] of content.blocks.entries()) {
         const id = `endnote-${String(noteId)}-${String(index)}`;
         blocks.push(withId(stripFlowBlockPmAnchors(block), id));
@@ -173,7 +193,10 @@ export function prepareEndnoteAreas(
     endnoteAreaWidth(input.sections.at(-1)),
     input.options,
   );
-  separatorBlockIds.set(String(continuationSeparator.block.id), "continuationSeparator");
+  separatorBlockIds.set(
+    String(continuationSeparator.block.id),
+    "continuationSeparator",
+  );
 
   return {
     areas,
@@ -238,7 +261,11 @@ export function trailingEndnoteIds(
   if (position !== "docEnd") {
     return new Set();
   }
-  return new Set((endnotes ?? []).flatMap((note) => (note.noteType === "normal" ? [note.id] : [])));
+  return new Set(
+    (endnotes ?? []).flatMap((note) =>
+      note.noteType === "normal" ? [note.id] : [],
+    ),
+  );
 }
 
 /** `w:pos` for the document: the settings value, else the final section's. */
@@ -250,7 +277,9 @@ export function resolveEndnotePosition(
 }
 
 /** The first column's width in a section: what an endnote area there wraps to. */
-export function endnoteAreaWidth(section: SectionProperties | undefined): number {
+export function endnoteAreaWidth(
+  section: SectionProperties | undefined,
+): number {
   const pageSize = getPageSize(section);
   const margins = getMargins(section);
   const [firstColumn] = calculateColumnWidths(
@@ -273,7 +302,9 @@ function countSectionBreaks(blocks: readonly FlowBlock[]): number {
 }
 
 /** The section each endnote is first referenced in. */
-function firstReferenceSections(blocks: readonly FlowBlock[]): Map<number, number> {
+function firstReferenceSections(
+  blocks: readonly FlowBlock[],
+): Map<number, number> {
   const sections = new Map<number, number>();
   let section = 0;
   for (const block of blocks) {
@@ -313,7 +344,10 @@ function convertSeparatorStory(
   width: number,
   options: ConvertFootnoteOptions & { measureBlocks: MeasureBlocksFn },
 ): { block: ParagraphBlock; measure: ParagraphMeasure } {
-  const converted = convertNoteStoryToFlowBlocks(SEPARATOR_STORY, options).flowBlocks.at(0);
+  const converted = convertNoteStoryToFlowBlocks(
+    SEPARATOR_STORY,
+    options,
+  ).flowBlocks.at(0);
   const block: ParagraphBlock =
     converted?.kind === "paragraph"
       ? { ...converted, id }

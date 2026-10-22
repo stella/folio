@@ -15,19 +15,24 @@ export const selectDisplayPages = (
   pageIndices: readonly number[],
 ): DisplayList => {
   const kept = [...new Set(pageIndices)].filter(
-    (index) => Number.isInteger(index) && index >= 0 && index < list.pages.length,
+    (index) =>
+      Number.isInteger(index) && index >= 0 && index < list.pages.length,
   );
   const remap = new Map(kept.map((original, next) => [original, next]));
 
   const relink = (link: DisplayLink): DisplayLink[] => {
     if (link.target.kind !== "page") return [link];
     const pageIndex = remap.get(link.target.pageIndex);
-    return pageIndex === undefined ? [] : [{ ...link, target: { ...link.target, pageIndex } }];
+    return pageIndex === undefined
+      ? []
+      : [{ ...link, target: { ...link.target, pageIndex } }];
   };
 
   const pages = kept.flatMap((index): DisplayPage[] => {
     const page = list.pages[index];
-    return page === undefined ? [] : [{ ...page, links: page.links.flatMap(relink) }];
+    return page === undefined
+      ? []
+      : [{ ...page, links: page.links.flatMap(relink) }];
   });
 
   return {

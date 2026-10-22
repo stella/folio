@@ -9,8 +9,8 @@
  * so an untouched save started materialising numbering as direct formatting.
  */
 
-import { describe, expect, test } from "bun:test";
 import { Panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 
 import { paragraphRejectOriginalFormatting } from "./commands/propertyChangeScope";
 import {
@@ -29,8 +29,16 @@ describe("paragraphNumberingFromAttrValue", () => {
       { kind: "reference", numId: 4, ilvl: 2 },
       { kind: "reference", numId: 4, ilvl: 2 },
     ],
-    ["a reference without one", { kind: "reference", numId: 4 }, { kind: "reference", numId: 4 }],
-    ["a level alone", { kind: "levelOnly", ilvl: 3 }, { kind: "levelOnly", ilvl: 3 }],
+    [
+      "a reference without one",
+      { kind: "reference", numId: 4 },
+      { kind: "reference", numId: 4 },
+    ],
+    [
+      "a level alone",
+      { kind: "levelOnly", ilvl: 3 },
+      { kind: "levelOnly", ilvl: 3 },
+    ],
   ])("accepts %s", (_name, stored, expected) => {
     expect(paragraphNumberingFromAttrValue(stored)).toEqual(expected);
   });
@@ -50,9 +58,9 @@ describe("paragraphNumberingFromAttrValue", () => {
   });
 
   test("a reference states no level unless the attr did", () => {
-    expect(paragraphNumberingFromAttrValue({ kind: "reference", numId: 4 })).not.toHaveProperty(
-      "ilvl",
-    );
+    expect(
+      paragraphNumberingFromAttrValue({ kind: "reference", numId: 4 }),
+    ).not.toHaveProperty("ilvl");
   });
 });
 
@@ -78,7 +86,9 @@ describe("readParagraphNumberingAttr", () => {
   });
 
   test("panics on a shape this build does not store, instead of ignoring it", () => {
-    expect(() => readParagraphNumberingAttr({ numId: 4, ilvl: 2 })).toThrow(Panic);
+    expect(() => readParagraphNumberingAttr({ numId: 4, ilvl: 2 })).toThrow(
+      Panic,
+    );
   });
 });
 
@@ -86,14 +96,22 @@ describe("a rejected w:pPrChange rebuilds the serializer's pPr source", () => {
   test("carries the stored numbering across as the union", () => {
     expect(
       paragraphRejectOriginalFormatting(
-        { numPr: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: 0 }) },
+        {
+          numPr: paragraphNumberingAttr({
+            kind: "reference",
+            numId: 1,
+            ilvl: 0,
+          }),
+        },
         null,
       ),
     ).toEqual({ numPr: { kind: "reference", numId: 1, ilvl: 0 } });
   });
 
   test("drops the numbering a record states nothing about", () => {
-    expect(paragraphRejectOriginalFormatting({ styleId: "Normal" }, null)).toEqual({
+    expect(
+      paragraphRejectOriginalFormatting({ styleId: "Normal" }, null),
+    ).toEqual({
       styleId: "Normal",
     });
   });
@@ -109,18 +127,26 @@ describe("a rejected w:pPrChange rebuilds the serializer's pPr source", () => {
   test("refuses a record carrying the pre-union shape", () => {
     // SAFETY: the pre-union shape is the fixture. This build cannot mint it,
     // and a record stored by one that could is the input under test.
-    const storedByAnOlderBuild = { numPr: { numId: 1, ilvl: 0 } } as unknown as Parameters<
-      typeof paragraphRejectOriginalFormatting
-    >[0];
-    expect(() => paragraphRejectOriginalFormatting(storedByAnOlderBuild, null)).toThrow(Panic);
+    const storedByAnOlderBuild = {
+      numPr: { numId: 1, ilvl: 0 },
+    } as unknown as Parameters<typeof paragraphRejectOriginalFormatting>[0];
+    expect(() =>
+      paragraphRejectOriginalFormatting(storedByAnOlderBuild, null),
+    ).toThrow(Panic);
   });
 });
 
 describe("effective paragraph numbering", () => {
   test.each([
     { numPr: undefined, numPrFromStyle: undefined },
-    { numPr: paragraphNumberingAttr({ kind: "none" }), numPrFromStyle: undefined },
-    { numPr: paragraphNumberingAttr({ kind: "levelOnly", ilvl: 3 }), numPrFromStyle: undefined },
+    {
+      numPr: paragraphNumberingAttr({ kind: "none" }),
+      numPrFromStyle: undefined,
+    },
+    {
+      numPr: paragraphNumberingAttr({ kind: "levelOnly", ilvl: 3 }),
+      numPrFromStyle: undefined,
+    },
   ])("no effective reference is typed none, never level zero", (sources) => {
     expect(effectiveParagraphNumbering(sources)).toEqual({ kind: "none" });
     expect(effectiveParagraphNumberingReference(sources)).toBeUndefined();
@@ -129,7 +155,10 @@ describe("effective paragraph numbering", () => {
   test("only an existing reference defaults an omitted level to zero", () => {
     const stated = paragraphNumberingAttr({ kind: "reference", numId: 4 });
     expect(
-      effectiveParagraphNumberingReference({ numPr: stated, numPrFromStyle: undefined }),
+      effectiveParagraphNumberingReference({
+        numPr: stated,
+        numPrFromStyle: undefined,
+      }),
     ).toEqual({
       kind: "reference",
       numId: 4,

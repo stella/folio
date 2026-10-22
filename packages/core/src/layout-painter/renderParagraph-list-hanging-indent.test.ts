@@ -14,7 +14,11 @@ import {
   installCanvasMeasureProvider,
   resetCanvasContext,
 } from "../layout-engine/measure/measureContainer";
-import type { ParagraphBlock, ParagraphFragment, ParagraphMeasure } from "../layout-engine/types";
+import type {
+  ParagraphBlock,
+  ParagraphFragment,
+  ParagraphMeasure,
+} from "../layout-engine/types";
 import { renderParagraphFragment } from "./renderParagraph";
 
 function createFakeStyle(): Record<string, string> {
@@ -89,7 +93,9 @@ type RenderListItemOptions = {
   text?: string;
   rtl?: boolean;
   marker?: string;
-  markerFormatting?: NonNullable<ParagraphBlock["attrs"]>["listMarkerFormatting"];
+  markerFormatting?: NonNullable<
+    ParagraphBlock["attrs"]
+  >["listMarkerFormatting"];
   markerAlignment?: "left" | "center" | "right";
   markerSecondSlotOffsetTwips?: number;
 };
@@ -119,7 +125,9 @@ function renderListItem({
       ...(markerSecondSlotOffsetTwips === undefined
         ? {}
         : { listMarkerSecondSlotOffsetTwips: markerSecondSlotOffsetTwips }),
-      ...(markerFormatting !== undefined ? { listMarkerFormatting: markerFormatting } : {}),
+      ...(markerFormatting !== undefined
+        ? { listMarkerFormatting: markerFormatting }
+        : {}),
     },
   };
   const measure: ParagraphMeasure = {
@@ -235,14 +243,21 @@ describe("Issue #729 — list hanging indent exceeding left indent", () => {
     });
 
     expect(marker?.style.width).toBe("24px");
-    expect(Number.parseFloat(marker?.style.transform?.slice(11) ?? "")).toBeCloseTo(-14, 1);
+    expect(
+      Number.parseFloat(marker?.style.transform?.slice(11) ?? ""),
+    ).toBeCloseTo(-14, 1);
   });
 
   test("hanging > left: marker hangs into the margin via negative margin-left", () => {
     // 15px left, 38px hanging — marker should start at 15 - 38 = -23px.
-    const { line, marker } = renderListItem({ indent: { left: 15, hanging: 38 } });
+    const { line, marker } = renderListItem({
+      indent: { left: 15, hanging: 38 },
+    });
     expect(marker?.className).toContain("layout-list-marker");
-    expect(Number.parseFloat(marker?.style.marginLeft ?? "")).toBeCloseTo(-23, 1);
+    expect(Number.parseFloat(marker?.style.marginLeft ?? "")).toBeCloseTo(
+      -23,
+      1,
+    );
     // padding clamps to 0 (can't be negative); text-indent stays 0.
     expect(line.style.paddingLeft).toBe("0px");
     expect(line.style.textIndent).toBe("0");
@@ -250,14 +265,18 @@ describe("Issue #729 — list hanging indent exceeding left indent", () => {
 
   test("hanging <= left: existing path unchanged (padding, no marker margin)", () => {
     // 48px left, 24px hanging — marker starts at 48 - 24 = 24px via padding.
-    const { line, marker } = renderListItem({ indent: { left: 48, hanging: 24 } });
+    const { line, marker } = renderListItem({
+      indent: { left: 48, hanging: 24 },
+    });
     expect(marker?.style.marginLeft).toBeFalsy();
     expect(line.style.paddingLeft).toBe("24px");
     expect(line.style.textIndent).toBe("0");
   });
 
   test("left == 0 with hanging: marker hangs left and body stays at the content edge", () => {
-    const { line, marker } = renderListItem({ indent: { left: 0, hanging: 24 } });
+    const { line, marker } = renderListItem({
+      indent: { left: 0, hanging: 24 },
+    });
     expect(marker?.style.marginLeft).toBe("-24px");
     expect(line.style.paddingLeft).toBe("0px");
   });
@@ -290,16 +309,21 @@ describe("Issue #729 — list hanging indent exceeding left indent", () => {
   test.each([
     ["right", 14],
     ["center", 7],
-  ] as const)("explicit bidi mirrors %s marker alignment", (markerAlignment, offset) => {
-    const { marker } = renderListItem({
-      bidi: true,
-      indent: { left: 24, hanging: 24 },
-      marker: "1.",
-      markerAlignment,
-    });
+  ] as const)(
+    "explicit bidi mirrors %s marker alignment",
+    (markerAlignment, offset) => {
+      const { marker } = renderListItem({
+        bidi: true,
+        indent: { left: 24, hanging: 24 },
+        marker: "1.",
+        markerAlignment,
+      });
 
-    expect(Number.parseFloat(marker?.style.transform?.slice(11) ?? "")).toBeCloseTo(offset, 1);
-  });
+      expect(
+        Number.parseFloat(marker?.style.transform?.slice(11) ?? ""),
+      ).toBeCloseTo(offset, 1);
+    },
+  );
 
   test("explicit bidi positions a folded marker slot from the physical right", () => {
     const { marker } = renderListItem({
@@ -328,9 +352,14 @@ describe("negative left indent with hanging (w:ind w:left<0 w:hanging)", () => {
     // and the body at left = -9px. The line element already carries
     // margin-left = min(left, 0) = -9px, so the marker only needs the
     // remaining -18px on its own margin-left.
-    const { line, marker } = renderListItem({ indent: { left: -9, hanging: 18 } });
+    const { line, marker } = renderListItem({
+      indent: { left: -9, hanging: 18 },
+    });
     expect(marker?.className).toContain("layout-list-marker");
-    expect(Number.parseFloat(marker?.style.marginLeft ?? "")).toBeCloseTo(-18, 1);
+    expect(Number.parseFloat(marker?.style.marginLeft ?? "")).toBeCloseTo(
+      -18,
+      1,
+    );
     // padding clamps to 0 (markerStart is negative); the -9px negative left
     // indent rides on the line's own margin-left, not padding.
     expect(line.style.paddingLeft).toBe("0px");
@@ -345,7 +374,10 @@ describe("negative left indent with hanging (w:ind w:left<0 w:hanging)", () => {
     const { continuation } = renderMultiLineListItem({ left: -9, hanging: 18 });
     // No hanging padding added; the negative indent is realized by margin-left.
     expect(continuation.style.paddingLeft).toBeFalsy();
-    expect(Number.parseFloat(continuation.style.marginLeft ?? "")).toBeCloseTo(-9, 1);
+    expect(Number.parseFloat(continuation.style.marginLeft ?? "")).toBeCloseTo(
+      -9,
+      1,
+    );
   });
 });
 

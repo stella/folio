@@ -11,6 +11,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
@@ -26,7 +27,9 @@ import {
 } from "./lib/corpus-invariants/pipeline-totality";
 
 const minimalInput = async (): Promise<CorpusInvariantInput> => {
-  const buffer = await createDocx(createEmptyDocument({ initialText: "One paragraph." }));
+  const buffer = await createDocx(
+    createEmptyDocument({ initialText: "One paragraph." }),
+  );
   return {
     bytes: new Uint8Array(buffer),
     buffer,
@@ -38,19 +41,26 @@ const minimalInput = async (): Promise<CorpusInvariantInput> => {
 
 describe("runPipelineTotalityInvariant", () => {
   test("a one-paragraph package survives every published entry point", async () => {
-    const { failures, timings } = await runPipelineTotalityInvariant(await minimalInput());
+    const { failures, timings } = await runPipelineTotalityInvariant(
+      await minimalInput(),
+    );
 
     expect(failures).toEqual([]);
     expect(Object.keys(timings).sort()).toEqual([...PIPELINE_STAGES].sort());
   });
 
   test("comparing the package with itself reports no changes", async () => {
-    const compareSelf = PIPELINE_STAGE_TABLE.find(({ name }) => name === "compare-self");
+    const compareSelf = PIPELINE_STAGE_TABLE.find(
+      ({ name }) => name === "compare-self",
+    );
     if (compareSelf === undefined) {
       throw new Error("the stage table lost compare-self");
     }
 
-    const problems = await compareSelf.run({ input: await minimalInput(), laidOut: null });
+    const problems = await compareSelf.run({
+      input: await minimalInput(),
+      laidOut: null,
+    });
 
     expect(problems).toEqual([]);
   });
@@ -76,11 +86,16 @@ describe("runPipelineStages", () => {
       recordingStage("after", ran),
     ] as const satisfies readonly PipelineStage[];
 
-    const { failures, timings } = await runPipelineStages(stages, await minimalInput());
+    const { failures, timings } = await runPipelineStages(
+      stages,
+      await minimalInput(),
+    );
 
     expect(ran).toEqual(["before", "after"]);
     expect(failures).toHaveLength(1);
-    expect(failures[0]?.message).toBe("boom: TypeError: layout walked off the page");
+    expect(failures[0]?.message).toBe(
+      "boom: TypeError: layout walked off the page",
+    );
     expect(Object.keys(timings).sort()).toEqual(["after", "before", "boom"]);
   });
 
@@ -105,7 +120,8 @@ describe("runPipelineStages", () => {
     const stages = [
       {
         name: "asserting",
-        run: () => Promise.resolve(["comparing a package with itself reported changes"]),
+        run: () =>
+          Promise.resolve(["comparing a package with itself reported changes"]),
       },
     ] as const satisfies readonly PipelineStage[];
 

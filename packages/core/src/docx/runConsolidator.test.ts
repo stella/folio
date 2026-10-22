@@ -1,9 +1,12 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 
 import type { Hyperlink, Run } from "../types/document";
 import { parseDocumentBody } from "./documentParser";
-import { consolidateParagraphContent, consolidateRuns } from "./runConsolidator";
+import {
+  consolidateParagraphContent,
+  consolidateRuns,
+} from "./runConsolidator";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 
 const plainRun = (text: string): Run => ({
@@ -31,7 +34,9 @@ const changedRun = (text: string, id = 1): Run => ({
 });
 
 const runText = (run: Run): string =>
-  run.content.map((content) => (content.type === "text" ? content.text : "")).join("");
+  run.content
+    .map((content) => (content.type === "text" ? content.text : ""))
+    .join("");
 
 describe("run consolidation boundaries", () => {
   test.each([
@@ -60,7 +65,9 @@ describe("run consolidation boundaries", () => {
 
       expect(result.map(runText)).toEqual(expectedText);
       expect(result.at(expectedChangedIndex)).toEqual(changedRun("changed"));
-      expect(result.filter((run) => run.propertyChanges?.length).map(runText)).toEqual(["changed"]);
+      expect(
+        result.filter((run) => run.propertyChanges?.length).map(runText),
+      ).toEqual(["changed"]);
     },
   );
 
@@ -126,11 +133,11 @@ describe("run consolidation boundaries", () => {
       panic("Expected parsed paragraph");
     }
 
-    expect(paragraph.content.filter((content) => content.type === "run").map(runText)).toEqual([
-      "before",
-      "changed",
-      "after",
-    ]);
+    expect(
+      paragraph.content
+        .filter((content) => content.type === "run")
+        .map(runText),
+    ).toEqual(["before", "changed", "after"]);
 
     const xml = serializeParagraph(paragraph);
     expect(xml).toMatch(

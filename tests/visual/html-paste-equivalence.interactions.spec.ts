@@ -1,19 +1,20 @@
-import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
-import { assertExactModel } from "../../test/exactModel";
-import { expectParagraphBlock } from "../../test/paragraphBlock";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
-import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
-import { paragraphLogicalText } from "../../packages/docx-core/src/ops/offsets";
-import type { Document } from "../../packages/core/src/types/document";
-import { createDocx } from "../../packages/core/src/docx/rezip";
 import { parseDocx } from "../../packages/core/src/docx/parser";
+import { createDocx } from "../../packages/core/src/docx/rezip";
+import type { Document } from "../../packages/core/src/types/document";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
+import { paragraphLogicalText } from "../../packages/docx-core/src/ops/offsets";
+import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
+import { assertExactModel } from "../../test/exactModel";
+import { expectParagraphBlock } from "../../test/paragraphBlock";
 import type { buildCanonicalBridge } from "../parity/canonicalBridge";
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 
 declare global {
-  var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
+  var __folioPlayground:
+    { getEditorRef: () => DocxEditorRef | null } | undefined;
 }
 
 const cases = [
@@ -71,21 +72,35 @@ const paste = async (page: Page, input: PasteCase, suggesting: boolean) => {
   await page.goto("/?file=sample.docx");
   await page.waitForSelector(".layout-page");
   await page.evaluate(() =>
-    globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView({ focus: true }),
+    globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.ensureEditorView({ focus: true }),
   );
   await page.waitForFunction(
-    () => !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
+    () =>
+      !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
   );
   const baselineBytes = await page.evaluate(async () => {
-    const bytes = await globalThis.__folioPlayground?.getEditorRef()?.save({ selective: false });
+    const bytes = await globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.save({ selective: false });
     return bytes ? [...new Uint8Array(bytes)] : null;
   });
-  if (!baselineBytes) throw new Error("editor did not return the original DOCX");
-  const baseline = await FolioDocxReviewer.fromBuffer(new Uint8Array(baselineBytes).buffer);
+  if (!baselineBytes)
+    throw new Error("editor did not return the original DOCX");
+  const baseline = await FolioDocxReviewer.fromBuffer(
+    new Uint8Array(baselineBytes).buffer,
+  );
 
-  if (suggesting) await page.getByRole("button", { name: "Track Changes", exact: true }).click();
+  if (suggesting)
+    await page
+      .getByRole("button", { name: "Track Changes", exact: true })
+      .click();
   const selected = await page.evaluate((selection) => {
-    const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+    const view = globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView();
     if (!view) throw new Error("editor view unavailable");
     let from: number | null = null;
     let text = "";
@@ -102,13 +117,19 @@ const paste = async (page: Page, input: PasteCase, suggesting: boolean) => {
     const start = selection === "caret" ? from + 6 : from;
     view.dispatch(
       view.state.tr.setSelection(
-        view.state.selection.constructor.create(view.state.doc, start, from + 6),
+        view.state.selection.constructor.create(
+          view.state.doc,
+          start,
+          from + 6,
+        ),
       ),
     );
     view.focus();
     return selection === "caret" ? "" : text;
   }, input.selection);
-  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(selected);
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
+    selected,
+  );
 
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.evaluate(async ({ html, plain }) => {
@@ -126,26 +147,38 @@ const paste = async (page: Page, input: PasteCase, suggesting: boolean) => {
       { capture: true, once: true },
     );
   }, input);
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+v" : "Control+v");
+  await page.keyboard.press(
+    process.platform === "darwin" ? "Meta+v" : "Control+v",
+  );
   await expect
     .poll(() => page.locator("html").getAttribute("data-received-paste-html"))
     .toContain(input.html);
 
   const savedBytes = await page.evaluate(async () => {
-    const bytes = await globalThis.__folioPlayground?.getEditorRef()?.save({ selective: false });
+    const bytes = await globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.save({ selective: false });
     return bytes ? [...new Uint8Array(bytes)] : null;
   });
   if (!savedBytes) {
-    const status = await page.locator('.pg-status[data-status="error"]').textContent();
+    const status = await page
+      .locator('.pg-status[data-status="error"]')
+      .textContent();
     throw new Error(`editor did not return the pasted DOCX: ${status}`);
   }
   const buffer = new Uint8Array(savedBytes).buffer;
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
-  return { buffer, baseline: project(baseline), selected, pending: reviewer.getChanges() };
+  return {
+    buffer,
+    baseline: project(baseline),
+    selected,
+    pending: reviewer.getChanges(),
+  };
 };
 
 for (const input of cases) {
-  const tag = input.kind === "pastePlain" ? "" : ` @browser-input:${input.kind}`;
+  const tag =
+    input.kind === "pastePlain" ? "" : ` @browser-input:${input.kind}`;
   test(`${input.name} paste accepts to editing mode and rejects to original${tag}`, async ({
     page,
   }) => {
@@ -156,19 +189,26 @@ for (const input of cases) {
 
     const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
     accepting.acceptAll();
-    const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+    const accepted = await FolioDocxReviewer.fromBuffer(
+      await accepting.toBuffer(),
+    );
     const editedSaved = await FolioDocxReviewer.fromBuffer(edited.buffer);
     expect(project(accepted)).toEqual(project(editedSaved));
 
     const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
     rejecting.rejectAll();
-    const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+    const rejected = await FolioDocxReviewer.fromBuffer(
+      await rejecting.toBuffer(),
+    );
     expect(project(rejected)).toEqual(suggested.baseline);
 
     if (input.selection === "replace") {
       expect(suggested.pending).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ type: "deletion", text: suggested.selected }),
+          expect.objectContaining({
+            type: "deletion",
+            text: suggested.selected,
+          }),
         ]),
       );
     }
@@ -177,30 +217,48 @@ for (const input of cases) {
       const list = ["Alpha", "Nested", "Omega"].map((item) =>
         blocks.find(({ text }) => text.includes(item)),
       );
-      expect(list.map((block) => block?.listReference?.level)).toEqual([0, 1, 0]);
+      expect(list.map((block) => block?.listReference?.level)).toEqual([
+        0, 1, 0,
+      ]);
       expect(list.every((block) => !!block?.displayLabel)).toBe(true);
     }
   });
 }
 
-test("native cut copies the selection and resolves like editing mode", async ({ page }) => {
+test("native cut copies the selection and resolves like editing mode", async ({
+  page,
+}) => {
   const run = async (suggesting: boolean) => {
     await page.goto("/?file=sample.docx");
     await page.waitForSelector(".layout-page");
     await page.evaluate(() =>
-      globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView({ focus: true }),
+      globalThis.__folioPlayground
+        ?.getEditorRef()
+        ?.ensureEditorView({ focus: true }),
     );
     await page.waitForFunction(
-      () => !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
+      () =>
+        !!globalThis.__folioPlayground
+          ?.getEditorRef()
+          ?.getEditorRef()
+          ?.getView(),
     );
     const original = await page.evaluate(async () => {
-      const bytes = await globalThis.__folioPlayground?.getEditorRef()?.save({ selective: false });
+      const bytes = await globalThis.__folioPlayground
+        ?.getEditorRef()
+        ?.save({ selective: false });
       return bytes ? [...new Uint8Array(bytes)] : null;
     });
     if (!original) throw new Error("editor did not return the original DOCX");
-    if (suggesting) await page.getByRole("button", { name: "Track Changes", exact: true }).click();
+    if (suggesting)
+      await page
+        .getByRole("button", { name: "Track Changes", exact: true })
+        .click();
     const selected = await page.evaluate(() => {
-      const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+      const view = globalThis.__folioPlayground
+        ?.getEditorRef()
+        ?.getEditorRef()
+        ?.getView();
       if (!view) throw new Error("editor view unavailable");
       let from: number | null = null;
       let text = "";
@@ -213,20 +271,33 @@ test("native cut copies the selection and resolves like editing mode", async ({ 
         }
         return true;
       });
-      if (from === null) throw new Error("fixture has no six-character text run");
+      if (from === null)
+        throw new Error("fixture has no six-character text run");
       view.dispatch(
         view.state.tr.setSelection(
-          view.state.selection.constructor.create(view.state.doc, from, from + 6),
+          view.state.selection.constructor.create(
+            view.state.doc,
+            from,
+            from + 6,
+          ),
         ),
       );
       view.focus();
       return text;
     });
-    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-    await page.keyboard.press(process.platform === "darwin" ? "Meta+x" : "Control+x");
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(selected);
+    await page
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.keyboard.press(
+      process.platform === "darwin" ? "Meta+x" : "Control+x",
+    );
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(selected);
     const saved = await page.evaluate(async () => {
-      const bytes = await globalThis.__folioPlayground?.getEditorRef()?.save({ selective: false });
+      const bytes = await globalThis.__folioPlayground
+        ?.getEditorRef()
+        ?.save({ selective: false });
       return bytes ? [...new Uint8Array(bytes)] : null;
     });
     if (!saved) throw new Error("editor did not return the cut DOCX");
@@ -249,20 +320,29 @@ test("native cut copies the selection and resolves like editing mode", async ({ 
   );
   const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
   accepting.acceptAll();
-  const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+  const accepted = await FolioDocxReviewer.fromBuffer(
+    await accepting.toBuffer(),
+  );
   expect(project(accepted)).toEqual(project(editedSaved));
   const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
   rejecting.rejectAll();
-  const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+  const rejected = await FolioDocxReviewer.fromBuffer(
+    await rejecting.toBuffer(),
+  );
   const baseline = await FolioDocxReviewer.fromBuffer(suggested.original);
   expect(project(rejected)).toEqual(project(baseline));
 });
 
-type CanonicalSnapshot = ReturnType<ReturnType<typeof buildCanonicalBridge>["snapshot"]>;
+type CanonicalSnapshot = ReturnType<
+  ReturnType<typeof buildCanonicalBridge>["snapshot"]
+>;
 
 const canonicalSnapshot = async (page: Page) => {
-  const current = await page.evaluate(() => globalThis.__folioCanonical?.snapshot());
-  if (!current?.document) throw new TypeError("Canonical clipboard document unavailable.");
+  const current = await page.evaluate(() =>
+    globalThis.__folioCanonical?.snapshot(),
+  );
+  if (!current?.document)
+    throw new TypeError("Canonical clipboard document unavailable.");
   expect(current.active).toBe(true);
   expect(current.projectionMatchesCanonical).toBe(true);
   expect(current.projectionJSON).toEqual(current.canonicalProjectionJSON);
@@ -272,16 +352,20 @@ const canonicalSnapshot = async (page: Page) => {
 
 const authoredClipboardContent = (document: Document) =>
   document.package.document.content.map((paragraph) => {
-    if (paragraph.type !== "paragraph") throw new TypeError("Expected pasted paragraph.");
+    if (paragraph.type !== "paragraph")
+      throw new TypeError("Expected pasted paragraph.");
     return {
       paraId: paragraph.paraId,
       text: paragraphLogicalText(paragraph),
       alignment: paragraph.formatting?.alignment,
       keepNext: paragraph.formatting?.keepNext ?? false,
       runs: paragraph.content.map((run) => {
-        if (run.type !== "run") throw new TypeError("Expected authored clipboard run.");
+        if (run.type !== "run")
+          throw new TypeError("Expected authored clipboard run.");
         return {
-          text: run.content.map((leaf) => (leaf.type === "text" ? leaf.text : leaf.type)).join(""),
+          text: run.content
+            .map((leaf) => (leaf.type === "text" ? leaf.text : leaf.type))
+            .join(""),
           bold: run.formatting?.bold ?? false,
           italic: run.formatting?.italic ?? false,
         };
@@ -289,7 +373,10 @@ const authoredClipboardContent = (document: Document) =>
     };
   });
 
-const expectCanonicalHistoryState = (actual: CanonicalSnapshot, expected: CanonicalSnapshot) => {
+const expectCanonicalHistoryState = (
+  actual: CanonicalSnapshot,
+  expected: CanonicalSnapshot,
+) => {
   assertExactModel(actual.document, expected.document);
   expect(actual.projectionJSON).toEqual(expected.projectionJSON);
   assertExactModel(actual.selection, expected.selection);
@@ -306,7 +393,8 @@ test("canonical rich clipboard preserves generated marks, open ends and exact hi
   ];
   const sourceDocument = createEmptyDocument({ initialText: "leftRIGHT" });
   const destination = sourceDocument.package.document.content.at(0);
-  if (destination?.type !== "paragraph") throw new TypeError("Expected destination paragraph.");
+  if (destination?.type !== "paragraph")
+    throw new TypeError("Expected destination paragraph.");
   destination.formatting = { alignment: "center", keepNext: true };
   const source = [...new Uint8Array(await createDocx(sourceDocument))];
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -317,20 +405,25 @@ test("canonical rich clipboard preserves generated marks, open ends and exact hi
     [3, 1, 0],
     [3, 1, 1],
   ] as const) {
-    const tokens = Array.from({ length: mask }, (_, index) => `Paste${mask}${index}😀`);
+    const tokens = Array.from(
+      { length: mask },
+      (_, index) => `Paste${mask}${index}😀`,
+    );
     const importedIds = tokens.map((_, index) => `4AFE000${index + 1}`);
     const html = tokens
       .map((token, index) => {
         let marked = token;
         if (mask & 1) marked = `<strong>${marked}</strong>`;
         if (mask & 2) marked = `<em>${marked}</em>`;
-        const slice = index === 0 ? ` data-pm-slice="${openStart} ${openEnd} []"` : "";
+        const slice =
+          index === 0 ? ` data-pm-slice="${openStart} ${openEnd} []"` : "";
         return `<p data-para-id="${importedIds.at(index)}"${slice}>${marked}</p>`;
       })
       .join("");
 
     for (const replace of [false, true]) {
-      let firstAdapterContent: ReturnType<typeof authoredClipboardContent> | undefined;
+      let firstAdapterContent:
+        ReturnType<typeof authoredClipboardContent> | undefined;
       for (const port of ports) {
         await page.goto(`http://localhost:${port}/?session=canonical`);
         await page.waitForSelector(".layout-page");
@@ -363,7 +456,9 @@ test("canonical rich clipboard preserves generated marks, open ends and exact hi
         );
         await page.keyboard.press(`${modifier}+v`);
         await expect
-          .poll(() => page.locator("html").getAttribute("data-canonical-paste-html"))
+          .poll(() =>
+            page.locator("html").getAttribute("data-canonical-paste-html"),
+          )
           .toContain("data-pm-slice");
         const after = await canonicalSnapshot(page);
         const expectedTexts = [...tokens];
@@ -377,11 +472,15 @@ test("canonical rich clipboard preserves generated marks, open ends and exact hi
         expect(authored.at(0)?.alignment).toBe("center");
         expect(authored.at(0)?.keepNext).toBe(true);
         const identities = authored.map(({ paraId }) => paraId);
-        expect(identities.every((id) => typeof id === "string" && /^[0-9A-F]{8}$/i.test(id))).toBe(
+        expect(
+          identities.every(
+            (id) => typeof id === "string" && /^[0-9A-F]{8}$/i.test(id),
+          ),
+        ).toBe(true);
+        expect(new Set(identities).size).toBe(identities.length);
+        expect(identities.every((id) => !importedIds.includes(id ?? ""))).toBe(
           true,
         );
-        expect(new Set(identities).size).toBe(identities.length);
-        expect(identities.every((id) => !importedIds.includes(id ?? ""))).toBe(true);
         for (const token of tokens) {
           const pastedRuns = authored
             .flatMap(({ runs }) => runs)
@@ -401,15 +500,19 @@ test("canonical rich clipboard preserves generated marks, open ends and exact hi
         expectCanonicalHistoryState(redone, after);
         expect(redone.canRedo).toBe(false);
 
-        const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
-        if (!saved) throw new TypeError("Canonical clipboard document did not save.");
+        const saved = await page.evaluate(() =>
+          globalThis.__folioCanonical?.save(),
+        );
+        if (!saved)
+          throw new TypeError("Canonical clipboard document did not save.");
         const reopened = await parseDocx(new Uint8Array(saved), {
           preloadFonts: false,
           detectVariables: false,
         });
         const reopenedContent = authoredClipboardContent(reopened);
         expect(reopenedContent).toEqual(authored);
-        if (firstAdapterContent) expect(reopenedContent).toEqual(firstAdapterContent);
+        if (firstAdapterContent)
+          expect(reopenedContent).toEqual(firstAdapterContent);
         else firstAdapterContent = reopenedContent;
         expect(await evaluateCanonicalLoad(page, saved)).toBe(true);
         const reloaded = await canonicalSnapshot(page);

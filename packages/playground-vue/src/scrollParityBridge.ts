@@ -1,13 +1,17 @@
 import type {
-  DocxEditorRef,
   DocxEditorProps,
-  FolioSuggestion,
+  DocxEditorRef,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
+  FolioSuggestion,
 } from "@stll/folio-vue";
 
-type FolioDocumentOperationBatch = Parameters<DocxEditorRef["applyDocumentOperations"]>[0]["batch"];
-type EditorView = Parameters<NonNullable<DocxEditorProps["onEditorViewReady"]>>[0];
+type FolioDocumentOperationBatch = Parameters<
+  DocxEditorRef["applyDocumentOperations"]
+>[0]["batch"];
+type EditorView = Parameters<
+  NonNullable<DocxEditorProps["onEditorViewReady"]>
+>[0];
 type PagedRef = NonNullable<ReturnType<DocxEditorRef["getEditorRef"]>>;
 type ScrollMethod =
   | Extract<keyof DocxEditorRef, `scrollTo${string}`>
@@ -62,11 +66,17 @@ export const findScrollSuggestionTarget = ({
   if (!range) return null;
   const block = snapshot.blocks.find(({ id }) => {
     const anchor = snapshot.anchors[id];
-    return anchor !== undefined && anchor.from >= range.from && anchor.from < range.to;
+    return (
+      anchor !== undefined &&
+      anchor.from >= range.from &&
+      anchor.from < range.to
+    );
   });
   const anchor = block ? snapshot.anchors[block.id] : undefined;
   return anchor
-    ? root.querySelector<HTMLElement>(`.layout-paragraph[data-pm-start="${anchor.from}"]`)
+    ? root.querySelector<HTMLElement>(
+        `.layout-paragraph[data-pm-start="${anchor.from}"]`,
+      )
     : null;
 };
 
@@ -104,13 +114,18 @@ export const buildScrollParityBridge = (getRef: () => DocxEditorRef | null) => {
       const ref = requireRef();
       const snapshot = ref.createAIEditSnapshot();
       if (!snapshot) throw new Error("Host flow snapshot unavailable");
-      return ref.applyDocumentOperations({ undefinedReferences: "refuse", snapshot, batch });
+      return ref.applyDocumentOperations({
+        undefinedReferences: "refuse",
+        snapshot,
+        batch,
+      });
     },
     readFlowDocument: () => {
       const ref = requireRef();
       const document = ref.getDocument();
       const pagedDocument = ref.getEditorRef()?.getDocument();
-      if (!document || !pagedDocument) throw new Error("Host document read unavailable");
+      if (!document || !pagedDocument)
+        throw new Error("Host document read unavailable");
       return {
         documentBody: document.package.document,
         pagedBody: pagedDocument.package.document,
@@ -166,8 +181,10 @@ export const buildScrollParityBridge = (getRef: () => DocxEditorRef | null) => {
           return ref.scrollToContentControl({ tag: SCROLL_CONTROL_TAG });
         case "highlightPassage":
           return (
-            ref.highlightPassage({ blockId: SCROLL_TARGET_PARA_ID, text: SCROLL_TARGET_TEXT }) ===
-            "passage"
+            ref.highlightPassage({
+              blockId: SCROLL_TARGET_PARA_ID,
+              text: SCROLL_TARGET_TEXT,
+            }) === "passage"
           );
         case "showInDocument":
           return ref.showInDocument({
@@ -192,7 +209,8 @@ export const buildScrollParityBridge = (getRef: () => DocxEditorRef | null) => {
         case "scrollToParaId":
           return paged.scrollToParaId(SCROLL_TARGET_PARA_ID);
         case "scrollToPosition": {
-          const anchor = ref.createAIEditSnapshot()?.anchors[SCROLL_TARGET_PARA_ID];
+          const anchor =
+            ref.createAIEditSnapshot()?.anchors[SCROLL_TARGET_PARA_ID];
           if (!anchor) return false;
           paged.scrollToPosition(anchor.from);
           return true;
@@ -207,10 +225,15 @@ export const buildScrollParityBridge = (getRef: () => DocxEditorRef | null) => {
       const ref = getRef();
       const root = ref?.getScrollRoot();
       if (!ref || !root) return null;
-      const paraId = method === "scrollToContentControl" ? "13300301" : SCROLL_TARGET_PARA_ID;
+      const paraId =
+        method === "scrollToContentControl"
+          ? "13300301"
+          : SCROLL_TARGET_PARA_ID;
       const resolveTarget = () => {
         if (method !== "scrollToSuggestion") {
-          return root.querySelector<HTMLElement>(`.layout-paragraph[data-para-id="${paraId}"]`);
+          return root.querySelector<HTMLElement>(
+            `.layout-paragraph[data-para-id="${paraId}"]`,
+          );
         }
         const suggestion = ref
           .getSuggestions()
@@ -233,10 +256,13 @@ export const buildScrollParityBridge = (getRef: () => DocxEditorRef | null) => {
     },
     onViewReady: (view: EditorView) => {
       if (!view) return;
-      const requestedTop = Number(new URLSearchParams(location.search).get("readyScroll"));
+      const requestedTop = Number(
+        new URLSearchParams(location.search).get("readyScroll"),
+      );
       if (!(requestedTop > 0)) return;
       const root =
-        view.dom.closest<HTMLElement>("[data-folio-scroll]") ?? getRef()?.getScrollRoot();
+        view.dom.closest<HTMLElement>("[data-folio-scroll]") ??
+        getRef()?.getScrollRoot();
       if (!root) return;
       readyCount++;
       root.scrollTop = requestedTop;

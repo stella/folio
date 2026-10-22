@@ -1,4 +1,7 @@
-import { getParagraphFrame, markParagraphFrameTextBox } from "../../layout-engine/paragraphFrame";
+import {
+  getParagraphFrame,
+  markParagraphFrameTextBox,
+} from "../../layout-engine/paragraphFrame";
 import type { ParagraphFrame } from "../../layout-engine/paragraphFrame";
 import { setTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import type {
@@ -27,7 +30,9 @@ const FRAME_PROPERTIES = [
 ] as const satisfies readonly (keyof ParagraphFrame)[];
 
 function framesEqual(left: ParagraphFrame, right: ParagraphFrame): boolean {
-  return FRAME_PROPERTIES.every((property) => left[property] === right[property]);
+  return FRAME_PROPERTIES.every(
+    (property) => left[property] === right[property],
+  );
 }
 
 function horizontalRelativeTo(
@@ -50,7 +55,9 @@ function verticalRelativeTo(
 
 function framePosition(frame: ParagraphFrame): ImageRunPosition | undefined {
   const horizontal =
-    frame.x !== undefined || frame.xAlign !== undefined || frame.hAnchor !== undefined
+    frame.x !== undefined ||
+    frame.xAlign !== undefined ||
+    frame.hAnchor !== undefined
       ? {
           relativeTo: horizontalRelativeTo(frame.hAnchor),
           ...(frame.x !== undefined ? { posOffset: pixelsToEmu(frame.x) } : {}),
@@ -59,7 +66,9 @@ function framePosition(frame: ParagraphFrame): ImageRunPosition | undefined {
       : undefined;
   const verticalAlign = frame.yAlign === "inline" ? undefined : frame.yAlign;
   const vertical =
-    frame.y !== undefined || verticalAlign !== undefined || frame.vAnchor !== undefined
+    frame.y !== undefined ||
+    verticalAlign !== undefined ||
+    frame.vAnchor !== undefined
       ? {
           relativeTo: verticalRelativeTo(frame.vAnchor),
           ...(frame.y !== undefined ? { posOffset: pixelsToEmu(frame.y) } : {}),
@@ -76,7 +85,9 @@ function framePosition(frame: ParagraphFrame): ImageRunPosition | undefined {
   };
 }
 
-function frameWrapType(frame: ParagraphFrame): NonNullable<TextBoxBlock["wrapType"]> {
+function frameWrapType(
+  frame: ParagraphFrame,
+): NonNullable<TextBoxBlock["wrapType"]> {
   switch (frame.wrap) {
     case "notBeside":
       return "topAndBottom";
@@ -192,7 +203,10 @@ export function groupParagraphFrames(
   return grouped;
 }
 
-function hasFollowingParagraphFrame(blocks: FlowBlock[], startIndex: number): boolean {
+function hasFollowingParagraphFrame(
+  blocks: FlowBlock[],
+  startIndex: number,
+): boolean {
   for (let index = startIndex; index < blocks.length; index++) {
     const block = blocks[index];
     if (block?.kind !== "paragraph") {

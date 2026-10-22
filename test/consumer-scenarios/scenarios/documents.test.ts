@@ -8,7 +8,12 @@ import { describe, test } from "node:test";
 
 import { createReviewerBridge } from "@stll/folio-agents";
 import { fromMarkdown, toMarkdown } from "@stll/folio-core/markdown";
-import { docxToMarkdown, paragraph, parseDocx, run } from "@stll/folio-core/server";
+import {
+  docxToMarkdown,
+  paragraph,
+  parseDocx,
+  run,
+} from "@stll/folio-core/server";
 
 import {
   FIXTURE_NAMES,
@@ -27,7 +32,10 @@ describe("synthetic documents", () => {
       const bytes = await FIXTURES[name]();
       await assertReadersAgree(bytes, `${name} as built`);
       const reviewer = await openReviewer(bytes);
-      const { bytes: saved } = await assertHealthy(reviewer, `${name} saved untouched`);
+      const { bytes: saved } = await assertHealthy(
+        reviewer,
+        `${name} saved untouched`,
+      );
       // A second save of the reopened package is a fixed point.
       await assertHealthy(await openReviewer(saved), `${name} saved twice`);
     });
@@ -43,7 +51,10 @@ describe("synthetic documents", () => {
       ["•", "•", "1.", "2.", "3."],
     );
     const tables = await openReviewer(await FIXTURES.tables());
-    assert.equal(tables.getContent().filter((block) => block.table !== undefined).length, 12);
+    assert.equal(
+      tables.getContent().filter((block) => block.table !== undefined).length,
+      12,
+    );
     const notes = await openReviewer(await FIXTURES.notes());
     assert.match(notes.getNotesAsText(), /As defined in the order form\./u);
     assert.match(notes.getNotesAsText(), /See the warranty schedule\./u);
@@ -59,12 +70,15 @@ describe("synthetic documents", () => {
       ],
     );
     const tracked = await openReviewer(await FIXTURES.trackedChanges());
-    assert.deepEqual([...new Set(tracked.getChanges().map((change) => change.type))].sort(), [
-      "deletion",
-      "insertion",
-      "paragraphMarkDeleted",
-      "paragraphMarkInserted",
-    ]);
+    assert.deepEqual(
+      [...new Set(tracked.getChanges().map((change) => change.type))].sort(),
+      [
+        "deletion",
+        "insertion",
+        "paragraphMarkDeleted",
+        "paragraphMarkInserted",
+      ],
+    );
     const numbered = await openReviewer(await styleNumberedDocument());
     assert.deepEqual(
       numbered
@@ -98,9 +112,14 @@ describe("synthetic documents", () => {
 
   test("a note reference reads as its reading-order marker, not its w:id", async () => {
     const document = fromMarkdown("Intro.");
-    document.package.footnotes = [{ type: "footnote", id: 7, content: [paragraph("First note.")] }];
+    document.package.footnotes = [
+      { type: "footnote", id: 7, content: [paragraph("First note.")] },
+    ];
     document.package.document.content.push(
-      paragraph([run("Referenced."), { type: "run", content: [{ type: "footnoteRef", id: 7 }] }]),
+      paragraph([
+        run("Referenced."),
+        { type: "run", content: [{ type: "footnoteRef", id: 7 }] },
+      ]),
     );
     const reviewer = await openReviewer(await packDocument(document));
     assert.equal(reviewer.getContent().at(-1)?.text, "Referenced.[^1]");
@@ -119,14 +138,23 @@ describe("markdown round trips", () => {
   for (const markdown of STABLE) {
     test(`fromMarkdown → docx → docxToMarkdown is stable: ${JSON.stringify(markdown.slice(0, 32))}`, async () => {
       const bytes = await packDocument(fromMarkdown(markdown));
-      const first = await docxToMarkdown(toArrayBuffer(bytes), MARKDOWN_READ_OPTIONS);
+      const first = await docxToMarkdown(
+        toArrayBuffer(bytes),
+        MARKDOWN_READ_OPTIONS,
+      );
       const again = await docxToMarkdown(
         toArrayBuffer(await packDocument(fromMarkdown(first))),
         MARKDOWN_READ_OPTIONS,
       );
       assert.equal(again, first);
       // The in-memory model and the parsed package render alike.
-      assert.equal(toMarkdown(await parseDocx(toArrayBuffer(bytes)), MARKDOWN_READ_OPTIONS), first);
+      assert.equal(
+        toMarkdown(
+          await parseDocx(toArrayBuffer(bytes)),
+          MARKDOWN_READ_OPTIONS,
+        ),
+        first,
+      );
     });
   }
 

@@ -18,8 +18,10 @@ import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx, withoutAttachedTemplate } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 
-const TRANSITIONAL_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const TRANSITIONAL_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const TRANSITIONAL_W =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const TRANSITIONAL_R =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const STRICT_W = "http://purl.oclc.org/ooxml/wordprocessingml/main";
 const STRICT_R = "http://purl.oclc.org/ooxml/officeDocument/relationships";
 
@@ -36,8 +38,16 @@ const relationship = (id: string, type: string, target: string): string =>
 const SETTINGS_RELS =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-  relationship("rId1", "attachedTemplate", "https://example.com/template.dotm") +
-  relationship("rId2", "mailMergeSource", "https://example.com/recipients.csv") +
+  relationship(
+    "rId1",
+    "attachedTemplate",
+    "https://example.com/template.dotm",
+  ) +
+  relationship(
+    "rId2",
+    "mailMergeSource",
+    "https://example.com/recipients.csv",
+  ) +
   "</Relationships>";
 
 describe("attached template reference", () => {
@@ -60,9 +70,9 @@ describe("attached template reference", () => {
       STRICT_W +
       '"/><attachedTemplate r:id="rId1"/></settings>';
 
-    expect(withoutAttachedTemplate(strict, undefined).settingsXml).not.toContain(
-      "attachedTemplate",
-    );
+    expect(
+      withoutAttachedTemplate(strict, undefined).settingsXml,
+    ).not.toContain("attachedTemplate");
   });
 
   test("keeps a same-named element from a foreign namespace", () => {
@@ -86,7 +96,10 @@ describe("attached template reference", () => {
       `<w:settings xmlns:w="${TRANSITIONAL_W}" xmlns:r="${TRANSITIONAL_R}"></w:settings>`,
     );
     expect(
-      withoutAttachedTemplate('<w:settings xmlns:w="' + TRANSITIONAL_W + '"/>', undefined),
+      withoutAttachedTemplate(
+        '<w:settings xmlns:w="' + TRANSITIONAL_W + '"/>',
+        undefined,
+      ),
     ).toEqual({ settingsXml: undefined, relsXml: undefined });
   });
 

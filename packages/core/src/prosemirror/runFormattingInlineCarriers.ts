@@ -3,7 +3,11 @@ import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
-import { expectFieldAttrs, expectPreservedXmlAttrs, expectSymbolAttrs } from "./attrs";
+import {
+  expectFieldAttrs,
+  expectPreservedXmlAttrs,
+  expectSymbolAttrs,
+} from "./attrs";
 import { PRESERVED_XML_LEVELS, type PreservedXmlLevel } from "./schema/nodes";
 
 export type RunFormattingInlineAtomDisposition =
@@ -45,7 +49,9 @@ export const RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   tab: "tab-run",
   text: "text-run",
   textBoxAnchor: "not-a-run",
-} as const satisfies Readonly<Record<string, RunFormattingInlineAtomDisposition>>);
+} as const satisfies Readonly<
+  Record<string, RunFormattingInlineAtomDisposition>
+>);
 
 const dispositionsByName = new Map<string, RunFormattingInlineAtomDisposition>(
   Object.entries(RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS),
@@ -66,7 +72,10 @@ const dispositionsByName = new Map<string, RunFormattingInlineAtomDisposition>(
 const PRESERVED_XML_DISPOSITIONS = {
   [PRESERVED_XML_LEVELS.run]: "preserved-xml-run",
   [PRESERVED_XML_LEVELS.inline]: "not-a-run",
-} as const satisfies Record<PreservedXmlLevel, RunFormattingInlineAtomDisposition>;
+} as const satisfies Record<
+  PreservedXmlLevel,
+  RunFormattingInlineAtomDisposition
+>;
 
 const CONTROL_CHARACTER_BY_DISPOSITION = Object.freeze({
   "break-run": "\n",
@@ -81,7 +90,9 @@ const CONTROL_CHARACTER_BY_DISPOSITION = Object.freeze({
   "text-run": null,
 } as const satisfies Record<RunFormattingInlineAtomDisposition, string | null>);
 
-export const runFormattingInlineControlCharacter = (node: PMNode): string | null => {
+export const runFormattingInlineControlCharacter = (
+  node: PMNode,
+): string | null => {
   const disposition = runFormattingInlineAtomDisposition(node);
   if (disposition === null) {
     return null;
@@ -98,26 +109,36 @@ export const runFormattingInlineControlCharacter = (node: PMNode): string | null
  * `getFieldVisibleText` paints for the editor is a rendering decision, not
  * document text, and one of its branches is the current date.
  */
-export const runFormattingInlineAtomCleanText = (node: PMNode): string | null => {
+export const runFormattingInlineAtomCleanText = (
+  node: PMNode,
+): string | null => {
   const disposition = runFormattingInlineAtomDisposition(node);
   if (disposition === null) {
     return null;
   }
-  return runFormattingInlineAtomResultText(node) ?? CONTROL_CHARACTER_BY_DISPOSITION[disposition];
+  return (
+    runFormattingInlineAtomResultText(node) ??
+    CONTROL_CHARACTER_BY_DISPOSITION[disposition]
+  );
 };
 
 /**
  * Document text an inline atom contributes, as opposed to a control character:
  * today a field's authored result.
  */
-export const runFormattingInlineAtomResultText = (node: PMNode): string | null =>
+export const runFormattingInlineAtomResultText = (
+  node: PMNode,
+): string | null =>
   runFormattingInlineAtomDisposition(node) === "field-run"
     ? (expectFieldAttrs(node).displayText ?? "")
     : null;
 
-export const runFormattingInlineControlNodeName = (character: string): string | null => {
+export const runFormattingInlineControlNodeName = (
+  character: string,
+): string | null => {
   const entry = Object.entries(RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS).find(
-    ([, disposition]) => CONTROL_CHARACTER_BY_DISPOSITION[disposition] === character,
+    ([, disposition]) =>
+      CONTROL_CHARACTER_BY_DISPOSITION[disposition] === character,
   );
   return entry?.[0] ?? null;
 };
@@ -131,7 +152,9 @@ export const runFormattingInlineAtomDisposition = (
 
   const disposition = dispositionsByName.get(node.type.name);
   if (!disposition) {
-    return panic(`Inline atom ${JSON.stringify(node.type.name)} has no run-formatting disposition`);
+    return panic(
+      `Inline atom ${JSON.stringify(node.type.name)} has no run-formatting disposition`,
+    );
   }
   return disposition === "preserved-xml-run"
     ? PRESERVED_XML_DISPOSITIONS[expectPreservedXmlAttrs(node).level]
@@ -151,15 +174,19 @@ export type RunFormattingCarrier = {
   representations: readonly RunFormattingCarrierRepresentation[];
 };
 
-export type SelectedRunFormattingCarrierRepresentation = RunFormattingCarrierRepresentation & {
-  carrierDisposition: RunFormattingCarrier["disposition"];
-  from: number;
-  to: number;
-};
+export type SelectedRunFormattingCarrierRepresentation =
+  RunFormattingCarrierRepresentation & {
+    carrierDisposition: RunFormattingCarrier["disposition"];
+    from: number;
+    to: number;
+  };
 
 type ApplyMarksToRunFormattingRepresentationOptions = {
   tr: Transaction;
-  representation: RunFormattingCarrierRepresentation & { from: number; to: number };
+  representation: RunFormattingCarrierRepresentation & {
+    from: number;
+    to: number;
+  };
   marks: readonly Mark[];
 };
 
@@ -211,14 +238,18 @@ export const expandRunFormattingCarrier = (
     };
   }
 
-  const representations: RunFormattingCarrierRepresentation[] = [{ node, position, role: "owner" }];
+  const representations: RunFormattingCarrierRepresentation[] = [
+    { node, position, role: "owner" },
+  ];
   node.descendants((child, relativePosition) => {
     const childDisposition = runFormattingInlineAtomDisposition(child);
     if (childDisposition === null) {
       return true;
     }
     if (childDisposition === "structured-field") {
-      return panic("A structured field cannot contain another structured field");
+      return panic(
+        "A structured field cannot contain another structured field",
+      );
     }
     if (childDisposition !== "not-a-run") {
       representations.push({
@@ -262,11 +293,17 @@ export const selectRunFormattingCarrierRepresentations = ({
     }
 
     for (const representation of carrier.representations) {
-      if (runFormattingInlineAtomDisposition(representation.node) === "page-break-carrier") {
+      if (
+        runFormattingInlineAtomDisposition(representation.node) ===
+        "page-break-carrier"
+      ) {
         continue;
       }
       const representationFrom = Math.max(from, representation.position);
-      const representationTo = Math.min(to, representation.position + representation.node.nodeSize);
+      const representationTo = Math.min(
+        to,
+        representation.position + representation.node.nodeSize,
+      );
       if (representationFrom >= representationTo) {
         continue;
       }
@@ -274,7 +311,8 @@ export const selectRunFormattingCarrierRepresentations = ({
         carrier.disposition === "structured-field" &&
         representation.role === "owner" &&
         (representationFrom !== representation.position ||
-          representationTo !== representation.position + representation.node.nodeSize)
+          representationTo !==
+            representation.position + representation.node.nodeSize)
       ) {
         continue;
       }
@@ -291,7 +329,9 @@ export const selectRunFormattingCarrierRepresentations = ({
 };
 
 /** Deterministic visible text for one logical formatting revision carrier. */
-export const runFormattingCarrierReviewText = (carrier: RunFormattingCarrier): string => {
+export const runFormattingCarrierReviewText = (
+  carrier: RunFormattingCarrier,
+): string => {
   switch (carrier.disposition) {
     case "tab-run":
     case "break-run":
@@ -311,6 +351,8 @@ export const runFormattingCarrierReviewText = (carrier: RunFormattingCarrier): s
       return expectPreservedXmlAttrs(carrier.node).text;
     case "field-run":
     case "structured-field":
-      return expectFieldAttrs(carrier.node).displayText ?? carrier.node.textContent;
+      return (
+        expectFieldAttrs(carrier.node).displayText ?? carrier.node.textContent
+      );
   }
 };

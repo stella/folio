@@ -15,7 +15,7 @@ import { Plugin } from "prosemirror-state";
 import { singletonManager } from "../../schema";
 import { createExtension } from "../create";
 import { Priority } from "../types";
-import type { ExtensionRuntime, ExtensionContext } from "../types";
+import type { ExtensionContext, ExtensionRuntime } from "../types";
 import { createBidiShortcutController } from "./bidiShortcutController";
 
 export const BidiShortcutExtension = createExtension({
@@ -41,7 +41,8 @@ export const BidiShortcutExtension = createExtension({
                   return false;
                 }
                 const cmds = singletonManager.getCommands();
-                const command = direction === "ltr" ? cmds["setLtr"] : cmds["setRtl"];
+                const command =
+                  direction === "ltr" ? cmds["setLtr"] : cmds["setRtl"];
                 command?.()(view.state, view.dispatch);
                 return false;
               },

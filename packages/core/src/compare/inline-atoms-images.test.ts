@@ -3,7 +3,10 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
-import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
 import { prepareTargetInlineAtom } from "./inline-atom-resources";
 import { matchInlineAtoms, sameInlineAtoms } from "./inline-atoms";
@@ -23,7 +26,15 @@ const image = ({ src, rId }: { src: string; rId: string }) =>
     displayMode: "inline",
   });
 
-const rawDrawing = ({ id, rId, name }: { id: string; rId: string; name: string }) =>
+const rawDrawing = ({
+  id,
+  rId,
+  name,
+}: {
+  id: string;
+  rId: string;
+  name: string;
+}) =>
   `<w:drawing><wp:inline><wp:docPr id="${id}" name="${name}"/>` +
   `<a:graphic><a:graphicData><pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="image.png"/>` +
   `</pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/></pic:blipFill>` +
@@ -103,10 +114,19 @@ describe("matchInlineAtoms image resources", () => {
       imageWithDrawing({ id: "100000", rId: "rIdRepacked", name: "Picture" }),
     ]);
     const renamed = documentWith([
-      imageWithDrawing({ id: "100000", rId: "rIdRepacked", name: "Other picture" }),
+      imageWithDrawing({
+        id: "100000",
+        rId: "rIdRepacked",
+        name: "Other picture",
+      }),
     ]);
     const differentMedia = documentWith([
-      imageWithDrawing({ id: "100000", rId: "rIdRepacked", name: "Picture", src: TARGET_IMAGE }),
+      imageWithDrawing({
+        id: "100000",
+        rId: "rIdRepacked",
+        name: "Picture",
+        src: TARGET_IMAGE,
+      }),
     ]);
 
     expect(sameInlineAtoms(source, renumbered)).toBe(true);
@@ -116,7 +136,10 @@ describe("matchInlineAtoms image resources", () => {
   test("does not track an unchanged image", () => {
     const unchanged = image({ src: BASE_IMAGE, rId: "rIdBase" });
     const target = documentWith([unchanged]);
-    const state = EditorState.create({ schema, doc: documentWith([unchanged]) });
+    const state = EditorState.create({
+      schema,
+      doc: documentWith([unchanged]),
+    });
 
     const result = match({ state, target });
 
@@ -135,8 +158,10 @@ describe("matchInlineAtoms image resources", () => {
     expect(result.status).toBe("matched");
     if (result.status !== "matched") return;
     const reviewed = state.apply(result.transaction);
-    const acceptedImage = resolve({ state: reviewed, mode: "accept" }).doc.firstChild!.firstChild!;
-    const rejectedImage = resolve({ state: reviewed, mode: "reject" }).doc.firstChild!.firstChild!;
+    const acceptedImage = resolve({ state: reviewed, mode: "accept" }).doc
+      .firstChild!.firstChild!;
+    const rejectedImage = resolve({ state: reviewed, mode: "reject" }).doc
+      .firstChild!.firstChild!;
     const preparedTarget = prepareTargetInlineAtom(targetImage);
 
     expect(result.rangeCount).toBe(2);
@@ -162,13 +187,11 @@ describe("matchInlineAtoms image resources", () => {
     const preservedField = reviewed.doc.firstChild?.child(1);
     expect(preservedField?.type.name).toBe("field");
     expect(preservedField?.marks).toHaveLength(0);
-    expect(inlineNames(resolve({ state: reviewed, mode: "reject" }).doc)).toEqual([
-      "image",
-      "field",
-    ]);
-    expect(inlineNames(resolve({ state: reviewed, mode: "accept" }).doc)).toEqual([
-      "field",
-      "image",
-    ]);
+    expect(
+      inlineNames(resolve({ state: reviewed, mode: "reject" }).doc),
+    ).toEqual(["image", "field"]);
+    expect(
+      inlineNames(resolve({ state: reviewed, mode: "accept" }).doc),
+    ).toEqual(["field", "image"]);
   });
 });

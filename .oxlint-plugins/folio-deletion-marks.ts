@@ -15,15 +15,22 @@ type RuleContext = {
 };
 
 const isNode = (value: unknown): value is AstNode =>
-  typeof value === "object" && value !== null && "type" in value && typeof value.type === "string";
+  typeof value === "object" &&
+  value !== null &&
+  "type" in value &&
+  typeof value.type === "string";
 const nameOf = (node: unknown): string | undefined => {
   if (!isNode(node)) return undefined;
-  if (node.type === "Identifier" && typeof node.name === "string") return node.name;
-  if (node.type === "Literal" && typeof node.value === "string") return node.value;
+  if (node.type === "Identifier" && typeof node.name === "string")
+    return node.name;
+  if (node.type === "Literal" && typeof node.value === "string")
+    return node.value;
   return undefined;
 };
 const member = (node: unknown, name: string): node is AstNode =>
-  isNode(node) && node.type === "MemberExpression" && nameOf(node.property) === name;
+  isNode(node) &&
+  node.type === "MemberExpression" &&
+  nameOf(node.property) === name;
 
 const executionOwner = (node: AstNode): AstNode | undefined => {
   let current: unknown = node;
@@ -95,15 +102,27 @@ export default {
           }
           return undefined;
         };
-        const valuesOf = (variable: LexicalVariable, reference: AstNode): unknown[] => {
+        const valuesOf = (
+          variable: LexicalVariable,
+          reference: AstNode,
+        ): unknown[] => {
           const values = variable.references
             .map(({ writeExpr }) => writeExpr)
             .filter((value) => canReach(value, reference));
           for (const { node } of variable.defs) {
-            if (!isNode(node) || node.type !== "VariableDeclarator" || !isNode(node.id)) continue;
+            if (
+              !isNode(node) ||
+              node.type !== "VariableDeclarator" ||
+              !isNode(node.id)
+            )
+              continue;
             if (node.id.type === "Identifier" && canReach(node.init, reference))
               values.push(node.init);
-            if (node.id.type !== "ObjectPattern" || !Array.isArray(node.id.properties)) continue;
+            if (
+              node.id.type !== "ObjectPattern" ||
+              !Array.isArray(node.id.properties)
+            )
+              continue;
             for (const property of node.id.properties) {
               if (
                 !isNode(property) ||
@@ -112,7 +131,11 @@ export default {
               )
                 continue;
               if (variableOf(property.value) !== variable) continue;
-              values.push({ type: "MemberExpression", object: node.init, property: property.key });
+              values.push({
+                type: "MemberExpression",
+                object: node.init,
+                property: property.key,
+              });
             }
           }
           return values;
@@ -129,10 +152,15 @@ export default {
             const variable = variableOf(node);
             if (!variable || seen.has(variable)) return false;
             const next = new Set(seen).add(variable);
-            return valuesOf(variable, node).some((value) => resolves(value, predicate, next));
+            return valuesOf(variable, node).some((value) =>
+              resolves(value, predicate, next),
+            );
           }
           if (node.type === "LogicalExpression")
-            return resolves(node.left, predicate, seen) || resolves(node.right, predicate, seen);
+            return (
+              resolves(node.left, predicate, seen) ||
+              resolves(node.right, predicate, seen)
+            );
           if (node.type === "ConditionalExpression")
             return (
               resolves(node.consequent, predicate, seen) ||
@@ -141,10 +169,13 @@ export default {
           return false;
         };
         const deletionType = (node: AstNode) =>
-          member(node, "deletion") && resolves(node.object, (value) => member(value, "marks"));
+          member(node, "deletion") &&
+          resolves(node.object, (value) => member(value, "marks"));
         const deletionMark = (node: AstNode): boolean => {
-          if (node.type !== "CallExpression" || !isNode(node.callee)) return false;
-          if (member(node.callee, "create")) return resolves(node.callee.object, deletionType);
+          if (node.type !== "CallExpression" || !isNode(node.callee))
+            return false;
+          if (member(node.callee, "create"))
+            return resolves(node.callee.object, deletionType);
           return (
             member(node.callee, "mark") &&
             Array.isArray(node.arguments) &&
@@ -153,11 +184,15 @@ export default {
         };
         return {
           CallExpression: (node: unknown) => {
-            if (isNode(node) && member(node.callee, "addMark")) calls.push(node);
+            if (isNode(node) && member(node.callee, "addMark"))
+              calls.push(node);
           },
           "Program:exit": () => {
             for (const call of calls) {
-              if (Array.isArray(call.arguments) && resolves(call.arguments.at(2), deletionMark))
+              if (
+                Array.isArray(call.arguments) &&
+                resolves(call.arguments.at(2), deletionMark)
+              )
                 context.report({ node: call, messageId: "rawDeletion" });
             }
           },

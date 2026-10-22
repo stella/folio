@@ -53,7 +53,11 @@ import {
  */
 export type DispositionMatch =
   | { kind: "signature"; signature: string }
-  | { kind: "path"; invariants: readonly CorpusInvariant[]; paths: readonly string[] };
+  | {
+      kind: "path";
+      invariants: readonly CorpusInvariant[];
+      paths: readonly string[];
+    };
 
 export type ExpectedDispositionEntry = {
   /** A stable handle, so a report and a review can name the same decision. */
@@ -102,7 +106,10 @@ const anyKindField = (patternSegment: string): string | undefined => {
   return groups?.["kind"] === ANY_DISCRIMINATOR ? groups["field"] : undefined;
 };
 
-const matchesWholeSegment = (patternSegment: string, pathSegment: string): boolean => {
+const matchesWholeSegment = (
+  patternSegment: string,
+  pathSegment: string,
+): boolean => {
   const field = anyKindField(patternSegment);
   if (field === undefined) {
     return patternSegment === pathSegment;
@@ -129,7 +136,10 @@ const matchesCutSegment = (patternSegment: string, prefix: string): boolean => {
  * evidence supports: a path cut before its leaf matches nothing, and the bare
  * `…` a shortened path leaves in place of its middle matches only `**`.
  */
-const segmentMatches = (patternSegment: string, pathSegment: string): boolean => {
+const segmentMatches = (
+  patternSegment: string,
+  pathSegment: string,
+): boolean => {
   if (!pathSegment.endsWith(ELISION)) {
     return matchesWholeSegment(patternSegment, pathSegment);
   }
@@ -163,8 +173,10 @@ const matchSegments = (
   return matchSegments(pattern, segments, patternIndex + 1, segmentIndex + 1);
 };
 
-export const pathMatchesPattern = (pattern: string, modelPath: string): boolean =>
-  matchSegments(pattern.split("."), modelPath.split("."), 0, 0);
+export const pathMatchesPattern = (
+  pattern: string,
+  modelPath: string,
+): boolean => matchSegments(pattern.split("."), modelPath.split("."), 0, 0);
 
 const assertNever = (value: never): never => {
   throw new Error(`unhandled disposition match: ${JSON.stringify(value)}`);
@@ -183,13 +195,18 @@ export type DispositionCandidate = {
   message: string;
 };
 
-const claims = (match: DispositionMatch, candidate: DispositionCandidate): boolean => {
+const claims = (
+  match: DispositionMatch,
+  candidate: DispositionCandidate,
+): boolean => {
   switch (match.kind) {
     case "signature": {
       return candidate.signature === match.signature;
     }
     case "path": {
-      if (!match.invariants.some((invariant) => invariant === candidate.invariant)) {
+      if (
+        !match.invariants.some((invariant) => invariant === candidate.invariant)
+      ) {
         return false;
       }
       const modelPath = differencePath(candidate.message);
@@ -213,7 +230,9 @@ const SIGNATURE_SEPARATOR = " | ";
  * frame may be empty, so the invariant is everything before the first join and
  * the message everything between the first and the last.
  */
-export const candidateFromSignature = (signature: string): DispositionCandidate => {
+export const candidateFromSignature = (
+  signature: string,
+): DispositionCandidate => {
   const first = signature.indexOf(SIGNATURE_SEPARATOR);
   const last = signature.lastIndexOf(SIGNATURE_SEPARATOR);
   if (first === -1 || last === first) {
@@ -246,7 +265,10 @@ export const partitionExpectedDispositions = (
   const defects: CensusSignature[] = [];
   const claimed: CensusSignature[] = [];
   for (const signature of census.signatures) {
-    (dispositionOf(dispositions, signature) === undefined ? defects : claimed).push(signature);
+    (dispositionOf(dispositions, signature) === undefined
+      ? defects
+      : claimed
+    ).push(signature);
   }
   return { defects: { ...census, signatures: defects }, dispositions: claimed };
 };
@@ -370,7 +392,14 @@ export const renderExpectedDispositions = (
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const ENTRY_KEYS = new Set(["contract", "fileHits", "id", "match", "reason", "removalCondition"]);
+const ENTRY_KEYS = new Set([
+  "contract",
+  "fileHits",
+  "id",
+  "match",
+  "reason",
+  "removalCondition",
+]);
 const LIST_KEYS = new Set(["entries", "schemaVersion"]);
 const HAND_WRITTEN_KEYS = ["reason", "contract", "removalCondition"] as const;
 
@@ -393,7 +422,11 @@ const unknownKindsIn = (pattern: string): string[] =>
         !MODEL_TYPE_DISCRIMINATORS.has(kind),
     );
 
-const validateMatch = (value: unknown, location: string, issues: string[]): void => {
+const validateMatch = (
+  value: unknown,
+  location: string,
+  issues: string[],
+): void => {
   if (!isRecord(value)) {
     issues.push(`${location}: expected an object`);
     return;
@@ -417,7 +450,9 @@ const validateMatch = (value: unknown, location: string, issues: string[]): void
     }
     for (const [index, item] of list.entries()) {
       if (typeof item !== "string" || item.length === 0) {
-        issues.push(`${location}.${key}[${index}]: expected a non-empty string`);
+        issues.push(
+          `${location}.${key}[${index}]: expected a non-empty string`,
+        );
       }
     }
   }
@@ -428,7 +463,9 @@ const validateMatch = (value: unknown, location: string, issues: string[]): void
         continue;
       }
       if (!pattern.startsWith("package.")) {
-        issues.push(`${location}.paths[${index}]: a model path starts at \`package\``);
+        issues.push(
+          `${location}.paths[${index}]: a model path starts at \`package\``,
+        );
       }
       for (const kind of unknownKindsIn(pattern)) {
         issues.push(
@@ -507,7 +544,10 @@ export const validateExpectedDispositions = (
   // SAFETY: every field was just checked, field by field, against this shape.
   const checked = value as unknown as ExpectedDispositions;
   for (const refusal of refusals.entries) {
-    const entry = dispositionOf(checked, candidateFromSignature(refusal.signature));
+    const entry = dispositionOf(
+      checked,
+      candidateFromSignature(refusal.signature),
+    );
     if (entry !== undefined) {
       issues.push(
         `${entry.id} also claims the expected refusal ${refusal.signature}; a signature is a refusal or a disposition, never both`,

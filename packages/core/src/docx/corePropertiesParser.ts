@@ -1,5 +1,9 @@
 import type { DocxPackage } from "../types/document";
-import { findChildByLocalName, getTextContent, parseXmlDocument } from "./xmlParser";
+import {
+  findChildByLocalName,
+  getTextContent,
+  parseXmlDocument,
+} from "./xmlParser";
 
 type DocumentProperties = NonNullable<DocxPackage["properties"]>;
 
@@ -26,7 +30,9 @@ const parseDate = (value: string): Date | undefined => {
 };
 
 /** Parse recognized package metadata from `docProps/core.xml`. */
-export const parseCoreProperties = (xml: string | null): DocumentProperties | undefined => {
+export const parseCoreProperties = (
+  xml: string | null,
+): DocumentProperties | undefined => {
   if (!xml) {
     return undefined;
   }

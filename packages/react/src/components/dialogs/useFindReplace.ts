@@ -5,7 +5,7 @@
  * Extracted from FindReplaceDialog.tsx.
  */
 
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import type { FindMatch, FindOptions } from "./findReplaceUtils";
 import { createDefaultFindOptions } from "./findReplaceUtils";
@@ -99,8 +99,12 @@ export type UseFindReplaceReturn = {
 /**
  * Hook for managing find/replace dialog state
  */
-export function useFindReplace(hookOptions?: FindReplaceOptions): UseFindReplaceReturn {
-  const initialMode: FindReplaceMode = hookOptions?.initialReplaceMode ? "replace" : "find";
+export function useFindReplace(
+  hookOptions?: FindReplaceOptions,
+): UseFindReplaceReturn {
+  const initialMode: FindReplaceMode = hookOptions?.initialReplaceMode
+    ? "replace"
+    : "find";
   const [state, setState] = useState<FindReplaceState>({
     ...closedDialogState(initialMode),
     searchText: "",
@@ -177,7 +181,10 @@ export function useFindReplace(hookOptions?: FindReplaceOptions): UseFindReplace
       }));
       hookOptions?.onMatchesChange?.(matches);
       if (matches.length > 0) {
-        hookOptions?.onCurrentMatchChange?.(matches[newIndex] ?? null, newIndex);
+        hookOptions?.onCurrentMatchChange?.(
+          matches[newIndex] ?? null,
+          newIndex,
+        );
       } else {
         hookOptions?.onCurrentMatchChange?.(null, -1);
       }
@@ -203,7 +210,10 @@ export function useFindReplace(hookOptions?: FindReplaceOptions): UseFindReplace
       if (prev.matches.length === 0) {
         return prev;
       }
-      newIndex = prev.currentIndex === 0 ? prev.matches.length - 1 : prev.currentIndex - 1;
+      newIndex =
+        prev.currentIndex === 0
+          ? prev.matches.length - 1
+          : prev.currentIndex - 1;
       return { ...prev, currentIndex: newIndex };
     });
     return newIndex;
@@ -211,7 +221,11 @@ export function useFindReplace(hookOptions?: FindReplaceOptions): UseFindReplace
 
   const goToMatch = useCallback((index: number) => {
     setState((prev) => {
-      if (prev.matches.length === 0 || index < 0 || index >= prev.matches.length) {
+      if (
+        prev.matches.length === 0 ||
+        index < 0 ||
+        index >= prev.matches.length
+      ) {
         return prev;
       }
       return { ...prev, currentIndex: index };
@@ -225,7 +239,10 @@ export function useFindReplace(hookOptions?: FindReplaceOptions): UseFindReplace
     return state.matches[state.currentIndex] || null;
   }, [state.matches, state.currentIndex]);
 
-  const hasMatches = useCallback(() => state.matches.length > 0, [state.matches.length]);
+  const hasMatches = useCallback(
+    () => state.matches.length > 0,
+    [state.matches.length],
+  );
 
   return {
     state,

@@ -7,6 +7,8 @@
  * `CT_MarkupRange` → `CT_Bookmark` → `CT_MoveBookmark`.
  */
 
+import { escapeXmlAttribute } from "@stll/docx-core";
+
 import type {
   BookmarkEnd,
   BookmarkRangeMarker,
@@ -14,7 +16,6 @@ import type {
   MarkupRangeMarker,
   MoveBookmarkMarker,
 } from "../../types/document";
-import { escapeXmlAttribute } from "@stll/docx-core";
 
 const attribute = (name: string, value: string | number): string =>
   `${name}="${escapeXmlAttribute(String(value))}"`;
@@ -22,12 +23,16 @@ const attribute = (name: string, value: string | number): string =>
 export const markupRangeAttributes = (marker: MarkupRangeMarker): string[] => {
   const attributes = [attribute("w:id", marker.id)];
   if (marker.displacedByCustomXml !== undefined) {
-    attributes.push(attribute("w:displacedByCustomXml", marker.displacedByCustomXml));
+    attributes.push(
+      attribute("w:displacedByCustomXml", marker.displacedByCustomXml),
+    );
   }
   return attributes;
 };
 
-export const bookmarkRangeAttributes = (marker: BookmarkRangeMarker): string[] => {
+export const bookmarkRangeAttributes = (
+  marker: BookmarkRangeMarker,
+): string[] => {
   const attributes = markupRangeAttributes(marker);
   if (marker.colFirst !== undefined) {
     attributes.push(attribute("w:colFirst", marker.colFirst));
@@ -46,13 +51,17 @@ export const bookmarkRangeAttributes = (marker: BookmarkRangeMarker): string[] =
  * child of `w:tbl`, so the four serializers share one writer: an attribute
  * added to `CT_Bookmark` reaches every level at once.
  */
-export const serializeBookmarkMarker = (marker: BookmarkStart | BookmarkEnd): string =>
+export const serializeBookmarkMarker = (
+  marker: BookmarkStart | BookmarkEnd,
+): string =>
   marker.type === "bookmarkStart"
     ? `<w:bookmarkStart ${bookmarkRangeAttributes(marker).join(" ")}/>`
     : `<w:bookmarkEnd ${markupRangeAttributes(marker).join(" ")}/>`;
 
 /** `w:author` is required, so it is always written; `w:date` only when known. */
-export const moveBookmarkAttributes = (marker: MoveBookmarkMarker): string[] => {
+export const moveBookmarkAttributes = (
+  marker: MoveBookmarkMarker,
+): string[] => {
   const attributes = bookmarkRangeAttributes(marker);
   attributes.push(attribute("w:author", marker.author.trim() || "Unknown"));
   if (marker.date !== undefined && marker.date.trim().length > 0) {

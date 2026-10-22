@@ -1,9 +1,12 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 
 import { parseEndnotes, parseFootnotes } from "../../docx/footnoteParser";
 import type { FlowBlock, Run } from "../../layout-engine/types";
-import { convertFootnoteToContent, convertNoteStoryToFlowBlocks } from "./footnoteLayout";
+import {
+  convertFootnoteToContent,
+  convertNoteStoryToFlowBlocks,
+} from "./footnoteLayout";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
@@ -18,10 +21,19 @@ function footnoteFromParagraphXml(paragraphXml: string) {
 }
 
 function convert(paragraphXml: string, displayNumber: number): FlowBlock[] {
-  return convertFootnoteToContent(footnoteFromParagraphXml(paragraphXml), displayNumber, 400, {
-    measureBlocks: (blocks) =>
-      blocks.map(() => ({ kind: "paragraph" as const, lines: [], totalHeight: 12 })),
-  }).blocks;
+  return convertFootnoteToContent(
+    footnoteFromParagraphXml(paragraphXml),
+    displayNumber,
+    400,
+    {
+      measureBlocks: (blocks) =>
+        blocks.map(() => ({
+          kind: "paragraph" as const,
+          lines: [],
+          totalHeight: 12,
+        })),
+    },
+  ).blocks;
 }
 
 function firstParagraphRuns(blocks: FlowBlock[]): Run[] {
@@ -55,7 +67,9 @@ describe("note reference mark in the note story", () => {
     );
 
     expect(visibleText(runs)).toBe("(3) \tNote body");
-    expect(runs.find((run) => run.kind === "text" && run.text === "3")).toMatchObject({
+    expect(
+      runs.find((run) => run.kind === "text" && run.text === "3"),
+    ).toMatchObject({
       superscript: true,
     });
   });
@@ -72,7 +86,9 @@ describe("note reference mark in the note story", () => {
   });
 
   test("a note story without the mark still leads with its number", () => {
-    const runs = firstParagraphRuns(convert(`<w:p><w:r><w:t>Note body</w:t></w:r></w:p>`, 5));
+    const runs = firstParagraphRuns(
+      convert(`<w:p><w:r><w:t>Note body</w:t></w:r></w:p>`, 5),
+    );
 
     expect(visibleText(runs)).toBe("5 Note body");
   });
@@ -80,7 +96,10 @@ describe("note reference mark in the note story", () => {
 
 // The parser owns namespace recognition; layout consumes the same typed marker for both note kinds.
 for (const kind of ["footnote", "endnote"] as const) {
-  for (const namespace of [W_NS, "http://purl.oclc.org/ooxml/wordprocessingml/main"]) {
+  for (const namespace of [
+    W_NS,
+    "http://purl.oclc.org/ooxml/wordprocessingml/main",
+  ]) {
     for (const prefix of ["producer:", ""]) {
       for (const placement of ["leading", "middle", "trailing"] as const) {
         test(`typed ${kind} marker retains ${placement} placement in ${namespace} (${prefix || "default"})`, () => {
@@ -95,7 +114,9 @@ for (const kind of ["footnote", "endnote"] as const) {
             `<${prefix}r><${prefix}rPr><${prefix}vertAlign producer:val="superscript"/></${prefix}rPr><${prefix}${kind}Ref/></${prefix}r>` +
             `<${prefix}r><${prefix}t>${after}</${prefix}t></${prefix}r>` +
             `</${prefix}p></${prefix}${kind}></${prefix}${kind}s>`;
-          const note = (kind === "footnote" ? parseFootnotes(xml) : parseEndnotes(xml)).byId.get(4);
+          const note = (
+            kind === "footnote" ? parseFootnotes(xml) : parseEndnotes(xml)
+          ).byId.get(4);
           if (!note) panic("Expected parsed note");
           const { flowBlocks, hasReferenceMark } = convertNoteStoryToFlowBlocks(
             note.content,
@@ -105,7 +126,9 @@ for (const kind of ["footnote", "endnote"] as const) {
           const runs = firstParagraphRuns(flowBlocks);
           expect(hasReferenceMark).toBe(true);
           expect(visibleText(runs)).toBe(`${before}iv${after}`);
-          expect(runs.find((run) => run.kind === "text" && run.text === "iv")).toMatchObject({
+          expect(
+            runs.find((run) => run.kind === "text" && run.text === "iv"),
+          ).toMatchObject({
             superscript: true,
           });
         });
@@ -123,7 +146,9 @@ test("note-story conversion hides comments without changing authored content", (
     const { flowBlocks } = convertNoteStoryToFlowBlocks(footnote.content, {
       showCommentHighlights,
     });
-    const run = firstParagraphRuns(flowBlocks).find((candidate) => candidate.kind === "text");
+    const run = firstParagraphRuns(flowBlocks).find(
+      (candidate) => candidate.kind === "text",
+    );
     expect(run?.kind === "text" ? run.commentIds : undefined).toEqual(
       showCommentHighlights ? [7] : undefined,
     );
@@ -135,7 +160,9 @@ for (const kind of ["footnote", "endnote"] as const) {
   for (const markupView of ["no-markup", "original"] as const) {
     test(`${kind} displays ${markupView} text before measurement`, () => {
       const xml = `<w:${kind}s xmlns:w="${W_NS}"><w:${kind} w:id="4"><w:p><w:r><w:t>base</w:t></w:r><w:ins w:id="1" w:author="Reviewer"><w:r><w:t>inserted</w:t></w:r></w:ins><w:del w:id="2" w:author="Reviewer"><w:r><w:delText>deleted</w:delText></w:r></w:del></w:p></w:${kind}></w:${kind}s>`;
-      const note = (kind === "footnote" ? parseFootnotes(xml) : parseEndnotes(xml)).byId.get(4);
+      const note = (
+        kind === "footnote" ? parseFootnotes(xml) : parseEndnotes(xml)
+      ).byId.get(4);
       if (!note) panic("Expected parsed note");
       const options = {
         markupView,

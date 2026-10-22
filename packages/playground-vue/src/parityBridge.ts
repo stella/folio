@@ -28,7 +28,11 @@ export function buildParityBridge(
       const results = batches.map((batch) => {
         const snapshot = ref.createAIEditSnapshot();
         if (!snapshot) throw new Error("Generated flow requires a snapshot");
-        return ref.applyDocumentOperations({ undefinedReferences: "refuse", snapshot, batch });
+        return ref.applyDocumentOperations({
+          undefinedReferences: "refuse",
+          snapshot,
+          batch,
+        });
       });
       const saved = await ref.save();
       if (!saved) throw new Error("Generated flow did not save");
@@ -46,7 +50,9 @@ export function buildParityBridge(
     },
     readScrollViewport: (pageNumber) => {
       const root = getRef()?.getScrollRoot();
-      const target = document.querySelector(`[data-page-number="${pageNumber}"]`);
+      const target = document.querySelector(
+        `[data-page-number="${pageNumber}"]`,
+      );
       if (!root || !target) {
         return null;
       }
@@ -65,7 +71,8 @@ export function buildParityBridge(
     },
     ensureView: () => getRef()?.ensureEditorView({ focus: false }),
     hasView: () => liveView() !== null,
-    getDocumentText: () => getRef()?.getEditor()?.getState()?.doc.textContent ?? "",
+    getDocumentText: () =>
+      getRef()?.getEditor()?.getState()?.doc.textContent ?? "",
     getTextWatermark: () => {
       const document = getRef()?.getDocument();
       if (!document) {
@@ -80,7 +87,9 @@ export function buildParityBridge(
         return false;
       }
       const { state } = view;
-      view.dispatch(state.tr.insertText(text, state.selection.from, state.selection.to));
+      view.dispatch(
+        state.tr.insertText(text, state.selection.from, state.selection.to),
+      );
       return true;
     },
     boldFirstWord: () => {
@@ -141,7 +150,8 @@ export function buildParityBridge(
       editor.setSelection(from, to);
       return true;
     },
-    countSelectionRects: () => document.querySelectorAll("[data-folio-selection-rect]").length,
+    countSelectionRects: () =>
+      document.querySelectorAll("[data-folio-selection-rect]").length,
     setupContentControls: () => {
       const view = liveView();
       if (!view) {
@@ -157,12 +167,27 @@ export function buildParityBridge(
             { displayText: "New York", value: "ny" },
           ]),
         },
-        [view.state.schema.node("paragraph", {}, [view.state.schema.text("California")])],
+        [
+          view.state.schema.node("paragraph", {}, [
+            view.state.schema.text("California"),
+          ]),
+        ],
       );
-      const date = view.state.schema.node("blockSdt", { sdtType: "date", tag: "effective" }, [
-        view.state.schema.node("paragraph", {}, [view.state.schema.text("2026-01-15")]),
-      ]);
-      view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, [dropdown, date]));
+      const date = view.state.schema.node(
+        "blockSdt",
+        { sdtType: "date", tag: "effective" },
+        [
+          view.state.schema.node("paragraph", {}, [
+            view.state.schema.text("2026-01-15"),
+          ]),
+        ],
+      );
+      view.dispatch(
+        view.state.tr.replaceWith(0, view.state.doc.content.size, [
+          dropdown,
+          date,
+        ]),
+      );
       return true;
     },
     dispatchClipboardEvent: (kind) => {
@@ -170,7 +195,9 @@ export function buildParityBridge(
       if (!view) {
         return 0;
       }
-      view.dom.dispatchEvent(new ClipboardEvent(kind, { bubbles: true, cancelable: true }));
+      view.dom.dispatchEvent(
+        new ClipboardEvent(kind, { bubbles: true, cancelable: true }),
+      );
       return getClipboardCallbackCount(kind);
     },
     getCurrentTableProperties: () => {
@@ -190,7 +217,8 @@ export function buildParityBridge(
         return {
           width: typeof width === "number" ? width : null,
           widthType: typeof widthType === "string" ? widthType : null,
-          justification: typeof justification === "string" ? justification : null,
+          justification:
+            typeof justification === "string" ? justification : null,
         };
       }
       return null;
@@ -244,12 +272,20 @@ export function buildParityBridge(
         return false;
       }
       const { from, to } = range;
-      view.dispatch(view.state.tr.addMark(from, to, commentType.create({ commentId: 424242 })));
+      view.dispatch(
+        view.state.tr.addMark(
+          from,
+          to,
+          commentType.create({ commentId: 424242 }),
+        ),
+      );
       return view.state.doc.rangeHasMark(from, to, commentType);
     },
     countCommentAnchors: () =>
-      document.querySelectorAll(".paged-editor__pages [data-comment-id]").length,
-    aiSnapshotBlockCount: () => getRef()?.createAIEditSnapshot()?.blocks.length ?? 0,
+      document.querySelectorAll(".paged-editor__pages [data-comment-id]")
+        .length,
+    aiSnapshotBlockCount: () =>
+      getRef()?.createAIEditSnapshot()?.blocks.length ?? 0,
     pendingSuggestionPersistence: () => {
       const ref = getRef();
       const snapshot = ref?.createAIEditSnapshot();
@@ -271,7 +307,9 @@ export function buildParityBridge(
         ],
       });
       const id = result.applied.at(0)?.suggestionId;
-      const parsed: unknown = JSON.parse(JSON.stringify(ref.exportPendingSuggestions()));
+      const parsed: unknown = JSON.parse(
+        JSON.stringify(ref.exportPendingSuggestions()),
+      );
       const records = Array.isArray(parsed) ? parsed : [];
       if (id) ref.rejectSuggestion(id);
       const loaded = ref.loadPendingSuggestions(records);
@@ -324,7 +362,11 @@ export function buildParityBridge(
       if (!ref || !snapshot || !firstBlock) {
         return { shown: false, targetPage: 0, currentPage: 0 };
       }
-      const target = { type: "block", story: "main", blockId: firstBlock.id } as const;
+      const target = {
+        type: "block",
+        story: "main",
+        blockId: firstBlock.id,
+      } as const;
       const targetPage = ref.getTargetPage(target, snapshot) ?? 0;
       const shown = ref.showInDocument(target, snapshot);
       return { shown, targetPage, currentPage: ref.getCurrentPage() };
@@ -376,7 +418,11 @@ export function buildParityBridge(
         },
       });
       const view = liveView();
-      if (!second.undoHandle || !view || view.state.doc.textContent === before) {
+      if (
+        !second.undoHandle ||
+        !view ||
+        view.state.doc.textContent === before
+      ) {
         return false;
       }
 
@@ -412,13 +458,16 @@ export function buildParityBridge(
       if (!word) {
         return false;
       }
-      const { key, payload } = setAnonymizationTermsMeta([{ canonical: word, label: "person" }]);
+      const { key, payload } = setAnonymizationTermsMeta([
+        { canonical: word, label: "person" },
+      ]);
       view.dispatch(view.state.tr.setMeta(key, payload));
       return true;
     },
     countAnonymizationRects: () =>
-      document.querySelectorAll("[data-folio-anonymization-overlay] .folio-anonymization-term")
-        .length,
+      document.querySelectorAll(
+        "[data-folio-anonymization-overlay] .folio-anonymization-term",
+      ).length,
     startAutocomplete: (text) => {
       const view = liveView();
       if (!view) {
@@ -431,7 +480,9 @@ export function buildParityBridge(
           autocompleteRequestId,
         ),
       );
-      view.dispatch(appendAutocompleteToken(view.state.tr, autocompleteRequestId, text));
+      view.dispatch(
+        appendAutocompleteToken(view.state.tr, autocompleteRequestId, text),
+      );
       return true;
     },
     finishAutocomplete: () => {
@@ -439,7 +490,9 @@ export function buildParityBridge(
       if (!view) {
         return false;
       }
-      view.dispatch(finishAutocompleteSuggestion(view.state.tr, autocompleteRequestId));
+      view.dispatch(
+        finishAutocompleteSuggestion(view.state.tr, autocompleteRequestId),
+      );
       return true;
     },
     clearAutocomplete: () => {
@@ -462,7 +515,9 @@ export function buildParityBridge(
         return false;
       }
       const { state } = view;
-      pagedRef.dispatch(state.tr.insertText(text, state.selection.from, state.selection.to));
+      pagedRef.dispatch(
+        state.tr.insertText(text, state.selection.from, state.selection.to),
+      );
       return true;
     },
     getPageNumberForSelection: () => {
@@ -480,7 +535,9 @@ export function buildParityBridge(
       if (!ref || !view || !before) {
         return false;
       }
-      view.dispatch(view.state.tr.insertText(marker, view.state.selection.from));
+      view.dispatch(
+        view.state.tr.insertText(marker, view.state.selection.from),
+      );
       ref.loadDocument(before);
       return true;
     },

@@ -8,11 +8,11 @@ import { makeTempDir } from "./__tests__/fixtures";
 import {
   acquireLease,
   adoptLease,
+  type LockHolder,
   lockPathFor,
   lockSwapPathFor,
   readLease,
   TRANSACTION_LEASE_MS,
-  type LockHolder,
 } from "./lock";
 
 let dir = "";
@@ -50,25 +50,41 @@ describe("acquireLease", () => {
     const token = "lease-canary-never-publish-7d093be3";
     await writeHolder({ token });
 
-    const refused = await acquireLease({ documentPath, txId: "tx-2", force: false });
+    const refused = await acquireLease({
+      documentPath,
+      txId: "tx-2",
+      force: false,
+    });
     const wrongToken = await adoptLease(documentPath, "wrong-token");
 
     expect(refused.isErr()).toBe(true);
     expect(wrongToken.isErr()).toBe(true);
     if (refused.isErr() && wrongToken.isErr()) {
-      expect(refused.error.details).toMatchObject({ holder: { owner: "editor" } });
-      expect(wrongToken.error.details).toMatchObject({ holder: { owner: "editor" } });
+      expect(refused.error.details).toMatchObject({
+        holder: { owner: "editor" },
+      });
+      expect(wrongToken.error.details).toMatchObject({
+        holder: { owner: "editor" },
+      });
       expect(JSON.stringify(refused.error)).not.toContain(token);
       expect(JSON.stringify(wrongToken.error)).not.toContain(token);
     }
   });
 
   test("holds the lease beside the document and releases only its own", async () => {
-    const lease = (await acquireLease({ documentPath, txId: "tx-1", force: false })).unwrap();
+    const lease = (
+      await acquireLease({ documentPath, txId: "tx-1", force: false })
+    ).unwrap();
 
-    const second = await acquireLease({ documentPath, txId: "tx-2", force: false });
+    const second = await acquireLease({
+      documentPath,
+      txId: "tx-2",
+      force: false,
+    });
     expect(second.isErr() && second.error.code).toBe("locked");
-    expect(path.basename(lockPathFor(documentPath))).toBe(".contract.docx.folio-lock");
+    expect(path.basename(lockPathFor(documentPath))).toBe(
+      ".contract.docx.folio-lock",
+    );
     expect((await lease.verify()).isOk()).toBe(true);
 
     await lease.release();
@@ -76,10 +92,18 @@ describe("acquireLease", () => {
   });
 
   test("a forced takeover fences out the previous holder", async () => {
-    const first = (await acquireLease({ documentPath, txId: "tx-1", force: false })).unwrap();
+    const first = (
+      await acquireLease({ documentPath, txId: "tx-1", force: false })
+    ).unwrap();
 
-    const refused = await acquireLease({ documentPath, txId: "tx-2", force: false });
-    const forced = (await acquireLease({ documentPath, txId: "tx-2", force: true })).unwrap();
+    const refused = await acquireLease({
+      documentPath,
+      txId: "tx-2",
+      force: false,
+    });
+    const forced = (
+      await acquireLease({ documentPath, txId: "tx-2", force: true })
+    ).unwrap();
 
     expect(refused.isErr() && refused.error.code).toBe("locked");
     const fenced = await first.verify();
@@ -91,16 +115,23 @@ describe("acquireLease", () => {
   test("does not take over a fresh lock it cannot parse", async () => {
     await writeFile(lockPathFor(documentPath), '{"owner":"edi');
 
-    const refused = await acquireLease({ documentPath, txId: "tx-1", force: false });
+    const refused = await acquireLease({
+      documentPath,
+      txId: "tx-1",
+      force: false,
+    });
 
     expect(refused.isErr() && refused.error.code).toBe("locked");
-    expect(await readFile(lockPathFor(documentPath), "utf8")).toBe('{"owner":"edi');
+    expect(await readFile(lockPathFor(documentPath), "utf8")).toBe(
+      '{"owner":"edi',
+    );
   });
 
   test("replaces an expired lease, one whose process exited, and an old unparsable lock", async () => {
     const old = new Date(Date.now() - TRANSACTION_LEASE_MS - 60_000);
     for (const plant of [
-      () => writeHolder({ expiresAt: new Date(Date.now() - 1000).toISOString() }),
+      () =>
+        writeHolder({ expiresAt: new Date(Date.now() - 1000).toISOString() }),
       () => writeHolder({ pid: 2 ** 22 + 12_345 }),
       async () => {
         await writeFile(lockPathFor(documentPath), "garbage");
@@ -109,10 +140,16 @@ describe("acquireLease", () => {
     ]) {
       await plant();
 
-      const lease = await acquireLease({ documentPath, txId: "tx-new", force: false });
+      const lease = await acquireLease({
+        documentPath,
+        txId: "tx-new",
+        force: false,
+      });
 
       expect(lease.isOk()).toBe(true);
-      expect(await readFile(lockPathFor(documentPath), "utf8")).toContain('"txId":"tx-new"');
+      expect(await readFile(lockPathFor(documentPath), "utf8")).toContain(
+        '"txId":"tx-new"',
+      );
       await lease.unwrap().release();
     }
   });
@@ -126,7 +163,12 @@ const tokenOnDisk = async (): Promise<string | null> => {
 describe("renewal against a takeover", () => {
   test("a renewal queued behind a takeover refuses instead of overwriting it", async () => {
     const editor = (
-      await acquireLease({ documentPath, txId: "editor", force: false, leaseMs: 30_000 })
+      await acquireLease({
+        documentPath,
+        txId: "editor",
+        force: false,
+        leaseMs: 30_000,
+      })
     ).unwrap();
     // Another process is mid-swap: the renewal waits for it.
     await writeFile(lockSwapPathFor(documentPath), "other\n");
@@ -145,7 +187,12 @@ describe("renewal against a takeover", () => {
   test("a forced takeover and a renewal racing always leave the takeover's lock", async () => {
     for (let round = 0; round < 25; round++) {
       const editor = (
-        await acquireLease({ documentPath, txId: "editor", force: false, leaseMs: 30_000 })
+        await acquireLease({
+          documentPath,
+          txId: "editor",
+          force: false,
+          leaseMs: 30_000,
+        })
       ).unwrap();
       if (round % 2 === 0) {
         // Line both up behind one swap so they start together when it ends.

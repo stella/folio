@@ -8,6 +8,7 @@
  */
 
 import { panic, Result, TaggedError } from "better-result";
+
 import {
   DOUBLE_STROKE_GAP_FACTOR,
   glyphCellOffsetsPx,
@@ -19,23 +20,25 @@ import type {
   DisplayGlyphRun,
   DisplayImagePrimitive,
   DisplayPage,
-  DisplayPrimitive,
   DisplayPolyline,
+  DisplayPrimitive,
   DisplayRectPrimitive,
   DisplayStroke,
 } from "../display-list/types";
+import { needsShaping } from "../shaping/placeRun";
 import {
-  createContentStream,
-  TEXT_RENDER_MODE,
   type ContentPart,
   type ContentStream,
+  createContentStream,
   type PositionedGlyph,
+  TEXT_RENDER_MODE,
 } from "./contentStream";
-import { needsShaping } from "../shaping/placeRun";
 import type { EmbeddedPdfFont, PreparedFont, ShapedRunRequest } from "./fonts";
 import { basePageMatrix, transformMatrix } from "./pageSpace";
 
-export class PaintError extends TaggedError("PaintError")<{ message: string }> {}
+export class PaintError extends TaggedError("PaintError")<{
+  message: string;
+}> {}
 
 /** Thousandths of an em, the unit of a `TJ` adjustment. */
 const TEXT_SPACE_UNITS_PER_EM = 1000;
@@ -76,12 +79,19 @@ const beginPrimitive = (context: PaintContext, alpha: number) => {
   }
 };
 
-const applyStrokeState = (stream: ContentStream, stroke: DisplayStroke, widthPx: number) => {
+const applyStrokeState = (
+  stream: ContentStream,
+  stroke: DisplayStroke,
+  widthPx: number,
+) => {
   stream.setStrokeColor(stroke.color);
   stream.setLineWidth(widthPx);
   const dash = STROKE_DASH_FACTORS[stroke.pattern];
   if (dash !== null) {
-    stream.setDash([dash.dash * stroke.thicknessPx, dash.gap * stroke.thicknessPx], 0);
+    stream.setDash(
+      [dash.dash * stroke.thicknessPx, dash.gap * stroke.thicknessPx],
+      0,
+    );
   }
 };
 
@@ -93,7 +103,9 @@ type Segment = {
 };
 
 /** Unit normal of a segment, or null when the segment has no length. */
-const segmentNormal = (segment: Segment): { readonly nx: number; readonly ny: number } | null => {
+const segmentNormal = (
+  segment: Segment,
+): { readonly nx: number; readonly ny: number } | null => {
   const dx = segment.x2Px - segment.x1Px;
   const dy = segment.y2Px - segment.y1Px;
   const length = Math.hypot(dx, dy);
@@ -103,7 +115,11 @@ const segmentNormal = (segment: Segment): { readonly nx: number; readonly ny: nu
   return { nx: -dy / length, ny: dx / length };
 };
 
-const strokeWavy = (stream: ContentStream, stroke: DisplayStroke, segment: Segment) => {
+const strokeWavy = (
+  stream: ContentStream,
+  stroke: DisplayStroke,
+  segment: Segment,
+) => {
   const normal = segmentNormal(segment);
   if (normal === null) {
     return;
@@ -131,14 +147,19 @@ const strokeWavy = (stream: ContentStream, stroke: DisplayStroke, segment: Segme
   stream.stroke();
 };
 
-const strokeDouble = (stream: ContentStream, stroke: DisplayStroke, segment: Segment) => {
+const strokeDouble = (
+  stream: ContentStream,
+  stroke: DisplayStroke,
+  segment: Segment,
+) => {
   const normal = segmentNormal(segment);
   if (normal === null) {
     return;
   }
   // Two lines of the authored thickness with one thickness of gap between
   // them, centred on the path: their centres sit one thickness apart.
-  const offset = (DOUBLE_STROKE_GAP_FACTOR * stroke.thicknessPx * DOUBLE_STROKE_LINES) / 2;
+  const offset =
+    (DOUBLE_STROKE_GAP_FACTOR * stroke.thicknessPx * DOUBLE_STROKE_LINES) / 2;
   for (const side of [-1, 1]) {
     stream.moveTo(
       segment.x1Px + normal.nx * offset * side,
@@ -152,7 +173,11 @@ const strokeDouble = (stream: ContentStream, stroke: DisplayStroke, segment: Seg
   }
 };
 
-const paintSegment = (context: PaintContext, stroke: DisplayStroke, segment: Segment) => {
+const paintSegment = (
+  context: PaintContext,
+  stroke: DisplayStroke,
+  segment: Segment,
+) => {
   const alpha = context.alpha * stroke.color.a;
   beginPrimitive(context, alpha);
   const { stream } = context;
@@ -185,9 +210,14 @@ const paintPolyline = (context: PaintContext, primitive: DisplayPolyline) => {
   const first = primitive.points.at(0);
   if (first === undefined || primitive.points.length < 2) return;
   beginPrimitive(context, context.alpha * primitive.stroke.color.a);
-  applyStrokeState(context.stream, primitive.stroke, primitive.stroke.thicknessPx);
+  applyStrokeState(
+    context.stream,
+    primitive.stroke,
+    primitive.stroke.thicknessPx,
+  );
   context.stream.moveTo(first.xPx, first.yPx);
-  for (const point of primitive.points.slice(1)) context.stream.lineTo(point.xPx, point.yPx);
+  for (const point of primitive.points.slice(1))
+    context.stream.lineTo(point.xPx, point.yPx);
   context.stream.stroke();
   context.stream.restore();
 };
@@ -219,8 +249,18 @@ const paintRect = (context: PaintContext, primitive: DisplayRectPrimitive) => {
   const { xPx, yPx, widthPx, heightPx } = rect;
   const edges = [
     { x1Px: xPx, y1Px: yPx, x2Px: xPx + widthPx, y2Px: yPx },
-    { x1Px: xPx + widthPx, y1Px: yPx, x2Px: xPx + widthPx, y2Px: yPx + heightPx },
-    { x1Px: xPx + widthPx, y1Px: yPx + heightPx, x2Px: xPx, y2Px: yPx + heightPx },
+    {
+      x1Px: xPx + widthPx,
+      y1Px: yPx,
+      x2Px: xPx + widthPx,
+      y2Px: yPx + heightPx,
+    },
+    {
+      x1Px: xPx + widthPx,
+      y1Px: yPx + heightPx,
+      x2Px: xPx,
+      y2Px: yPx + heightPx,
+    },
     { x1Px: xPx, y1Px: yPx + heightPx, x2Px: xPx, y2Px: yPx },
   ];
   for (const edge of edges) {
@@ -298,7 +338,9 @@ const placeEmbeddedRun = (
   });
   if (shaped === null) {
     return [...run.text].map((character, index) => {
-      const { resourceIndex, glyphId, widthUnits } = font.glyphFor(character.codePointAt(0) ?? 0);
+      const { resourceIndex, glyphId, widthUnits } = font.glyphFor(
+        character.codePointAt(0) ?? 0,
+      );
       return {
         resourceIndex,
         glyphId,
@@ -361,7 +403,8 @@ const spanGlyphs = (
         : next.xPx - glyph.xPx;
     const positioned = {
       glyphId: glyph.glyphId,
-      adjustment: glyph.widthUnits - (delta * TEXT_SPACE_UNITS_PER_EM) / fontSizePx,
+      adjustment:
+        glyph.widthUnits - (delta * TEXT_SPACE_UNITS_PER_EM) / fontSizePx,
     };
     if (continues && open !== undefined) {
       open.glyphs.push(positioned);
@@ -385,7 +428,8 @@ const paintGlyphRun = (context: PaintContext, run: DisplayGlyphRun) => {
     return;
   }
   const font =
-    context.fonts.get(run.font) ?? panic(`glyph run refers to unprepared font ${String(run.font)}`);
+    context.fonts.get(run.font) ??
+    panic(`glyph run refers to unprepared font ${String(run.font)}`);
   const origins = glyphOrigins(run);
   const { stream } = context;
 
@@ -399,7 +443,10 @@ const paintGlyphRun = (context: PaintContext, run: DisplayGlyphRun) => {
 
   switch (font.kind) {
     case "embedded": {
-      const spans = spanGlyphs(placeEmbeddedRun(run, font, origins), run.fontSizePx);
+      const spans = spanGlyphs(
+        placeEmbeddedRun(run, font, origins),
+        run.fontSizePx,
+      );
       for (const [spanIndex, span] of spans.entries()) {
         stream.setFont(span.resourceIndex, run.fontSizePx);
         // The render mode is text state, not font state: one setting covers
@@ -424,7 +471,14 @@ const paintGlyphRun = (context: PaintContext, run: DisplayGlyphRun) => {
       // positioned outright rather than corrected against an advance nobody
       // in this process knows.
       for (const [index, codePoint] of codePoints.entries()) {
-        stream.setTextMatrix([1, 0, 0, -1, origins[index] ?? run.xPx, run.baselineYPx]);
+        stream.setTextMatrix([
+          1,
+          0,
+          0,
+          -1,
+          origins[index] ?? run.xPx,
+          run.baselineYPx,
+        ]);
         stream.showBytes([font.byteFor(codePoint.codePointAt(0) ?? 0)]);
       }
       break;
@@ -439,7 +493,10 @@ const paintGlyphRun = (context: PaintContext, run: DisplayGlyphRun) => {
   stream.restore();
 };
 
-const paintImage = (context: PaintContext, primitive: DisplayImagePrimitive) => {
+const paintImage = (
+  context: PaintContext,
+  primitive: DisplayImagePrimitive,
+) => {
   const { rect, crop, opacity } = primitive;
   const { stream } = context;
   beginPrimitive(context, context.alpha * opacity);
@@ -447,7 +504,14 @@ const paintImage = (context: PaintContext, primitive: DisplayImagePrimitive) => 
     // The unit square's v axis runs bottom-to-top through the image, so the
     // height is negated to land the image's first row at the box's top edge
     // in this y-down space.
-    stream.concat([rect.widthPx, 0, 0, -rect.heightPx, rect.xPx, rect.yPx + rect.heightPx]);
+    stream.concat([
+      rect.widthPx,
+      0,
+      0,
+      -rect.heightPx,
+      rect.xPx,
+      rect.yPx + rect.heightPx,
+    ]);
     stream.drawImage(primitive.image);
     stream.restore();
     return;
@@ -492,7 +556,8 @@ const paintPrimitive = (context: PaintContext, primitive: DisplayPrimitive) => {
       beginPrimitive(context, context.alpha * primitive.fill.a);
       context.stream.setFillColor(primitive.fill);
       context.stream.moveTo(first.xPx, first.yPx);
-      for (const point of primitive.points.slice(1)) context.stream.lineTo(point.xPx, point.yPx);
+      for (const point of primitive.points.slice(1))
+        context.stream.lineTo(point.xPx, point.yPx);
       context.stream.lineTo(first.xPx, first.yPx);
       context.stream.fill();
       context.stream.restore();
@@ -551,7 +616,10 @@ export type PaintPageOptions = {
   readonly fonts: ReadonlyMap<number, PreparedFont>;
 };
 
-export const paintPage = ({ page, fonts }: PaintPageOptions): readonly ContentPart[] => {
+export const paintPage = ({
+  page,
+  fonts,
+}: PaintPageOptions): readonly ContentPart[] => {
   const stream = createContentStream();
   // The one conversion from display-list space to PDF space, at the stream's
   // first operator. Everything after it is written in CSS px, y down.
@@ -600,7 +668,8 @@ const collectPrimitive = (
           message: `glyph run carries ${String(primitive.advancesPx.length)} advances for ${String(codePoints.length)} code points`,
         });
       }
-      const seen = into.codePointsByFont.get(primitive.font) ?? new Set<number>();
+      const seen =
+        into.codePointsByFont.get(primitive.font) ?? new Set<number>();
       for (const codePoint of codePoints) {
         seen.add(codePoint.codePointAt(0) ?? 0);
       }
@@ -642,7 +711,9 @@ const collectPrimitive = (
     }
     default: {
       const unreachable: never = primitive;
-      return panic(`unhandled display primitive: ${JSON.stringify(unreachable)}`);
+      return panic(
+        `unhandled display primitive: ${JSON.stringify(unreachable)}`,
+      );
     }
   }
 };

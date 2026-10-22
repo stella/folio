@@ -42,5 +42,8 @@ export function splitTrailingToken(text: string): TrailingToken | undefined {
   while (tokenStart > 0 && !isWhitespaceUnit(text, tokenStart - 1)) {
     tokenStart--;
   }
-  return { token: text.slice(tokenStart, tokenEnd), separator: text.slice(tokenEnd) };
+  return {
+    token: text.slice(tokenStart, tokenEnd),
+    separator: text.slice(tokenEnd),
+  };
 }

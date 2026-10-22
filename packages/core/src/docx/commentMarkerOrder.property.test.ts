@@ -29,18 +29,22 @@ import fc from "fast-check";
 import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Document } from "../types/document";
 import { parseDocx } from "./parser";
 import { createDocx, createEmptyDocx } from "./rezip";
-import type { Document } from "../types/document";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14_NAMESPACE = "http://schemas.microsoft.com/office/word/2010/wordml";
 const RELATIONSHIP_NAMESPACE =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -116,7 +120,10 @@ const buildDocx = async (
     `${XML_DECLARATION}<w15:commentsEx xmlns:w="${W_NAMESPACE}" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">` +
       comments
         .map(({ id, parentId }) => {
-          const parent = parentId === null ? "" : ` w15:paraIdParent="${paraIdFor(parentId)}"`;
+          const parent =
+            parentId === null
+              ? ""
+              : ` w15:paraIdParent="${paraIdFor(parentId)}"`;
           return `<w15:commentEx w15:paraId="${paraIdFor(id)}"${parent} w15:done="0"/>`;
         })
         .join("") +
@@ -175,7 +182,10 @@ const markersByParagraph = async (buffer: ArrayBuffer): Promise<Marker[][]> => {
 };
 
 /** Body paragraph indexes whose every text node carries `commentId`'s mark. */
-const fullyMarkedParagraphs = (pmDoc: PMNode, commentId: number): Set<number> => {
+const fullyMarkedParagraphs = (
+  pmDoc: PMNode,
+  commentId: number,
+): Set<number> => {
   const marked = new Set<number>();
   for (let index = 0; index < pmDoc.childCount; index++) {
     const paragraph = pmDoc.child(index);
@@ -189,7 +199,9 @@ const fullyMarkedParagraphs = (pmDoc: PMNode, commentId: number): Set<number> =>
       texts += 1;
       if (
         node.marks.some(
-          (mark) => mark.type.name === "comment" && mark.attrs["commentId"] === commentId,
+          (mark) =>
+            mark.type.name === "comment" &&
+            mark.attrs["commentId"] === commentId,
         )
       ) {
         carrying += 1;
@@ -203,7 +215,10 @@ const fullyMarkedParagraphs = (pmDoc: PMNode, commentId: number): Set<number> =>
 };
 
 const editorRoundTrip = async (source: ArrayBuffer): Promise<ArrayBuffer> => {
-  const parsed = await parseDocx(source, { preloadFonts: false, detectVariables: false });
+  const parsed = await parseDocx(source, {
+    preloadFonts: false,
+    detectVariables: false,
+  });
   return createDocx(updateDocumentContent(parsed, toProseDoc(parsed)));
 };
 
@@ -256,17 +271,31 @@ describe("comment markers keep their authored order through an editor round trip
         { segments: ["middle"], gaps: [[], []] },
         { segments: ["last"], gaps: [[], ["end#1", "ref#1"]] },
       ],
-      [{ id: 1, author: "Reviewer One", text: "spans the block", parentId: null }],
+      [
+        {
+          id: 1,
+          author: "Reviewer One",
+          text: "spans the block",
+          parentId: null,
+        },
+      ],
     );
 
     expect(await markersByParagraph(source)).toEqual(authored);
 
     // The paragraph between the two boundaries is inside the range, so its
     // text carries the mark: the highlight the reader sees is unbroken.
-    const parsed = await parseDocx(source, { preloadFonts: false, detectVariables: false });
-    expect(fullyMarkedParagraphs(toProseDoc(parsed), 1)).toEqual(new Set([0, 1, 2]));
+    const parsed = await parseDocx(source, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    expect(fullyMarkedParagraphs(toProseDoc(parsed), 1)).toEqual(
+      new Set([0, 1, 2]),
+    );
 
-    expect(await markersByParagraph(await editorRoundTrip(source))).toEqual(authored);
+    expect(await markersByParagraph(await editorRoundTrip(source))).toEqual(
+      authored,
+    );
   });
 });
 
@@ -374,7 +403,11 @@ const commentSet = fc
         startOffset: fc.nat({ max: 4 }),
         span: fc.integer({ min: 1, max: 4 }),
         referenceDelay: fc.nat({ max: 3 }),
-        author: fc.constantFrom("Reviewer One", "Reviewer Two", "Reviewer Three"),
+        author: fc.constantFrom(
+          "Reviewer One",
+          "Reviewer Two",
+          "Reviewer Three",
+        ),
         text: fc.stringMatching(/^[A-Za-z0-9 ]{1,12}$/u),
         parentOffset: fc.option(fc.nat({ max: 5 }), { nil: null }),
       }),
@@ -393,7 +426,10 @@ const commentSet = fc
         referenceSlot: Math.min(endSlot + row.referenceDelay, gapCount - 1),
         author: row.author,
         text: row.text,
-        parent: row.parentOffset === null || index === 0 ? null : row.parentOffset % index,
+        parent:
+          row.parentOffset === null || index === 0
+            ? null
+            : row.parentOffset % index,
       };
     });
     return {
@@ -417,10 +453,16 @@ describe("arbitrary comment sets in one paragraph", () => {
         const saved = await editorRoundTrip(source);
         expect(await markersByParagraph(saved)).toEqual(authored);
 
-        const reparsed = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
+        const reparsed = await parseDocx(saved, {
+          preloadFonts: false,
+          detectVariables: false,
+        });
         expect(commentFacts(reparsed)).toEqual(
           Object.fromEntries(
-            facts.map(({ id, author, text, parentId }) => [id, { author, parentId, text }]),
+            facts.map(({ id, author, text, parentId }) => [
+              id,
+              { author, parentId, text },
+            ]),
           ),
         );
       }),
@@ -447,7 +489,11 @@ const spanningCommentSet = fc
         startOffset: fc.nat({ max: 11 }),
         span: fc.integer({ min: 1, max: 8 }),
         referenceDelay: fc.nat({ max: 3 }),
-        author: fc.constantFrom("Reviewer One", "Reviewer Two", "Reviewer Three"),
+        author: fc.constantFrom(
+          "Reviewer One",
+          "Reviewer Two",
+          "Reviewer Three",
+        ),
         text: fc.stringMatching(/^[A-Za-z0-9 ]{1,12}$/u),
         parentOffset: fc.option(fc.nat({ max: 5 }), { nil: null }),
       }),
@@ -459,19 +505,25 @@ const spanningCommentSet = fc
     const gapCount = segmentCount + 1;
     const lastSlot = paragraphCount * gapCount - 1;
     const comments: GeneratedComment[] = rows.map((row, index) => {
-      const startParagraph = Math.floor(row.startOffset / segmentCount) % paragraphCount;
-      const startSlot = startParagraph * gapCount + (row.startOffset % segmentCount);
+      const startParagraph =
+        Math.floor(row.startOffset / segmentCount) % paragraphCount;
+      const startSlot =
+        startParagraph * gapCount + (row.startOffset % segmentCount);
       const candidateEnd = Math.min(startSlot + row.span, lastSlot);
       // A range ending at gap 0 closes before its paragraph's first word,
       // which is the previous paragraph's tail written differently.
-      const endSlot = candidateEnd % gapCount === 0 ? candidateEnd + 1 : candidateEnd;
+      const endSlot =
+        candidateEnd % gapCount === 0 ? candidateEnd + 1 : candidateEnd;
       return {
         startSlot,
         endSlot,
         referenceSlot: Math.min(endSlot + row.referenceDelay, lastSlot),
         author: row.author,
         text: row.text,
-        parent: row.parentOffset === null || index === 0 ? null : row.parentOffset % index,
+        parent:
+          row.parentOffset === null || index === 0
+            ? null
+            : row.parentOffset % index,
       };
     });
     return {
@@ -490,28 +542,36 @@ const spanningCommentSet = fc
 describe("arbitrary comment sets spanning several paragraphs", () => {
   test("keep one range over the paragraphs it covers, and mark every one of them", async () => {
     await fc.assert(
-      fc.asyncProperty(spanningCommentSet, async ({ comments, facts, gapCount, plans }) => {
-        const source = await buildDocx(plans, facts);
-        const authored = await markersByParagraph(source);
+      fc.asyncProperty(
+        spanningCommentSet,
+        async ({ comments, facts, gapCount, plans }) => {
+          const source = await buildDocx(plans, facts);
+          const authored = await markersByParagraph(source);
 
-        const parsed = await parseDocx(source, { preloadFonts: false, detectVariables: false });
-        const pmDoc = toProseDoc(parsed);
-        // A paragraph strictly inside a range holds no boundary of its own, so
-        // all of its text is covered: this is the middle of the highlight the
-        // reader sees.
-        for (const [index, { startSlot, endSlot }] of comments.entries()) {
-          const marked = fullyMarkedParagraphs(pmDoc, index + 1);
-          for (
-            let paragraph = Math.floor(startSlot / gapCount) + 1;
-            paragraph < Math.floor(endSlot / gapCount);
-            paragraph++
-          ) {
-            expect(marked).toContain(paragraph);
+          const parsed = await parseDocx(source, {
+            preloadFonts: false,
+            detectVariables: false,
+          });
+          const pmDoc = toProseDoc(parsed);
+          // A paragraph strictly inside a range holds no boundary of its own, so
+          // all of its text is covered: this is the middle of the highlight the
+          // reader sees.
+          for (const [index, { startSlot, endSlot }] of comments.entries()) {
+            const marked = fullyMarkedParagraphs(pmDoc, index + 1);
+            for (
+              let paragraph = Math.floor(startSlot / gapCount) + 1;
+              paragraph < Math.floor(endSlot / gapCount);
+              paragraph++
+            ) {
+              expect(marked).toContain(paragraph);
+            }
           }
-        }
 
-        expect(await markersByParagraph(await editorRoundTrip(source))).toEqual(authored);
-      }),
+          expect(
+            await markersByParagraph(await editorRoundTrip(source)),
+          ).toEqual(authored);
+        },
+      ),
       propertyConfig({ numRuns: 60 }),
     );
   });

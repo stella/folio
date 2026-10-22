@@ -1,4 +1,4 @@
-import { encodeUtf8 } from "../utils/textEncoding";
+import type { Document } from "../types/document";
 /**
  * AutoSaveManager
  *
@@ -13,15 +13,14 @@ import { encodeUtf8 } from "../utils/textEncoding";
  * The snapshot/option types are co-located here (and re-exported) because our
  * `managers/types` does not define them.
  */
-
-import type { Document } from "../types/document";
-import { Subscribable } from "./Subscribable";
+import { encodeUtf8 } from "../utils/textEncoding";
 import {
   decodeAutoSaveEnvelope,
   encodeAutoSaveDocument,
   encodeAutoSaveEnvelopeFromDocument,
   type EncodedAutoSaveDocument,
 } from "./autoSaveCodec";
+import { Subscribable } from "./Subscribable";
 
 // ============================================================================
 // TYPES
@@ -115,7 +114,8 @@ export class AutoSaveManager extends Subscribable<AutoSaveSnapshot> {
   private readonly debounceDelay: number;
   private readonly onSaveCallback: ((timestamp: Date) => void) | undefined;
   private readonly onErrorCallback: ((error: Error) => void) | undefined;
-  private readonly onRecoveryAvailableCallback: ((saved: SavedDocumentData) => void) | undefined;
+  private readonly onRecoveryAvailableCallback:
+    ((saved: SavedDocumentData) => void) | undefined;
 
   private readonly storageAvailable: boolean;
   private currentDocument: Document | null = null;
@@ -158,7 +158,12 @@ export class AutoSaveManager extends Subscribable<AutoSaveSnapshot> {
   onDocumentChanged(document: Document | null): void {
     this.currentDocument = document;
 
-    if (this.isEnabled && this.saveOnChange && document && this.storageAvailable) {
+    if (
+      this.isEnabled &&
+      this.saveOnChange &&
+      document &&
+      this.storageAvailable
+    ) {
       this.debounceSave();
     }
   }
@@ -196,7 +201,9 @@ export class AutoSaveManager extends Subscribable<AutoSaveSnapshot> {
       return true;
     } catch (error) {
       this.updateStatus("error");
-      this.onErrorCallback?.(error instanceof Error ? error : new Error(String(error)));
+      this.onErrorCallback?.(
+        error instanceof Error ? error : new Error(String(error)),
+      );
       return false;
     }
   }
@@ -212,7 +219,9 @@ export class AutoSaveManager extends Subscribable<AutoSaveSnapshot> {
       this.lastSavedJson = null;
       this.emitSnapshot();
     } catch (error) {
-      this.onErrorCallback?.(error instanceof Error ? error : new Error(String(error)));
+      this.onErrorCallback?.(
+        error instanceof Error ? error : new Error(String(error)),
+      );
     }
   }
 
@@ -290,7 +299,9 @@ export class AutoSaveManager extends Subscribable<AutoSaveSnapshot> {
       try {
         this.persistToStorage(serializeForStorage(this.currentDocument));
       } catch (error) {
-        this.onErrorCallback?.(error instanceof Error ? error : new Error(String(error)));
+        this.onErrorCallback?.(
+          error instanceof Error ? error : new Error(String(error)),
+        );
       }
     }
   }
@@ -397,7 +408,9 @@ export function getAutoSaveStatusLabel(status: AutoSaveStatus): string {
 }
 
 /** Get storage size used by auto-save (bytes). */
-export function getAutoSaveStorageSize(storageKey: string = DEFAULT_STORAGE_KEY): number {
+export function getAutoSaveStorageSize(
+  storageKey: string = DEFAULT_STORAGE_KEY,
+): number {
   try {
     const data = localStorage.getItem(storageKey);
     if (!data) {

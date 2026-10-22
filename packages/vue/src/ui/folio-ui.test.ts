@@ -4,7 +4,10 @@ import { defineComponent } from "vue";
 import { DEFAULT_COMPONENTS, resolveFolioComponents } from "./folio-ui";
 
 // A sentinel override component; identity is all the resolution test checks.
-const InjectedColorPicker = defineComponent({ name: "InjectedColorPicker", render: () => null });
+const InjectedColorPicker = defineComponent({
+  name: "InjectedColorPicker",
+  render: () => null,
+});
 
 describe("resolveFolioComponents", () => {
   test("returns the defaults when nothing is injected", () => {
@@ -19,7 +22,9 @@ describe("resolveFolioComponents", () => {
   });
 
   test("an injected component wins; unspecified keys fall back to defaults", () => {
-    const resolved = resolveFolioComponents({ ColorPicker: InjectedColorPicker });
+    const resolved = resolveFolioComponents({
+      ColorPicker: InjectedColorPicker,
+    });
     expect(resolved.ColorPicker).toBe(InjectedColorPicker);
     // Every other key is untouched.
     expect(resolved.Button).toBe(DEFAULT_COMPONENTS.Button);
@@ -29,7 +34,9 @@ describe("resolveFolioComponents", () => {
     expect(resolved.Select).toBe(DEFAULT_COMPONENTS.Select);
     expect(resolved.Input).toBe(DEFAULT_COMPONENTS.Input);
     expect(resolved.Checkbox).toBe(DEFAULT_COMPONENTS.Checkbox);
-    expect(resolved.DatePickerPopover).toBe(DEFAULT_COMPONENTS.DatePickerPopover);
+    expect(resolved.DatePickerPopover).toBe(
+      DEFAULT_COMPONENTS.DatePickerPopover,
+    );
     expect(resolved.OutlineRail).toBe(DEFAULT_COMPONENTS.OutlineRail);
   });
 

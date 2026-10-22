@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseNumbering } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import { parseStyles } from "./styleParser";
@@ -36,7 +39,10 @@ const NUMBERING_WITHOUT_MARKER = `<?xml version="1.0" encoding="UTF-8" standalon
   <w:num w:numId="5"><w:abstractNumId w:val="4"/></w:num>
 </w:numbering>`;
 
-function parseParagraphXml(xml: string, numbering: ReturnType<typeof parseNumbering>) {
+function parseParagraphXml(
+  xml: string,
+  numbering: ReturnType<typeof parseNumbering>,
+) {
   const root = parseXmlDocument(xml) as XmlElement | null;
   if (!root) {
     throw new Error("Failed to parse paragraph XML");
@@ -169,7 +175,8 @@ describe("markerless numbering indentation", () => {
 });
 
 test("carries every relevant numbering-level start into list rendering", () => {
-  const numbering = parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const numbering =
+    parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:abstractNum w:abstractNumId="8">
     <w:lvl w:ilvl="0"><w:start w:val="3"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>
@@ -188,7 +195,8 @@ test("carries every relevant numbering-level start into list rendering", () => {
   expect(paragraph.listRendering).toHaveProperty("levelStarts", [3, 3]);
 });
 
-const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 // abstractNum 10 / numId 2 — level 0 carries a 360/360 hanging slot, the same
 // level a style with its own wider indent references (#765 AppBody-Claim).
@@ -235,7 +243,9 @@ function parseStyledParagraph(
   styles: ReturnType<typeof parseStyles>,
   numbering: ReturnType<typeof parseNumbering>,
 ) {
-  const root = parseXmlDocument(`<w:p ${W}>${inner}</w:p>`) as XmlElement | null;
+  const root = parseXmlDocument(
+    `<w:p ${W}>${inner}</w:p>`,
+  ) as XmlElement | null;
   if (!root) {
     throw new Error("Failed to parse paragraph XML");
   }
@@ -287,7 +297,10 @@ describe("style-attached numbering and indentation (#765)", () => {
       numbering,
     );
     expect(para.formatting?.numPr).toBeUndefined();
-    expect(para.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 2 });
+    expect(para.formatting?.numPrFromStyle).toEqual({
+      kind: "reference",
+      numId: 2,
+    });
   });
 
   test("direct numPr records no provenance", () => {
@@ -376,7 +389,11 @@ describe("w:numId and w:ilvl inherit independently", () => {
     expect(para.formatting?.numPr).toEqual({ kind: "levelOnly", ilvl: 1 });
     // The style tier, not the merged value: the serializer drops only a numPr
     // the paragraph never stated.
-    expect(para.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 3, ilvl: 0 });
+    expect(para.formatting?.numPrFromStyle).toEqual({
+      kind: "reference",
+      numId: 3,
+      ilvl: 0,
+    });
   });
 
   test('a direct w:numId w:val="0" switches the style numbering off', () => {
@@ -406,8 +423,17 @@ test(
           directZero: fc.boolean(),
           explicitStyle: fc.boolean(),
         }),
-        ({ left, firstLine, styled, styleLeft, styleFirstLine, directZero, explicitStyle }) => {
-          const numPr = '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>';
+        ({
+          left,
+          firstLine,
+          styled,
+          styleLeft,
+          styleFirstLine,
+          directZero,
+          explicitStyle,
+        }) => {
+          const numPr =
+            '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>';
           const styles = parseStyles(
             `<w:styles ${W}><w:style w:type="paragraph" w:styleId="Numbered" w:default="1"><w:name w:val="Numbered"/><w:pPr>${styled ? numPr : ""}<w:ind ${styleLeft ? 'w:left="720"' : ""} ${styleFirstLine ? 'w:hanging="360"' : ""}/></w:pPr></w:style></w:styles>`,
             null,
@@ -429,8 +455,12 @@ test(
             expectedLeft = 0;
             expectedFirstLine = 0;
           } else {
-            if (!(styled && styleLeft) && (left !== 0 || styleLeft)) expectedLeft = left;
-            if (!(styled && styleFirstLine) && (firstLine !== 0 || styleFirstLine))
+            if (!(styled && styleLeft) && (left !== 0 || styleLeft))
+              expectedLeft = left;
+            if (
+              !(styled && styleFirstLine) &&
+              (firstLine !== 0 || styleFirstLine)
+            )
               expectedFirstLine = firstLine;
           }
           expect(paragraph.formatting?.indentLeft).toBe(expectedLeft);

@@ -8,21 +8,27 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { canonicalProtocolEvidence } from "../tests/parity/canonicalProtocolEvidence";
 
 // The runner clears its output directory before discovery; keep the live log outside it.
-const evidenceDirectory = mkdtempSync(join(tmpdir(), "folio-canonical-protocol-"));
+const evidenceDirectory = mkdtempSync(
+  join(tmpdir(), "folio-canonical-protocol-"),
+);
 const evidencePath = join(evidenceDirectory, "canonical-protocol.jsonl");
 writeFileSync(evidencePath, "");
-const child = Bun.spawn(["bunx", "playwright", "test", ...process.argv.slice(2)], {
-  env: {
-    ...process.env,
-    DEBUG: [process.env["DEBUG"], "pw:protocol"].filter(Boolean).join(","),
-    FOLIO_CANONICAL_PROTOCOL_LOG: evidencePath,
+const child = Bun.spawn(
+  ["bunx", "playwright", "test", ...process.argv.slice(2)],
+  {
+    env: {
+      ...process.env,
+      DEBUG: [process.env["DEBUG"], "pw:protocol"].filter(Boolean).join(","),
+      FOLIO_CANONICAL_PROTOCOL_LOG: evidencePath,
+    },
+    stdout: "inherit",
+    stderr: "pipe",
   },
-  stdout: "inherit",
-  stderr: "pipe",
-});
+);
 
 const record = (line: string) => {
   // This process boundary owns decoding failures; retain malformed evidence.
@@ -33,10 +39,16 @@ const record = (line: string) => {
         process.stderr.write(`${result.text}\n`);
         break;
       case "unparsed":
-        appendFileSync(evidencePath, `${JSON.stringify({ unparsedLength: result.length })}\n`);
+        appendFileSync(
+          evidencePath,
+          `${JSON.stringify({ unparsedLength: result.length })}\n`,
+        );
         break;
       case "evidence":
-        appendFileSync(evidencePath, `${JSON.stringify({ at: Date.now(), ...result.message })}\n`);
+        appendFileSync(
+          evidencePath,
+          `${JSON.stringify({ at: Date.now(), ...result.message })}\n`,
+        );
         break;
       case "discard":
         break;

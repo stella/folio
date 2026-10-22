@@ -1,10 +1,14 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { AllSelection, EditorState } from "prosemirror-state";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { createCanonicalSession } from "./canonicalSession";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
 import type { Paragraph } from "../types/document";
+import { createCanonicalSession } from "./canonicalSession";
 
 test(
   "every canonical input owner resolves document edges as content gaps",
@@ -26,14 +30,19 @@ test(
                     ({
                       type: "paragraph",
                       paraId: (0x10000000 + index).toString(16).toUpperCase(),
-                      content: [{ type: "run", content: [{ type: "text", text }] }],
+                      content: [
+                        { type: "run", content: [{ type: "text", text }] },
+                      ],
                     }) satisfies Paragraph,
                 ),
               },
             },
           }).unwrap();
           const doc = session.projection.doc;
-          const state = EditorState.create({ doc, selection: new AllSelection(doc) });
+          const state = EditorState.create({
+            doc,
+            selection: new AllSelection(doc),
+          });
           const range = canonicalSelectionRange(state);
           for (const [edge, content] of [
             [0, range.from],
@@ -47,7 +56,9 @@ test(
             );
           }
           expect(session.projection.addressAt(-1).isErr()).toBe(true);
-          expect(session.projection.addressAt(doc.content.size + 1).isErr()).toBe(true);
+          expect(
+            session.projection.addressAt(doc.content.size + 1).isErr(),
+          ).toBe(true);
           let boundary = 0;
           for (let index = 0; index < doc.childCount - 1; index++) {
             boundary += doc.child(index).nodeSize;

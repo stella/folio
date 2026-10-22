@@ -30,28 +30,49 @@
  * wrong provider produces a plausible layout that is wrong everywhere.
  */
 
-import { createHash } from "node:crypto";
-
 import { Result, TaggedError } from "better-result";
+import { createHash } from "node:crypto";
 import type { Node as PMNode } from "prosemirror-model";
 
+import type { DocumentFeatures } from "./display-list/build/buildDisplayList";
+import type { PageFurnitureInputs } from "./display-list/build/furniture";
 import { resolveDocumentGridLinePitch } from "./docx/documentGrid";
-import { createParseWarningCollector } from "./docx/parseContext";
-import { formatParseWarnings } from "./docx/parseWarningMessage";
-import { parseDocx } from "./docx/parser";
 import { formatOoxmlCounter } from "./docx/ooxmlCounterFormatter";
-import { toArrayBuffer, type DocxInput } from "./utils/docxInput";
-import { buildFontAlternates } from "./fonts/fontAlternates";
-import { extractEmbeddedFonts, type EmbeddedFont } from "./fonts/embeddedFonts";
+import { createParseWarningCollector } from "./docx/parseContext";
+import { parseDocx } from "./docx/parser";
+import { formatParseWarnings } from "./docx/parseWarningMessage";
 import { buildHeaderFooterFieldValues } from "./fields/resolveFieldValues";
+import { type EmbeddedFont, extractEmbeddedFonts } from "./fonts/embeddedFonts";
+import { buildFontAlternates } from "./fonts/fontAlternates";
+import {
+  prepareEndnoteAreas,
+  resolveEndnotePosition,
+  spliceEndnoteAreas,
+  trailingEndnoteIds,
+} from "./layout-bridge/convert/endnoteLayout";
+import {
+  buildFootnoteContentMap,
+  collectEndnoteRefs,
+  collectFootnoteRefs,
+  computeNoteDisplayNumbers,
+  type ConvertFootnoteOptions,
+  remapNoteMarkerText,
+} from "./layout-bridge/convert/footnoteLayout";
+import {
+  convertHeaderFooterToContent,
+  type HeaderFooterMetrics,
+} from "./layout-bridge/convert/headerFooterLayout";
+import {
+  toFlowBlocks,
+  WORD_UNSPECIFIED_FONT_SIZE,
+} from "./layout-bridge/convert/toFlowBlocks";
+import type { ToFlowBlocksOptions } from "./layout-bridge/convert/toFlowBlocks";
+import { resolveSectionHeaderFooterRefs } from "./layout-engine/headerFooterRefs";
 import { layoutDocument } from "./layout-engine/index";
-import { getMeasureProvider } from "./layout-engine/measure/measureProvider";
-import { needsShaping } from "./shaping/placeRun";
-import { getShaper } from "./shaping/shaper";
 import { collectRequestedHyphenationDictionaries } from "./layout-engine/measure/hyphenationDictionaries";
 import { preloadHyphenationDictionaries } from "./layout-engine/measure/hyphenationPreload";
 import { measureBlocks } from "./layout-engine/measure/measureBlocks";
-import { resolveSectionHeaderFooterRefs } from "./layout-engine/headerFooterRefs";
+import { getMeasureProvider } from "./layout-engine/measure/measureProvider";
 import { FOOTNOTE_ENTRY_MARGIN_BOTTOM } from "./layout-engine/types";
 import type {
   FlowBlock,
@@ -63,31 +84,16 @@ import type {
 } from "./layout-engine/types";
 import type { BlockLookup } from "./layout-painter/index";
 import {
-  buildFootnoteContentMap,
-  collectEndnoteRefs,
-  collectFootnoteRefs,
-  computeNoteDisplayNumbers,
-  remapNoteMarkerText,
-  type ConvertFootnoteOptions,
-} from "./layout-bridge/convert/footnoteLayout";
-import {
-  prepareEndnoteAreas,
-  resolveEndnotePosition,
-  spliceEndnoteAreas,
-  trailingEndnoteIds,
-} from "./layout-bridge/convert/endnoteLayout";
-import {
-  convertHeaderFooterToContent,
-  type HeaderFooterMetrics,
-} from "./layout-bridge/convert/headerFooterLayout";
-import { toFlowBlocks, WORD_UNSPECIFIED_FONT_SIZE } from "./layout-bridge/convert/toFlowBlocks";
-import type { ToFlowBlocksOptions } from "./layout-bridge/convert/toFlowBlocks";
-import { getMargins, getPageSize, getPageNumbering } from "./paged-layout/sectionGeometry";
-import type { DocumentFeatures } from "./display-list/build/buildDisplayList";
-import type { PageFurnitureInputs } from "./display-list/build/furniture";
+  getMargins,
+  getPageNumbering,
+  getPageSize,
+} from "./paged-layout/sectionGeometry";
 import { toProseDoc } from "./prosemirror/conversion/toProseDoc";
-import { getDocumentWatermark } from "./watermark/index";
+import { needsShaping } from "./shaping/placeRun";
+import { getShaper } from "./shaping/shaper";
 import type { Document, HeaderFooter, Watermark } from "./types/document";
+import { type DocxInput, toArrayBuffer } from "./utils/docxInput";
+import { getDocumentWatermark } from "./watermark/index";
 
 const formatEndnoteTexts = (
   numbers: ReadonlyMap<number, number>,
@@ -186,12 +192,17 @@ const UNPAGINATED_STORIES = {} as const satisfies Record<
 
 const readPaintFeatures = (document: Document): DocumentPaintFeatures => ({
   pageBorders: (document.package.document.sections ?? []).some((section) =>
-    Object.values(section.properties.pageBorders ?? {}).some((border) => border !== undefined),
+    Object.values(section.properties.pageBorders ?? {}).some(
+      (border) => border !== undefined,
+    ),
   ),
   watermark: getDocumentWatermark(document) !== undefined,
 });
 
-const buildFlowOptions = (document: Document, pageContentHeight: number): ToFlowBlocksOptions => {
+const buildFlowOptions = (
+  document: Document,
+  pageContentHeight: number,
+): ToFlowBlocksOptions => {
   const settings = document.package.settings;
   const options: ToFlowBlocksOptions = {
     pageContentHeight,
@@ -227,13 +238,15 @@ const buildFlowOptions = (document: Document, pageContentHeight: number): ToFlow
     document.package.document.sections?.at(-1)?.properties.docGrid,
   );
   if (finalSectionDocumentGridLinePitchTwips !== undefined) {
-    options.finalSectionDocumentGridLinePitchTwips = finalSectionDocumentGridLinePitchTwips;
+    options.finalSectionDocumentGridLinePitchTwips =
+      finalSectionDocumentGridLinePitchTwips;
   }
   return options;
 };
 
-const readsMirrorMargins = (settings: Document["package"]["settings"]): boolean =>
-  settings?.mirrorMargins === true;
+const readsMirrorMargins = (
+  settings: Document["package"]["settings"],
+): boolean => settings?.mirrorMargins === true;
 
 const buildBlockLookup = (
   blocks: readonly FlowBlock[],
@@ -242,7 +255,9 @@ const buildBlockLookup = (
   new Map(
     blocks.flatMap((block, index) => {
       const measure = measures.at(index);
-      return measure === undefined ? [] : [[String(block.id), { block, measure }] as const];
+      return measure === undefined
+        ? []
+        : [[String(block.id), { block, measure }] as const];
     }),
   );
 
@@ -258,7 +273,9 @@ const buildStoryOptions = (flowOptions: ToFlowBlocksOptions): StoryOptions => ({
   ...(flowOptions.embeddedFontFamilyMap === undefined
     ? {}
     : { embeddedFontFamilyMap: flowOptions.embeddedFontFamilyMap }),
-  ...(flowOptions.defaultSize === undefined ? {} : { defaultSize: flowOptions.defaultSize }),
+  ...(flowOptions.defaultSize === undefined
+    ? {}
+    : { defaultSize: flowOptions.defaultSize }),
   ...(flowOptions.styles === undefined ? {} : { styles: flowOptions.styles }),
   ...(flowOptions.theme === undefined ? {} : { theme: flowOptions.theme }),
   ...(flowOptions.fontAlternates === undefined
@@ -353,7 +370,9 @@ const resolveWatermarkImageSrc = (
     return undefined;
   }
   const target = watermark.imageTarget;
-  return target === undefined ? undefined : document.package.media?.get(target)?.dataUrl;
+  return target === undefined
+    ? undefined
+    : document.package.media?.get(target)?.dataUrl;
 };
 
 /**
@@ -368,7 +387,10 @@ const resolveWatermarkImageSrc = (
  * matching.
  */
 const embeddedFontNonce = (source: ArrayBuffer): string =>
-  createHash("sha256").update(new Uint8Array(source)).digest("hex").slice(0, NONCE_LENGTH);
+  createHash("sha256")
+    .update(new Uint8Array(source))
+    .digest("hex")
+    .slice(0, NONCE_LENGTH);
 
 /** Enough of the digest to separate packages without bloating every family. */
 const NONCE_LENGTH = 12;
@@ -409,7 +431,9 @@ const somePackageRecord = (
     return false;
   }
   const entries = Object.entries(value);
-  return test(entries) || entries.some(([, child]) => somePackageRecord(child, test));
+  return (
+    test(entries) || entries.some(([, child]) => somePackageRecord(child, test))
+  );
 };
 
 /**
@@ -433,7 +457,9 @@ export const layoutDocxHeadless = async (
   input: DocxInput,
   options: HeadlessLayoutOptions = {},
 ): Promise<Result<HeadlessLayoutResult, HeadlessLayoutError>> => {
-  const providerCheck = Result.try(() => getMeasureProvider().getFontMetrics({ fontSize: 11 }));
+  const providerCheck = Result.try(() =>
+    getMeasureProvider().getFontMetrics({ fontSize: 11 }),
+  );
   if (providerCheck.isErr()) {
     return Result.err(
       new HeadlessLayoutError({
@@ -448,7 +474,10 @@ export const layoutDocxHeadless = async (
   const parsed = await Result.tryPromise({
     try: () => parseDocx(input, { preloadFonts: false }),
     catch: (cause) =>
-      new HeadlessLayoutError({ message: "The package could not be parsed.", cause }),
+      new HeadlessLayoutError({
+        message: "The package could not be parsed.",
+        cause,
+      }),
   });
   if (parsed.isErr()) {
     return Result.err(parsed.error);
@@ -478,7 +507,10 @@ export const layoutDocxHeadless = async (
   const recorded = projectionWarnings();
   if (recorded.length > 0) {
     document.parseWarnings = [...(document.parseWarnings ?? []), ...recorded];
-    document.warnings = [...(document.warnings ?? []), ...formatParseWarnings(recorded)];
+    document.warnings = [
+      ...(document.warnings ?? []),
+      ...formatParseWarnings(recorded),
+    ];
   }
 
   // Before anything is measured, and only for a document that contains a run
@@ -489,7 +521,8 @@ export const layoutDocxHeadless = async (
       try: () => getShaper(),
       catch: (cause) =>
         new HeadlessLayoutError({
-          message: "The text shaper could not be loaded, and this document needs one.",
+          message:
+            "The text shaper could not be loaded, and this document needs one.",
           cause,
         }),
     });
@@ -511,7 +544,10 @@ export const layoutDocxHeadless = async (
     finalSection,
   );
   const flowOptions = buildFlowOptions(document, pageContentHeight);
-  const bodyTrailingEndnoteIds = trailingEndnoteIds(document.package.endnotes, endnotePosition);
+  const bodyTrailingEndnoteIds = trailingEndnoteIds(
+    document.package.endnotes,
+    endnotePosition,
+  );
   if (bodyTrailingEndnoteIds.size > 0) {
     flowOptions.trailingEndnoteIds = bodyTrailingEndnoteIds;
   }
@@ -564,7 +600,10 @@ export const layoutDocxHeadless = async (
       // slot is added once per note-bearing page by the paginator itself.
       const footnoteHeightById = new Map<number, number>();
       for (const [id, content] of footnoteContentById ?? []) {
-        footnoteHeightById.set(id, content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM);
+        footnoteHeightById.set(
+          id,
+          content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+        );
       }
 
       // Endnotes paginate with the body, after its last block (or each
@@ -590,25 +629,37 @@ export const layoutDocxHeadless = async (
         finalPageSize,
         finalMargins,
         finalPageNumbering: getPageNumbering(finalSection),
-        sectionVerticalAlignments: sections.map(({ properties }) => properties.verticalAlign),
+        sectionVerticalAlignments: sections.map(
+          ({ properties }) => properties.verticalAlign,
+        ),
         pageGap: options.pageGap ?? 0,
         titlePage: firstSection?.titlePg === true,
-        evenAndOddHeaders: document.package.settings?.evenAndOddHeaders === true,
+        evenAndOddHeaders:
+          document.package.settings?.evenAndOddHeaders === true,
         mirrorMargins: readsMirrorMargins(document.package.settings),
         ...(footnoteHeightById.size === 0 ? {} : { footnoteHeightById }),
-        ...(sectionHeaderFooterRefs === undefined ? {} : { sectionHeaderFooterRefs }),
-        ...(endnoteAreas === undefined ? {} : { noteAreas: endnoteAreas.noteAreas }),
+        ...(sectionHeaderFooterRefs === undefined
+          ? {}
+          : { sectionHeaderFooterRefs }),
+        ...(endnoteAreas === undefined
+          ? {}
+          : { noteAreas: endnoteAreas.noteAreas }),
       };
       const blockLookup = buildBlockLookup(flow.blocks, flow.measures);
-      for (const [blockId, noteStory] of endnoteAreas?.noteStoryByBlockId ?? []) {
+      for (const [blockId, noteStory] of endnoteAreas?.noteStoryByBlockId ??
+        []) {
         const entry = blockLookup.get(blockId);
         if (entry !== undefined) {
           entry.noteStory = noteStory;
         }
       }
-      const continuationSeparator = endnoteAreas?.noteAreas.continuationSeparator;
+      const continuationSeparator =
+        endnoteAreas?.noteAreas.continuationSeparator;
       if (continuationSeparator !== undefined) {
-        blockLookup.set(String(continuationSeparator.block.id), continuationSeparator);
+        blockLookup.set(
+          String(continuationSeparator.block.id),
+          continuationSeparator,
+        );
       }
       return {
         layout: layoutDocument(flow.blocks, flow.measures, layoutOptions),
@@ -655,7 +706,12 @@ export const layoutDocxHeadless = async (
         }),
       );
     }
-    return Result.ok({ layout, blockLookup, footnoteContentById, ...stories.value });
+    return Result.ok({
+      layout,
+      blockLookup,
+      footnoteContentById,
+      ...stories.value,
+    });
   };
 
   // Measurement hyphenates synchronously and cannot wait for a dictionary, so
@@ -668,7 +724,8 @@ export const layoutDocxHeadless = async (
     if (loaded.isErr()) {
       return Result.err(
         new HeadlessLayoutError({
-          message: "A hyphenation dictionary could not be loaded, and this document needs one.",
+          message:
+            "A hyphenation dictionary could not be loaded, and this document needs one.",
           cause: loaded.error,
         }),
       );
@@ -678,8 +735,13 @@ export const layoutDocxHeadless = async (
   if (pass.result.isErr()) {
     return Result.err(pass.result.error);
   }
-  const { layout, blockLookup, footnoteContentById, headerContentByRId, footerContentByRId } =
-    pass.result.value;
+  const {
+    layout,
+    blockLookup,
+    footnoteContentById,
+    headerContentByRId,
+    footerContentByRId,
+  } = pass.result.value;
 
   const embeddedFonts = declaresEmbeddedFonts(document)
     ? await Result.tryPromise({
@@ -712,7 +774,8 @@ export const layoutDocxHeadless = async (
       .filter((candidate) => candidate !== undefined)
       .map((candidate) => resolveWatermarkImageSrc(document, candidate)),
   );
-  const watermarkImageSrc = pictureSources.size === 1 ? [...pictureSources].at(0) : undefined;
+  const watermarkImageSrc =
+    pictureSources.size === 1 ? [...pictureSources].at(0) : undefined;
   const pageBorders = firstSection?.pageBorders;
 
   return Result.ok({
@@ -725,7 +788,9 @@ export const layoutDocxHeadless = async (
       // The painter takes one page-border spec and one theme per render, so the
       // first section's borders are the document's borders here too.
       ...(pageBorders === undefined ? {} : { pageBorders }),
-      ...(document.package.theme === undefined ? {} : { theme: document.package.theme }),
+      ...(document.package.theme === undefined
+        ? {}
+        : { theme: document.package.theme }),
       ...(watermark === undefined ? {} : { watermark }),
       watermarkByHeaderRId: watermarksByHeader,
       ...(watermarkImageSrc === undefined ? {} : { watermarkImageSrc }),
@@ -735,7 +800,10 @@ export const layoutDocxHeadless = async (
       ...(footnoteContentById === undefined
         ? {}
         : {
-            footnoteContentById: footnoteContentById satisfies ReadonlyMap<number, FootnoteContent>,
+            footnoteContentById: footnoteContentById satisfies ReadonlyMap<
+              number,
+              FootnoteContent
+            >,
           }),
     },
     embeddedFonts: embeddedFonts.value,

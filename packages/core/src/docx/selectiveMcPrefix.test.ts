@@ -30,18 +30,33 @@ const packageWith = async (xml: string): Promise<ArrayBuffer> => {
   zip.file("word/document.xml", xml);
   zip.file("word/numbering.xml", NUMBERING_XML);
   const bytes = await zip.generateAsync({ type: "uint8array" });
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 };
 
 describe("selective save with an aliased markup-compatibility prefix", () => {
   for (const nestedRebinding of [false, true]) {
     test(`one-character edit stays local with nested rebinding ${nestedRebinding}`, async () => {
       const sourceXml = documentXml(nestedRebinding);
-      const reviewer = await FolioDocxReviewer.fromBuffer(await packageWith(sourceXml));
-      const target = reviewer.snapshot().blocks.find((block) => block.text === "Beta");
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await packageWith(sourceXml),
+      );
+      const target = reviewer
+        .snapshot()
+        .blocks.find((block) => block.text === "Beta");
       if (!target) throw new Error("Target paragraph missing");
       const result = reviewer.applyOperations(
-        [{ id: "edit", type: "replaceInBlock", blockId: target.id, find: "Beta", replace: "Beto" }],
+        [
+          {
+            id: "edit",
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: "Beta",
+            replace: "Beto",
+          },
+        ],
         { undefinedReferences: "refuse", mode: "direct" },
       );
       expect(result.applied).toHaveLength(1);
@@ -52,10 +67,13 @@ describe("selective save with an aliased markup-compatibility prefix", () => {
       expect(savedXml).toContain("Beto");
       expect(savedXml).not.toContain("w14:paraId=");
       const targetStart = sourceXml.indexOf("<w:p><w:r><w:t>Beta");
-      const targetEnd = sourceXml.indexOf("</w:p>", targetStart) + "</w:p>".length;
+      const targetEnd =
+        sourceXml.indexOf("</w:p>", targetStart) + "</w:p>".length;
       expect(savedXml?.startsWith(sourceXml.slice(0, targetStart))).toBe(true);
       expect(savedXml?.endsWith(sourceXml.slice(targetEnd))).toBe(true);
-      expect(await saved.file("word/numbering.xml")?.async("text")).toBe(NUMBERING_XML);
+      expect(await saved.file("word/numbering.xml")?.async("text")).toBe(
+        NUMBERING_XML,
+      );
     });
   }
 });

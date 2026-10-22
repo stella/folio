@@ -16,20 +16,23 @@
  * Based on ECMA-376 style cascade rules.
  */
 
-import type {
-  StyleDefinitions,
-  Style,
-  DocDefaults,
-  ParagraphFormatting,
-  TextFormatting,
-} from "../../types/document";
-import { type BuiltInStyleIndex, createBuiltInStyleIndex } from "../../docx/builtInStyles";
+import {
+  type BuiltInStyleIndex,
+  createBuiltInStyleIndex,
+} from "../../docx/builtInStyles";
 import {
   BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING,
   resolveDefaultParagraphStyle,
 } from "../../docx/defaultParagraphStyle";
-import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import { mergeParagraphNumbering } from "../../docx/numberingReference";
+import type {
+  DocDefaults,
+  ParagraphFormatting,
+  Style,
+  StyleDefinitions,
+  TextFormatting,
+} from "../../types/document";
+import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import { cascadeStyleTextFormatting } from "./styleToggleCascade";
 
 /**
@@ -56,7 +59,12 @@ export type ResolvedParagraphStyle = {
  */
 export type TableCellParagraphSpacingOverlay = Pick<
   ParagraphFormatting,
-  "spaceBefore" | "spaceAfter" | "lineSpacing" | "lineSpacingRule" | "contextualSpacing" | "frame"
+  | "spaceBefore"
+  | "spaceAfter"
+  | "lineSpacing"
+  | "lineSpacingRule"
+  | "contextualSpacing"
+  | "frame"
 >;
 
 /**
@@ -124,7 +132,10 @@ export class StyleResolver {
    * outline sidebar rebuilds its heading list on every transaction.
    */
   get builtInStyles(): BuiltInStyleIndex {
-    this.builtInStyleIndex ??= createBuiltInStyleIndex(this.stylesById.values(), this.docDefaults);
+    this.builtInStyleIndex ??= createBuiltInStyleIndex(
+      this.stylesById.values(),
+      this.docDefaults,
+    );
     return this.builtInStyleIndex;
   }
 
@@ -155,7 +166,9 @@ export class StyleResolver {
    * @param styleId - The style ID to resolve (e.g., 'Heading1', 'Normal')
    * @returns Resolved paragraph and run formatting
    */
-  resolveParagraphStyle(styleId: string | undefined | null): ResolvedParagraphStyle {
+  resolveParagraphStyle(
+    styleId: string | undefined | null,
+  ): ResolvedParagraphStyle {
     return this.resolveParagraphStyleCascade(styleId, undefined);
   }
 
@@ -211,7 +224,10 @@ export class StyleResolver {
     tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined,
   ): ResolvedParagraphStyle {
     const result: ResolvedParagraphStyle = {};
-    const paragraphFormatting = this.resolveParagraphFormatting(styleId, tableParagraphOverlay);
+    const paragraphFormatting = this.resolveParagraphFormatting(
+      styleId,
+      tableParagraphOverlay,
+    );
     if (paragraphFormatting) result.paragraphFormatting = paragraphFormatting;
     const style = paragraphStyleFor(this, styleId);
     const runFormatting = cascadeStyleTextFormatting([
@@ -278,8 +294,12 @@ export class StyleResolver {
    * @param styleId - The character style ID to resolve
    * @returns Resolved text formatting
    */
-  resolveRunStyle(styleId: string | undefined | null): TextFormatting | undefined {
-    const style = styleId ? this.stylesById.get(styleId) : this.defaultCharacterStyle;
+  resolveRunStyle(
+    styleId: string | undefined | null,
+  ): TextFormatting | undefined {
+    const style = styleId
+      ? this.stylesById.get(styleId)
+      : this.defaultCharacterStyle;
     const result = cascadeStyleTextFormatting([
       { formatting: this.docDefaults?.rPr, type: "defaults" },
       { formatting: style?.rPr, type: "style" },
@@ -293,7 +313,9 @@ export class StyleResolver {
    * Used when the caller already has docDefaults applied (e.g., from paragraph style resolution).
    * This prevents docDefault fonts from incorrectly overriding paragraph style fonts.
    */
-  getRunStyleOwnProperties(styleId: string | undefined | null): TextFormatting | undefined {
+  getRunStyleOwnProperties(
+    styleId: string | undefined | null,
+  ): TextFormatting | undefined {
     if (!styleId) {
       return undefined;
     }
@@ -345,7 +367,9 @@ export class StyleResolver {
   // Private helpers
   // ============================================================================
 
-  private findDefaultStyle(type: "paragraph" | "character" | "table"): Style | undefined {
+  private findDefaultStyle(
+    type: "paragraph" | "character" | "table",
+  ): Style | undefined {
     // Only synthesize the default-template Normal for a bare document with no
     // docDefaults; when docDefaults exist they are the authoritative paragraph
     // defaults and an absent Normal must not re-introduce the template's
@@ -368,12 +392,18 @@ export class StyleResolver {
 /**
  * Create a style resolver from document's style definitions
  */
-export function createStyleResolver(styleDefinitions: StyleDefinitions | undefined): StyleResolver {
+export function createStyleResolver(
+  styleDefinitions: StyleDefinitions | undefined,
+): StyleResolver {
   return new StyleResolver(styleDefinitions);
 }
 
-const paragraphStyleFor = (resolver: StyleResolver, styleId: string | undefined | null) =>
-  (styleId ? resolver.getStyle(styleId) : undefined) ?? resolver.getDefaultParagraphStyle();
+const paragraphStyleFor = (
+  resolver: StyleResolver,
+  styleId: string | undefined | null,
+) =>
+  (styleId ? resolver.getStyle(styleId) : undefined) ??
+  resolver.getDefaultParagraphStyle();
 
 type ParagraphFormattingLayersOptions = {
   resolver: StyleResolver;
@@ -382,8 +412,14 @@ type ParagraphFormattingLayersOptions = {
 };
 
 /** Paragraph tiers that can contribute numbering; the table overlay is spacing-only. */
-const paragraphNumberingLayers = (resolver: StyleResolver, styleId: string | undefined | null) =>
-  [resolver.getDocDefaults()?.pPr, paragraphStyleFor(resolver, styleId)?.pPr] as const;
+const paragraphNumberingLayers = (
+  resolver: StyleResolver,
+  styleId: string | undefined | null,
+) =>
+  [
+    resolver.getDocDefaults()?.pPr,
+    paragraphStyleFor(resolver, styleId)?.pPr,
+  ] as const;
 
 const paragraphFormattingLayers = ({
   resolver,

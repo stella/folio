@@ -34,18 +34,24 @@ export const insertedTextBoxDocument = ({
     {
       type: "paragraph",
       paraId: "23000001",
-      content: [{ type: "run", content: [{ type: "text", text: "Unchanged anchor" }] }],
+      content: [
+        { type: "run", content: [{ type: "text", text: "Unchanged anchor" }] },
+      ],
     },
     ...(side === "revised"
       ? Array.from({ length: carrierCount }, (_, carrierIndex) => {
           const carrierSuffix =
-            carrierCount === 1 ? suffix : `${suffix} carrier ${carrierIndex + 1}`;
+            carrierCount === 1
+              ? suffix
+              : `${suffix} carrier ${carrierIndex + 1}`;
           const innerParagraphs = Array.from(
             { length: innerCount },
             (_innerValue, innerIndex) =>
               ({
                 type: "paragraph",
-                paraId: (0x23000003 + carrierIndex * 16 + innerIndex).toString(16).toUpperCase(),
+                paraId: (0x23000003 + carrierIndex * 16 + innerIndex)
+                  .toString(16)
+                  .toUpperCase(),
                 formatting: { styleId: INSERTED_TEXT_BOX_STYLE },
                 content: [
                   {
@@ -68,7 +74,10 @@ export const insertedTextBoxDocument = ({
               {
                 type: "run" as const,
                 content: [
-                  { type: "text" as const, text: `Parent text ${carrierSuffix}` },
+                  {
+                    type: "text" as const,
+                    text: `Parent text ${carrierSuffix}`,
+                  },
                   {
                     type: "shape" as const,
                     shape: {
@@ -87,7 +96,10 @@ export const insertedTextBoxDocument = ({
                                     {
                                       type: "tableRow" as const,
                                       cells: [
-                                        { type: "tableCell" as const, content: innerParagraphs },
+                                        {
+                                          type: "tableCell" as const,
+                                          content: innerParagraphs,
+                                        },
                                       ],
                                     },
                                   ],

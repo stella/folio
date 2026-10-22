@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
-import { applyDocumentOp, applyDocumentOps, combineEdits } from "@stll/docx-core/ops";
+
+import {
+  applyDocumentOp,
+  applyDocumentOps,
+  combineEdits,
+} from "@stll/docx-core/ops";
 
 import { rejectAIEditRevision } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -28,7 +33,10 @@ test("resolving a nested revision promotes its comment boundary ownership to the
                     info: { id: 2, author: "Reviewer" },
                     content: [
                       { type: "commentRangeStart", id: 7 },
-                      { type: "run", content: [{ type: "text", text: "comment" }] },
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "comment" }],
+                      },
                     ],
                   },
                   { type: "commentRangeEnd", id: 7 },
@@ -40,7 +48,9 @@ test("resolving a nested revision promotes its comment boundary ownership to the
           {
             type: "paragraph",
             paraId: "00000002",
-            content: [{ type: "run", content: [{ type: "text", text: "after" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "after" }] },
+            ],
           },
         ],
       },
@@ -61,9 +71,13 @@ test("resolving a nested revision promotes its comment boundary ownership to the
     { type: "end", commentId: 7, owner: "parent" },
   ]);
   expect(() =>
-    fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } }),
+    fromProseDoc(state.doc, document, {
+      stylesheetSource: { type: "package" },
+    }),
   ).not.toThrow();
-  const saved = fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } });
+  const saved = fromProseDoc(state.doc, document, {
+    stylesheetSource: { type: "package" },
+  });
   expect(saved.package.document.comments?.map(({ id }) => id)).toEqual([7]);
 });
 
@@ -80,7 +94,12 @@ test("deleting a whole comment range retires its definition before composing the
               {
                 type: "paragraph",
                 paraId: "00000003",
-                content: [{ type: "run", content: [{ type: "text", text: "Comment body" }] }],
+                content: [
+                  {
+                    type: "run",
+                    content: [{ type: "text", text: "Comment body" }],
+                  },
+                ],
               },
             ],
           },
@@ -91,7 +110,10 @@ test("deleting a whole comment range retires its definition before composing the
             paraId: "00000001",
             content: [
               { type: "commentRangeStart", id: 7 },
-              { type: "run", content: [{ type: "text", text: "Commented text" }] },
+              {
+                type: "run",
+                content: [{ type: "text", text: "Commented text" }],
+              },
               { type: "commentRangeEnd", id: 7 },
               { type: "commentReference", id: 7 },
             ],
@@ -99,7 +121,9 @@ test("deleting a whole comment range retires its definition before composing the
           {
             type: "paragraph",
             paraId: "00000002",
-            content: [{ type: "run", content: [{ type: "text", text: "After" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "After" }] },
+            ],
           },
         ],
       },
@@ -111,10 +135,15 @@ test("deleting a whole comment range retires its definition before composing the
     blockIds: ["00000001"],
     newIds: { revision: [], control: [] },
   }).unwrap();
-  expect(deletion.document.package.document.comments?.find(({ id }) => id === 7)).toBeUndefined();
+  expect(
+    deletion.document.package.document.comments?.find(({ id }) => id === 7),
+  ).toBeUndefined();
   const composed = combineEdits(document, [deletion]);
 
   expect(composed.document.package.document.comments).toBeUndefined();
-  const restored = applyDocumentOps(composed.document, composed.inverse).unwrap().document;
+  const restored = applyDocumentOps(
+    composed.document,
+    composed.inverse,
+  ).unwrap().document;
   expect(restored.package.document).toStrictEqual(document.package.document);
 });

@@ -1,11 +1,18 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
-import type { Document, ParagraphContent, Comment } from "../types/document";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Comment, Document, ParagraphContent } from "../types/document";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "./canonicalSession";
 
 // Projection fixtures edited at fixed positions; none followed the caret after replacement.
 test(
@@ -41,7 +48,10 @@ test(
                             type: "paragraph",
                             paraId: (0x20000000 + id).toString(16),
                             content: [
-                              { type: "run", content: [{ type: "text", text: "Comment" }] },
+                              {
+                                type: "run",
+                                content: [{ type: "text", text: "Comment" }],
+                              },
                             ],
                           },
                         ],
@@ -53,10 +63,16 @@ test(
                       paraId: "12345678",
                       content: [
                         { type: "commentRangeStart", id: 0 },
-                        { type: "run", content: [{ type: "text", text: "Commented" }] },
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "Commented" }],
+                        },
                         { type: "commentRangeEnd", id: 0 },
                         ...atoms,
-                        { type: "run", content: [{ type: "text", text: " tail" }] },
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: " tail" }],
+                        },
                       ],
                     },
                   ],
@@ -66,10 +82,14 @@ test(
             const created = createCanonicalSession(source);
             expect(created.isErr() ? created.error : undefined).toBeUndefined();
             const session = created.unwrap();
-            session.setMode(type === "editing" ? { type } : { type, author: "Reviewer" });
+            session.setMode(
+              type === "editing" ? { type } : { type, author: "Reviewer" },
+            );
             let state = EditorState.create({ doc: session.projection.doc });
             state = state.apply(
-              state.tr.setSelection(TextSelection.create(state.doc, 1, state.doc.content.size - 1)),
+              state.tr.setSelection(
+                TextSelection.create(state.doc, 1, state.doc.content.size - 1),
+              ),
             );
             const typed = [first, "y", "z"];
             for (const text of typed) {
@@ -80,26 +100,39 @@ test(
                 text,
                 semantic: "typing",
               });
-              expect(prepared.isErr() ? prepared.error : undefined).toBeUndefined();
+              expect(
+                prepared.isErr() ? prepared.error : undefined,
+              ).toBeUndefined();
               const published = publishCanonicalProjection({
                 session,
                 state,
                 commit: prepared.unwrap(),
               });
-              expect(published.isErr() ? published.error : undefined).toBeUndefined();
+              expect(
+                published.isErr() ? published.error : undefined,
+              ).toBeUndefined();
               state = published.unwrap().state;
               expect(state.selection.empty).toBe(true);
             }
-            const { ids: revisionIds } = getTrackedChangeStatsFromDoc(toProseDoc(session.document));
+            const { ids: revisionIds } = getTrackedChangeStatsFromDoc(
+              toProseDoc(session.document),
+            );
             if (revisionIds.length > 0) {
-              const prepared = session.prepareResolve(state, { revisionIds, resolution: "accept" });
-              expect(prepared.isErr() ? prepared.error : undefined).toBeUndefined();
+              const prepared = session.prepareResolve(state, {
+                revisionIds,
+                resolution: "accept",
+              });
+              expect(
+                prepared.isErr() ? prepared.error : undefined,
+              ).toBeUndefined();
               const published = publishCanonicalProjection({
                 session,
                 state,
                 commit: prepared.unwrap(),
               });
-              expect(published.isErr() ? published.error : undefined).toBeUndefined();
+              expect(
+                published.isErr() ? published.error : undefined,
+              ).toBeUndefined();
               state = published.unwrap().state;
             }
             // Comment references retain their anchor but contribute no authored text.
@@ -110,7 +143,9 @@ test(
               if (
                 node.isText &&
                 node.marks.some(
-                  (mark) => mark.type.name === "comment" && mark.attrs["commentId"] === 0,
+                  (mark) =>
+                    mark.type.name === "comment" &&
+                    mark.attrs["commentId"] === 0,
                 )
               )
                 covered.push(node.text ?? "");

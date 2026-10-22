@@ -17,10 +17,12 @@
  * put `w:sz` and `w:highlight` before `w:rFonts`.
  */
 
-import type { PreservedMarkup } from "../model/preservedMarkup";
-import { OOXML_NS } from "@stll/docx-utils";
-import { XMLParser, XMLValidator } from "fast-xml-parser";
 import { TaggedError } from "better-result";
+import { XMLParser, XMLValidator } from "fast-xml-parser";
+
+import { OOXML_NS } from "@stll/docx-utils";
+
+import type { PreservedMarkup } from "../model/preservedMarkup";
 import {
   SEQUENCE_CHILDREN,
   type SequenceChild,
@@ -42,7 +44,9 @@ type SerializeSequenceChildrenOptions<Container extends SequenceContainer> = {
    *
    * An empty string means the caller wrote nothing for that child.
    */
-  modelled: ReadonlyArray<readonly [name: SequenceChild<Container>, xml: string]>;
+  modelled: ReadonlyArray<
+    readonly [name: SequenceChild<Container>, xml: string]
+  >;
   /**
    * The container's unmodelled markup, each capture carrying the schema
    * ordinal it was read at, so it lands between the same two neighbours.
@@ -69,7 +73,9 @@ const preservedChildParser = new XMLParser({
   htmlEntities: false,
 });
 
-class InvalidPreservedChildXmlError extends TaggedError("InvalidPreservedChildXmlError")<{
+class InvalidPreservedChildXmlError extends TaggedError(
+  "InvalidPreservedChildXmlError",
+)<{
   message: string;
   index: number;
 }> {}
@@ -228,9 +234,11 @@ const hasValidNamespaces = (
       if (attributePrefix !== undefined && !bindings.has(attributePrefix)) {
         return false;
       }
-      const namespace = attributePrefix === undefined ? "" : bindings.get(attributePrefix);
+      const namespace =
+        attributePrefix === undefined ? "" : bindings.get(attributePrefix);
       const colon = attributeName.indexOf(":");
-      const localName = colon === -1 ? attributeName : attributeName.slice(colon + 1);
+      const localName =
+        colon === -1 ? attributeName : attributeName.slice(colon + 1);
       const expandedName = `${namespace ?? ""}\u0000${localName}`;
       if (expandedAttributeNames.has(expandedName)) {
         return false;
@@ -303,7 +311,9 @@ export const isSafePreservedChildXml = (xml: string): boolean => {
 };
 
 /** Whether a capture collection stays within its aggregate resource budget. */
-export const isWithinPreservedMarkupBudget = (children: Iterable<unknown>): boolean => {
+export const isWithinPreservedMarkupBudget = (
+  children: Iterable<unknown>,
+): boolean => {
   let count = 0;
   let characters = 0;
   for (const child of children) {
@@ -327,18 +337,22 @@ export const isWithinPreservedMarkupBudget = (children: Iterable<unknown>): bool
 };
 
 /** Reject unsafe captured children before a caller performs any transformation. */
-export const assertSafePreservedMarkup = (preserved: PreservedMarkup | undefined): void => {
+export const assertSafePreservedMarkup = (
+  preserved: PreservedMarkup | undefined,
+): void => {
   const children = preserved?.children ?? [];
   if (!isWithinPreservedMarkupBudget(children)) {
     throw new InvalidPreservedChildXmlError({
-      message: "Preserved container markup exceeds its aggregate resource budget",
+      message:
+        "Preserved container markup exceeds its aggregate resource budget",
       index: -1,
     });
   }
   for (const { index, xml } of children) {
     if (!isSafePreservedChildXml(xml)) {
       throw new InvalidPreservedChildXmlError({
-        message: "Preserved container markup must be one bounded, well-formed XML element",
+        message:
+          "Preserved container markup must be one bounded, well-formed XML element",
         index,
       });
     }

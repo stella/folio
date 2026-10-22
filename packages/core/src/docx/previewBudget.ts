@@ -119,9 +119,9 @@ const PREVIEW_KINDS = {
 
 /** The kinds a package charges: those whose preview is image data it retains. */
 type SourceBackedKindName = {
-  [Name in PreviewKindName]: (typeof PREVIEW_KINDS)[Name]["backing"] extends "source"
-    ? Name
-    : never;
+  [
+    Name in PreviewKindName
+  ]: (typeof PREVIEW_KINDS)[Name]["backing"] extends "source" ? Name : never;
 }[PreviewKindName];
 
 /**
@@ -130,14 +130,19 @@ type SourceBackedKindName = {
  * Only a source-backed kind has an allowance: there is no number that would
  * change what the budget does to a descriptor.
  */
-export type PreviewBudgetOverrides = Partial<Record<SourceBackedKindName, number>>;
+export type PreviewBudgetOverrides = Partial<
+  Record<SourceBackedKindName, number>
+>;
 
 /**
  * Everything a preview image states except what the ledger stamps on it: its
  * geometry, wrap, position and names. A preview has no relationship behind
  * it, so its frame cannot name one.
  */
-type PreviewFrame = Omit<Image, "type" | "rId" | "src" | "mimeType" | "filename">;
+type PreviewFrame = Omit<
+  Image,
+  "type" | "rId" | "src" | "mimeType" | "filename"
+>;
 
 /** The one way a producer builds a preview image. */
 export type PreviewLedger = {
@@ -145,7 +150,11 @@ export type PreviewLedger = {
    * Build a `kind` preview that draws `svg` over `frame`, registered against
    * the package's allowance for that kind.
    */
-  readonly svgImage: (kind: SourceBackedKindName, svg: string, frame: PreviewFrame) => Image;
+  readonly svgImage: (
+    kind: SourceBackedKindName,
+    svg: string,
+    frame: PreviewFrame,
+  ) => Image;
   /**
    * Withdraw every preview inside content the parse built and then discarded,
    * so it spends no allowance. Walks only `discarded`.
@@ -171,7 +180,10 @@ export type PackagePreviewBudget = {
   readonly enforce: (overrides?: PreviewBudgetOverrides) => void;
 };
 
-type LedgerEntry = { readonly kind: SourceBackedKindName; readonly image: Image };
+type LedgerEntry = {
+  readonly kind: SourceBackedKindName;
+  readonly image: Image;
+};
 
 /**
  * One parse's previews and their budget.
@@ -202,7 +214,9 @@ export const createPackagePreviewBudget = (): PackagePreviewBudget => {
       released.add(value);
       return;
     }
-    for (const child of value instanceof Map ? value.values() : Object.values(value)) {
+    for (const child of value instanceof Map
+      ? value.values()
+      : Object.values(value)) {
       release(child, seen);
     }
   };
@@ -233,7 +247,10 @@ export const createPackagePreviewBudget = (): PackagePreviewBudget => {
         }
         const left =
           remaining.get(kind) ??
-          Math.max(0, overrides[kind] ?? PREVIEW_KINDS[kind].maxPackageCharacters);
+          Math.max(
+            0,
+            overrides[kind] ?? PREVIEW_KINDS[kind].maxPackageCharacters,
+          );
         if (image.src.length <= left) {
           remaining.set(kind, left - image.src.length);
         } else {
@@ -249,4 +266,5 @@ export const createPackagePreviewBudget = (): PackagePreviewBudget => {
  * A ledger for a read that builds no package: one part parsed on its own,
  * whose previews no package budget charges.
  */
-export const standalonePreviewLedger = (): PreviewLedger => createPackagePreviewBudget().ledger;
+export const standalonePreviewLedger = (): PreviewLedger =>
+  createPackagePreviewBudget().ledger;

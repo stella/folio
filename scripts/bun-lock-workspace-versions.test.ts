@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import packageJson from "../package.json";
 import { syncWorkspaceVersions } from "./lib/bun-lock-workspace-versions";
 
@@ -36,14 +37,23 @@ describe("bun.lock workspace self-version synchronization", () => {
   });
 
   test("version-up/version-down is byte-identical", () => {
-    const up = syncWorkspaceVersions(fixture, new Map([["packages/core", "1.1.0"]])).text;
-    const down = syncWorkspaceVersions(up, new Map([["packages/core", "1.0.0"]])).text;
+    const up = syncWorkspaceVersions(
+      fixture,
+      new Map([["packages/core", "1.1.0"]]),
+    ).text;
+    const down = syncWorkspaceVersions(
+      up,
+      new Map([["packages/core", "1.0.0"]]),
+    ).text;
 
     expect(down).toBe(fixture);
   });
 
   test("refuses to invent missing workspace structure", () => {
-    const result = syncWorkspaceVersions(fixture, new Map([["packages/missing", "1.0.0"]]));
+    const result = syncWorkspaceVersions(
+      fixture,
+      new Map([["packages/missing", "1.0.0"]]),
+    );
 
     expect(result.text).toBe(fixture);
     expect(result.mismatches).toEqual([

@@ -18,7 +18,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, type CSSProperties } from "vue";
+import {
+  type CSSProperties,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 
 const props = withDefaults(
   defineProps<{
@@ -82,7 +88,8 @@ function onClickOutside(e: MouseEvent) {
   if (!props.open) return;
   const target = e.target;
   if (!(target instanceof Node)) return;
-  if (rootRef.value?.contains(target) || panelRef.value?.contains(target)) return;
+  if (rootRef.value?.contains(target) || panelRef.value?.contains(target))
+    return;
   close();
 }
 function onEscape(e: KeyboardEvent) {

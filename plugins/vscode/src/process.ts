@@ -21,7 +21,11 @@ export type RunOptions = {
   readonly timeoutMs: number;
 };
 
-export const runCli = ({ runtime, args, timeoutMs }: RunOptions): Promise<ProcessResult> =>
+export const runCli = ({
+  runtime,
+  args,
+  timeoutMs,
+}: RunOptions): Promise<ProcessResult> =>
   new Promise((resolve, reject) => {
     const { command, args: argv, env } = cliCommand(runtime, args);
     const child = spawn(command, [...argv], {

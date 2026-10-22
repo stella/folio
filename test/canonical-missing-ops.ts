@@ -3,7 +3,8 @@ export const createMissingOpBurndown = () => {
   const counts = new Map<string, number>();
   return {
     record: (kind: string) => counts.set(kind, (counts.get(kind) ?? 0) + 1),
-    rows: () => [...counts].sort(([left], [right]) => left.localeCompare(right)),
+    rows: () =>
+      [...counts].sort(([left], [right]) => left.localeCompare(right)),
     markdown: () =>
       [
         "| Missing operation | Refused intents |",

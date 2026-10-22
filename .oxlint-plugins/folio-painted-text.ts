@@ -8,17 +8,23 @@ const isAstNode = (value: unknown): value is AstNode =>
   typeof value === "object" && value !== null && "type" in value;
 
 const identifierName = (node: unknown): string | null =>
-  isAstNode(node) && node.type === "Identifier" && typeof node["name"] === "string"
+  isAstNode(node) &&
+  node.type === "Identifier" &&
+  typeof node["name"] === "string"
     ? node["name"]
     : null;
 
 const literalName = (node: unknown): string | null =>
-  isAstNode(node) && node.type === "Literal" && typeof node["value"] === "string"
+  isAstNode(node) &&
+  node.type === "Literal" &&
+  typeof node["value"] === "string"
     ? node["value"]
     : null;
 
 const propertyName = (node: AstNode): string | null =>
-  node["computed"] === true ? literalName(node.property) : identifierName(node.property);
+  node["computed"] === true
+    ? literalName(node.property)
+    : identifierName(node.property);
 
 const isForbiddenMember = (node: AstNode): boolean => {
   const property = propertyName(node);

@@ -1,12 +1,14 @@
-import { getTextBoxText } from "./storyPlainText";
 import { describe, expect, test } from "bun:test";
 
+import { getTextBoxText } from "./storyPlainText";
 import { parseTextBox } from "./textBoxParser";
 import { parseXmlDocument } from "./xmlParser";
 
 const NAMESPACES = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"`;
 
-const drawingWithBodyProperties = (bodyProperties: string): string => `<w:drawing ${NAMESPACES}>
+const drawingWithBodyProperties = (
+  bodyProperties: string,
+): string => `<w:drawing ${NAMESPACES}>
   <wp:inline>
     <wp:extent cx="914400" cy="457200"/>
     <a:graphic>
@@ -37,7 +39,9 @@ describe("text box body properties", () => {
   });
 
   test("leaves fitting unspecified when no mode is authored", () => {
-    const drawing = parseXmlDocument(drawingWithBodyProperties("<wps:bodyPr/>"));
+    const drawing = parseXmlDocument(
+      drawingWithBodyProperties("<wps:bodyPr/>"),
+    );
     expect(drawing).not.toBeNull();
     if (!drawing) {
       return;
@@ -53,7 +57,9 @@ describe("text box body properties", () => {
     ["dist", "distributed"],
     ["just", "justified"],
   ] as const)("maps the %s anchor token to %s", (token, expected) => {
-    const drawing = parseXmlDocument(drawingWithBodyProperties(`<wps:bodyPr anchor="${token}"/>`));
+    const drawing = parseXmlDocument(
+      drawingWithBodyProperties(`<wps:bodyPr anchor="${token}"/>`),
+    );
     expect(drawing).not.toBeNull();
     if (!drawing) {
       return;
@@ -77,7 +83,9 @@ describe("text box body properties", () => {
       adjustments: [{ name: "adj1", formula: "val 123" }],
     });
 
-    const ordinary = parseXmlDocument(drawingWithBodyProperties("<wps:bodyPr/>"));
+    const ordinary = parseXmlDocument(
+      drawingWithBodyProperties("<wps:bodyPr/>"),
+    );
     expect(ordinary).not.toBeNull();
     if (ordinary) expect(parseTextBox(ordinary)?.wordArt).toBeUndefined();
   });
@@ -103,7 +111,9 @@ describe("text box plain text", () => {
       content: [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "Before" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Before" }] },
+          ],
         },
         {
           type: "table",
@@ -116,7 +126,12 @@ describe("text box plain text", () => {
                   content: [
                     {
                       type: "paragraph",
-                      content: [{ type: "run", content: [{ type: "text", text: "Left" }] }],
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "Left" }],
+                        },
+                      ],
                     },
                   ],
                 },
@@ -125,7 +140,12 @@ describe("text box plain text", () => {
                   content: [
                     {
                       type: "paragraph",
-                      content: [{ type: "run", content: [{ type: "text", text: "Right" }] }],
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "Right" }],
+                        },
+                      ],
                     },
                   ],
                 },
@@ -135,7 +155,9 @@ describe("text box plain text", () => {
         },
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "After" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "After" }] },
+          ],
         },
       ],
     });

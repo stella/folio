@@ -1,4 +1,4 @@
-import { decodeText } from "../utils/textEncoding";
+import { Result, TaggedError } from "better-result";
 /**
  * Image decoding for PDF image XObjects.
  *
@@ -14,13 +14,21 @@ import { decodeText } from "../utils/textEncoding";
  * refusing the page. Adam7 interlacing is not such a form — it is seven
  * ordinary rasters of the same samples — so it is decoded rather than refused.
  */
-
-import { Result, TaggedError } from "better-result";
 import { inflateSync } from "node:zlib";
-import type { DisplayImageSource } from "../display-list/types";
-import { pdfArray, pdfHexString, pdfName, pdfNumber, type PdfValue } from "./objects";
 
-export class PdfImageError extends TaggedError("PdfImageError")<{ message: string }> {}
+import type { DisplayImageSource } from "../display-list/types";
+import { decodeText } from "../utils/textEncoding";
+import {
+  pdfArray,
+  pdfHexString,
+  pdfName,
+  pdfNumber,
+  type PdfValue,
+} from "./objects";
+
+export class PdfImageError extends TaggedError("PdfImageError")<{
+  message: string;
+}> {}
 
 /** A soft mask: one alpha sample per pixel, matching the image's dimensions. */
 export type PdfImageAlpha = {
@@ -82,7 +90,9 @@ type PngChunks = {
 const readPngChunks = (bytes: Uint8Array): Result<PngChunks, PdfImageError> => {
   for (let index = 0; index < PNG_SIGNATURE.length; index += 1) {
     if (bytes[index] !== PNG_SIGNATURE[index]) {
-      return Result.err(new PdfImageError({ message: "not a PNG: bad signature" }));
+      return Result.err(
+        new PdfImageError({ message: "not a PNG: bad signature" }),
+      );
     }
   }
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -96,11 +106,15 @@ const readPngChunks = (bytes: Uint8Array): Result<PngChunks, PdfImageError> => {
 
   while (cursor + CHUNK_HEADER_BYTES <= bytes.length) {
     const length = view.getUint32(cursor);
-    const type = decodeText(bytes.subarray(cursor + 4, cursor + 8), { encoding: "binary" });
+    const type = decodeText(bytes.subarray(cursor + 4, cursor + 8), {
+      encoding: "binary",
+    });
     const dataStart = cursor + CHUNK_HEADER_BYTES;
     const dataEnd = dataStart + length;
     if (dataEnd > bytes.length) {
-      return Result.err(new PdfImageError({ message: `PNG chunk ${type} runs past the end` }));
+      return Result.err(
+        new PdfImageError({ message: `PNG chunk ${type} runs past the end` }),
+      );
     }
     const data = bytes.subarray(dataStart, dataEnd);
     if (type === "IHDR") {
@@ -177,10 +191,13 @@ const unfilterPng = ({
     const previous = target - bytesPerRow;
     for (let index = 0; index < bytesPerRow; index += 1) {
       const raw = filtered[source + index] ?? 0;
-      const left = index >= bytesPerPixel ? (out[target + index - bytesPerPixel] ?? 0) : 0;
+      const left =
+        index >= bytesPerPixel ? (out[target + index - bytesPerPixel] ?? 0) : 0;
       const above = row > 0 ? (out[previous + index] ?? 0) : 0;
       const upperLeft =
-        row > 0 && index >= bytesPerPixel ? (out[previous + index - bytesPerPixel] ?? 0) : 0;
+        row > 0 && index >= bytesPerPixel
+          ? (out[previous + index - bytesPerPixel] ?? 0)
+          : 0;
       let value: number;
       switch (filterType) {
         case 0:
@@ -200,7 +217,9 @@ const unfilterPng = ({
           break;
         default:
           return Result.err(
-            new PdfImageError({ message: `unknown PNG filter type ${String(filterType)}` }),
+            new PdfImageError({
+              message: `unknown PNG filter type ${String(filterType)}`,
+            }),
           );
       }
       out[target + index] = value & 0xff;
@@ -240,7 +259,11 @@ type Adam7Pass = {
  * pass 1 — and an empty pass contributes no bytes at all, not even a filter
  * byte, so it must be dropped rather than read as a zero-row raster.
  */
-const adam7Passes = (width: number, height: number, bitsPerPixel: number): Adam7Pass[] => {
+const adam7Passes = (
+  width: number,
+  height: number,
+  bitsPerPixel: number,
+): Adam7Pass[] => {
   const passes: Adam7Pass[] = [];
   for (const { xOffset, yOffset, xStep, yStep } of ADAM7_PASSES) {
     const passWidth = Math.ceil(Math.max(0, width - xOffset) / xStep);
@@ -289,7 +312,8 @@ const scatterPass = ({
       for (let column = 0; column < pass.width; column += 1) {
         const source = row * pass.bytesPerRow + column * bytesPerPixel;
         const target =
-          targetRow * bytesPerRow + (pass.xOffset + column * pass.xStep) * bytesPerPixel;
+          targetRow * bytesPerRow +
+          (pass.xOffset + column * pass.xStep) * bytesPerPixel;
         for (let byte = 0; byte < bytesPerPixel; byte += 1) {
           out[target + byte] = rows[source + byte] ?? 0;
         }
@@ -306,15 +330,18 @@ const scatterPass = ({
   for (let row = 0; row < pass.height; row += 1) {
     const targetRow = pass.yOffset + row * pass.yStep;
     for (let column = 0; column < pass.width; column += 1) {
-      const sourceByte = rows[row * pass.bytesPerRow + Math.floor(column / perByte)] ?? 0;
+      const sourceByte =
+        rows[row * pass.bytesPerRow + Math.floor(column / perByte)] ?? 0;
       const sourceShift = EIGHT_BIT - bitDepth * ((column % perByte) + 1);
       const value = (sourceByte >> sourceShift) & mask;
 
       const targetColumn = pass.xOffset + column * pass.xStep;
-      const targetIndex = targetRow * bytesPerRow + Math.floor(targetColumn / perByte);
+      const targetIndex =
+        targetRow * bytesPerRow + Math.floor(targetColumn / perByte);
       const targetShift = EIGHT_BIT - bitDepth * ((targetColumn % perByte) + 1);
       out[targetIndex] =
-        ((out[targetIndex] ?? 0) & ~(mask << targetShift)) | (value << targetShift);
+        ((out[targetIndex] ?? 0) & ~(mask << targetShift)) |
+        (value << targetShift);
     }
   }
 };
@@ -349,7 +376,14 @@ const deinterlacePng = ({
     if (unfiltered.isErr()) {
       return Result.err(unfiltered.error);
     }
-    scatterPass({ pass, rows: unfiltered.value, out, bytesPerRow, bitDepth, bytesPerPixel });
+    scatterPass({
+      pass,
+      rows: unfiltered.value,
+      out,
+      bytesPerRow,
+      bitDepth,
+      bytesPerPixel,
+    });
     cursor += pass.height * (pass.bytesPerRow + 1);
   }
   return Result.ok(out);
@@ -387,13 +421,19 @@ const expandIndices = ({
   return out;
 };
 
-const decodePng = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> => {
+const decodePng = (
+  bytes: Uint8Array,
+): Result<PdfImageSamples, PdfImageError> => {
   const chunks = readPngChunks(bytes);
   if (chunks.isErr()) {
     return Result.err(chunks.error);
   }
   const { header, palette, transparency, pixels } = chunks.value;
-  const headerView = new DataView(header.buffer, header.byteOffset, header.byteLength);
+  const headerView = new DataView(
+    header.buffer,
+    header.byteOffset,
+    header.byteLength,
+  );
   const width = headerView.getUint32(0);
   const height = headerView.getUint32(4);
   const bitDepth = header[8] ?? 0;
@@ -401,21 +441,29 @@ const decodePng = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =>
   const interlace = header[12] ?? 0;
 
   if (width === 0 || height === 0) {
-    return Result.err(new PdfImageError({ message: "PNG has a zero dimension" }));
+    return Result.err(
+      new PdfImageError({ message: "PNG has a zero dimension" }),
+    );
   }
   if (interlace !== 0 && interlace !== ADAM7_INTERLACE) {
     return Result.err(
-      new PdfImageError({ message: `unknown PNG interlace method ${String(interlace)}` }),
+      new PdfImageError({
+        message: `unknown PNG interlace method ${String(interlace)}`,
+      }),
     );
   }
-  const channels = CHANNELS_PER_COLOR_TYPE[colorType as keyof typeof CHANNELS_PER_COLOR_TYPE];
+  const channels =
+    CHANNELS_PER_COLOR_TYPE[colorType as keyof typeof CHANNELS_PER_COLOR_TYPE];
   if (channels === undefined) {
     return Result.err(
-      new PdfImageError({ message: `unknown PNG colour type ${String(colorType)}` }),
+      new PdfImageError({
+        message: `unknown PNG colour type ${String(colorType)}`,
+      }),
     );
   }
   const packedDepthAllowed =
-    colorType === PNG_COLOR_TYPE.greyscale || colorType === PNG_COLOR_TYPE.palette;
+    colorType === PNG_COLOR_TYPE.greyscale ||
+    colorType === PNG_COLOR_TYPE.palette;
   const depthAllowed = packedDepthAllowed
     ? [1, 2, 4, EIGHT_BIT].includes(bitDepth)
     : bitDepth === EIGHT_BIT;
@@ -430,7 +478,10 @@ const decodePng = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =>
   const bitsPerPixel = bitDepth * channels;
   const bytesPerRow = Math.ceil((bitsPerPixel * width) / EIGHT_BIT);
   const bytesPerPixel = Math.max(1, Math.ceil(bitsPerPixel / EIGHT_BIT));
-  const passes = interlace === ADAM7_INTERLACE ? adam7Passes(width, height, bitsPerPixel) : null;
+  const passes =
+    interlace === ADAM7_INTERLACE
+      ? adam7Passes(width, height, bitsPerPixel)
+      : null;
   // A PNG inflates to exactly one filter byte plus one packed scanline per row
   // — per row of each Adam7 pass when it is interlaced — so the geometry the
   // IHDR already declared is the whole budget: a stream that wants more is a
@@ -455,7 +506,14 @@ const decodePng = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =>
   const unfiltered =
     passes === null
       ? unfilterPng({ filtered, bytesPerRow, bytesPerPixel, height })
-      : deinterlacePng({ filtered, passes, height, bytesPerRow, bytesPerPixel, bitDepth });
+      : deinterlacePng({
+          filtered,
+          passes,
+          height,
+          bytesPerRow,
+          bytesPerPixel,
+          bitDepth,
+        });
   if (unfiltered.isErr()) {
     return Result.err(unfiltered.error);
   }
@@ -496,7 +554,9 @@ const decodePng = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =>
     }
     case PNG_COLOR_TYPE.palette: {
       if (palette === null) {
-        return Result.err(new PdfImageError({ message: "palette PNG has no PLTE chunk" }));
+        return Result.err(
+          new PdfImageError({ message: "palette PNG has no PLTE chunk" }),
+        );
       }
       const entries = Math.floor(palette.length / 3);
       const colorSpace = pdfArray([
@@ -507,7 +567,13 @@ const decodePng = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =>
       ]);
       let alpha: PdfImageAlpha | undefined;
       if (transparency !== null) {
-        const indices = expandIndices({ rows, bytesPerRow, width, height, bitDepth });
+        const indices = expandIndices({
+          rows,
+          bytesPerRow,
+          width,
+          height,
+          bitDepth,
+        });
         const data = new Uint8Array(pixelCount);
         for (let index = 0; index < pixelCount; index += 1) {
           const paletteIndex = indices[index] ?? 0;
@@ -533,7 +599,8 @@ const decodePng = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =>
       for (let index = 0; index < pixelCount; index += 1) {
         const source = index * (colorComponents + 1);
         for (let component = 0; component < colorComponents; component += 1) {
-          color[index * colorComponents + component] = rows[source + component] ?? 0;
+          color[index * colorComponents + component] =
+            rows[source + component] ?? 0;
         }
         alphaData[index] = rows[source + colorComponents] ?? FULLY_OPAQUE;
       }
@@ -549,7 +616,9 @@ const decodePng = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =>
     }
     default:
       return Result.err(
-        new PdfImageError({ message: `unknown PNG colour type ${String(colorType)}` }),
+        new PdfImageError({
+          message: `unknown PNG colour type ${String(colorType)}`,
+        }),
       );
   }
 };
@@ -631,25 +700,37 @@ const JPEG_FRAME_MODES = {
   0xca: { name: "arithmetic progressive DCT", dctDecodable: false },
   0xcb: { name: "arithmetic lossless", dctDecodable: false },
   0xcd: { name: "differential arithmetic sequential DCT", dctDecodable: false },
-  0xce: { name: "differential arithmetic progressive DCT", dctDecodable: false },
+  0xce: {
+    name: "differential arithmetic progressive DCT",
+    dctDecodable: false,
+  },
   0xcf: { name: "differential arithmetic lossless", dctDecodable: false },
-} as const satisfies Record<number, { readonly name: string; readonly dctDecodable: boolean }>;
+} as const satisfies Record<
+  number,
+  { readonly name: string; readonly dctDecodable: boolean }
+>;
 
-const decodeJpeg = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> => {
+const decodeJpeg = (
+  bytes: Uint8Array,
+): Result<PdfImageSamples, PdfImageError> => {
   const MARKER_PREFIX = 0xff;
   const START_OF_IMAGE = 0xd8;
   const START_OF_SCAN = 0xda;
   const APP14 = 0xee;
 
   if (bytes[0] !== MARKER_PREFIX || bytes[1] !== START_OF_IMAGE) {
-    return Result.err(new PdfImageError({ message: "not a JPEG: bad SOI marker" }));
+    return Result.err(
+      new PdfImageError({ message: "not a JPEG: bad SOI marker" }),
+    );
   }
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let cursor = 2;
   let adobe = false;
   while (cursor + 4 <= bytes.length) {
     if (bytes[cursor] !== MARKER_PREFIX) {
-      return Result.err(new PdfImageError({ message: "JPEG marker segment is out of step" }));
+      return Result.err(
+        new PdfImageError({ message: "JPEG marker segment is out of step" }),
+      );
     }
     const marker = bytes[cursor + 1] ?? 0;
     if (marker === START_OF_SCAN) {
@@ -659,7 +740,10 @@ const decodeJpeg = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =
     const segment = cursor + 4;
     const frame = JPEG_FRAME_MODES[marker as keyof typeof JPEG_FRAME_MODES];
     if (marker === APP14 && length >= 12) {
-      adobe = decodeText(bytes.subarray(segment, segment + 5), { encoding: "binary" }) === "Adobe";
+      adobe =
+        decodeText(bytes.subarray(segment, segment + 5), {
+          encoding: "binary",
+        }) === "Adobe";
     }
     if (frame !== undefined) {
       if (!frame.dctDecodable) {
@@ -673,7 +757,9 @@ const decodeJpeg = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =
       const width = view.getUint16(segment + 3);
       const components = bytes[segment + 5] ?? 0;
       const colorSpace =
-        JPEG_COMPONENTS_TO_COLOR_SPACE[components as keyof typeof JPEG_COMPONENTS_TO_COLOR_SPACE];
+        JPEG_COMPONENTS_TO_COLOR_SPACE[
+          components as keyof typeof JPEG_COMPONENTS_TO_COLOR_SPACE
+        ];
       if (colorSpace === undefined) {
         return Result.err(
           new PdfImageError({
@@ -699,18 +785,24 @@ const decodeJpeg = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =
   return Result.err(new PdfImageError({ message: "JPEG has no frame header" }));
 };
 
-export const decodeImage = (source: DisplayImageSource): Result<PdfImageSamples, PdfImageError> => {
+export const decodeImage = (
+  source: DisplayImageSource,
+): Result<PdfImageSamples, PdfImageError> => {
   switch (source.format) {
     case "png":
       return decodePng(source.bytes);
     case "jpeg":
       return decodeJpeg(source.bytes);
     case "svg":
-      return Result.err(new PdfImageError({ message: "SVG images are not supported in PDF" }));
+      return Result.err(
+        new PdfImageError({ message: "SVG images are not supported in PDF" }),
+      );
     default: {
       const unreachable: never = source.format;
       return Result.err(
-        new PdfImageError({ message: `unsupported image format ${String(unreachable)}` }),
+        new PdfImageError({
+          message: `unsupported image format ${String(unreachable)}`,
+        }),
       );
     }
   }

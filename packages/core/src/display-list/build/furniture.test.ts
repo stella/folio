@@ -9,6 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 
+import type { EmbeddedFont } from "../../fonts/embeddedFonts";
 import { layoutDocument } from "../../layout-engine/index";
 import {
   fixedCharWidth,
@@ -27,19 +28,37 @@ import type {
   TextBoxBlock,
 } from "../../layout-engine/types";
 import type { BlockLookup } from "../../layout-painter/index";
-import type { EmbeddedFont } from "../../fonts/embeddedFonts";
-import type { DisplayGlyphRun, DisplayHitRegion, DisplayList, DisplayPrimitive } from "../types";
-import { buildDisplayList, type BuildDisplayListOptions } from "./buildDisplayList";
+import type {
+  DisplayGlyphRun,
+  DisplayHitRegion,
+  DisplayList,
+  DisplayPrimitive,
+} from "../types";
+import {
+  buildDisplayList,
+  type BuildDisplayListOptions,
+} from "./buildDisplayList";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
 const CHAR_WIDTH_PX = 5;
 const fakeMeasure = { charWidth: fixedCharWidth(CHAR_WIDTH_PX) };
 
 const PAGE_SIZE = { w: 816, h: 1056 };
-const MARGINS: PageMargins = { top: 96, right: 96, bottom: 96, left: 96, header: 48, footer: 48 };
+const MARGINS: PageMargins = {
+  top: 96,
+  right: 96,
+  bottom: 96,
+  left: 96,
+  header: 48,
+  footer: 48,
+};
 const CONTENT_WIDTH = PAGE_SIZE.w - MARGINS.left - MARGINS.right;
 
-const para = (id: string, text: string, attrs?: ParagraphBlock["attrs"]): ParagraphBlock => ({
+const para = (
+  id: string,
+  text: string,
+  attrs?: ParagraphBlock["attrs"],
+): ParagraphBlock => ({
   kind: "paragraph",
   id,
   runs: [{ kind: "text", text }],
@@ -48,7 +67,10 @@ const para = (id: string, text: string, attrs?: ParagraphBlock["attrs"]): Paragr
 
 type Built = { layout: Layout; blockLookup: BlockLookup };
 
-const buildLayout = (blocks: FlowBlock[], options: Partial<LayoutOptions> = {}): Built => {
+const buildLayout = (
+  blocks: FlowBlock[],
+  options: Partial<LayoutOptions> = {},
+): Built => {
   const measures = measureBlocks(blocks, CONTENT_WIDTH);
   const blockLookup: BlockLookup = new Map();
   for (const [index, block] of blocks.entries()) {
@@ -57,8 +79,15 @@ const buildLayout = (blocks: FlowBlock[], options: Partial<LayoutOptions> = {}):
       blockLookup.set(String(block.id), { block, measure });
     }
   }
-  const layoutOptions: LayoutOptions = { pageSize: PAGE_SIZE, margins: MARGINS, ...options };
-  return { layout: layoutDocument(blocks, measures, layoutOptions), blockLookup };
+  const layoutOptions: LayoutOptions = {
+    pageSize: PAGE_SIZE,
+    margins: MARGINS,
+    ...options,
+  };
+  return {
+    layout: layoutDocument(blocks, measures, layoutOptions),
+    blockLookup,
+  };
 };
 
 const storyContent = (id: string, text: string): HeaderFooterContent => {
@@ -130,7 +159,9 @@ const glyphRuns = (list: DisplayList, pageIndex = 0): DisplayGlyphRun[] =>
 const constructsOf = (list: DisplayList): string[] =>
   list.unsupported.map((entry) => entry.construct);
 
-const flattenRegions = (regions: readonly DisplayHitRegion[]): DisplayHitRegion[] =>
+const flattenRegions = (
+  regions: readonly DisplayHitRegion[],
+): DisplayHitRegion[] =>
   regions.flatMap((region) => [region, ...flattenRegions(region.children)]);
 
 const BORDERS: NonNullable<BuildDisplayListOptions["pageBorders"]> = {
@@ -145,16 +176,23 @@ const BORDERS: NonNullable<BuildDisplayListOptions["pageBorders"]> = {
 describe("page borders", () => {
   test("supplied borders paint one stroke per authored side", () => {
     withFakeTextMeasure(() => {
-      const list = buildDisplayList({ ...buildLayout([para("a", "A")]), pageBorders: BORDERS });
+      const list = buildDisplayList({
+        ...buildLayout([para("a", "A")]),
+        pageBorders: BORDERS,
+      });
       const lines = (list.pages.at(0)?.primitives ?? []).filter(
         (primitive) => primitive.kind === "line",
       );
 
       expect(lines).toHaveLength(4);
-      expect(constructsOf(list)).not.toContain(UNSUPPORTED_CONSTRUCT.pageBorders);
+      expect(constructsOf(list)).not.toContain(
+        UNSUPPORTED_CONSTRUCT.pageBorders,
+      );
       // `offsetFrom: "page"` insets each side by `w:space`; a 1pt stroke is
       // centred on its path, so the line sits half a thickness further in.
-      const top = lines.find((line) => line.kind === "line" && line.y1Px === line.y2Px);
+      const top = lines.find(
+        (line) => line.kind === "line" && line.y1Px === line.y2Px,
+      );
       expect(top?.kind).toBe("line");
       if (top?.kind === "line") {
         expect(top.y1Px).toBeCloseTo(32 + top.stroke.thicknessPx / 2, 6);
@@ -165,7 +203,10 @@ describe("page borders", () => {
 
   test("a zOrder=back border paints under the body, a front border over it", () => {
     withFakeTextMeasure(() => {
-      const back = buildDisplayList({ ...buildLayout([para("a", "A")]), pageBorders: BORDERS });
+      const back = buildDisplayList({
+        ...buildLayout([para("a", "A")]),
+        pageBorders: BORDERS,
+      });
       const front = buildDisplayList({
         ...buildLayout([para("a", "A")]),
         pageBorders: { ...BORDERS, zOrder: "front" },
@@ -176,7 +217,9 @@ describe("page borders", () => {
           (primitive) => primitive.kind === "glyphRun",
         );
       const firstLine = (list: DisplayList): number =>
-        (list.pages.at(0)?.primitives ?? []).findIndex((primitive) => primitive.kind === "line");
+        (list.pages.at(0)?.primitives ?? []).findIndex(
+          (primitive) => primitive.kind === "line",
+        );
 
       expect(firstLine(back)).toBeLessThan(firstGlyph(back));
       expect(firstLine(front)).toBeGreaterThan(firstGlyph(front));
@@ -202,7 +245,9 @@ describe("watermark", () => {
         watermark: { kind: "text", text: "DRAFT" },
       });
       const primitives = list.pages.at(0)?.primitives ?? [];
-      const rotate = primitives.find((primitive) => primitive.kind === "rotateGroup");
+      const rotate = primitives.find(
+        (primitive) => primitive.kind === "rotateGroup",
+      );
 
       expect(rotate?.kind).toBe("rotateGroup");
       if (rotate?.kind !== "rotateGroup") {
@@ -222,7 +267,10 @@ describe("watermark", () => {
       expect(run?.kind).toBe("glyphRun");
       if (run?.kind === "glyphRun") {
         expect(run.text).toBe("DRAFT");
-        const widthPx = run.advancesPx.reduce((sum, advance) => sum + advance, 0);
+        const widthPx = run.advancesPx.reduce(
+          (sum, advance) => sum + advance,
+          0,
+        );
         expect(run.xPx + widthPx / 2).toBeCloseTo(PAGE_SIZE.w / 2, 6);
         // No model position: a watermark lives in a header shape, not in the
         // body the caller edits.
@@ -296,7 +344,12 @@ const footnoteBearingLayout = (): Built =>
         id: "body",
         runs: [
           { kind: "text", text: "Body" },
-          { kind: "text", text: "1", footnoteRefId: FOOTNOTE_ID, superscript: true },
+          {
+            kind: "text",
+            text: "1",
+            footnoteRefId: FOOTNOTE_ID,
+            superscript: true,
+          },
         ],
       },
     ],
@@ -312,7 +365,9 @@ describe("footnote bodies", () => {
 
       const list = buildDisplayList({
         ...built,
-        footnoteContentById: new Map([[FOOTNOTE_ID, footnoteContent(FOOTNOTE_ID, "Note text")]]),
+        footnoteContentById: new Map([
+          [FOOTNOTE_ID, footnoteContent(FOOTNOTE_ID, "Note text")],
+        ]),
       });
       const note = glyphRuns(list).find((run) => run.text === "Note text");
       const bandTopPx =
@@ -332,14 +387,18 @@ describe("footnote bodies", () => {
           primitive.rect.yPx > bandTopPx - 1,
       );
       expect(rule?.kind).toBe("rect");
-      expect(constructsOf(list)).not.toContain(UNSUPPORTED_CONSTRUCT.footnoteContent);
+      expect(constructsOf(list)).not.toContain(
+        UNSUPPORTED_CONSTRUCT.footnoteContent,
+      );
     }, fakeMeasure);
   });
 
   test("a page whose bodies were withheld reports them and paints only the rule", () => {
     withFakeTextMeasure(() => {
       const list = buildDisplayList(footnoteBearingLayout());
-      expect(constructsOf(list)).toContain(UNSUPPORTED_CONSTRUCT.footnoteContent);
+      expect(constructsOf(list)).toContain(
+        UNSUPPORTED_CONSTRUCT.footnoteContent,
+      );
       expect(list.unsupported.at(-1)?.detail).toContain(String(FOOTNOTE_ID));
       expect(glyphRuns(list).map((run) => run.text)).toEqual(["Body", "1"]);
     }, fakeMeasure);
@@ -349,9 +408,13 @@ describe("footnote bodies", () => {
     withFakeTextMeasure(() => {
       const list = buildDisplayList({
         ...footnoteBearingLayout(),
-        footnoteContentById: new Map([[FOOTNOTE_ID, footnoteContent(FOOTNOTE_ID, "Note text")]]),
+        footnoteContentById: new Map([
+          [FOOTNOTE_ID, footnoteContent(FOOTNOTE_ID, "Note text")],
+        ]),
       });
-      expect(glyphRuns(list).find((run) => run.text === "Note text")?.pmRange).toBeUndefined();
+      expect(
+        glyphRuns(list).find((run) => run.text === "Note text")?.pmRange,
+      ).toBeUndefined();
     }, fakeMeasure);
   });
 });
@@ -378,23 +441,33 @@ describe("header and footer stories", () => {
       expect(footer).toBeDefined();
       // Same builder as the body: same left edge, same per-code-point advances.
       expect(header?.xPx).toBe(MARGINS.left);
-      expect(header?.advancesPx).toEqual(Array.from<number>({ length: 6 }).fill(CHAR_WIDTH_PX));
+      expect(header?.advancesPx).toEqual(
+        Array.from<number>({ length: 6 }).fill(CHAR_WIDTH_PX),
+      );
       expect(header?.font).toBe(body?.font);
       // The header sits above the body, the footer below it.
       expect(header?.baselineYPx ?? 0).toBeLessThan(body?.baselineYPx ?? 0);
       expect(footer?.baselineYPx ?? 0).toBeGreaterThan(body?.baselineYPx ?? 0);
-      expect(footer?.baselineYPx ?? 0).toBeGreaterThan(PAGE_SIZE.h - MARGINS.bottom);
-      expect(constructsOf(list)).not.toContain(UNSUPPORTED_CONSTRUCT.headerFooterContent);
+      expect(footer?.baselineYPx ?? 0).toBeGreaterThan(
+        PAGE_SIZE.h - MARGINS.bottom,
+      );
+      expect(constructsOf(list)).not.toContain(
+        UNSUPPORTED_CONSTRUCT.headerFooterContent,
+      );
     }, fakeMeasure);
   });
 
   test("a header run carries no model range: a header is its own story", () => {
     withFakeTextMeasure(() => {
       const list = buildDisplayList({
-        ...buildLayout([para("a", "Body")], { sectionHeaderFooterRefs: SECTION_REFS }),
+        ...buildLayout([para("a", "Body")], {
+          sectionHeaderFooterRefs: SECTION_REFS,
+        }),
         headerContentByRId: new Map([["rIdH", storyContent("h", "Header")]]),
       });
-      expect(glyphRuns(list).find((run) => run.text === "Header")?.pmRange).toBeUndefined();
+      expect(
+        glyphRuns(list).find((run) => run.text === "Header")?.pmRange,
+      ).toBeUndefined();
     }, fakeMeasure);
   });
 
@@ -415,22 +488,30 @@ describe("header and footer stories", () => {
         content: [para("header-box-paragraph", "Inside")],
       };
       const list = buildDisplayList({
-        ...buildLayout([para("a", "Body")], { sectionHeaderFooterRefs: SECTION_REFS }),
+        ...buildLayout([para("a", "Body")], {
+          sectionHeaderFooterRefs: SECTION_REFS,
+        }),
         headerContentByRId: new Map([["rIdH", storyBlocks([image, textBox])]]),
       });
       const regions = flattenRegions(list.pages.at(0)?.regions ?? []);
 
       expect(
         regions
-          .filter((region) => region.kind === "image" || region.kind === "textBox")
+          .filter(
+            (region) => region.kind === "image" || region.kind === "textBox",
+          )
           .map((region) => [region.kind, region.model?.blockId]),
       ).toEqual([
         ["image", "header-image"],
         ["textBox", "header-box"],
       ]);
-      const box = regions.find((region) => region.model?.blockId === "header-box");
+      const box = regions.find(
+        (region) => region.model?.blockId === "header-box",
+      );
       expect(
-        flattenRegions(box?.children ?? []).some((region) => region.kind === "paragraph"),
+        flattenRegions(box?.children ?? []).some(
+          (region) => region.kind === "paragraph",
+        ),
       ).toBe(true);
     }, fakeMeasure);
   });
@@ -462,7 +543,9 @@ describe("header and footer stories", () => {
       const header = floatingStory("header-float");
       const footer = floatingStory("footer-float");
       const list = buildDisplayList({
-        ...buildLayout([para("body", "Body")], { sectionHeaderFooterRefs: SECTION_REFS }),
+        ...buildLayout([para("body", "Body")], {
+          sectionHeaderFooterRefs: SECTION_REFS,
+        }),
         headerContentByRId: new Map([["rIdH", header]]),
         footerContentByRId: new Map([["rIdF", footer]]),
       });
@@ -488,16 +571,22 @@ describe("header and footer stories", () => {
         widthPx: 120,
         heightPx: 20,
       });
-      expect(constructsOf(list)).not.toContain(UNSUPPORTED_CONSTRUCT.headerFooterContent);
+      expect(constructsOf(list)).not.toContain(
+        UNSUPPORTED_CONSTRUCT.headerFooterContent,
+      );
     }, fakeMeasure);
   });
 
   test("a page that names header parts nobody supplied reports them", () => {
     withFakeTextMeasure(() => {
       const list = buildDisplayList(
-        buildLayout([para("a", "Body")], { sectionHeaderFooterRefs: SECTION_REFS }),
+        buildLayout([para("a", "Body")], {
+          sectionHeaderFooterRefs: SECTION_REFS,
+        }),
       );
-      expect(constructsOf(list)).toContain(UNSUPPORTED_CONSTRUCT.headerFooterContent);
+      expect(constructsOf(list)).toContain(
+        UNSUPPORTED_CONSTRUCT.headerFooterContent,
+      );
       expect(glyphRuns(list).map((run) => run.text)).toEqual(["Body"]);
     }, fakeMeasure);
   });
@@ -505,10 +594,14 @@ describe("header and footer stories", () => {
   test("a supplied map that lacks the part this page selects reports that page", () => {
     withFakeTextMeasure(() => {
       const list = buildDisplayList({
-        ...buildLayout([para("a", "Body")], { sectionHeaderFooterRefs: SECTION_REFS }),
+        ...buildLayout([para("a", "Body")], {
+          sectionHeaderFooterRefs: SECTION_REFS,
+        }),
         headerContentByRId: new Map([["rIdH", storyContent("h", "Header")]]),
       });
-      const footerGaps = list.unsupported.filter((entry) => entry.detail.includes("footer"));
+      const footerGaps = list.unsupported.filter((entry) =>
+        entry.detail.includes("footer"),
+      );
       expect(footerGaps).toHaveLength(1);
     }, fakeMeasure);
   });
@@ -524,10 +617,9 @@ describe("a document with none of the four", () => {
 
       expect(list.unsupported).toEqual([]);
       // Background rect, then the one body run: nothing else.
-      expect((list.pages.at(0)?.primitives ?? []).map((primitive) => primitive.kind)).toEqual([
-        "rect",
-        "glyphRun",
-      ]);
+      expect(
+        (list.pages.at(0)?.primitives ?? []).map((primitive) => primitive.kind),
+      ).toEqual(["rect", "glyphRun"]);
     }, fakeMeasure);
   });
 });
@@ -541,7 +633,9 @@ describe("determinism", () => {
         pageBorders: BORDERS,
         watermark: { kind: "text", text: "DRAFT" },
         headerContentByRId: new Map([["rIdH", storyContent("h", "Header")]]),
-        footnoteContentById: new Map([[FOOTNOTE_ID, footnoteContent(FOOTNOTE_ID, "Note")]]),
+        footnoteContentById: new Map([
+          [FOOTNOTE_ID, footnoteContent(FOOTNOTE_ID, "Note")],
+        ]),
       } as const satisfies BuildDisplayListOptions;
 
       expect(buildDisplayList(options)).toEqual(buildDisplayList(options));
@@ -564,14 +658,22 @@ describe("embedded faces", () => {
       // The old font-table oracle exercised unquoted family names only.
       // Use resolver output containing a quoted comma to cover the parser too.
       const originalFamily = "Brand, Serif";
-      const families = ["folio-embedded-first-Brand, Serif", "folio-embedded-second-Brand, Serif"];
+      const families = [
+        "folio-embedded-first-Brand, Serif",
+        "folio-embedded-second-Brand, Serif",
+      ];
       for (const family of [...families, ...families]) {
         const embeddedFontFamilyMap = new Map([[originalFamily, family]]);
         const block: ParagraphBlock = {
           kind: "paragraph",
           id: "p",
           runs: [
-            { kind: "text", text: "same text", fontFamily: originalFamily, embeddedFontFamilyMap },
+            {
+              kind: "text",
+              text: "same text",
+              fontFamily: originalFamily,
+              embeddedFontFamilyMap,
+            },
           ],
           attrs: { embeddedFontFamilyMap },
         };
@@ -584,13 +686,20 @@ describe("embedded faces", () => {
   test("font-table families preserve resolver quoting across authored names", () => {
     withFakeTextMeasure(() => {
       // The font-table oracle previously covered only unquoted family names.
-      for (const family of ["Brand Serif", "Brand, Serif", 'Brand "Serif"', "Brand; Serif"]) {
+      for (const family of [
+        "Brand Serif",
+        "Brand, Serif",
+        'Brand "Serif"',
+        "Brand; Serif",
+      ]) {
         const block: ParagraphBlock = {
           kind: "paragraph",
           id: "p",
           runs: [{ kind: "text", text: "same text", fontFamily: family }],
         };
-        expect(buildDisplayList(buildLayout([block])).fonts.at(0)?.family).toBe(family);
+        expect(buildDisplayList(buildLayout([block])).fonts.at(0)?.family).toBe(
+          family,
+        );
       }
     }, fakeMeasure);
   });
@@ -626,7 +735,9 @@ describe("embedded faces", () => {
         ...buildLayout([para("a", "Body")]),
         embeddedFonts: [face("Unused Face", new Uint8Array([0x00]))],
       });
-      expect(list.fonts.every((entry) => entry.embedded === undefined)).toBe(true);
+      expect(list.fonts.every((entry) => entry.embedded === undefined)).toBe(
+        true,
+      );
     }, fakeMeasure);
   });
 });
@@ -645,7 +756,11 @@ describe("model ranges", () => {
       const marker = runs.find((run) => run.text === "1.");
       const body = runs.find((run) => run.text === "Item");
       expect(marker?.pmRange).toBeUndefined();
-      expect(body?.pmRange).toEqual({ start: 3, end: 7, story: { kind: "body" } });
+      expect(body?.pmRange).toEqual({
+        start: 3,
+        end: 7,
+        story: { kind: "body" },
+      });
     }, fakeMeasure);
   });
 
@@ -698,7 +813,9 @@ describe("model ranges", () => {
           ],
         };
         const runs = glyphRuns(buildDisplayList(buildLayout([block])));
-        expect(runs.map((run) => run.text)).toEqual(smallCaps ? ["A", "LERT"] : ["Alert"]);
+        expect(runs.map((run) => run.text)).toEqual(
+          smallCaps ? ["A", "LERT"] : ["Alert"],
+        );
         expect(runs.map((run) => run.decorationRange)).toEqual(
           (smallCaps ? [0, 1] : [0]).map((textOffset) => ({
             start: 2,
@@ -717,7 +834,15 @@ describe("model ranges", () => {
       const block: ParagraphBlock = {
         kind: "paragraph",
         id: "p",
-        runs: [{ kind: "field", fieldType: "PAGE", instruction: "PAGE", pmStart: 2, pmEnd: 3 }],
+        runs: [
+          {
+            kind: "field",
+            fieldType: "PAGE",
+            instruction: "PAGE",
+            pmStart: 2,
+            pmEnd: 3,
+          },
+        ],
       };
       const runs = glyphRuns(buildDisplayList(buildLayout([block])));
       expect(runs.at(0)?.text).toBe("1");

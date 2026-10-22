@@ -2,21 +2,25 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
+import { act, createRef } from "react";
+import { createRoot } from "react-dom/client";
+
 import { afterAll, expect, test } from "bun:test";
-import type { Comment } from "@stll/folio-core/types/content";
+import { IntlProvider } from "use-intl";
+
+import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import {
   commentAnchorSelector,
   writeCommentAnchorIds,
 } from "@stll/folio-core/render-dom/commentAnchorAttributes";
-import { act, createRef } from "react";
-import { createRoot } from "react-dom/client";
-import { IntlProvider } from "use-intl";
-
-import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+import type { Comment } from "@stll/folio-core/types/content";
 
 import { CommentsSidebar } from "./CommentsSidebar";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -65,7 +69,11 @@ const renderDrawer = async ({
   };
   const render = () => {
     root.render(
-      <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+      <IntlProvider
+        locale="en"
+        timeZone="UTC"
+        messages={getFolioMessages("en")}
+      >
         <CommentsSidebar
           comments={threadComments}
           editorContainerRef={editorContainerRef}
@@ -88,7 +96,8 @@ const measurePositions = async () => {
 };
 
 test("reactivating a thread after an outside click removes the reply preview clamp", async () => {
-  const replyText = "Preview line one\nPreview line two\nSearch match beyond the preview";
+  const replyText =
+    "Preview line one\nPreview line two\nSearch match beyond the preview";
   const reply = {
     id: 2,
     parentId: comment.id,
@@ -119,8 +128,12 @@ test("reactivating a thread after an outside click removes the reply preview cla
     threadComments: [comment, reply],
   });
   try {
-    const replyBody = Array.from(host.querySelectorAll<HTMLDivElement>("div")).find(
-      (element) => element.textContent === replyText && element.style.lineHeight === "17px",
+    const replyBody = Array.from(
+      host.querySelectorAll<HTMLDivElement>("div"),
+    ).find(
+      (element) =>
+        element.textContent === replyText &&
+        element.style.lineHeight === "17px",
     );
     expect(replyBody).toBeDefined();
     expect(replyBody?.style.overflow).not.toBe("hidden");
@@ -131,7 +144,9 @@ test("reactivating a thread after an outside click removes the reply preview cla
 
     await act(async () => activateComment(comment.id));
     expect(replyBody?.style.overflow).not.toBe("hidden");
-    expect(host.querySelector(".docx-comment-card input[readonly]")).not.toBeNull();
+    expect(
+      host.querySelector(".docx-comment-card input[readonly]"),
+    ).not.toBeNull();
   } finally {
     await act(async () => root.unmount());
     host.remove();
@@ -141,7 +156,10 @@ test("reactivating a thread after an outside click removes the reply preview cla
 
 test("drawer expansion prefers the rendered comment anchor over layout positions", async () => {
   const scrollElement = document.createElement("div");
-  Object.defineProperty(scrollElement, "clientHeight", { configurable: true, value: 300 });
+  Object.defineProperty(scrollElement, "clientHeight", {
+    configurable: true,
+    value: 300,
+  });
   scrollElement.scrollTop = 300;
   setRect(scrollElement, 100);
   const pages = document.createElement("div");
@@ -176,7 +194,11 @@ test("first positioned cards fade in before subsequent geometry moves animate", 
   pages.className = "paged-editor__pages";
   scrollElement.append(pages);
   const anchorPositions = new Map([["comment-1", 120]]);
-  const { host, root } = await renderDrawer({ scrollElement, anchorPositions, surface: "column" });
+  const { host, root } = await renderDrawer({
+    scrollElement,
+    anchorPositions,
+    surface: "column",
+  });
   try {
     await measurePositions();
     const card = host.querySelector<HTMLElement>(".docx-comment-card");
@@ -200,7 +222,10 @@ test("first positioned cards fade in before subsequent geometry moves animate", 
 
 test("drawer expansion uses layout positions when the comment anchor is not rendered", async () => {
   const scrollElement = document.createElement("div");
-  Object.defineProperty(scrollElement, "clientHeight", { configurable: true, value: 300 });
+  Object.defineProperty(scrollElement, "clientHeight", {
+    configurable: true,
+    value: 300,
+  });
   setRect(scrollElement, 100);
   const pages = document.createElement("div");
   pages.className = "paged-editor__pages";

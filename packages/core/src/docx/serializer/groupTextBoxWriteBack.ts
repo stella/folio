@@ -44,7 +44,10 @@ type WalkedContent =
   | Hyperlink["children"][number];
 
 /** Every run in document order, through the containers a text box is lifted from. */
-const forEachRun = (content: readonly WalkedContent[], onRun: (run: Run) => void): void => {
+const forEachRun = (
+  content: readonly WalkedContent[],
+  onRun: (run: Run) => void,
+): void => {
   for (const item of content) {
     switch (item.type) {
       case "run":
@@ -67,7 +70,10 @@ const forEachRun = (content: readonly WalkedContent[], onRun: (run: Run) => void
 };
 
 /** The same walk, rebuilding each container whose runs changed. */
-const mapRuns = <T extends WalkedContent>(content: readonly T[], mapRun: (run: Run) => Run): T[] =>
+const mapRuns = <T extends WalkedContent>(
+  content: readonly T[],
+  mapRun: (run: Run) => Run,
+): T[] =>
   content.map((item): T => {
     switch (item.type) {
       case "run":
@@ -85,8 +91,12 @@ const mapRuns = <T extends WalkedContent>(content: readonly T[], mapRun: (run: R
     }
   });
 
-const isGroupDrawing = (content: RunContent): content is DrawingContent & { rawXml: string } =>
-  content.type === "drawing" && content.rawXml !== undefined && content.rawXml.includes("wgp");
+const isGroupDrawing = (
+  content: RunContent,
+): content is DrawingContent & { rawXml: string } =>
+  content.type === "drawing" &&
+  content.rawXml !== undefined &&
+  content.rawXml.includes("wgp");
 
 const isGroupChild = (content: RunContent): content is ShapeContent =>
   content.type === "shape" && content.shape.groupChild !== undefined;
@@ -101,17 +111,23 @@ export const writeGroupTextBoxesBack = (
   paragraph: Paragraph,
   serializeTextBody: SerializeTextBody,
 ): readonly ParagraphContent[] => {
-  const members: { member: ShapeContent; group: GroupDrawing | undefined }[] = [];
+  const members: { member: ShapeContent; group: GroupDrawing | undefined }[] =
+    [];
   const groups: GroupDrawing[] = [];
   forEachRun(paragraph.content, (run) => {
     for (const content of run.content) {
       if (isGroupDrawing(content)) {
-        groups.push({ drawing: content, fingerprint: groupXmlFingerprint(content.rawXml) });
+        groups.push({
+          drawing: content,
+          fingerprint: groupXmlFingerprint(content.rawXml),
+        });
       } else if (isGroupChild(content)) {
         const wanted = content.shape.groupChild?.group;
         members.push({
           member: content,
-          group: groups.findLast((candidate) => candidate.fingerprint === wanted),
+          group: groups.findLast(
+            (candidate) => candidate.fingerprint === wanted,
+          ),
         });
       }
     }
@@ -142,21 +158,28 @@ export const writeGroupTextBoxesBack = (
       continue;
     }
     const edits = editsByDrawing.get(group.drawing) ?? [];
-    edits.push({ path: groupChild.path, contentXml: serializeTextBody(content) });
+    edits.push({
+      path: groupChild.path,
+      contentXml: serializeTextBody(content),
+    });
     editsByDrawing.set(group.drawing, edits);
   }
 
   const rewritten = new Map<RunContent, DrawingContent>();
   for (const [drawing, edits] of editsByDrawing) {
     const rawXml =
-      drawing.rawXml === undefined ? undefined : replaceGroupTextBoxContent(drawing.rawXml, edits);
+      drawing.rawXml === undefined
+        ? undefined
+        : replaceGroupTextBoxContent(drawing.rawXml, edits);
     if (rawXml !== undefined) {
       rewritten.set(drawing, { ...drawing, rawXml });
     }
   }
 
   return mapRuns(paragraph.content, (run) =>
-    run.content.some((content) => absorbed.has(content) || rewritten.has(content))
+    run.content.some(
+      (content) => absorbed.has(content) || rewritten.has(content),
+    )
       ? {
           ...run,
           content: run.content

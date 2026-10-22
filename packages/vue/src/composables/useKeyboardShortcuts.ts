@@ -10,7 +10,7 @@
  * keys itself. The predicate is shared with the React adapter.
  */
 
-import { onMounted, onBeforeUnmount, type Ref } from "vue";
+import { onBeforeUnmount, onMounted, type Ref } from "vue";
 
 import { isKeydownInShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
 import type { KeyboardShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
@@ -62,7 +62,11 @@ export function useKeyboardShortcuts(opts: UseKeyboardShortcutsOptions) {
       opts.onOpenDocument();
       return;
     }
-    if (opts.disableFindReplaceShortcuts?.() && (e.key === "f" || e.key === "h")) return;
+    if (
+      opts.disableFindReplaceShortcuts?.() &&
+      (e.key === "f" || e.key === "h")
+    )
+      return;
     if (e.key === "f" || e.key === "h") {
       e.preventDefault();
       opts.showFindReplace.value = true;

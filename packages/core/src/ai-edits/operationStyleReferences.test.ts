@@ -11,15 +11,15 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import { ensureParaIds } from "../docx/ensureParaIds";
-import { createDocx } from "../docx/rezip";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
-  isFolioDocumentOperationModeSupported,
   type FolioDocumentOperation,
   type FolioDocumentOperationMode,
+  isFolioDocumentOperationModeSupported,
 } from "../document-operations";
+import { ensureParaIds } from "../docx/ensureParaIds";
+import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 
@@ -43,7 +43,9 @@ const build = async (): Promise<Uint8Array> => {
 type Ids = { heading: string; anchor: string; tail: string };
 
 const openReviewer = async () => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await build(), { author: "AI" });
+  const reviewer = await FolioDocxReviewer.fromBuffer(await build(), {
+    author: "AI",
+  });
   const blocks = reviewer.getContent();
   const find = (text: string) => {
     const id = blocks.find((block) => block.text === text)?.id;
@@ -52,10 +54,16 @@ const openReviewer = async () => {
     }
     return id;
   };
-  return { reviewer, ids: { heading: find(HEADING), anchor: find(ANCHOR), tail: find(TAIL) } };
+  return {
+    reviewer,
+    ids: { heading: find(HEADING), anchor: find(ANCHOR), tail: find(TAIL) },
+  };
 };
 
-type StyleOperationFactory = (ids: Ids, styleId: string | null) => FolioDocumentOperation;
+type StyleOperationFactory = (
+  ids: Ids,
+  styleId: string | null,
+) => FolioDocumentOperation;
 
 /** Every operation that carries a paragraph style, by where it carries it. */
 const STYLE_OPERATIONS: Record<string, StyleOperationFactory> = {
@@ -109,8 +117,14 @@ const STYLE_OPERATIONS: Record<string, StyleOperationFactory> = {
 };
 
 const UNDEFINED_STYLES = {
-  "an undefined id": { styleId: "NoSuchStyle", names: "names no style in this document" },
-  "a table style": { styleId: "TableGrid", names: "names a table style, not a paragraph style" },
+  "an undefined id": {
+    styleId: "NoSuchStyle",
+    names: "names no style in this document",
+  },
+  "a table style": {
+    styleId: "TableGrid",
+    names: "names a table style, not a paragraph style",
+  },
   "a character style": {
     styleId: "Strong",
     names: "names a character style, not a paragraph style",
@@ -125,17 +139,18 @@ const supportedModes = (factory: StyleOperationFactory) =>
     ),
   );
 
-const cases = Object.entries(UNDEFINED_STYLES).flatMap(([styleName, { styleId, names }]) =>
-  Object.entries(STYLE_OPERATIONS).flatMap(([operationName, factory]) =>
-    supportedModes(factory).map((mode) => ({
-      styleName,
-      styleId,
-      names,
-      operationName,
-      factory,
-      mode,
-    })),
-  ),
+const cases = Object.entries(UNDEFINED_STYLES).flatMap(
+  ([styleName, { styleId, names }]) =>
+    Object.entries(STYLE_OPERATIONS).flatMap(([operationName, factory]) =>
+      supportedModes(factory).map((mode) => ({
+        styleName,
+        styleId,
+        names,
+        operationName,
+        factory,
+        mode,
+      })),
+    ),
 );
 
 const applyOne = (
@@ -152,10 +167,15 @@ const applyOne = (
     { undefinedReferences: "refuse" },
   );
 
-const texts = (reviewer: FolioDocxReviewer) => reviewer.getContent().map((block) => block.text);
+const texts = (reviewer: FolioDocxReviewer) =>
+  reviewer.getContent().map((block) => block.text);
 
 const documentXml = async (docx: Uint8Array): Promise<string> =>
-  (await (await JSZip.loadAsync(docx)).file("word/document.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(docx)
+  )
+    .file("word/document.xml")
+    ?.async("text")) ?? "";
 
 describe("a paragraph style the document does not define is skipped before anything is applied", () => {
   test.each(cases)(
@@ -169,7 +189,11 @@ describe("a paragraph style the document does not define is skipped before anyth
       expect(result.applied).toEqual([]);
       expect(result.receipts).toEqual([]);
       expect(result.skipped).toEqual([
-        { id: "op", reason: "missingStyle", message: expect.stringContaining(names) },
+        {
+          id: "op",
+          reason: "missingStyle",
+          message: expect.stringContaining(names),
+        },
       ]);
       expect(result.issues).toEqual([
         {
@@ -196,7 +220,9 @@ describe("a paragraph style the document does not define is skipped before anyth
       "direct",
     );
     const message = result.skipped[0]?.message ?? "";
-    expect(message).toStartWith('secondParagraphProperties.styleId "NoSuchStyle"');
+    expect(message).toStartWith(
+      'secondParagraphProperties.styleId "NoSuchStyle"',
+    );
     expect(message).toContain("Heading2");
     expect(message).not.toContain("TableGrid");
   });
@@ -209,13 +235,20 @@ describe("a paragraph style the document does not define is skipped before anyth
         mode: "tracked-changes",
         operations: [
           STYLE_OPERATIONS["setBlockParagraphProperties"]!(ids, "NoSuchStyle"),
-          { id: "tail", type: "replaceBlock", blockId: ids.tail, text: "New tail." },
+          {
+            id: "tail",
+            type: "replaceBlock",
+            blockId: ids.tail,
+            text: "New tail.",
+          },
         ],
       },
       { undefinedReferences: "refuse" },
     );
     expect(result.applied.map(({ id }) => id)).toEqual(["tail"]);
-    expect(result.skipped.map(({ reason }) => reason)).toEqual(["missingStyle"]);
+    expect(result.skipped.map(({ reason }) => reason)).toEqual([
+      "missingStyle",
+    ]);
   });
 
   test("an atomic batch applies none of its operations", async () => {
@@ -227,14 +260,21 @@ describe("a paragraph style the document does not define is skipped before anyth
         mode: "tracked-changes",
         atomic: true,
         operations: [
-          { id: "tail", type: "replaceBlock", blockId: ids.tail, text: "New tail." },
+          {
+            id: "tail",
+            type: "replaceBlock",
+            blockId: ids.tail,
+            text: "New tail.",
+          },
           STYLE_OPERATIONS["insertAfterBlock"]!(ids, "TableGrid"),
         ],
       },
       { undefinedReferences: "refuse" },
     );
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toContainEqual(expect.objectContaining({ reason: "missingStyle" }));
+    expect(result.skipped).toContainEqual(
+      expect.objectContaining({ reason: "missingStyle" }),
+    );
     expect(texts(reviewer)).toEqual(before);
   });
 });
@@ -259,11 +299,20 @@ describe("a defined paragraph style still applies", () => {
 
   test("setBlockParagraphProperties reopens as the heading it names", async () => {
     const { reviewer, ids } = await openReviewer();
-    applyOne(reviewer, STYLE_OPERATIONS["setBlockParagraphProperties"]!(ids, "Heading2"), "direct");
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
-      author: "AI",
-    });
-    expect(reopened.getContent().find((block) => block.text === ANCHOR)).toMatchObject({
+    applyOne(
+      reviewer,
+      STYLE_OPERATIONS["setBlockParagraphProperties"]!(ids, "Heading2"),
+      "direct",
+    );
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      {
+        author: "AI",
+      },
+    );
+    expect(
+      reopened.getContent().find((block) => block.text === ANCHOR),
+    ).toMatchObject({
       kind: "heading",
       headingLevel: 2,
     });

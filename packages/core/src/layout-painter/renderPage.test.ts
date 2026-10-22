@@ -3,11 +3,10 @@ import { describe, expect, test } from "bun:test";
 import { clearAllCaches } from "../layout-engine/measure/cache";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import { DEFAULT_FONT_FAMILY } from "../layout-engine/measure/measureHelpers";
-import { resolveFontFamily } from "../utils/fontResolver";
 import type {
   FieldRun,
-  Page,
   HeaderFooterContent,
+  Page,
   ParagraphBlock,
   ParagraphMeasure,
   TableBlock,
@@ -16,22 +15,23 @@ import type {
   TextBoxBlock,
   TextBoxMeasure,
 } from "../layout-engine/types";
+import { resolveFontFamily } from "../utils/fontResolver";
+import {
+  collectByClass,
+  collectPmAnchors,
+  fakeDocument,
+  FakeElement,
+  findByClass,
+} from "./__tests__/fakeDom";
 import type { BlockLookup } from "./index";
 import {
   applySectionHeaderFooterOptions,
   computePageFingerprint,
   floatingTableReservesBand,
   getDefaultPageFontFamily,
-  renderPage,
   renderFootnoteArea,
+  renderPage,
 } from "./renderPage";
-import {
-  FakeElement,
-  collectByClass,
-  collectPmAnchors,
-  fakeDocument,
-  findByClass,
-} from "./__tests__/fakeDom";
 
 describe("floating table wrap zones", () => {
   test("reserves a top-and-bottom band when neither side can hold text", () => {
@@ -151,7 +151,12 @@ function blockWithComment(commentId?: number): ParagraphBlock {
 }
 
 function lookup(block: ParagraphBlock): BlockLookup {
-  return new Map([["p1", { block, measure: { kind: "paragraph", lines: [], totalHeight: 0 } }]]);
+  return new Map([
+    [
+      "p1",
+      { block, measure: { kind: "paragraph", lines: [], totalHeight: 0 } },
+    ],
+  ]);
 }
 
 function headerFooterTextContent(text: string): HeaderFooterContent {
@@ -327,8 +332,12 @@ describe("render page fingerprint", () => {
 
 describe("page font fallback", () => {
   test("uses the same unspecified-font fallback as text measurement", () => {
-    expect(getDefaultPageFontFamily()).toBe(resolveFontFamily(DEFAULT_FONT_FAMILY).cssFallback);
-    expect(getDefaultPageFontFamily().startsWith('"Times New Roman", Tinos')).toBe(true);
+    expect(getDefaultPageFontFamily()).toBe(
+      resolveFontFamily(DEFAULT_FONT_FAMILY).cssFallback,
+    );
+    expect(
+      getDefaultPageFontFamily().startsWith('"Times New Roman", Tinos'),
+    ).toBe(true);
   });
 });
 
@@ -446,10 +455,12 @@ describe("header and footer rendering", () => {
     );
 
     expect(
-      findByClass(pageElement as unknown as FakeElement, "layout-page-header")?.style.opacity,
+      findByClass(pageElement as unknown as FakeElement, "layout-page-header")
+        ?.style.opacity,
     ).toBeUndefined();
     expect(
-      findByClass(pageElement as unknown as FakeElement, "layout-page-footer")?.style.opacity,
+      findByClass(pageElement as unknown as FakeElement, "layout-page-footer")
+        ?.style.opacity,
     ).toBeUndefined();
   });
 
@@ -497,7 +508,9 @@ describe("header and footer rendering", () => {
         { document: fakeDocument, headerContent: content },
       ) as unknown as FakeElement;
 
-      expect(findByClass(pageElement, "layout-table")?.style.left).toBe(expectedLeft);
+      expect(findByClass(pageElement, "layout-table")?.style.left).toBe(
+        expectedLeft,
+      );
     },
   );
 
@@ -507,7 +520,11 @@ describe("header and footer rendering", () => {
         {
           kind: "paragraph",
           id: "header-rule",
-          attrs: { borders: { bottom: { width: 1 / 3, style: "solid", color: "#000000" } } },
+          attrs: {
+            borders: {
+              bottom: { width: 1 / 3, style: "solid", color: "#000000" },
+            },
+          },
           runs: [{ kind: "text", text: "Header" }],
         },
       ],
@@ -612,7 +629,9 @@ describe("header and footer rendering", () => {
       },
     );
 
-    expect(pageOptions).toEqual({ footerContent: headerFooterTextContent("First footer") });
+    expect(pageOptions).toEqual({
+      footerContent: headerFooterTextContent("First footer"),
+    });
   });
 
   test("leaves enabled even-page slots blank when no even part exists", () => {
@@ -635,8 +654,12 @@ describe("header and footer rendering", () => {
       },
       pageOptions,
       {
-        headerContentByRId: new Map([["default-header", headerFooterTextContent("Odd header")]]),
-        footerContentByRId: new Map([["default-footer", headerFooterTextContent("Odd footer")]]),
+        headerContentByRId: new Map([
+          ["default-header", headerFooterTextContent("Odd header")],
+        ]),
+        footerContentByRId: new Map([
+          ["default-footer", headerFooterTextContent("Odd footer")],
+        ]),
       },
     );
 
@@ -680,8 +703,13 @@ describe("header and footer rendering", () => {
       },
     );
 
-    const paragraphs = collectByClass(pageElement as unknown as FakeElement, "layout-paragraph");
-    const afterParagraph = paragraphs.find((element) => element.dataset["blockId"] === "hf-after");
+    const paragraphs = collectByClass(
+      pageElement as unknown as FakeElement,
+      "layout-paragraph",
+    );
+    const afterParagraph = paragraphs.find(
+      (element) => element.dataset["blockId"] === "hf-after",
+    );
 
     expect(afterParagraph?.style.top).toBe("40px");
   });
@@ -746,7 +774,11 @@ describe("header and footer rendering", () => {
         },
       },
     };
-    Reflect.set(textBoxBlock, Symbol.for("stll.textBoxAnchorBlockId"), hostBlock.id);
+    Reflect.set(
+      textBoxBlock,
+      Symbol.for("stll.textBoxAnchorBlockId"),
+      hostBlock.id,
+    );
 
     const pageElement = renderPage(
       { ...page, fragments: [] },
@@ -788,7 +820,11 @@ describe("header and footer rendering", () => {
         },
       },
     };
-    Reflect.set(textBoxBlock, Symbol.for("stll.textBoxAnchorBlockId"), hostBlock.id);
+    Reflect.set(
+      textBoxBlock,
+      Symbol.for("stll.textBoxAnchorBlockId"),
+      hostBlock.id,
+    );
 
     const pageElement = renderPage(
       { ...page, fragments: [] },
@@ -835,7 +871,8 @@ describe("header and footer rendering", () => {
       },
     );
     expect(
-      findByClass(headerPage as unknown as FakeElement, "layout-page-header")?.style.height,
+      findByClass(headerPage as unknown as FakeElement, "layout-page-header")
+        ?.style.height,
     ).toBe("30px");
 
     // Footer with a shape anchored ABOVE the footer line (very negative
@@ -894,7 +931,10 @@ describe("header and footer rendering", () => {
         },
       },
     );
-    const header = findByClass(headerPage as unknown as FakeElement, "layout-page-header");
+    const header = findByClass(
+      headerPage as unknown as FakeElement,
+      "layout-page-header",
+    );
     expect(header?.style.overflow).not.toBe("hidden");
   });
 
@@ -962,7 +1002,10 @@ describe("header and footer rendering", () => {
       ],
     };
     const blockLookup: BlockLookup = new Map([
-      ["body-float", { block, measure: { kind: "paragraph", lines: [], totalHeight: 0 } }],
+      [
+        "body-float",
+        { block, measure: { kind: "paragraph", lines: [], totalHeight: 0 } },
+      ],
     ]);
 
     const pageElement = renderPage(
@@ -1137,11 +1180,15 @@ describe("footnote rendering", () => {
     );
 
     expect(footnoteArea.textContent).toContain("Cell");
-    expect((footnoteArea as unknown as FakeElement).children.at(1)?.dataset).toMatchObject({
+    expect(
+      (footnoteArea as unknown as FakeElement).children.at(1)?.dataset,
+    ).toMatchObject({
       noteId: "7",
       noteKind: "footnote",
     });
-    expect(collectPmAnchors(footnoteArea as unknown as FakeElement)).toEqual([]);
+    expect(collectPmAnchors(footnoteArea as unknown as FakeElement)).toEqual(
+      [],
+    );
   });
 });
 
@@ -1203,7 +1250,10 @@ describe("flowed endnote painting", () => {
       ) as unknown as FakeElement;
 
       const paragraph = collectByClass(rendered, "layout-paragraph").at(0);
-      expect(paragraph?.dataset).toMatchObject({ noteKind: "endnote", noteId: "2" });
+      expect(paragraph?.dataset).toMatchObject({
+        noteKind: "endnote",
+        noteId: "2",
+      });
 
       const rule = findByClass(rendered, "layout-note-separator");
       expect(rule?.style.left).toBe("0px");

@@ -1,5 +1,5 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
-import { expectPreservedXmlAttrs, expectTrackedChangeMarkAttrs } from "./attrs";
+
 import { captureVerbatimXml } from "../docx/verbatimCapture";
 import {
   cloneElement,
@@ -10,6 +10,7 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "../docx/xmlParser";
+import { expectPreservedXmlAttrs, expectTrackedChangeMarkAttrs } from "./attrs";
 
 const restoreDeletedText = (node: XmlElement): XmlElement => {
   if (node.type !== "element") return node;
@@ -18,17 +19,21 @@ const restoreDeletedText = (node: XmlElement): XmlElement => {
   if (name === "delText") target = "t";
   if (name === "delInstrText") target = "instrText";
   const renamed =
-    target !== undefined && WORDPROCESSINGML_NAMESPACE_URIS.has(node.namespaceUri ?? "")
+    target !== undefined &&
+    WORDPROCESSINGML_NAMESPACE_URIS.has(node.namespaceUri ?? "")
       ? node.name?.replace(/[^:]+$/u, target)
       : node.name;
   const elements = node.elements?.map(restoreDeletedText);
   if (
     renamed === node.name &&
-    elements?.every((child, index) => child === node.elements?.[index]) !== false
+    elements?.every((child, index) => child === node.elements?.[index]) !==
+      false
   )
     return node;
   return cloneElement(node, {
-    ...(renamed !== undefined && renamed !== node.name ? { name: renamed } : {}),
+    ...(renamed !== undefined && renamed !== node.name
+      ? { name: renamed }
+      : {}),
     ...(elements ? { elements } : {}),
   });
 };
@@ -39,13 +44,17 @@ const hasPendingDeletion = (marks: readonly Mark[]) =>
     if (mark.type.name !== "insertion") return false;
     return (
       expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.some(
-        (ancestor) => ancestor.type === "deletion" || ancestor.type === "moveFrom",
+        (ancestor) =>
+          ancestor.type === "deletion" || ancestor.type === "moveFrom",
       ) ?? false
     );
   });
 
 /** A retained opaque deleted result becomes ordinary text when its last deletion resolves. */
-export const resolvedPreservedXmlAttrs = (node: PMNode, marks: readonly Mark[]) => {
+export const resolvedPreservedXmlAttrs = (
+  node: PMNode,
+  marks: readonly Mark[],
+) => {
   if (
     node.type.name !== "preservedXml" ||
     !hasPendingDeletion(node.marks) ||

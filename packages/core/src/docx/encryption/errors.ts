@@ -17,5 +17,6 @@ export class DocxEncryptionError extends TaggedError("DocxEncryptionError")<{
   cause?: unknown;
 }> {}
 
-export const isDocxEncryptionError = (error: unknown): error is DocxEncryptionError =>
-  error instanceof DocxEncryptionError;
+export const isDocxEncryptionError = (
+  error: unknown,
+): error is DocxEncryptionError => error instanceof DocxEncryptionError;

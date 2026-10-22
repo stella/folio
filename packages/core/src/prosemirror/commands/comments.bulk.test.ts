@@ -1,20 +1,22 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import type { Mark, Node as PMNode } from "prosemirror-model";
 import { history } from "prosemirror-history";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 import {
+  type Command,
   EditorState,
   Plugin,
   PluginKey,
   TextSelection,
-  type Command,
   type Transaction,
 } from "prosemirror-state";
 import { ySyncPlugin, yUndoPlugin } from "y-prosemirror";
 import * as Y from "yjs";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import type { FolioAIBlock, FolioAIParagraphBlock } from "../../ai-edits/types";
 import { parseDocx } from "../../docx/parser";
@@ -40,10 +42,10 @@ import {
 import { createDocumentStylesPlugin } from "../plugins/documentStyles";
 import { schema } from "../schema";
 import {
-  acceptChange,
   acceptAllChanges,
-  rejectChange,
+  acceptChange,
   rejectAllChanges,
+  rejectChange,
   resolveAllChangesInHeadlessState,
 } from "./comments";
 
@@ -63,11 +65,14 @@ const persistedBlockProjection = (block: FolioAIBlock): PersistedBlock => {
   return persisted;
 };
 
-const persistedSnapshotProjection = (blocks: readonly FolioAIBlock[] | undefined) =>
-  blocks?.map(persistedBlockProjection);
+const persistedSnapshotProjection = (
+  blocks: readonly FolioAIBlock[] | undefined,
+) => blocks?.map(persistedBlockProjection);
 
 const trackerExtension = ParagraphChangeTrackerExtension();
-const changeTrackerPlugin = trackerExtension.onSchemaReady({ schema }).plugins?.at(0);
+const changeTrackerPlugin = trackerExtension
+  .onSchemaReady({ schema })
+  .plugins?.at(0);
 if (!changeTrackerPlugin) {
   throw new Error("Expected the paragraph change tracker plugin.");
 }
@@ -82,13 +87,17 @@ const stepCountPlugin = new Plugin<number>({
   },
 });
 
-const serializedStepsKey = new PluginKey<readonly unknown[]>("headlessBulkSerializedSteps");
+const serializedStepsKey = new PluginKey<readonly unknown[]>(
+  "headlessBulkSerializedSteps",
+);
 const serializedStepsPlugin = new Plugin<readonly unknown[]>({
   key: serializedStepsKey,
   state: {
     init: () => [],
     apply: (transaction, previous) =>
-      transaction.docChanged ? transaction.steps.map((step) => step.toJSON()) : previous,
+      transaction.docChanged
+        ? transaction.steps.map((step) => step.toJSON())
+        : previous,
   },
 });
 
@@ -133,7 +142,10 @@ const markedTextRuns = ({ type, idOffset }: MarkedTextRunsOptions): PMNode[] =>
     schema.text(`tracked-${index} `, [revisionMark(type, idOffset + index)]),
   );
 
-const paragraphMark = (kind: "ins" | "del" | "moveTo" | "moveFrom", id: number) => ({
+const paragraphMark = (
+  kind: "ins" | "del" | "moveTo" | "moveFrom",
+  id: number,
+) => ({
   kind,
   info: { id, author: AUTHOR, date: DATE },
 });
@@ -148,7 +160,11 @@ describe("generic bulk acceptance with suggestions", () => {
       suggestionId: "pending",
     });
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, schema.text("ordinary", [revisionMark("insertion", 1)])),
+      schema.node(
+        "paragraph",
+        null,
+        schema.text("ordinary", [revisionMark("insertion", 1)]),
+      ),
       schema.node("paragraph", null, schema.text("proposed", [suggested])),
     ]);
     const state = EditorState.create({ schema, doc });
@@ -162,8 +178,9 @@ describe("generic bulk acceptance with suggestions", () => {
     expect(dispatched).toBe(false);
     expect(state.doc.toJSON()).toEqual(doc.toJSON());
     const serialized = JSON.stringify(
-      fromProseDoc(state.doc, undefined, { stylesheetSource: { type: "package" } }).package.document
-        .content,
+      fromProseDoc(state.doc, undefined, {
+        stylesheetSource: { type: "package" },
+      }).package.document.content,
     );
     expect(serialized).toContain("ordinary");
     expect(serialized).not.toContain("proposed");
@@ -179,7 +196,9 @@ const paragraph = (
   const insertionId = nextId();
   const deletionId = nextId();
   const runPropertyId = nextId();
-  const comment = schema.marks.comment.create({ commentId: seed * 100 + index });
+  const comment = schema.marks.comment.create({
+    commentId: seed * 100 + index,
+  });
   const runProperty = schema.marks.runPropertyChange.create({
     changes: [
       {
@@ -197,22 +216,44 @@ const paragraph = (
   });
   const content = [
     schema.text(`old-${seed}-${index}`, [
-      revisionMark("deletion", deletionId, index % 5 === 0 ? "moveFrom" : undefined),
+      revisionMark(
+        "deletion",
+        deletionId,
+        index % 5 === 0 ? "moveFrom" : undefined,
+      ),
     ]),
     ...(index === 0
-      ? [schema.nodes.bookmarkBoundary.create({ type: "start", id: seed, name: `seed-${seed}` })]
+      ? [
+          schema.nodes.bookmarkBoundary.create({
+            type: "start",
+            id: seed,
+            name: `seed-${seed}`,
+          }),
+        ]
       : []),
     schema.text(` anchor-${index} `, [comment]),
-    ...(index === 0 ? [schema.nodes.bookmarkBoundary.create({ type: "end", id: seed })] : []),
+    ...(index === 0
+      ? [schema.nodes.bookmarkBoundary.create({ type: "end", id: seed })]
+      : []),
     schema.text(`new-${seed}-${index}`, [
-      revisionMark("insertion", insertionId, index % 5 === 0 ? "moveTo" : undefined),
+      revisionMark(
+        "insertion",
+        insertionId,
+        index % 5 === 0 ? "moveTo" : undefined,
+      ),
     ]),
     schema.text(` format-${index}`, [schema.marks.bold.create(), runProperty]),
-    schema.nodes.hardBreak.create({ breakType: index % 2 === 0 ? "column" : null }, null, [
-      revisionMark(index % 2 === 0 ? "insertion" : "deletion", nextId()),
+    schema.nodes.hardBreak.create(
+      { breakType: index % 2 === 0 ? "column" : null },
+      null,
+      [revisionMark(index % 2 === 0 ? "insertion" : "deletion", nextId())],
+    ),
+    schema.text(` alternate-old-${index}`, [
+      revisionMark("deletion", nextId()),
     ]),
-    schema.text(` alternate-old-${index}`, [revisionMark("deletion", nextId())]),
-    schema.text(` alternate-new-${index}`, [revisionMark("insertion", nextId())]),
+    schema.text(` alternate-new-${index}`, [
+      revisionMark("insertion", nextId()),
+    ]),
     schema.text(` alternate-format-${index}`, [runProperty]),
     ...(index === 0 && nestedInline === "include"
       ? [
@@ -231,7 +272,10 @@ const paragraph = (
                   displayText: "",
                 },
                 [
-                  schema.text("field-old", [fieldHyperlink, revisionMark("deletion", nextId())]),
+                  schema.text("field-old", [
+                    fieldHyperlink,
+                    revisionMark("deletion", nextId()),
+                  ]),
                   schema.nodes.bookmarkBoundary.create(
                     {
                       type: "start",
@@ -241,10 +285,15 @@ const paragraph = (
                     null,
                     [fieldHyperlink],
                   ),
-                  schema.text("field-new", [fieldHyperlink, revisionMark("insertion", nextId())]),
-                  schema.nodes.bookmarkBoundary.create({ type: "end", id: seed + 1000 }, null, [
+                  schema.text("field-new", [
                     fieldHyperlink,
+                    revisionMark("insertion", nextId()),
                   ]),
+                  schema.nodes.bookmarkBoundary.create(
+                    { type: "end", id: seed + 1000 },
+                    null,
+                    [fieldHyperlink],
+                  ),
                 ],
               ),
               schema.text("sdt-new", [revisionMark("insertion", nextId())]),
@@ -290,7 +339,9 @@ const paragraph = (
 };
 
 const nestedTable = (seed: number, nextId: () => number): PMNode => {
-  const emptyRunProperty = schema.marks.runPropertyChange.create({ changes: [] });
+  const emptyRunProperty = schema.marks.runPropertyChange.create({
+    changes: [],
+  });
   const nested = schema.node("table", null, [
     schema.node("tableRow", null, [
       schema.node("tableCell", null, [
@@ -310,11 +361,18 @@ const nestedTable = (seed: number, nextId: () => number): PMNode => {
       tcPrChange: [
         {
           info: { id: cellPropertyId, author: AUTHOR, date: DATE },
-          previousFormatting: { backgroundColor: "FFFFFF", verticalAlign: "top" },
+          previousFormatting: {
+            backgroundColor: "FFFFFF",
+            verticalAlign: "top",
+          },
         },
       ],
     },
-    [schema.node("paragraph"), nested, schema.node("paragraph", null, schema.text("tail"))],
+    [
+      schema.node("paragraph"),
+      nested,
+      schema.node("paragraph", null, schema.text("tail")),
+    ],
   );
   const secondCell = schema.node(
     "tableCell",
@@ -336,13 +394,19 @@ const nestedTable = (seed: number, nextId: () => number): PMNode => {
           previousFormatting: { height: 240, isHeader: true },
         },
       ],
-      ...(seed % 3 === 0 ? { trIns: { revisionId: nextId(), author: AUTHOR, date: DATE } } : {}),
+      ...(seed % 3 === 0
+        ? { trIns: { revisionId: nextId(), author: AUTHOR, date: DATE } }
+        : {}),
     },
     [firstCell, secondCell],
   );
   const stableRow = schema.node("tableRow", null, [
     schema.node("tableCell", null, [
-      schema.node("paragraph", null, schema.text("stable row", [emptyRunProperty])),
+      schema.node(
+        "paragraph",
+        null,
+        schema.text("stable row", [emptyRunProperty]),
+      ),
     ]),
   ]);
   return schema.node(
@@ -414,25 +478,28 @@ const bulkRunPropertyFixture = (
   const currentFormatting: TextFormatting = styled
     ? { styleId: "BulkCharacter", color: { rgb: "800000" } }
     : { italic: true };
-  const paragraphs = Array.from({ length: carrierCount }, (_, index): Paragraph => ({
-    type: "paragraph",
-    ...(styled ? { formatting: { styleId: "BulkParagraph" } } : {}),
-    content: [
-      {
-        type: "run",
-        formatting: currentFormatting,
-        propertyChanges: [
-          {
-            type: "runPropertyChange",
-            info: { id: index + 1, author: AUTHOR, date: DATE },
-            previousFormatting,
-            currentFormatting,
-          },
-        ],
-        content: [{ type: "text", text: `carrier-${index}` }],
-      },
-    ],
-  }));
+  const paragraphs = Array.from(
+    { length: carrierCount },
+    (_, index): Paragraph => ({
+      type: "paragraph",
+      ...(styled ? { formatting: { styleId: "BulkParagraph" } } : {}),
+      content: [
+        {
+          type: "run",
+          formatting: currentFormatting,
+          propertyChanges: [
+            {
+              type: "runPropertyChange",
+              info: { id: index + 1, author: AUTHOR, date: DATE },
+              previousFormatting,
+              currentFormatting,
+            },
+          ],
+          content: [{ type: "text", text: `carrier-${index}` }],
+        },
+      ],
+    }),
+  );
   document.package.styles = styled ? BULK_RUN_PROPERTY_STYLES : { styles: [] };
   document.package.document.content = paragraphs;
   return {
@@ -441,7 +508,9 @@ const bulkRunPropertyFixture = (
   };
 };
 
-const modelRunFormatting = (document: Document): (TextFormatting | undefined)[] =>
+const modelRunFormatting = (
+  document: Document,
+): (TextFormatting | undefined)[] =>
   document.package.document.content.map((block) => {
     if (block.type !== "paragraph") {
       throw new Error("Expected a paragraph-only bulk run-property fixture.");
@@ -471,7 +540,9 @@ const modelRunPropertyChangeCount = (document: Document): number => {
 const pmRunPropertyChangeCount = (doc: PMNode): number => {
   let count = 0;
   doc.descendants((node) => {
-    count += node.marks.filter(({ type }) => type.name === "runPropertyChange").length;
+    count += node.marks.filter(
+      ({ type }) => type.name === "runPropertyChange",
+    ).length;
   });
   return count;
 };
@@ -481,11 +552,16 @@ const secondaryStoryBuffer = async (): Promise<ArrayBuffer> => {
     detectVariables: false,
     preloadFonts: false,
   });
-  const content: TrackedRunChange[] = Array.from({ length: 300 }, (_, index) => ({
-    type: "insertion",
-    info: { id: index + 1, author: AUTHOR, date: DATE },
-    content: [{ type: "run", content: [{ type: "text", text: `item-${index} ` }] }],
-  }));
+  const content: TrackedRunChange[] = Array.from(
+    { length: 300 },
+    (_, index) => ({
+      type: "insertion",
+      info: { id: index + 1, author: AUTHOR, date: DATE },
+      content: [
+        { type: "run", content: [{ type: "text", text: `item-${index} ` }] },
+      ],
+    }),
+  );
   const header = {
     type: "header",
     hdrFtrType: "default",
@@ -508,7 +584,10 @@ describe("headless bulk revision resolution equivalence", () => {
     ({ mode, revisionType }) => {
       assertProperty(
         fc.property(
-          fc.array(fc.constantFrom("text", "tab"), { minLength: 1, maxLength: 8 }),
+          fc.array(fc.constantFrom("text", "tab"), {
+            minLength: 1,
+            maxLength: 8,
+          }),
           fc.integer({ min: 1, max: 12 }),
           (children, length) => {
             const field = schema.node(
@@ -527,10 +606,16 @@ describe("headless bulk revision resolution equivalence", () => {
             );
             const trailingText = "f".repeat(length);
             const doc = schema.node("doc", null, [
-              schema.node("paragraph", null, [field, schema.text(trailingText)]),
+              schema.node("paragraph", null, [
+                field,
+                schema.text(trailingText),
+              ]),
             ]);
             const trailingTextStart = 1 + field.nodeSize;
-            const selection = TextSelection.create(doc, trailingTextStart + Math.min(2, length));
+            const selection = TextSelection.create(
+              doc,
+              trailingTextStart + Math.min(2, length),
+            );
             const state = EditorState.create({
               schema,
               doc,
@@ -559,7 +644,10 @@ describe("headless bulk revision resolution equivalence", () => {
             ).not.toThrow();
             expect(bulk.doc.toJSON()).toEqual(legacy.doc.toJSON());
             expect(stepCountKey.getState(bulk)).toBe(1);
-            expect({ anchor: bulk.selection.anchor, head: bulk.selection.head }).toEqual({
+            expect({
+              anchor: bulk.selection.anchor,
+              head: bulk.selection.head,
+            }).toEqual({
               anchor: legacy.selection.anchor,
               head: legacy.selection.head,
             });
@@ -581,7 +669,9 @@ describe("headless bulk revision resolution equivalence", () => {
           const state = EditorState.create({
             schema,
             doc,
-            plugins: pluginsForHeadlessRevisionResolution([changeTrackerPlugin]),
+            plugins: pluginsForHeadlessRevisionResolution([
+              changeTrackerPlugin,
+            ]),
           });
           const bulkState = resolveAllChangesInHeadlessState(state, mode);
           const legacy = apply(
@@ -625,7 +715,10 @@ describe("headless bulk revision resolution equivalence", () => {
             schema,
             doc,
             plugins: [
-              ...pluginsForHeadlessRevisionResolution([changeTrackerPlugin, stepCountPlugin]),
+              ...pluginsForHeadlessRevisionResolution([
+                changeTrackerPlugin,
+                stepCountPlugin,
+              ]),
               createDocumentStylesPlugin(fixture.document.package.styles),
             ],
           });
@@ -648,7 +741,9 @@ describe("headless bulk revision resolution equivalence", () => {
           const legacyModel = fromProseDoc(legacy.doc, fixture.document, {
             stylesheetSource: { type: "package" },
           });
-          expect(bulkModel.package.document.content).toEqual(legacyModel.package.document.content);
+          expect(bulkModel.package.document.content).toEqual(
+            legacyModel.package.document.content,
+          );
           expect(modelRunPropertyChangeCount(bulkModel)).toBe(0);
           expect(modelRunFormatting(bulkModel)).toEqual(
             Array.from({ length: carrierCount }, () => fixture.expected[mode]),
@@ -711,8 +806,12 @@ describe("headless bulk revision resolution equivalence", () => {
       ),
     );
     const editorState = EditorState.create({ schema, doc });
-    expect(apply(editorState, acceptAllChanges()).transaction.steps).toHaveLength(1);
-    expect(apply(editorState, rejectAllChanges()).transaction.steps).toHaveLength(1);
+    expect(
+      apply(editorState, acceptAllChanges()).transaction.steps,
+    ).toHaveLength(1);
+    expect(
+      apply(editorState, rejectAllChanges()).transaction.steps,
+    ).toHaveLength(1);
   });
 });
 
@@ -737,7 +836,10 @@ describe("headless bulk revision resolution isolation", () => {
         schema,
         doc,
         plugins: [
-          ...pluginsForHeadlessRevisionResolution([stepCountPlugin, serializedStepsPlugin]),
+          ...pluginsForHeadlessRevisionResolution([
+            stepCountPlugin,
+            serializedStepsPlugin,
+          ]),
           history(),
         ],
       });
@@ -745,7 +847,9 @@ describe("headless bulk revision resolution isolation", () => {
       const resolved = resolveAllChangesInHeadlessState(state, mode);
       const legacy = apply(
         state,
-        mode === "accept" ? acceptChange(0, doc.content.size) : rejectChange(0, doc.content.size),
+        mode === "accept"
+          ? acceptChange(0, doc.content.size)
+          : rejectChange(0, doc.content.size),
       );
 
       expect(resolved.doc.toJSON()).toEqual(legacy.state.doc.toJSON());
@@ -758,38 +862,44 @@ describe("headless bulk revision resolution isolation", () => {
     const yDoc = new Y.Doc();
     const sync = ySyncPlugin(yDoc.getXmlFragment("prosemirror"));
     const undo = yUndoPlugin();
-    expect(pluginsForHeadlessRevisionResolution([sync, undo, stepCountPlugin])).toEqual([
-      stepCountPlugin,
-    ]);
+    expect(
+      pluginsForHeadlessRevisionResolution([sync, undo, stepCountPlugin]),
+    ).toEqual([stepCountPlugin]);
   });
 
   test("omits collaboration plugins from private headless states", () => {
     const collab = new Plugin({ key: new PluginKey("collab") });
-    expect(pluginsForHeadlessRevisionResolution([collab, stepCountPlugin])).toEqual([
-      stepCountPlugin,
-    ]);
+    expect(
+      pluginsForHeadlessRevisionResolution([collab, stepCountPlugin]),
+    ).toEqual([stepCountPlugin]);
   });
 });
 
 describe("headless bulk revision state", () => {
   test("accepting a deleted move-only paragraph removes its hidden boundaries", () => {
-    const deletedMove = schema.node("paragraph", { pPrMark: paragraphMark("del", 50) }, [
-      schema.node("moveRangeBoundary", {
-        marker: {
-          type: "moveFromRangeStart",
-          id: 7,
-          name: "move-7",
-          author: AUTHOR,
-        },
-      }),
-      schema.text("removed", [revisionMark("deletion", 51, "moveFrom")]),
-      schema.node("moveRangeBoundary", {
-        marker: { type: "moveFromRangeEnd", id: 7 },
-      }),
-    ]);
+    const deletedMove = schema.node(
+      "paragraph",
+      { pPrMark: paragraphMark("del", 50) },
+      [
+        schema.node("moveRangeBoundary", {
+          marker: {
+            type: "moveFromRangeStart",
+            id: 7,
+            name: "move-7",
+            author: AUTHOR,
+          },
+        }),
+        schema.text("removed", [revisionMark("deletion", 51, "moveFrom")]),
+        schema.node("moveRangeBoundary", {
+          marker: { type: "moveFromRangeEnd", id: 7 },
+        }),
+      ],
+    );
     const stableTable = schema.node("table", null, [
       schema.node("tableRow", null, [
-        schema.node("tableCell", null, [schema.node("paragraph", null, schema.text("stable"))]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, schema.text("stable")),
+        ]),
       ]),
     ]);
     const state = EditorState.create({
@@ -808,7 +918,10 @@ describe("headless bulk revision state", () => {
   test.each(["accept", "reject"] as const)(
     "%s reports mark-only paragraphs to selective save without a structural fallback",
     (mode) => {
-      const revision = revisionMark(mode === "accept" ? "insertion" : "deletion", 9);
+      const revision = revisionMark(
+        mode === "accept" ? "insertion" : "deletion",
+        9,
+      );
       const doc = schema.node("doc", null, [
         schema.node("paragraph", { paraId: "changed" }, [
           schema.text("tracked ", [revision]),
@@ -840,19 +953,30 @@ describe("bulk revision lifecycle", () => {
         type: "header",
         relationshipId: HEADER_RELATIONSHIP_ID,
       } as const;
-      const reviewer = await FolioDocxReviewer.fromBuffer(await secondaryStoryBuffer());
-      expect(reviewer.readReviewedStory({ story, view: "current-markup" })?.changes.length).toBe(
-        300,
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await secondaryStoryBuffer(),
       );
+      expect(
+        reviewer.readReviewedStory({ story, view: "current-markup" })?.changes
+          .length,
+      ).toBe(300);
 
       if (mode === "accept") {
         reviewer.acceptAll();
       } else {
         reviewer.rejectAll();
       }
-      const expected = reviewer.readReviewedStory({ story, view: "current-markup" });
-      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
-      const actual = reopened.readReviewedStory({ story, view: "current-markup" });
+      const expected = reviewer.readReviewedStory({
+        story,
+        view: "current-markup",
+      });
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
+      const actual = reopened.readReviewedStory({
+        story,
+        view: "current-markup",
+      });
 
       expect(actual?.changes).toEqual([]);
       expect(actual?.text).toBe(expected?.text);
@@ -864,7 +988,11 @@ describe("bulk revision lifecycle", () => {
     async (mode) => {
       const doc = generatedDocument(mode === "accept" ? 71 : 72, 8, "omit");
       const reviewer = await FolioDocxReviewer.fromBuffer(
-        await createDocx(fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } })),
+        await createDocx(
+          fromProseDoc(doc, undefined, {
+            stylesheetSource: { type: "package" },
+          }),
+        ),
       );
       const before = reviewer.readReviewedStory({ view: "current-markup" });
       expect(before?.changes.length).toBeGreaterThan(0);
@@ -875,16 +1003,22 @@ describe("bulk revision lifecycle", () => {
         reviewer.rejectAll();
       }
       const expected = reviewer.readReviewedStory({ view: "current-markup" });
-      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
       const actual = reopened.readReviewedStory({ view: "current-markup" });
 
       expect(actual?.changes).toEqual([]);
       expect(
-        expected?.snapshot.blocks.some(({ idStability }) => idStability === "positional"),
+        expected?.snapshot.blocks.some(
+          ({ idStability }) => idStability === "positional",
+        ),
       ).toBe(true);
-      expect(actual?.snapshot.blocks.every(({ idStability }) => idStability === undefined)).toBe(
-        true,
-      );
+      expect(
+        actual?.snapshot.blocks.every(
+          ({ idStability }) => idStability === undefined,
+        ),
+      ).toBe(true);
       expect(persistedSnapshotProjection(actual?.snapshot.blocks)).toEqual(
         persistedSnapshotProjection(expected?.snapshot.blocks),
       );
@@ -931,8 +1065,12 @@ describe("bulk revision lifecycle", () => {
       expect(actual?.changes).toEqual([]);
       expect(actual?.text).toBe(expected?.text);
       expect(inlineSdt?.attrs["tag"]).toBe(`nested-${seed}`);
-      expect(structuredField?.attrs["instruction"]).toContain(`REF nested_${seed}`);
-      expect(inlineSdt?.textContent).toContain(mode === "accept" ? "sdt-new" : "sdt-old");
+      expect(structuredField?.attrs["instruction"]).toContain(
+        `REF nested_${seed}`,
+      );
+      expect(inlineSdt?.textContent).toContain(
+        mode === "accept" ? "sdt-new" : "sdt-old",
+      );
       expect(
         bookmarkBoundaries
           .filter((node) => node.attrs["id"] === seed + 1000)
@@ -944,7 +1082,10 @@ describe("bulk revision lifecycle", () => {
   test.each(["accept", "reject"] as const)(
     "%s persists a mark-only resolution through selective save and reopen",
     async (mode) => {
-      const revision = revisionMark(mode === "accept" ? "insertion" : "deletion", 91);
+      const revision = revisionMark(
+        mode === "accept" ? "insertion" : "deletion",
+        91,
+      );
       const doc = schema.node("doc", null, [
         schema.node("paragraph", { paraId: "00000091" }, [
           schema.text("tracked ", [revision]),
@@ -956,7 +1097,11 @@ describe("bulk revision lifecycle", () => {
         schema.node("paragraph", { paraId: "00000092" }, schema.text("stable")),
       ]);
       const reviewer = await FolioDocxReviewer.fromBuffer(
-        await createDocx(fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } })),
+        await createDocx(
+          fromProseDoc(doc, undefined, {
+            stylesheetSource: { type: "package" },
+          }),
+        ),
       );
 
       if (mode === "accept") {
@@ -965,7 +1110,9 @@ describe("bulk revision lifecycle", () => {
         reviewer.rejectAll();
       }
       const expected = reviewer.readReviewedStory({ view: "current-markup" });
-      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
       const story = reopened.readReviewedStory({ view: "current-markup" });
 
       expect(story?.changes).toEqual([]);

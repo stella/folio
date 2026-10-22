@@ -3,6 +3,7 @@ import { build } from "esbuild";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
 import { copyFuzzyWasm, fuzzyFromDisk } from "../scripts/portable-fuzzy";
 
 test("the universal CLI backend loads from disk and computes Unicode distances in Node", async () => {
@@ -30,7 +31,11 @@ test("the universal CLI backend loads from disk and computes Unicode distances i
       },
       plugins: [fuzzyFromDisk],
     });
-    expect(Object.keys(result.metafile.inputs).some((file) => file.endsWith(".node"))).toBe(false);
+    expect(
+      Object.keys(result.metafile.inputs).some((file) =>
+        file.endsWith(".node"),
+      ),
+    ).toBe(false);
     await copyFuzzyWasm(directory);
     const child = Bun.spawnSync(["node", outfile]);
     expect(child.exitCode).toBe(0);

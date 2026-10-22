@@ -1,12 +1,11 @@
 import { TextSelection } from "prosemirror-state";
-import { applyCellSelection } from "@stll/folio-core/prosemirror/cellDragSelection";
-import { singletonManager } from "@stll/folio-core/prosemirror/schema";
-import type { BrowserDragTarget } from "../visual/browserDragTarget";
-import { canonicalTextSelection } from "./canonicalTextSelection";
-import { waitForCanonicalLoadOwner } from "./canonicalLoadOwner";
+
 import type { Document } from "@stll/folio-core";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import { applyCellSelection } from "@stll/folio-core/prosemirror/cellDragSelection";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
+import { singletonManager } from "@stll/folio-core/prosemirror/schema";
+
 import {
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
@@ -16,6 +15,9 @@ import {
   paragraphPropertySourceBelongsToDocument,
   paragraphPropertySourceTokenMatchesContract,
 } from "../../packages/core/src/docx/paragraphPropertySource";
+import type { BrowserDragTarget } from "../visual/browserDragTarget";
+import { waitForCanonicalLoadOwner } from "./canonicalLoadOwner";
+import { canonicalTextSelection } from "./canonicalTextSelection";
 
 type CanonicalPlaygroundRef = {
   getDocument: () => Document | null;
@@ -26,7 +28,13 @@ type CanonicalPlaygroundRef = {
 };
 
 export type CanonicalHyperlinkAction =
-  | { type: "setHyperlink"; from: number; to: number; href: string; tooltip?: string }
+  | {
+      type: "setHyperlink";
+      from: number;
+      to: number;
+      href: string;
+      tooltip?: string;
+    }
   | { type: "removeHyperlink"; from: number; to: number }
   | {
       type: "insertHyperlink";
@@ -38,7 +46,9 @@ export type CanonicalHyperlinkAction =
     };
 
 /** Private interaction-test bridge shared by both playgrounds. */
-export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null) => ({
+export const buildCanonicalBridge = (
+  getRef: () => CanonicalPlaygroundRef | null,
+) => ({
   nativeComposing: () => getRef()?.getEditor()?.getView()?.composing ?? null,
   ensureView: () => {
     const ref = getRef();
@@ -55,7 +65,8 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
     await waitForCanonicalLoadOwner({
       previousOwner,
       getOwner: () => getRef()?.getEditor()?.getCanonicalDocument(),
-      waitFrame: () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      waitFrame: () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     });
     return true;
   },
@@ -63,8 +74,10 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
     const buffer = await getRef()?.save();
     return buffer ? [...new Uint8Array(buffer)] : null;
   },
-  canSnapshot: () => getRef()?.getEditor()?.getCanonicalStoryProjection("main") != null,
-  committedVersion: () => getRef()?.getEditor()?.captureCanonicalSave()?.version ?? null,
+  canSnapshot: () =>
+    getRef()?.getEditor()?.getCanonicalStoryProjection("main") != null,
+  committedVersion: () =>
+    getRef()?.getEditor()?.captureCanonicalSave()?.version ?? null,
   snapshot: () => {
     const ref = getRef();
     const editor = ref?.getEditor();
@@ -74,7 +87,9 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
     const canonicalProjection = canonical
       ? toProseDoc(
           canonical,
-          canonical.package.styles ? { styles: canonical.package.styles } : undefined,
+          canonical.package.styles
+            ? { styles: canonical.package.styles }
+            : undefined,
         )
       : null;
     const sourceContract = canonical
@@ -82,13 +97,16 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
       : undefined;
     const content = canonical?.package.document.content ?? [];
     const capturedParagraphCount = content.filter(
-      (block) => block.type === "paragraph" && getParagraphPropertySource(block) !== undefined,
+      (block) =>
+        block.type === "paragraph" &&
+        getParagraphPropertySource(block) !== undefined,
     ).length;
     const provenanceValid = Boolean(
       canonical &&
       state &&
       sourceContract &&
-      sourceContract === getProseDocumentParagraphPropertySourceContract(state.doc) &&
+      sourceContract ===
+        getProseDocumentParagraphPropertySourceContract(state.doc) &&
       content.length > 0 &&
       content.length === state.doc.childCount &&
       content.every((block, index) => {
@@ -98,7 +116,10 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
         return token === undefined
           ? getProseParagraphPropertySourceToken(node) == null &&
               getParagraphPropertySource(block) === undefined
-          : paragraphPropertySourceTokenMatchesContract(token, sourceContract) &&
+          : paragraphPropertySourceTokenMatchesContract(
+              token,
+              sourceContract,
+            ) &&
               getProseParagraphPropertySourceToken(node) === token &&
               (getParagraphPropertySource(block) === undefined ||
                 paragraphPropertySourceBelongsToDocument(block, canonical));
@@ -116,7 +137,9 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
       provenance: { valid: provenanceValid, capturedParagraphCount },
       text: state?.doc.textContent ?? null,
       textSelection: state ? canonicalTextSelection(state) : null,
-      selection: state ? { from: state.selection.from, to: state.selection.to } : null,
+      selection: state
+        ? { from: state.selection.from, to: state.selection.to }
+        : null,
       selectionJSON: state?.selection.toJSON() ?? null,
       canUndo: editor?.canUndo() ?? false,
       canRedo: editor?.canRedo() ?? false,
@@ -125,7 +148,11 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
   selectStructuralTarget: (target: BrowserDragTarget) => {
     const view = getRef()?.getEditor()?.getView();
     if (!view) return null;
-    const targets: { pos: number; size: number; type: "paragraph" | "inline" }[] = [];
+    const targets: {
+      pos: number;
+      size: number;
+      type: "paragraph" | "inline";
+    }[] = [];
     const name = {
       table: "tableCell",
       list: "paragraph",
@@ -135,8 +162,14 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
     }[target];
     view.state.doc.descendants((node, pos) => {
       if (targets.length >= 2) return false;
-      const matches = node.type.name === name && (target !== "list" || node.attrs["numPr"] != null);
-      if (matches || (target === "note" && node.marks.some((mark) => mark.type.name === name)))
+      const matches =
+        node.type.name === name &&
+        (target !== "list" || node.attrs["numPr"] != null);
+      if (
+        matches ||
+        (target === "note" &&
+          node.marks.some((mark) => mark.type.name === name))
+      )
         targets.push({
           pos,
           size: node.nodeSize,
@@ -177,8 +210,12 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
           ? { type: "suggesting", author: "Canonical test author" }
           : { type: "editing" },
       ) ?? false,
-  resolveRevisions: (revisionIds: readonly number[], resolution: "accept" | "reject") =>
-    getRef()?.getEditor()?.resolveCanonicalRevisions(revisionIds, resolution) ?? false,
+  resolveRevisions: (
+    revisionIds: readonly number[],
+    resolution: "accept" | "reject",
+  ) =>
+    getRef()?.getEditor()?.resolveCanonicalRevisions(revisionIds, resolution) ??
+    false,
   select: (from: number, to = from) => {
     const editor = getRef()?.getEditor();
     if (!editor?.getView()) return false;
@@ -193,10 +230,15 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
     switch (action.type) {
       case "setHyperlink":
         return editor.executeCommand(
-          singletonManager.requireCommand("setHyperlink")(action.href, action.tooltip),
+          singletonManager.requireCommand("setHyperlink")(
+            action.href,
+            action.tooltip,
+          ),
         );
       case "removeHyperlink":
-        return editor.executeCommand(singletonManager.requireCommand("removeHyperlink")());
+        return editor.executeCommand(
+          singletonManager.requireCommand("removeHyperlink")(),
+        );
       case "insertHyperlink":
         return editor.executeCommand(
           singletonManager.requireCommand("insertHyperlink")(

@@ -24,9 +24,13 @@ export const writeCleanRoomInstallConfig = async (
     !Number.isSafeInteger(minimumReleaseAge) ||
     minimumReleaseAge <= 0 ||
     !Array.isArray(minimumReleaseAgeExcludes) ||
-    !minimumReleaseAgeExcludes.every((name: unknown) => typeof name === "string")
+    !minimumReleaseAgeExcludes.every(
+      (name: unknown) => typeof name === "string",
+    )
   ) {
-    return panic("bunfig.toml must declare a positive release age and package exclusions");
+    return panic(
+      "bunfig.toml must declare a positive release age and package exclusions",
+    );
   }
   await writeFile(
     path.join(consumerDir, "bunfig.toml"),
@@ -36,7 +40,9 @@ export const writeCleanRoomInstallConfig = async (
 
 /** Bootstrap a locked repository environment using its complete install policy. */
 export const installFrozenRepositoryDependencies = (repoRoot: string): void => {
-  const config: unknown = Bun.TOML.parse(readFileSync(path.join(repoRoot, "bunfig.toml"), "utf8"));
+  const config: unknown = Bun.TOML.parse(
+    readFileSync(path.join(repoRoot, "bunfig.toml"), "utf8"),
+  );
   if (
     !isRecord(config) ||
     !isRecord(config["install"]) ||
@@ -44,13 +50,19 @@ export const installFrozenRepositoryDependencies = (repoRoot: string): void => {
     !Number.isSafeInteger(config["install"]["minimumReleaseAge"]) ||
     config["install"]["minimumReleaseAge"] <= 0
   )
-    throw new TypeError("Frozen repository installs require the release-age policy");
-  const result = Bun.spawnSync([process.execPath, "install", "--frozen-lockfile"], {
-    cwd: repoRoot,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  if (result.exitCode !== 0) throw new TypeError("Frozen repository install failed");
+    throw new TypeError(
+      "Frozen repository installs require the release-age policy",
+    );
+  const result = Bun.spawnSync(
+    [process.execPath, "install", "--frozen-lockfile"],
+    {
+      cwd: repoRoot,
+      stdout: "inherit",
+      stderr: "inherit",
+    },
+  );
+  if (result.exitCode !== 0)
+    throw new TypeError("Frozen repository install failed");
 };
 
 type CleanRoomInstallOptions = {

@@ -12,7 +12,12 @@
  * @packageDocumentation
  * @public
  */
-import { addComponent, addImports, createResolver, defineNuxtModule } from "@nuxt/kit";
+import {
+  addComponent,
+  addImports,
+  createResolver,
+  defineNuxtModule,
+} from "@nuxt/kit";
 import type { NuxtModule } from "@nuxt/schema";
 
 const COMPOSABLES_SUBPATH = "@stll/folio-vue/composables";
@@ -108,7 +113,11 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
     // injects `import { h } from 'vue'` into chunks that already declare their
     // own `h`, crashing the client with a duplicate-identifier SyntaxError.
     const optimizeDeps = (nuxt.options.vite.optimizeDeps ??= {});
-    optimizeDeps.include = [...(optimizeDeps.include ?? []), "@stll/folio-core", "@stll/folio-vue"];
+    optimizeDeps.include = [
+      ...(optimizeDeps.include ?? []),
+      "@stll/folio-core",
+      "@stll/folio-vue",
+    ];
 
     // Client-only registration — never executes during SSR.
     addComponent({
@@ -128,7 +137,9 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
 
     // Auto-import the Vue composables (useDocxEditor, useZoom, ...) so they need
     // no manual import in Nuxt.
-    addImports(VUE_COMPOSABLES.map((name) => ({ name, from: COMPOSABLES_SUBPATH })));
+    addImports(
+      VUE_COMPOSABLES.map((name) => ({ name, from: COMPOSABLES_SUBPATH })),
+    );
   },
 });
 

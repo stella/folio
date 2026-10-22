@@ -22,8 +22,10 @@ import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
 import { ensureParaIds } from "../docx/ensureParaIds";
@@ -31,15 +33,26 @@ import { compareDocx } from "./compare";
 import { applyEditScript, type EditScriptStep } from "./scenario";
 import type { CompareChange } from "./types";
 
-const FIXTURES_DIR = path.join(import.meta.dir, "../docx/__tests__/__fixtures__/corpus");
-const OPTIONS = { author: "compare", timestamp: "2024-03-01T00:00:00.000Z" } as const;
+const FIXTURES_DIR = path.join(
+  import.meta.dir,
+  "../docx/__tests__/__fixtures__/corpus",
+);
+const OPTIONS = {
+  author: "compare",
+  timestamp: "2024-03-01T00:00:00.000Z",
+} as const;
 
 const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
-  bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 
 /** `upstream-with-tables.docx`: a 3x3 table between two body paragraphs, no authored ids. */
 const readTableFixture = (): ArrayBuffer =>
-  toArrayBuffer(readFileSync(path.join(FIXTURES_DIR, "upstream-with-tables.docx")));
+  toArrayBuffer(
+    readFileSync(path.join(FIXTURES_DIR, "upstream-with-tables.docx")),
+  );
 
 /** How many of the package's paragraphs carry an authored `w14:paraId`. */
 const ID_COVERAGE = { none: "none", all: "all", mixed: "mixed" } as const;
@@ -100,7 +113,10 @@ const changesFor = async (
 };
 
 /** A row reported as deleted and reinserted is the defect, whatever the count. */
-const ROW_STRUCTURE_KINDS: ReadonlySet<string> = new Set(["table-row-delete", "table-row-insert"]);
+const ROW_STRUCTURE_KINDS: ReadonlySet<string> = new Set([
+  "table-row-delete",
+  "table-row-insert",
+]);
 
 describe("one edited block is one change without authored paragraph ids", () => {
   test("the pinned counterexample: editing a table cell is not a row replacement", async () => {
@@ -112,7 +128,9 @@ describe("one edited block is one change without authored paragraph ids", () => 
     const blocks = await blocksOf(base);
     // The scenario reads the fixture by index, so pin the shape it relies on.
     expect(blocks[1]?.table).toBeDefined();
-    expect(blocks.every((block) => block.idStability === "positional")).toBe(true);
+    expect(blocks.every((block) => block.idStability === "positional")).toBe(
+      true,
+    );
 
     const changes = await changesFor(base, {
       type: "editTableCell",
@@ -128,10 +146,12 @@ describe("one edited block is one change without authored paragraph ids", () => 
     async () => {
       const bases = new Map<IdCoverage, ArrayBuffer>(
         await Promise.all(
-          Object.values(ID_COVERAGE).map(async (coverage): Promise<[IdCoverage, ArrayBuffer]> => [
-            coverage,
-            await baseForCoverage(coverage),
-          ]),
+          Object.values(ID_COVERAGE).map(
+            async (coverage): Promise<[IdCoverage, ArrayBuffer]> => [
+              coverage,
+              await baseForCoverage(coverage),
+            ],
+          ),
         ),
       );
 
@@ -145,13 +165,19 @@ describe("one edited block is one change without authored paragraph ids", () => 
             const base = bases.get(coverage)!;
             const blocks = await blocksOf(base);
             const index = blocks.findIndex((block) =>
-              kind === "editTableCell" ? block.table !== undefined : block.table === undefined,
+              kind === "editTableCell"
+                ? block.table !== undefined
+                : block.table === undefined,
             );
             // SAFETY: the fixture holds both a table cell and a body paragraph.
             const block = blocks[index]!;
             const step: EditScriptStep =
               kind === "editTableCell"
-                ? { type: "editTableCell", blockIndex: index, text: `edited ${text}` }
+                ? {
+                    type: "editTableCell",
+                    blockIndex: index,
+                    text: `edited ${text}`,
+                  }
                 : {
                     type: "replaceWords",
                     blockIndex: index,
@@ -163,7 +189,9 @@ describe("one edited block is one change without authored paragraph ids", () => 
             const changes = await changesFor(base, step);
             expect(changes.length).toBeLessThanOrEqual(1);
             expect(
-              changes.some(({ kind: changeKind }) => ROW_STRUCTURE_KINDS.has(changeKind)),
+              changes.some(({ kind: changeKind }) =>
+                ROW_STRUCTURE_KINDS.has(changeKind),
+              ),
             ).toBe(false);
           },
         ),

@@ -1,23 +1,26 @@
-import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { expect, type Page } from "@playwright/test";
-import { test } from "../parity/canonicalTest";
 
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
-import { identityKeysIn, IDENTITY_SPACES } from "../../packages/docx-core/src/ops/ids";
-import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
+import {
+  IDENTITY_SPACES,
+  identityKeysIn,
+} from "../../packages/docx-core/src/ops/ids";
 import type { buildCanonicalBridge } from "../parity/canonicalBridge";
 import {
-  MODIFIER,
-  reactPort,
-  vuePort,
-  snapshot,
   clearRefusals,
   expectNoRefusals,
-  select,
   loadReady,
+  MODIFIER,
+  reactPort,
+  select,
+  snapshot,
+  vuePort,
 } from "../parity/canonicalInteractionAssertions";
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
+import { test } from "../parity/canonicalTest";
 
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status === testInfo.expectedStatus) return;
@@ -51,51 +54,83 @@ const expectProjection = async (page: Page, expected: ExpectedProjection) => {
   return { ...current, document: current.document };
 };
 
-test("canonical input, history and saved document agree across both adapters", async ({ page }) => {
+test("canonical input, history and saved document agree across both adapters", async ({
+  page,
+}) => {
   test.setTimeout(60_000);
   const sourceDocument = createEmptyDocument({ initialText: "A😀B" });
   const paragraph = sourceDocument.package.document.content.at(0);
   if (!paragraph || paragraph.type !== "paragraph")
     throw new TypeError("Expected source paragraph.");
-  paragraph.formatting = { ...paragraph.formatting, keepNext: true, contextualSpacing: true };
+  paragraph.formatting = {
+    ...paragraph.formatting,
+    keepNext: true,
+    contextualSpacing: true,
+  };
   const source = await createDocx(sourceDocument);
   let firstSaved: Awaited<ReturnType<typeof parseDocx>> | undefined;
   for (const port of [reactPort, vuePort]) {
     await page.goto(`http://localhost:${port}/?session=canonical`);
     await page.waitForSelector(".layout-page");
-    expect(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])).toBe(true);
+    expect(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])).toBe(
+      true,
+    );
     await page.evaluate(
-      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );
     await select(page, 5);
-    const initial = await expectProjection(page, { text: "A😀B", selection: { from: 5, to: 5 } });
+    const initial = await expectProjection(page, {
+      text: "A😀B",
+      selection: { from: 5, to: 5 },
+    });
     expect(initial.canUndo).toBe(false);
 
     await page.keyboard.type("x");
-    await expectProjection(page, { text: "A😀Bx", selection: { from: 6, to: 6 } });
+    await expectProjection(page, {
+      text: "A😀Bx",
+      selection: { from: 6, to: 6 },
+    });
     await page.keyboard.press("Backspace");
-    await expectProjection(page, { text: "A😀B", selection: { from: 5, to: 5 } });
+    await expectProjection(page, {
+      text: "A😀B",
+      selection: { from: 5, to: 5 },
+    });
     await select(page, 2);
     await page.keyboard.press("Delete");
     await expectProjection(page, { text: "AB", selection: { from: 2, to: 2 } });
     await page.keyboard.insertText("é");
-    await expectProjection(page, { text: "AéB", selection: { from: 3, to: 3 } });
+    await expectProjection(page, {
+      text: "AéB",
+      selection: { from: 3, to: 3 },
+    });
     await select(page, 1, 3);
     await page.keyboard.press("Backspace");
-    const deleted = await expectProjection(page, { text: "B", selection: { from: 1, to: 1 } });
+    const deleted = await expectProjection(page, {
+      text: "B",
+      selection: { from: 1, to: 1 },
+    });
     expect(deleted.canUndo).toBe(true);
 
     await page.keyboard.press(`${MODIFIER}+z`);
-    const undone = await expectProjection(page, { text: "AéB", selection: { from: 1, to: 3 } });
+    const undone = await expectProjection(page, {
+      text: "AéB",
+      selection: { from: 1, to: 3 },
+    });
     expect(undone.canRedo).toBe(true);
     await page.keyboard.press(`${MODIFIER}+Shift+z`);
-    const redone = await expectProjection(page, { text: "B", selection: { from: 1, to: 1 } });
+    const redone = await expectProjection(page, {
+      text: "B",
+      selection: { from: 1, to: 1 },
+    });
     expect(redone.document).toEqual(deleted.document);
     expect(redone.canRedo).toBe(false);
 
     // Structural input shares the same journal, including the caret before its split.
     await page.keyboard.press("Enter");
-    expect((await snapshot(page))?.document?.package.document.content).toHaveLength(2);
+    expect(
+      (await snapshot(page))?.document?.package.document.content,
+    ).toHaveLength(2);
     await page.keyboard.press(`${MODIFIER}+z`);
     const splitUndone = await snapshot(page);
     expect(splitUndone?.document).toEqual(redone.document);
@@ -124,7 +159,9 @@ test("canonical input, history and saved document agree across both adapters", a
         selection?.removeAllRanges();
         selection?.addRange(range);
       };
-      editor.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      editor.dispatchEvent(
+        new CompositionEvent("compositionstart", { bubbles: true }),
+      );
       const provisional = new InputEvent("beforeinput", {
         bubbles: true,
         inputType: "insertCompositionText",
@@ -155,7 +192,9 @@ test("canonical input, history and saved document agree across both adapters", a
         (saved) => saved === null,
         () => true,
       );
-      editor.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "契" }));
+      editor.dispatchEvent(
+        new CompositionEvent("compositionend", { bubbles: true, data: "契" }),
+      );
       await Promise.resolve();
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       const final = new InputEvent("beforeinput", {
@@ -166,7 +205,9 @@ test("canonical input, history and saved document agree across both adapters", a
       });
       // Chromium clears inputType values emitted by other engines in synthetic events.
       // Preserve the late-final-input fixture instead of testing an unclassified event.
-      Object.defineProperty(final, "inputType", { value: "insertFromComposition" });
+      Object.defineProperty(final, "inputType", {
+        value: "insertFromComposition",
+      });
       editor.dispatchEvent(final);
       replaceDOMText("契", "契約");
       for (let index = 0; index < 2; index++) {
@@ -178,7 +219,10 @@ test("canonical input, history and saved document agree across both adapters", a
           }),
         );
         editor.dispatchEvent(
-          new CompositionEvent("compositionend", { bubbles: true, data: "契約" }),
+          new CompositionEvent("compositionend", {
+            bubbles: true,
+            data: "契約",
+          }),
         );
       }
       await new Promise<void>((resolve) => setTimeout(resolve, 80));
@@ -220,7 +264,9 @@ test("canonical input, history and saved document agree across both adapters", a
     await page.keyboard.press(`${MODIFIER}+z`);
     await expectProjection(page, { text: "B", selection: { from: 1, to: 2 } });
 
-    const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
+    const saved = await page.evaluate(() =>
+      globalThis.__folioCanonical?.save(),
+    );
     if (!saved) throw new Error("Canonical editor did not save.");
     const reopened = structuredClone(
       await parseDocx(new Uint8Array(saved), {
@@ -228,7 +274,9 @@ test("canonical input, history and saved document agree across both adapters", a
         detectVariables: false,
       }),
     );
-    expect(reopened.package.document.content).toEqual(redone.document.package.document.content);
+    expect(reopened.package.document.content).toEqual(
+      redone.document.package.document.content,
+    );
     if (firstSaved) {
       expect(reopened.package.document).toEqual(firstSaved.package.document);
     } else {
@@ -236,10 +284,14 @@ test("canonical input, history and saved document agree across both adapters", a
     }
     expect(await evaluateCanonicalLoad(page, saved)).toBe(true);
     await page.evaluate(
-      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );
     await select(page, 1);
-    const reloaded = await expectProjection(page, { text: "B", selection: { from: 1, to: 1 } });
+    const reloaded = await expectProjection(page, {
+      text: "B",
+      selection: { from: 1, to: 1 },
+    });
     expect(reloaded.document.package.document.content).toEqual(
       redone.document.package.document.content,
     );
@@ -247,7 +299,9 @@ test("canonical input, history and saved document agree across both adapters", a
   }
 });
 
-test("canonical structural and formatting hooks survive save and reopen", async ({ page }) => {
+test("canonical structural and formatting hooks survive save and reopen", async ({
+  page,
+}) => {
   test.setTimeout(60_000);
   const source = await canonicalLoadFixture(
     await createDocx(createEmptyDocument({ initialText: "ab" })),
@@ -257,36 +311,53 @@ test("canonical structural and formatting hooks survive save and reopen", async 
     await page.waitForSelector(".layout-page");
     await loadReady(page, source);
     await select(page, 2);
-    const initial = await expectProjection(page, { text: "ab", selection: { from: 2, to: 2 } });
+    const initial = await expectProjection(page, {
+      text: "ab",
+      selection: { from: 2, to: 2 },
+    });
     const original = initial.document.package.document.content.at(0);
-    if (original?.type !== "paragraph") throw new TypeError("Expected paragraph.");
+    if (original?.type !== "paragraph")
+      throw new TypeError("Expected paragraph.");
     await page.keyboard.press("Enter");
-    const split = await expectProjection(page, { text: "ab", selection: { from: 4, to: 4 } });
+    const split = await expectProjection(page, {
+      text: "ab",
+      selection: { from: 4, to: 4 },
+    });
     expect(split.document.package.document.content).toHaveLength(2);
     const splitFirst = split.document.package.document.content.at(0);
     const splitSecond = split.document.package.document.content.at(1);
-    expect(splitSecond?.type === "paragraph" ? splitSecond.paraId : undefined).toBe(
-      original.paraId,
-    );
-    expect(splitFirst?.type === "paragraph" ? splitFirst.paraId : undefined).not.toBe(
-      original.paraId,
-    );
+    expect(
+      splitSecond?.type === "paragraph" ? splitSecond.paraId : undefined,
+    ).toBe(original.paraId);
+    expect(
+      splitFirst?.type === "paragraph" ? splitFirst.paraId : undefined,
+    ).not.toBe(original.paraId);
     await page.keyboard.press("Backspace");
-    const joined = await expectProjection(page, { text: "ab", selection: { from: 2, to: 2 } });
+    const joined = await expectProjection(page, {
+      text: "ab",
+      selection: { from: 2, to: 2 },
+    });
     expect(joined.document.package.document.content).toHaveLength(1);
     const joinedParagraph = joined.document.package.document.content.at(0);
-    expect(joinedParagraph?.type === "paragraph" ? joinedParagraph.paraId : undefined).toBe(
-      original.paraId,
-    );
+    expect(
+      joinedParagraph?.type === "paragraph"
+        ? joinedParagraph.paraId
+        : undefined,
+    ).toBe(original.paraId);
     await select(page, 1, 3);
     await clearRefusals(page);
     await page.keyboard.press(`${MODIFIER}+b`);
     await expectNoRefusals(page);
-    const formatted = await expectProjection(page, { text: "ab", selection: { from: 1, to: 3 } });
+    const formatted = await expectProjection(page, {
+      text: "ab",
+      selection: { from: 1, to: 3 },
+    });
     const paragraph = formatted.document.package.document.content.at(0);
     expect(
       paragraph?.type === "paragraph" &&
-        paragraph.content.some((run) => run.type === "run" && run.formatting?.bold),
+        paragraph.content.some(
+          (run) => run.type === "run" && run.formatting?.bold,
+        ),
     ).toBe(true);
     await select(page, 3);
     await page.keyboard.press("Enter");
@@ -312,7 +383,9 @@ test("canonical structural and formatting hooks survive save and reopen", async 
     expect(itemUndone?.projectionMatchesCanonical).toBe(true);
     await page.keyboard.press(`${MODIFIER}+Shift+z`);
     expect((await snapshot(page))?.document).toEqual(beforeUndo);
-    const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
+    const saved = await page.evaluate(() =>
+      globalThis.__folioCanonical?.save(),
+    );
     if (!saved) throw new TypeError("Canonical save unavailable.");
     const reopened = await parseDocx(new Uint8Array(saved), {
       preloadFonts: false,
@@ -348,16 +421,24 @@ test("canonical suggestions survive save and reopen before acceptance or rejecti
   for (const port of [reactPort, vuePort]) {
     await page.goto(`http://localhost:${port}/?session=canonical`);
     await page.waitForSelector(".layout-page");
-    expect(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])).toBe(true);
-    await page.evaluate(
-      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
-    );
-    expect(await page.evaluate(() => globalThis.__folioCanonical?.setMode("suggesting"))).toBe(
+    expect(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])).toBe(
       true,
     );
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    expect(
+      await page.evaluate(() =>
+        globalThis.__folioCanonical?.setMode("suggesting"),
+      ),
+    ).toBe(true);
     await select(page, 5);
     await page.keyboard.type("x");
-    await expectProjection(page, { text: "A😀BxC", selection: { from: 6, to: 6 } });
+    await expectProjection(page, {
+      text: "A😀BxC",
+      selection: { from: 6, to: 6 },
+    });
     await select(page, 2);
     await page.keyboard.press("Delete");
     const typed = await snapshot(page);
@@ -377,18 +458,25 @@ test("canonical suggestions survive save and reopen before acceptance or rejecti
     await select(page, 10);
     await page.keyboard.press("Backspace");
     const suggested = await snapshot(page);
-    if (!suggested?.document) throw new Error("Canonical suggestions unavailable.");
+    if (!suggested?.document)
+      throw new Error("Canonical suggestions unavailable.");
     expect(suggested.projectionMatchesCanonical).toBe(true);
     expect(suggested.projectionJSON).toEqual(suggested.canonicalProjectionJSON);
     expect(suggested.document.package.document.content).toHaveLength(3);
     const revisionPrefix = `${IDENTITY_SPACES.REVISION}:`;
-    const revisionIds = identityKeysIn(suggested.document.package.document.content).flatMap(
-      (key) => (key.startsWith(revisionPrefix) ? [Number(key.slice(revisionPrefix.length))] : []),
+    const revisionIds = identityKeysIn(
+      suggested.document.package.document.content,
+    ).flatMap((key) =>
+      key.startsWith(revisionPrefix)
+        ? [Number(key.slice(revisionPrefix.length))]
+        : [],
     );
     expect(revisionIds).toHaveLength(4);
     expect(new Set(revisionIds).size).toBe(revisionIds.length);
 
-    const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
+    const saved = await page.evaluate(() =>
+      globalThis.__folioCanonical?.save(),
+    );
     if (!saved) throw new Error("Canonical suggestions did not save.");
     const reopened = structuredClone(
       await parseDocx(new Uint8Array(saved), {
@@ -396,12 +484,17 @@ test("canonical suggestions survive save and reopen before acceptance or rejecti
         detectVariables: false,
       }),
     );
-    expect(reopened.package.document.content).toEqual(suggested.document.package.document.content);
+    expect(reopened.package.document.content).toEqual(
+      suggested.document.package.document.content,
+    );
 
     for (const decision of ["accept", "reject"] as const) {
       expect(await evaluateCanonicalLoad(page, saved)).toBe(true);
       await page.evaluate(
-        () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
       );
       const reloaded = await snapshot(page);
       expect(reloaded?.document?.package.document.content).toEqual(
@@ -410,7 +503,8 @@ test("canonical suggestions survive save and reopen before acceptance or rejecti
       expect(reloaded?.canUndo).toBe(false);
       expect(
         await page.evaluate(
-          ({ ids, resolution }) => globalThis.__folioCanonical?.resolveRevisions(ids, resolution),
+          ({ ids, resolution }) =>
+            globalThis.__folioCanonical?.resolveRevisions(ids, resolution),
           { ids: revisionIds, resolution: decision },
         ),
       ).toBe(true);
@@ -419,18 +513,27 @@ test("canonical suggestions survive save and reopen before acceptance or rejecti
         text: decision === "accept" ? "ABxC" : "A😀BC",
         selection: { from: 1, to: 1 },
       });
-      expect(identityKeysIn(resolved.document.package.document.content)).toEqual([]);
+      expect(
+        identityKeysIn(resolved.document.package.document.content),
+      ).toEqual([]);
       expect(resolved.document.package.document.content).toHaveLength(2);
       expect(resolved.document.package.document.content.at(0)).toMatchObject({
         type: "paragraph",
         content: [
-          { type: "run", content: [{ type: "text", text: decision === "accept" ? "A" : "A😀B" }] },
+          {
+            type: "run",
+            content: [
+              { type: "text", text: decision === "accept" ? "A" : "A😀B" },
+            ],
+          },
         ],
       });
       expect(resolved.canUndo).toBe(true);
       await page.keyboard.press(`${MODIFIER}+z`);
       const undone = await snapshot(page);
-      expect(undone?.document?.package.document.content).toEqual(reopened.package.document.content);
+      expect(undone?.document?.package.document.content).toEqual(
+        reopened.package.document.content,
+      );
       expect(undone?.projectionMatchesCanonical).toBe(true);
       await page.keyboard.press(`${MODIFIER}+Shift+z`);
       const redone = await snapshot(page);

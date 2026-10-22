@@ -18,18 +18,25 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
-import type { Paragraph } from "../../types/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { parseParagraph } from "../../docx/paragraphParser";
 import { serializeParagraph } from "../../docx/serializer/paragraphSerializer";
-import { getLocalName, parseXmlDocument, type XmlElement } from "../../docx/xmlParser";
+import {
+  getLocalName,
+  parseXmlDocument,
+  type XmlElement,
+} from "../../docx/xmlParser";
+import type { Paragraph } from "../../types/document";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const WORDPROCESSINGML_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const WORDPROCESSINGML_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const REVISION = 'w:author="Reviewer" w:date="2026-09-25T10:00:00Z"';
 
 type ChildKind =
@@ -132,7 +139,9 @@ const throughEditor = (paragraph: Paragraph): Paragraph => {
 const textOf = (element: XmlElement): string => {
   const name = getLocalName(element.name);
   if (name === "t" || name === "delText") {
-    return (element.elements ?? []).map((child) => String(child.text ?? "")).join("");
+    return (element.elements ?? [])
+      .map((child) => String(child.text ?? ""))
+      .join("");
   }
   return (element.elements ?? []).map(textOf).join("");
 };
@@ -175,7 +184,9 @@ const childOrderOf = (xml: string): string[] => {
 
 const expectOrderPreserved = (kinds: readonly ChildKind[]): void => {
   const authored = paragraphXml(kinds);
-  const expected = childOrderOf(serializeParagraph(parseParagraphXml(authored)));
+  const expected = childOrderOf(
+    serializeParagraph(parseParagraphXml(authored)),
+  );
   const saved = serializeParagraph(throughEditor(parseParagraphXml(authored)));
   expect(childOrderOf(saved)).toEqual(expected);
 };
@@ -197,7 +208,10 @@ describe("paragraph child order through an editor save", () => {
   test("mixed sequences of runs and inline containers keep their order", () => {
     fc.assert(
       fc.property(
-        fc.array(fc.constantFrom(...CHILD_KINDS), { minLength: 1, maxLength: 8 }),
+        fc.array(fc.constantFrom(...CHILD_KINDS), {
+          minLength: 1,
+          maxLength: 8,
+        }),
         (kinds) => {
           expectOrderPreserved(kinds);
         },

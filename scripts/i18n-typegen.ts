@@ -28,13 +28,16 @@ const isJsonObject = (value: unknown): value is JsonObject =>
   value !== null &&
   !Array.isArray(value) &&
   Object.values(value).every(
-    (entry): entry is JsonValue => typeof entry === "string" || isJsonObject(entry),
+    (entry): entry is JsonValue =>
+      typeof entry === "string" || isJsonObject(entry),
   );
 
 const parseMessages = (json: string): JsonObject => {
   const parsed: unknown = JSON.parse(json);
   if (!isJsonObject(parsed)) {
-    console.error("Expected en.json to contain only nested objects and strings");
+    console.error(
+      "Expected en.json to contain only nested objects and strings",
+    );
     process.exit(1);
   }
 
@@ -94,7 +97,9 @@ if (checkOnly) {
     .text()
     .catch(() => "");
   if (existing !== declaration) {
-    console.error(`Error: ${outputPath} is out of sync with en.json. Run \`bun run typegen\`.`);
+    console.error(
+      `Error: ${outputPath} is out of sync with en.json. Run \`bun run typegen\`.`,
+    );
     process.exit(1);
   }
   console.log(`${outputPath} is in sync (${keyCount} keys)`);

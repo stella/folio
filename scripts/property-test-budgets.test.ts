@@ -22,12 +22,13 @@
  * property gets the per-commit seed, the replay line and the nightly factor.
  */
 
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { panic } from "better-result";
-import { scanTestTimeout } from "../test/scan-timeout";
-import timings from "./ci-test-timings.json";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 import ts from "typescript";
+
+import { scanTestTimeout } from "../test/scan-timeout";
+import timings from "./ci-test-timings.json";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const SCANNED_ROOTS = ["packages", "scripts", "parity"] as const;
@@ -57,18 +58,29 @@ const drivesFastCheck = (node: ts.CallExpression): boolean =>
 /** `test(...)`, `it(...)`, and their `.each` / `.skip` / `.failing` forms. */
 const isTestExpression = (expression: ts.Expression): boolean => {
   if (ts.isIdentifier(expression)) return TEST_CALLEES.has(expression.text);
-  if (ts.isPropertyAccessExpression(expression) || ts.isCallExpression(expression))
+  if (
+    ts.isPropertyAccessExpression(expression) ||
+    ts.isCallExpression(expression)
+  )
     return isTestExpression(expression.expression);
   return false;
 };
-const isTestCall = (node: ts.CallExpression): boolean => isTestExpression(node.expression);
+const isTestCall = (node: ts.CallExpression): boolean =>
+  isTestExpression(node.expression);
 
 const isAsyncTest = (call: ts.CallExpression): boolean => {
   const body = call.arguments[1];
-  if (body === undefined || (!ts.isArrowFunction(body) && !ts.isFunctionExpression(body))) {
+  if (
+    body === undefined ||
+    (!ts.isArrowFunction(body) && !ts.isFunctionExpression(body))
+  ) {
     return false;
   }
-  return body.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) === true;
+  return (
+    body.modifiers?.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword,
+    ) === true
+  );
 };
 
 /**
@@ -82,13 +94,17 @@ const passesNumRuns = (call: ts.CallExpression): boolean => {
   const params = call.arguments.at(1);
   if (params === undefined) return false;
   if (ts.isCallExpression(params)) {
-    return ts.isIdentifier(params.expression) && params.expression.text === RUN_COUNT_HELPER;
+    return (
+      ts.isIdentifier(params.expression) &&
+      params.expression.text === RUN_COUNT_HELPER
+    );
   }
   return (
     ts.isObjectLiteralExpression(params) &&
     params.properties.some(
       (property) =>
-        (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) &&
+        (ts.isPropertyAssignment(property) ||
+          ts.isShorthandPropertyAssignment(property)) &&
         ts.isIdentifier(property.name) &&
         property.name.text === "numRuns",
     )
@@ -127,9 +143,11 @@ const budgetDeclarations = (sourceFile: ts.SourceFile) => {
       if (expression.operator === ts.SyntaxKind.PlusToken) return operand;
       return undefined;
     }
-    if (!ts.isIdentifier(expression) || resolving.has(expression.text)) return undefined;
+    if (!ts.isIdentifier(expression) || resolving.has(expression.text))
+      return undefined;
     const declarations = constants.get(expression.text);
-    const initializer = declarations?.length === 1 ? declarations.at(0) : undefined;
+    const initializer =
+      declarations?.length === 1 ? declarations.at(0) : undefined;
     if (initializer === undefined) return undefined;
     return numericValue(initializer, new Set([...resolving, expression.text]));
   };
@@ -149,10 +167,17 @@ const budgetDeclarations = (sourceFile: ts.SourceFile) => {
   };
   let fileBudget: "absent" | "valid" | "invalid" = "absent";
   for (const statement of sourceFile.statements) {
-    if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression))
+    if (
+      !ts.isExpressionStatement(statement) ||
+      !ts.isCallExpression(statement.expression)
+    )
       continue;
     const call = statement.expression;
-    if (!ts.isIdentifier(call.expression) || call.expression.text !== "setDefaultTimeout") continue;
+    if (
+      !ts.isIdentifier(call.expression) ||
+      call.expression.text !== "setDefaultTimeout"
+    )
+      continue;
     if (fileBudget === "invalid") continue;
     const timeout = call.arguments.at(0);
     const usesHelper =
@@ -168,7 +193,8 @@ const budgetDeclarations = (sourceFile: ts.SourceFile) => {
   }
   const validTestBudget = (testCall: ts.CallExpression): boolean => {
     if (fileBudget === "invalid") return false;
-    if (testCall.arguments.length >= 3) return validBudget(testCall.arguments.at(-1));
+    if (testCall.arguments.length >= 3)
+      return validBudget(testCall.arguments.at(-1));
     return fileBudget === "valid";
   };
   return validTestBudget;
@@ -182,26 +208,46 @@ const budgetDeclarations = (sourceFile: ts.SourceFile) => {
 const testFiles = (): string[] =>
   SCANNED_ROOTS.flatMap((root) =>
     ts.sys
-      .readDirectory(path.join(REPO_ROOT, root), [".ts", ".tsx"], ["**/node_modules/**"])
-      .map((absolute) => path.relative(REPO_ROOT, absolute).replaceAll("\\", "/"))
+      .readDirectory(
+        path.join(REPO_ROOT, root),
+        [".ts", ".tsx"],
+        ["**/node_modules/**"],
+      )
+      .map((absolute) =>
+        path.relative(REPO_ROOT, absolute).replaceAll("\\", "/"),
+      )
       .filter((file) => /\.test\.tsx?$/.test(file)),
   ).toSorted();
 
 type BudgetRequiringSite = { site: string; declaresBudget: boolean };
 
-const budgetRequiringSites = (file: string, sourceText: string): BudgetRequiringSite[] => {
-  const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
+const budgetRequiringSites = (
+  file: string,
+  sourceText: string,
+): BudgetRequiringSite[] => {
+  const sourceFile = ts.createSourceFile(
+    file,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const validTestBudget = budgetDeclarations(sourceFile);
   const sites: BudgetRequiringSite[] = [];
-  const visit = (node: ts.Node, enclosingTest: ts.CallExpression | null): void => {
-    const nextTest = ts.isCallExpression(node) && isTestCall(node) ? node : enclosingTest;
+  const visit = (
+    node: ts.Node,
+    enclosingTest: ts.CallExpression | null,
+  ): void => {
+    const nextTest =
+      ts.isCallExpression(node) && isTestCall(node) ? node : enclosingTest;
     if (
       ts.isCallExpression(node) &&
       drivesFastCheck(node) &&
       nextTest !== null &&
       (isAsyncTest(nextTest) || passesNumRuns(node))
     ) {
-      const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+      const { line } = sourceFile.getLineAndCharacterOfPosition(
+        node.getStart(sourceFile),
+      );
       sites.push({
         site: `${file}:${String(line + 1)}`,
         declaresBudget: validTestBudget(nextTest),
@@ -221,7 +267,12 @@ const budgetRequiringSites = (file: string, sourceText: string): BudgetRequiring
  * and the nightly factor.
  */
 const bypassingSites = (file: string, sourceText: string): string[] => {
-  const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
+  const sourceFile = ts.createSourceFile(
+    file,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const sites: string[] = [];
   const visit = (node: ts.Node): void => {
     if (
@@ -237,7 +288,9 @@ const bypassingSites = (file: string, sourceText: string): string[] => {
         ts.isIdentifier(params.expression) &&
         params.expression.text === RUN_COUNT_HELPER;
       if (!configured) {
-        const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+        const { line } = sourceFile.getLineAndCharacterOfPosition(
+          node.getStart(sourceFile),
+        );
         sites.push(`${file}:${String(line + 1)}`);
       }
     }
@@ -248,8 +301,16 @@ const bypassingSites = (file: string, sourceText: string): string[] => {
 };
 
 /** Nested configuration evaluates the pinned-seed guard before its assertion helper. */
-const nestedConfigurationSites = (file: string, sourceText: string): string[] => {
-  const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
+const nestedConfigurationSites = (
+  file: string,
+  sourceText: string,
+): string[] => {
+  const sourceFile = ts.createSourceFile(
+    file,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const sites: string[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && callsAssertHelper(node)) {
@@ -262,7 +323,9 @@ const nestedConfigurationSites = (file: string, sourceText: string): string[] =>
         ts.isIdentifier(params.expression) &&
         params.expression.text === RUN_COUNT_HELPER
       ) {
-        const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+        const { line } = sourceFile.getLineAndCharacterOfPosition(
+          node.getStart(sourceFile),
+        );
         sites.push(`${file}:${String(line + 1)}`);
       }
     }
@@ -276,7 +339,9 @@ const scanRepository = (): BudgetRequiringSite[] =>
   testFiles().flatMap((file) => {
     const sourceText = ts.sys.readFile(path.join(REPO_ROOT, file));
     if (sourceText === undefined) panic(`Cannot read ${file}.`);
-    return sourceText.includes("fc.") ? budgetRequiringSites(file, sourceText) : [];
+    return sourceText.includes("fc.")
+      ? budgetRequiringSites(file, sourceText)
+      : [];
   });
 
 type TimingEntry = { file: string; durationMs: number };
@@ -293,7 +358,12 @@ const insufficientHeadroom = (
   entries.flatMap(({ file, durationMs }) => {
     const sourceText = readSource(file);
     if (sourceText === undefined) return [];
-    const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
+    const sourceFile = ts.createSourceFile(
+      file,
+      sourceText,
+      ts.ScriptTarget.Latest,
+      true,
+    );
     const topLevelTests = sourceFile.statements.filter(
       (statement) =>
         ts.isExpressionStatement(statement) &&
@@ -308,7 +378,8 @@ const insufficientHeadroom = (
     countTests(sourceFile);
     if (topLevelTests.length !== 1 || testCalls !== 1) return [];
 
-    const budgetMatch = /setDefaultTimeout\(propertyTestTimeout\(([\d_]+)\)\)/.exec(sourceText);
+    const budgetMatch =
+      /setDefaultTimeout\(propertyTestTimeout\(([\d_]+)\)\)/.exec(sourceText);
     if (budgetMatch === null) return [];
     const budgetMs = Number((budgetMatch[1] as string).replaceAll("_", ""));
     const maximumDurationMs = budgetMs * (1 - REQUIRED_TIMEOUT_HEADROOM);
@@ -323,8 +394,10 @@ const insufficientHeadroom = (
 describe("property test budgets", () => {
   test("flags a measured single-property file without timeout headroom", () => {
     const file = "probe.property.test.ts";
-    const source = 'setDefaultTimeout(propertyTestTimeout(120_000));\ntest("property", () => {});';
-    const readSource = (candidate: string) => (candidate === file ? source : undefined);
+    const source =
+      'setDefaultTimeout(propertyTestTimeout(120_000));\ntest("property", () => {});';
+    const readSource = (candidate: string) =>
+      candidate === file ? source : undefined;
     expect(
       insufficientHeadroom(
         [
@@ -435,9 +508,13 @@ ${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
   });
 
   test("reads where a budget-requiring site states its budget", () => {
-    const body = "async () => { await fc.assert(p, propertyConfig({ numRuns: 40 })); }";
+    const body =
+      "async () => { await fc.assert(p, propertyConfig({ numRuns: 40 })); }";
     expect(
-      budgetRequiringSites("probe.ts", `test("x", ${body}, propertyTestTimeout(30_000));`),
+      budgetRequiringSites(
+        "probe.ts",
+        `test("x", ${body}, propertyTestTimeout(30_000));`,
+      ),
     ).toEqual([{ site: "probe.ts:1", declaresBudget: true }]);
     expect(
       budgetRequiringSites(
@@ -449,15 +526,23 @@ ${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
       { site: "probe.ts:1", declaresBudget: false },
     ]);
     // A bare number pins PR CI and leaves the nightly sweep unscaled.
-    expect(budgetRequiringSites("probe.ts", `test("x", ${body}, 30_000);`)).toEqual([
-      { site: "probe.ts:1", declaresBudget: false },
-    ]);
+    expect(
+      budgetRequiringSites("probe.ts", `test("x", ${body}, 30_000);`),
+    ).toEqual([{ site: "probe.ts:1", declaresBudget: false }]);
     // A synchronous property is a pure predicate at the default run count.
-    expect(budgetRequiringSites("probe.ts", 'test("x", () => { fc.assert(p, {}); });')).toEqual([]);
+    expect(
+      budgetRequiringSites(
+        "probe.ts",
+        'test("x", () => { fc.assert(p, {}); });',
+      ),
+    ).toEqual([]);
     // Raising `numRuns` above the default multiplies the nightly wall clock
     // even without an `await`, so a sync site needs a budget too.
     expect(
-      budgetRequiringSites("probe.ts", 'test("x", () => { fc.assert(p, { numRuns: 2000 }); });'),
+      budgetRequiringSites(
+        "probe.ts",
+        'test("x", () => { fc.assert(p, { numRuns: 2000 }); });',
+      ),
     ).toEqual([{ site: "probe.ts:1", declaresBudget: false }]);
     expect(
       budgetRequiringSites(
@@ -467,7 +552,10 @@ ${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
     ).toEqual([{ site: "probe.ts:1", declaresBudget: true }]);
     // `propertyConfig` sets `numRuns` even called bare, so it always counts.
     expect(
-      budgetRequiringSites("probe.ts", 'test("x", () => { fc.assert(p, propertyConfig()); });'),
+      budgetRequiringSites(
+        "probe.ts",
+        'test("x", () => { fc.assert(p, propertyConfig()); });',
+      ),
     ).toEqual([{ site: "probe.ts:1", declaresBudget: false }]);
   });
 
@@ -475,16 +563,17 @@ ${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
     const files = testFiles();
     expect(files.filter((file) => file.includes("/node_modules/"))).toEqual([]);
     expect(
-      SCANNED_ROOTS.filter((root) => !files.some((file) => file.startsWith(`${root}/`))),
+      SCANNED_ROOTS.filter(
+        (root) => !files.some((file) => file.startsWith(`${root}/`)),
+      ),
     ).toEqual([]);
     expect(scanRepository().length).toBeGreaterThan(0);
   });
 
   test("reads which properties bypass propertyConfig", () => {
-    expect(bypassingSites("probe.ts", "fc.assert(p, { numRuns: 4 });\nfc.check(p);")).toEqual([
-      "probe.ts:1",
-      "probe.ts:2",
-    ]);
+    expect(
+      bypassingSites("probe.ts", "fc.assert(p, { numRuns: 4 });\nfc.check(p);"),
+    ).toEqual(["probe.ts:1", "probe.ts:2"]);
     expect(
       bypassingSites(
         "probe.ts",
@@ -509,9 +598,12 @@ ${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
         "propertyConfig({ numRuns: 100 })",
         "(propertyConfig())",
       ]) {
-        expect(nestedConfigurationSites("probe.ts", `${helper}(property, ${config});`)).toEqual([
-          "probe.ts:1",
-        ]);
+        expect(
+          nestedConfigurationSites(
+            "probe.ts",
+            `${helper}(property, ${config});`,
+          ),
+        ).toEqual(["probe.ts:1"]);
       }
       expect(
         nestedConfigurationSites(
@@ -546,12 +638,17 @@ ${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
   test("every budget-requiring site declares propertyTestTimeout", () => {
     const undeclared = scanRepository()
       .filter(({ declaresBudget }) => !declaresBudget)
-      .map(({ site }) => `${site} needs a stated budget with no ${BUDGET_HELPER}`);
+      .map(
+        ({ site }) => `${site} needs a stated budget with no ${BUDGET_HELPER}`,
+      );
     expect(undeclared).toEqual([]);
   });
 
   test("measured single-property files retain 25% timeout headroom", () => {
-    const entries = Object.entries(timings).map(([file, durationMs]) => ({ file, durationMs }));
+    const entries = Object.entries(timings).map(([file, durationMs]) => ({
+      file,
+      durationMs,
+    }));
     const violations = insufficientHeadroom(entries, (file) =>
       ts.sys.readFile(path.join(REPO_ROOT, file)),
     );

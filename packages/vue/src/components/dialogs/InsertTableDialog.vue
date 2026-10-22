@@ -11,7 +11,13 @@
     <div class="dialog" @mousedown.stop @keydown.stop="onKeydown">
       <div class="dialog__header">
         <span class="dialog__title">{{ t("dialogs.insertTable.title") }}</span>
-        <button class="dialog__close" :title="t('common.closeDialog')" @click="close">✕</button>
+        <button
+          class="dialog__close"
+          :title="t('common.closeDialog')"
+          @click="close"
+        >
+          ✕
+        </button>
       </div>
       <div class="dialog__body">
         <!-- Visual grid picker -->
@@ -40,7 +46,10 @@
         <div class="table-grid__label">
           {{
             hoverRow > 0
-              ? t("dialogs.insertTable.tableSize", { cols: hoverCol, rows: hoverRow })
+              ? t("dialogs.insertTable.tableSize", {
+                  cols: hoverCol,
+                  rows: hoverRow,
+                })
               : t("dialogs.insertTable.hoverToSelect")
           }}
         </div>
@@ -74,7 +83,10 @@
             />
           </label>
         </div>
-        <div class="table-manual__hint" :class="{ 'table-manual__hint--error': !canInsert }">
+        <div
+          class="table-manual__hint"
+          :class="{ 'table-manual__hint--error': !canInsert }"
+        >
           {{
             t("dialogs.insertTable.validationHint", {
               minRows: MIN_ROWS,
@@ -102,10 +114,15 @@
         <div class="dialog__separator">
           <span>{{ t("dialogs.insertTable.style") }}</span>
         </div>
-        <TableStyleGallery :current-style-id="styleId" @apply="(id: string) => (styleId = id)" />
+        <TableStyleGallery
+          :current-style-id="styleId"
+          @apply="(id: string) => (styleId = id)"
+        />
       </div>
       <div class="dialog__footer">
-        <button class="dialog__btn" @mousedown.prevent="close">{{ t("common.cancel") }}</button>
+        <button class="dialog__btn" @mousedown.prevent="close">
+          {{ t("common.cancel") }}
+        </button>
         <button
           class="dialog__btn dialog__btn--primary"
           :disabled="!canInsert"
@@ -119,10 +136,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { computed, ref, watch } from "vue";
+
 import { useTranslation } from "../../i18n";
-import TableStyleGallery from "../ui/TableStyleGallery.vue";
 import { rememberedTableSize } from "../insertTableState";
+import TableStyleGallery from "../ui/TableStyleGallery.vue";
 
 const { t } = useTranslation();
 
@@ -131,7 +149,12 @@ const emit = defineEmits<{
   (e: "close"): void;
   (
     e: "insert",
-    config: { rows: number; cols: number; autofit: boolean; styleId: string | null },
+    config: {
+      rows: number;
+      cols: number;
+      autofit: boolean;
+      styleId: string | null;
+    },
   ): void;
 }>();
 
@@ -166,10 +189,16 @@ watch(
 const rowsNum = computed(() => Number.parseInt(String(rowsInput.value), 10));
 const colsNum = computed(() => Number.parseInt(String(colsInput.value), 10));
 const rowsValid = computed(
-  () => Number.isFinite(rowsNum.value) && rowsNum.value >= MIN_ROWS && rowsNum.value <= MAX_ROWS,
+  () =>
+    Number.isFinite(rowsNum.value) &&
+    rowsNum.value >= MIN_ROWS &&
+    rowsNum.value <= MAX_ROWS,
 );
 const colsValid = computed(
-  () => Number.isFinite(colsNum.value) && colsNum.value >= MIN_COLS && colsNum.value <= MAX_COLS,
+  () =>
+    Number.isFinite(colsNum.value) &&
+    colsNum.value >= MIN_COLS &&
+    colsNum.value <= MAX_COLS,
 );
 const canInsert = computed(() => rowsValid.value && colsValid.value);
 

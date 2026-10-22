@@ -17,12 +17,16 @@
     <div
       class="docx-horizontal-ruler__margin"
       :style="leftMarginStyle"
-      @mousedown.prevent.stop="editable ? startDrag('leftMargin', $event) : null"
+      @mousedown.prevent.stop="
+        editable ? startDrag('leftMargin', $event) : null
+      "
     />
     <div
       class="docx-horizontal-ruler__margin"
       :style="rightMarginStyle"
-      @mousedown.prevent.stop="editable ? startDrag('rightMargin', $event) : null"
+      @mousedown.prevent.stop="
+        editable ? startDrag('rightMargin', $event) : null
+      "
     />
 
     <!-- Tick marks -->
@@ -46,8 +50,16 @@
     <div
       v-if="showFirstLineIndent"
       class="docx-ruler-indent"
-      :style="indentContainerStyle('down', firstLinePosPx, dragging === 'firstLineIndent')"
-      @mousedown.prevent.stop="editable ? startDrag('firstLineIndent', $event) : null"
+      :style="
+        indentContainerStyle(
+          'down',
+          firstLinePosPx,
+          dragging === 'firstLineIndent',
+        )
+      "
+      @mousedown.prevent.stop="
+        editable ? startDrag('firstLineIndent', $event) : null
+      "
       @mouseenter="hovered = 'firstLineIndent'"
       @mouseleave="hovered = null"
     >
@@ -58,7 +70,9 @@
     <div
       v-if="editable"
       class="docx-ruler-indent"
-      :style="indentContainerStyle('up', leftIndentPosPx, dragging === 'leftIndent')"
+      :style="
+        indentContainerStyle('up', leftIndentPosPx, dragging === 'leftIndent')
+      "
       @mousedown.prevent.stop="startDrag('leftIndent', $event)"
       @mouseenter="hovered = 'leftIndent'"
       @mouseleave="hovered = null"
@@ -70,7 +84,13 @@
     <div
       v-if="editable"
       class="docx-ruler-indent"
-      :style="indentContainerStyle('down', rightIndentPosPx, dragging === 'rightIndent')"
+      :style="
+        indentContainerStyle(
+          'down',
+          rightIndentPosPx,
+          dragging === 'rightIndent',
+        )
+      "
       @mousedown.prevent.stop="startDrag('rightIndent', $event)"
       @mouseenter="hovered = 'rightIndent'"
       @mouseleave="hovered = null"
@@ -102,11 +122,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, type CSSProperties } from "vue";
-import type { SectionProperties, TabStop } from "@stll/folio-core/types/document";
-import { twipsToPixels, pixelsToTwips } from "@stll/folio-core/utils/units";
+import { computed, type CSSProperties, onBeforeUnmount, ref } from "vue";
 
-type MarkerType = "leftMargin" | "rightMargin" | "firstLineIndent" | "leftIndent" | "rightIndent";
+import type {
+  SectionProperties,
+  TabStop,
+} from "@stll/folio-core/types/document";
+import { pixelsToTwips, twipsToPixels } from "@stll/folio-core/utils/units";
+
+type MarkerType =
+  | "leftMargin"
+  | "rightMargin"
+  | "firstLineIndent"
+  | "leftIndent"
+  | "rightIndent";
 
 const props = withDefaults(
   defineProps<{
@@ -169,9 +198,15 @@ function px2tw(px: number): number {
   return Math.round(pixelsToTwips(px / props.zoom));
 }
 
-const pageWidthTwips = computed(() => props.sectionProps?.pageWidth ?? DEFAULT_PAGE_WIDTH_TWIPS);
-const leftMarginTwips = computed(() => props.sectionProps?.marginLeft ?? DEFAULT_MARGIN_TWIPS);
-const rightMarginTwips = computed(() => props.sectionProps?.marginRight ?? DEFAULT_MARGIN_TWIPS);
+const pageWidthTwips = computed(
+  () => props.sectionProps?.pageWidth ?? DEFAULT_PAGE_WIDTH_TWIPS,
+);
+const leftMarginTwips = computed(
+  () => props.sectionProps?.marginLeft ?? DEFAULT_MARGIN_TWIPS,
+);
+const rightMarginTwips = computed(
+  () => props.sectionProps?.marginRight ?? DEFAULT_MARGIN_TWIPS,
+);
 const contentTwips = computed(
   () => pageWidthTwips.value - leftMarginTwips.value - rightMarginTwips.value,
 );
@@ -231,7 +266,11 @@ const rightMarginStyle = computed<CSSProperties>(() => ({
 // Eighth-inch ticks; major every inch (height 10), quarters height 6,
 // halves height 4, eighths height 2.
 const ticks = computed(() => {
-  const out: { position: number; height: number; label?: string | undefined }[] = [];
+  const out: {
+    position: number;
+    height: number;
+    label?: string | undefined;
+  }[] = [];
   if (props.unit === "inch") {
     const eighth = TWIPS_PER_INCH / 8;
     const total = Math.ceil(pageWidthTwips.value / eighth);
@@ -240,7 +279,11 @@ const ticks = computed(() => {
       if (twPos > pageWidthTwips.value) break;
       const px = tw2px(twPos);
       if (i % 8 === 0) {
-        out.push({ position: px, height: 10, label: i / 8 > 0 ? String(i / 8) : undefined });
+        out.push({
+          position: px,
+          height: 10,
+          label: i / 8 > 0 ? String(i / 8) : undefined,
+        });
       } else if (i % 4 === 0) {
         out.push({ position: px, height: 6 });
       } else if (i % 2 === 0) {
@@ -257,7 +300,11 @@ const ticks = computed(() => {
       if (twPos > pageWidthTwips.value) break;
       const px = tw2px(twPos);
       if (i % 10 === 0) {
-        out.push({ position: px, height: 10, label: i / 10 > 0 ? String(i / 10) : undefined });
+        out.push({
+          position: px,
+          height: 10,
+          label: i / 10 > 0 ? String(i / 10) : undefined,
+        });
       } else if (i % 5 === 0) {
         out.push({ position: px, height: 6 });
       } else {
@@ -345,7 +392,8 @@ function startDrag(type: MarkerType, event: MouseEvent) {
   else if (type === "rightIndent") dragStartValue = props.indentRight;
   else if (type === "firstLineIndent") dragStartValue = props.firstLineIndent;
 
-  tooltipX.value = event.clientX - (rulerRef.value?.getBoundingClientRect().left ?? 0);
+  tooltipX.value =
+    event.clientX - (rulerRef.value?.getBoundingClientRect().left ?? 0);
   tooltipText.value = formatValue(dragStartValue);
 
   document.addEventListener("mousemove", handleMove);
@@ -384,7 +432,9 @@ function computeNewValue(marker: MarkerType, positionTwips: number): number {
     const base = leftMarginTwips.value + props.indentLeft;
     const indentFromBase = positionTwips - base;
     const max = contentTwips.value - props.indentLeft - props.indentRight - 720;
-    return Math.round(Math.max(-props.indentLeft, Math.min(indentFromBase, max)));
+    return Math.round(
+      Math.max(-props.indentLeft, Math.min(indentFromBase, max)),
+    );
   }
   if (marker === "leftIndent") {
     const indentFromMargin = positionTwips - leftMarginTwips.value;

@@ -21,7 +21,6 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
 import { compareDocx } from "./compare";
@@ -34,11 +33,17 @@ import {
 import type { CompareChange, CompareResult } from "./types";
 import { revisedFinalParagraphMarks } from "./verification";
 
-const FIXTURES_DIR = path.join(import.meta.dir, "../docx/__tests__/__fixtures__/corpus");
+const FIXTURES_DIR = path.join(
+  import.meta.dir,
+  "../docx/__tests__/__fixtures__/corpus",
+);
 
 const readFixture = (filename: string): ArrayBuffer => {
   const bytes = readFileSync(path.join(FIXTURES_DIR, filename));
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 };
 
 /**
@@ -47,13 +52,17 @@ const readFixture = (filename: string): ArrayBuffer => {
  * tables, and no Word-authored paraIds.
  */
 const buildSyntheticBase = async (): Promise<ArrayBuffer> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(readFixture("upstream-empty.docx"));
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    readFixture("upstream-empty.docx"),
+  );
   const anchor = reviewer.snapshot();
   // An empty document is one blank paragraph, so its first block is the anchor
   // the synthetic clauses are built on.
   const anchorId = anchor.blocks.at(0)?.id;
   if (anchorId === undefined) {
-    throw new Error("The empty fixture offers no anchor to build a synthetic base on.");
+    throw new Error(
+      "The empty fixture offers no anchor to build a synthetic base on.",
+    );
   }
   reviewer.applyOperations(
     Array.from({ length: 6 }, (_unused, index) => ({
@@ -74,8 +83,12 @@ const PRIOR_AUTHOR = "a previous reviewer";
  * applied in `"tracked-changes"` mode, so the document holds unresolved
  * insertions and deletions before the comparison ever sees it.
  */
-const withPriorRevisions = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { author: PRIOR_AUTHOR });
+const withPriorRevisions = async (
+  buffer: ArrayBuffer,
+): Promise<ArrayBuffer> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    author: PRIOR_AUTHOR,
+  });
   const snapshot = reviewer.snapshot();
   reviewer.applyOperations(
     snapshot.blocks.slice(0, 3).map((block, index) => ({
@@ -109,7 +122,11 @@ const revisionIdsInPackage = async (buffer: ArrayBuffer): Promise<string[]> => {
   const zip = await JSZip.loadAsync(buffer);
   const ids: string[] = [];
   for (const [partPath, file] of Object.entries(zip.files)) {
-    if (file.dir || !partPath.startsWith("word/") || !partPath.endsWith(".xml")) {
+    if (
+      file.dir ||
+      !partPath.startsWith("word/") ||
+      !partPath.endsWith(".xml")
+    ) {
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- the parts share one id space, so they are read together
@@ -129,11 +146,17 @@ const PARAGRAPH_ID_ATTRIBUTE =
  * `ST_LongHexNumber` with a maximum, so the values are 31-bit, and a package
  * carrying a larger one is a package a consumer refuses.
  */
-const paragraphIdsInPackage = async (buffer: ArrayBuffer): Promise<string[]> => {
+const paragraphIdsInPackage = async (
+  buffer: ArrayBuffer,
+): Promise<string[]> => {
   const zip = await JSZip.loadAsync(buffer);
   const ids: string[] = [];
   for (const [partPath, file] of Object.entries(zip.files)) {
-    if (file.dir || !partPath.startsWith("word/") || !partPath.endsWith(".xml")) {
+    if (
+      file.dir ||
+      !partPath.startsWith("word/") ||
+      !partPath.endsWith(".xml")
+    ) {
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- the parts share one id space, so they are read together
@@ -147,7 +170,9 @@ const paragraphIdsInPackage = async (buffer: ArrayBuffer): Promise<string[]> => 
 
 const authorsOfChanges = async (buffer: ArrayBuffer): Promise<string[]> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
-  return [...new Set(reviewer.getChanges().map(({ author }) => author))].toSorted();
+  return [
+    ...new Set(reviewer.getChanges().map(({ author }) => author)),
+  ].toSorted();
 };
 
 const FIXTURE_FILES = [
@@ -163,7 +188,10 @@ const BASE_DOCUMENTS: readonly { name: string; buffer: ArrayBuffer }[] = [
   { name: "synthetic", buffer: SYNTHETIC_BASE },
 ];
 
-const OPTIONS = { author: "compare", timestamp: "2024-03-01T00:00:00.000Z" } as const;
+const OPTIONS = {
+  author: "compare",
+  timestamp: "2024-03-01T00:00:00.000Z",
+} as const;
 
 const blocksOf = async (buffer: ArrayBuffer): Promise<FolioAIBlock[]> =>
   (await FolioDocxReviewer.fromBuffer(buffer)).getContent();
@@ -198,7 +226,10 @@ const projectView = async (
   }));
 };
 
-const compareOrThrow = async (base: ArrayBuffer, target: ArrayBuffer): Promise<CompareResult> => {
+const compareOrThrow = async (
+  base: ArrayBuffer,
+  target: ArrayBuffer,
+): Promise<CompareResult> => {
   const result = await compareDocx(base, target, OPTIONS);
   if (result.isErr()) {
     throw result.error;
@@ -207,7 +238,8 @@ const compareOrThrow = async (base: ArrayBuffer, target: ArrayBuffer): Promise<C
 };
 
 /** Every block index of `blocks`, so a generated step always addresses a real block. */
-const blockIndexArb = (blocks: readonly FolioAIBlock[]) => fc.nat({ max: blocks.length - 1 });
+const blockIndexArb = (blocks: readonly FolioAIBlock[]) =>
+  fc.nat({ max: blocks.length - 1 });
 
 /**
  * Body-level block indexes only.
@@ -223,7 +255,9 @@ const blockIndexArb = (blocks: readonly FolioAIBlock[]) => fc.nat({ max: blocks.
  * `container` limitation, measured on real documents rather than asserted here.
  */
 const bodyBlockIndexArb = (blocks: readonly FolioAIBlock[]) => {
-  const bodyIndexes = blocks.flatMap((block, index) => (block.table ? [] : [index]));
+  const bodyIndexes = blocks.flatMap((block, index) =>
+    block.table ? [] : [index],
+  );
   return bodyIndexes.length === 0 ? null : fc.constantFrom(...bodyIndexes);
 };
 
@@ -239,7 +273,8 @@ const MOVE_MINIMUM_WORD_COUNT = 3;
 /** Body-level blocks with enough words for the move pass to pair them. */
 const movableBlockIndexArb = (blocks: readonly FolioAIBlock[]) => {
   const indexes = blocks.flatMap((block, index) =>
-    !block.table && block.text.trim().split(/\s+/u).length >= MOVE_MINIMUM_WORD_COUNT
+    !block.table &&
+    block.text.trim().split(/\s+/u).length >= MOVE_MINIMUM_WORD_COUNT
       ? [index]
       : [],
   );
@@ -267,7 +302,9 @@ const findableWordArb = (blocks: readonly FolioAIBlock[]) => {
 };
 
 const tableBlockIndexArb = (blocks: readonly FolioAIBlock[]) => {
-  const indexes = blocks.flatMap((block, index) => (block.table ? [index] : []));
+  const indexes = blocks.flatMap((block, index) =>
+    block.table ? [index] : [],
+  );
   return indexes.length === 0 ? null : fc.constantFrom(...indexes);
 };
 
@@ -277,14 +314,18 @@ const tableBlockIndexArb = (blocks: readonly FolioAIBlock[]) => {
  * block at all, so a short row would erase the row boundary the comparison
  * reads structure from, and the script would no longer describe what changed.
  */
-const rowBlockCount = (blocks: readonly FolioAIBlock[], index: number): number => {
+const rowBlockCount = (
+  blocks: readonly FolioAIBlock[],
+  index: number,
+): number => {
   const table = blocks[index]?.table;
   if (!table) {
     return 1;
   }
   return blocks.filter(
     (block) =>
-      block.table?.tableIndex === table.tableIndex && block.table.rowIndex === table.rowIndex,
+      block.table?.tableIndex === table.tableIndex &&
+      block.table.rowIndex === table.rowIndex,
   ).length;
 };
 
@@ -295,11 +336,18 @@ const formattingArb = fc
     underline: fc.boolean(),
     strike: fc.boolean(),
   })
-  .filter(({ bold, italic, underline, strike }) => bold || italic || underline || strike);
+  .filter(
+    ({ bold, italic, underline, strike }) =>
+      bold || italic || underline || strike,
+  );
 
 /** Steps that only change formatting, for the formatting-only property. */
-const formatStepArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditScriptStep> | null => {
-  const indexes = blocks.flatMap((block, index) => (block.text.length >= 4 ? [index] : []));
+const formatStepArb = (
+  blocks: readonly FolioAIBlock[],
+): fc.Arbitrary<EditScriptStep> | null => {
+  const indexes = blocks.flatMap((block, index) =>
+    block.text.length >= 4 ? [index] : [],
+  );
   if (indexes.length === 0) {
     return null;
   }
@@ -308,13 +356,17 @@ const formatStepArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditScript
       type: fc.constant("formatRange" as const),
       blockIndex: fc.constant(blockIndex),
       startOffset: fc.constant(0),
-      endOffset: fc.nat({ max: (blocks[blockIndex]?.text.length ?? 1) - 1 }).map((n) => n + 1),
+      endOffset: fc
+        .nat({ max: (blocks[blockIndex]?.text.length ?? 1) - 1 })
+        .map((n) => n + 1),
       formatting: formattingArb,
     }),
   );
 };
 
-const editStepArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditScriptStep> => {
+const editStepArb = (
+  blocks: readonly FolioAIBlock[],
+): fc.Arbitrary<EditScriptStep> => {
   const steps: fc.Arbitrary<EditScriptStep>[] = [
     fc.record({
       type: fc.constant("insertParagraphAfter" as const),
@@ -370,7 +422,10 @@ const editStepArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditScriptSt
           }),
         }),
       ),
-      fc.record({ type: fc.constant("deleteTableRow" as const), blockIndex: tableIndex }),
+      fc.record({
+        type: fc.constant("deleteTableRow" as const),
+        blockIndex: tableIndex,
+      }),
       fc.record({
         type: fc.constant("editTableCell" as const),
         blockIndex: tableIndex,
@@ -387,17 +442,23 @@ const editStepArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditScriptSt
  * coalesce into a single reported change, which property 4 counts against the
  * script; keeping targets distinct lets it compare like with like.
  */
-const editScriptArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditScript> =>
+const editScriptArb = (
+  blocks: readonly FolioAIBlock[],
+): fc.Arbitrary<EditScript> =>
   fc
     .array(editStepArb(blocks), { minLength: 1, maxLength: 4 })
     .map((steps) => distinctByBlock(steps));
 
-const distinctByBlock = (steps: readonly EditScriptStep[]): EditScriptStep[] => {
+const distinctByBlock = (
+  steps: readonly EditScriptStep[],
+): EditScriptStep[] => {
   const seen = new Set<number>();
   const distinct: EditScriptStep[] = [];
   for (const step of steps) {
     const touched =
-      step.type === "moveParagraph" ? [step.blockIndex, step.beforeBlockIndex] : [step.blockIndex];
+      step.type === "moveParagraph"
+        ? [step.blockIndex, step.beforeBlockIndex]
+        : [step.blockIndex];
     if (touched.some((index) => seen.has(index))) {
       continue;
     }
@@ -412,7 +473,11 @@ const distinctByBlock = (steps: readonly EditScriptStep[]): EditScriptStep[] => 
 /** The body-level blocks a story ENDS with, as a contiguous run of indexes. */
 const trailingBodyIndexes = (blocks: readonly FolioAIBlock[]): number[] => {
   const indexes: number[] = [];
-  for (let index = blocks.length - 1; index >= 0 && blocks[index]?.table === undefined; index--) {
+  for (
+    let index = blocks.length - 1;
+    index >= 0 && blocks[index]?.table === undefined;
+    index--
+  ) {
     indexes.unshift(index);
   }
   return indexes;
@@ -452,7 +517,8 @@ const trailingRewriteScriptArb = (
     .filter(({ removed, inserted }) => removed > 0 || inserted.length > 0)
     .map(({ removed, inserted, anchor }) => {
       const run = tail.slice(tail.length - removed);
-      const anchorIndex = (anchor === "first" ? run[0] : run.at(-1)) ?? lastIndex;
+      const anchorIndex =
+        (anchor === "first" ? run[0] : run.at(-1)) ?? lastIndex;
       const steps: EditScriptStep[] = inserted.map((text) => ({
         type: "insertParagraphAfter" as const,
         blockIndex: anchorIndex,
@@ -469,12 +535,17 @@ const trailingRewriteScriptArb = (
  * Every script shape the round trip has to hold for: the general edits, and
  * the trailing rewrites the general ones do not reach.
  */
-const roundTripScriptArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditScript> => {
+const roundTripScriptArb = (
+  blocks: readonly FolioAIBlock[],
+): fc.Arbitrary<EditScript> => {
   const trailing = trailingRewriteScriptArb(blocks);
-  return trailing ? fc.oneof(editScriptArb(blocks), trailing) : editScriptArb(blocks);
+  return trailing
+    ? fc.oneof(editScriptArb(blocks), trailing)
+    : editScriptArb(blocks);
 };
 
-const kindsOf = (changes: readonly CompareChange[]): string[] => changes.map(({ kind }) => kind);
+const kindsOf = (changes: readonly CompareChange[]): string[] =>
+  changes.map(({ kind }) => kind);
 
 /**
  * A block's text with the inline formatting it carries, one entry per
@@ -585,7 +656,8 @@ const touchedBlockBudget = async ({
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- each relocation is replayed on its own
-    budget += 2 + (await relocationDroppedFormattingCount(base, baseBlocks, step));
+    budget +=
+      2 + (await relocationDroppedFormattingCount(base, baseBlocks, step));
   }
   return budget;
 };
@@ -593,7 +665,9 @@ const touchedBlockBudget = async ({
 /** What a change says apart from its kind and where it sits. */
 const changePayload = (change: CompareChange): Record<string, unknown> =>
   Object.fromEntries(
-    Object.entries(change).filter(([key]) => key !== "kind" && key !== "location"),
+    Object.entries(change).filter(
+      ([key]) => key !== "kind" && key !== "location",
+    ),
   );
 
 type BudgetOverrunOptions = {
@@ -628,10 +702,16 @@ const budgetOverrunReport = ({
     `const script: EditScript = ${JSON.stringify(script, null, 2)};`,
     ...(applied.length === script.length
       ? []
-      : [`Applied steps (the rest went unresolved): ${JSON.stringify(applied)}`]),
+      : [
+          `Applied steps (the rest went unresolved): ${JSON.stringify(applied)}`,
+        ]),
     "Changes:",
     ...changes.map((change, index) =>
-      [`  ${String(index)}.`, change.kind, JSON.stringify(changePayload(change))].join(" "),
+      [
+        `  ${String(index)}.`,
+        change.kind,
+        JSON.stringify(changePayload(change)),
+      ].join(" "),
     ),
   ].join("\n");
 
@@ -667,12 +747,13 @@ describe("compareDocx", () => {
             }
             const target = scripted.value.buffer;
             const { buffer } = await compareOrThrow(base, target);
-            const [accepted, rejected, targetProjection, baseProjection] = await Promise.all([
-              projectView(buffer, "final"),
-              projectView(buffer, "original"),
-              projectView(target, "final"),
-              projectView(base, "final"),
-            ]);
+            const [accepted, rejected, targetProjection, baseProjection] =
+              await Promise.all([
+                projectView(buffer, "final"),
+                projectView(buffer, "original"),
+                projectView(target, "final"),
+                projectView(base, "final"),
+              ]);
             expect(accepted).toEqual(targetProjection);
             expect(rejected).toEqual(baseProjection);
           }),
@@ -697,7 +778,9 @@ describe("compareDocx", () => {
             // the editor plugins the reviewer mounts are process singletons.
             const first = await compareOrThrow(base, target);
             const second = await compareOrThrow(base, target);
-            expect(Buffer.from(first.buffer).equals(Buffer.from(second.buffer))).toBe(true);
+            expect(
+              Buffer.from(first.buffer).equals(Buffer.from(second.buffer)),
+            ).toBe(true);
             expect(first.changes).toEqual(second.changes);
           }),
           propertyConfig({ numRuns: 8 }),
@@ -715,7 +798,10 @@ describe("compareDocx", () => {
             if (scripted.isErr()) {
               throw scripted.error;
             }
-            const { buffer } = await compareOrThrow(base, scripted.value.buffer);
+            const { buffer } = await compareOrThrow(
+              base,
+              scripted.value.buffer,
+            );
             const ids = await revisionIdsInPackage(buffer);
             expect(new Set(ids).size).toBe(ids.length);
           }),
@@ -734,9 +820,14 @@ describe("compareDocx", () => {
             if (scripted.isErr()) {
               throw scripted.error;
             }
-            const { buffer } = await compareOrThrow(base, scripted.value.buffer);
+            const { buffer } = await compareOrThrow(
+              base,
+              scripted.value.buffer,
+            );
             const ids = await paragraphIdsInPackage(buffer);
-            expect(ids.every((id) => Number.parseInt(id, 16) < 0x8000_0000)).toBe(true);
+            expect(
+              ids.every((id) => Number.parseInt(id, 16) < 0x8000_0000),
+            ).toBe(true);
           }),
           propertyConfig({ numRuns: 10 }),
         );
@@ -754,7 +845,10 @@ describe("compareDocx", () => {
             if (scripted.isErr()) {
               throw scripted.error;
             }
-            const { changes } = await compareOrThrow(base, scripted.value.buffer);
+            const { changes } = await compareOrThrow(
+              base,
+              scripted.value.buffer,
+            );
             const budget = await touchedBlockBudget({
               base,
               applied: scripted.value.applied,
@@ -788,7 +882,9 @@ describe("compareDocx", () => {
         async () => {
           await fc.assert(
             fc.asyncProperty(
-              fc.array(formatOnly, { minLength: 1, maxLength: 3 }).map(distinctByBlock),
+              fc
+                .array(formatOnly, { minLength: 1, maxLength: 3 })
+                .map(distinctByBlock),
               async (script) => {
                 const scripted = await applyEditScript(base, script);
                 if (scripted.isErr()) {
@@ -797,7 +893,10 @@ describe("compareDocx", () => {
                 if (scripted.value.applied.length === 0) {
                   return;
                 }
-                const { changes } = await compareOrThrow(base, scripted.value.buffer);
+                const { changes } = await compareOrThrow(
+                  base,
+                  scripted.value.buffer,
+                );
                 expect(new Set(kindsOf(changes))).toEqual(
                   changes.length === 0 ? new Set() : new Set(["format"]),
                 );
@@ -817,8 +916,15 @@ describe("compareDocx", () => {
     // describing both ends of the surviving neighbour as unrelated edits.
     const base = readFixture("upstream-styled-content.docx");
     const baseBlocks = await blocksOf(base);
-    const move = { type: "moveParagraph", blockIndex: 1, beforeBlockIndex: 4 } as const;
-    const script: EditScript = [{ type: "deleteParagraph", blockIndex: 2 }, move];
+    const move = {
+      type: "moveParagraph",
+      blockIndex: 1,
+      beforeBlockIndex: 4,
+    } as const;
+    const script: EditScript = [
+      { type: "deleteParagraph", blockIndex: 2 },
+      move,
+    ];
 
     // The scenario reads the fixture by index, so pin the shape it relies on:
     // the relocated paragraph carries direct formatting, and it swaps past
@@ -860,11 +966,16 @@ describe("compareDocx", () => {
     expect(scripted.value.unresolved).toEqual([]);
     const { changes } = await compareOrThrow(base, scripted.value.buffer);
     expect(changes.length).toBeLessThanOrEqual(
-      await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
+      await touchedBlockBudget({
+        base,
+        applied: scripted.value.applied,
+        baseBlocks,
+      }),
     );
     expect(
       changes.filter(
-        (change) => change.kind === "delete" && change.before === baseBlocks.at(0)?.text,
+        (change) =>
+          change.kind === "delete" && change.before === baseBlocks.at(0)?.text,
       ),
     ).toEqual([]);
   });
@@ -904,7 +1015,11 @@ describe("compareDocx", () => {
     const { changes } = await compareOrThrow(base, scripted.value.buffer);
     expect(changes.filter(({ kind }) => kind === "replace")).toEqual([]);
     expect(changes.length).toBeLessThanOrEqual(
-      await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
+      await touchedBlockBudget({
+        base,
+        applied: scripted.value.applied,
+        baseBlocks,
+      }),
     );
   });
 
@@ -916,9 +1031,14 @@ describe("compareDocx", () => {
     // reported a change the script did not account for.
     const base = readFixture("upstream-complex-styles.docx");
     const baseBlocks = await blocksOf(base);
-    expect(baseBlocks[2]).toMatchObject({ styleId: "Heading2", text: "Heading 2" });
+    expect(baseBlocks[2]).toMatchObject({
+      styleId: "Heading2",
+      text: "Heading 2",
+    });
 
-    const script: EditScript = [{ type: "moveParagraph", blockIndex: 2, beforeBlockIndex: 0 }];
+    const script: EditScript = [
+      { type: "moveParagraph", blockIndex: 2, beforeBlockIndex: 0 },
+    ];
     const scripted = await applyEditScript(base, script);
     if (scripted.isErr()) {
       throw scripted.error;
@@ -935,7 +1055,11 @@ describe("compareDocx", () => {
     const { changes } = await compareOrThrow(base, scripted.value.buffer);
     expect(changes.length).toBeGreaterThan(0);
     expect(changes.length).toBeLessThanOrEqual(
-      await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
+      await touchedBlockBudget({
+        base,
+        applied: scripted.value.applied,
+        baseBlocks,
+      }),
     );
   });
 
@@ -957,12 +1081,13 @@ describe("compareDocx", () => {
     expect(scripted.value.unresolved).toEqual([]);
 
     const { buffer } = await compareOrThrow(base, scripted.value.buffer);
-    const [accepted, rejected, targetProjection, baseProjection] = await Promise.all([
-      projectView(buffer, "final"),
-      projectView(buffer, "original"),
-      projectView(scripted.value.buffer, "final"),
-      projectView(base, "final"),
-    ]);
+    const [accepted, rejected, targetProjection, baseProjection] =
+      await Promise.all([
+        projectView(buffer, "final"),
+        projectView(buffer, "original"),
+        projectView(scripted.value.buffer, "final"),
+        projectView(base, "final"),
+      ]);
     expect(accepted).toEqual(targetProjection);
     expect(rejected).toEqual(baseProjection);
   });
@@ -975,15 +1100,33 @@ describe("compareDocx", () => {
     const base = readFixture("upstream-with-tables.docx");
     const baseBlocks = await blocksOf(base);
     const script: EditScript = [
-      { type: "insertParagraphAfter", blockIndex: 3, text: "Anchored in the third cell." },
-      { type: "insertParagraphAfter", blockIndex: 4, text: "Anchored in the fourth cell." },
-      { type: "insertTableRow", blockIndex: 1, cellTexts: ["one", "two", "three"] },
-      { type: "insertTableRow", blockIndex: 2, cellTexts: ["four", "five", "six"] },
+      {
+        type: "insertParagraphAfter",
+        blockIndex: 3,
+        text: "Anchored in the third cell.",
+      },
+      {
+        type: "insertParagraphAfter",
+        blockIndex: 4,
+        text: "Anchored in the fourth cell.",
+      },
+      {
+        type: "insertTableRow",
+        blockIndex: 1,
+        cellTexts: ["one", "two", "three"],
+      },
+      {
+        type: "insertTableRow",
+        blockIndex: 2,
+        cellTexts: ["four", "five", "six"],
+      },
     ];
 
     // The scenario reads the fixture by index, so pin the shape it relies on:
     // blocks 1 to 4 are cells of one table with three columns.
-    expect(baseBlocks.slice(1, 5).map(({ table }) => table?.tableIndex)).toEqual([0, 0, 0, 0]);
+    expect(
+      baseBlocks.slice(1, 5).map(({ table }) => table?.tableIndex),
+    ).toEqual([0, 0, 0, 0]);
 
     const scripted = await applyEditScript(base, script);
     if (scripted.isErr()) {
@@ -992,19 +1135,27 @@ describe("compareDocx", () => {
     expect(scripted.value.unresolved).toEqual([]);
 
     const targetBlocks = await blocksOf(scripted.value.buffer);
-    expect(targetBlocks.filter(({ table }) => table === undefined).map(({ text }) => text)).toEqual(
-      [
-        "Document with tables:",
-        "Anchored in the third cell.",
-        "Anchored in the fourth cell.",
-        "End of document.",
-      ],
-    );
+    expect(
+      targetBlocks
+        .filter(({ table }) => table === undefined)
+        .map(({ text }) => text),
+    ).toEqual([
+      "Document with tables:",
+      "Anchored in the third cell.",
+      "Anchored in the fourth cell.",
+      "End of document.",
+    ]);
 
     const { changes } = await compareOrThrow(base, scripted.value.buffer);
-    expect(kindsOf(changes).filter((kind) => kind === "insert")).toHaveLength(2);
+    expect(kindsOf(changes).filter((kind) => kind === "insert")).toHaveLength(
+      2,
+    );
     expect(changes.length).toBeLessThanOrEqual(
-      await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
+      await touchedBlockBudget({
+        base,
+        applied: scripted.value.applied,
+        baseBlocks,
+      }),
     );
   });
 
@@ -1013,10 +1164,26 @@ describe("compareDocx", () => {
     // pre-existing rows paired even when several insertions shift their indexes.
     const base = readFixture("upstream-with-tables.docx");
     const script: EditScript = [
-      { type: "insertTableRow", blockIndex: 1, cellTexts: ["one", "two", "three"] },
-      { type: "insertTableRow", blockIndex: 3, cellTexts: ["four", "five", "six"] },
-      { type: "insertTableRow", blockIndex: 7, cellTexts: ["seven", "eight", "nine"] },
-      { type: "insertTableRow", blockIndex: 9, cellTexts: ["ten", "eleven", "twelve"] },
+      {
+        type: "insertTableRow",
+        blockIndex: 1,
+        cellTexts: ["one", "two", "three"],
+      },
+      {
+        type: "insertTableRow",
+        blockIndex: 3,
+        cellTexts: ["four", "five", "six"],
+      },
+      {
+        type: "insertTableRow",
+        blockIndex: 7,
+        cellTexts: ["seven", "eight", "nine"],
+      },
+      {
+        type: "insertTableRow",
+        blockIndex: 9,
+        cellTexts: ["ten", "eleven", "twelve"],
+      },
     ];
 
     const scripted = await applyEditScript(base, script);
@@ -1039,7 +1206,11 @@ describe("compareDocx", () => {
     const base = readFixture("upstream-with-tables.docx");
     const script: EditScript = [
       { type: "deleteTableRow", blockIndex: 1 },
-      { type: "insertTableRow", blockIndex: 4, cellTexts: ["Aaa", "AAA", "AaA"] },
+      {
+        type: "insertTableRow",
+        blockIndex: 4,
+        cellTexts: ["Aaa", "AAA", "AaA"],
+      },
       { type: "deleteTableRow", blockIndex: 5 },
     ];
     const scripted = await applyEditScript(base, script);
@@ -1066,8 +1237,16 @@ describe("compareDocx", () => {
     const base = readFixture("upstream-with-tables.docx");
     const script: EditScript = [
       { type: "deleteTableRow", blockIndex: 2 },
-      { type: "insertTableRow", blockIndex: 1, cellTexts: ["aaa", "aAa", "aAa"] },
-      { type: "insertTableRow", blockIndex: 9, cellTexts: ["AAA", "aaA", "AAa"] },
+      {
+        type: "insertTableRow",
+        blockIndex: 1,
+        cellTexts: ["aaa", "aAa", "aAa"],
+      },
+      {
+        type: "insertTableRow",
+        blockIndex: 9,
+        cellTexts: ["AAA", "aaA", "AAa"],
+      },
       { type: "deleteTableRow", blockIndex: 5 },
     ];
     const scripted = await applyEditScript(base, script);
@@ -1092,7 +1271,9 @@ describe("compareDocx", () => {
       const base = readFixture("upstream-with-tables.docx");
       await fc.assert(
         fc.asyncProperty(rowRewriteArb, async (rewrittenText) => {
-          const survivingRows = [0, 1, 2].filter((rowIndex) => rowIndex !== deletedRow);
+          const survivingRows = [0, 1, 2].filter(
+            (rowIndex) => rowIndex !== deletedRow,
+          );
           const script: EditScript = [
             ...survivingRows.flatMap((rowIndex) =>
               [0, 1, 2].map((columnIndex): EditScriptStep => ({
@@ -1160,7 +1341,9 @@ describe("compareDocx", () => {
           const { changes } = await compareOrThrow(base, scripted.value.buffer);
           const kinds = kindsOf(changes);
           expect(kinds.filter((kind) => kind === "replace")).toHaveLength(9);
-          expect(kinds.filter((kind) => kind !== "replace")).toEqual(["table-row-insert"]);
+          expect(kinds.filter((kind) => kind !== "replace")).toEqual([
+            "table-row-insert",
+          ]);
           expect(changes).toHaveLength(scripted.value.applied.length);
         }),
         propertyConfig({ numRuns: 4 }),
@@ -1188,9 +1371,14 @@ describe("compareDocx", () => {
             if (scripted.isErr()) {
               throw scripted.error;
             }
-            const { buffer } = await compareOrThrow(base, scripted.value.buffer);
+            const { buffer } = await compareOrThrow(
+              base,
+              scripted.value.buffer,
+            );
             const written = await FolioDocxReviewer.fromBuffer(buffer);
-            expect(revisedFinalParagraphMarks(written.toDocument())).toEqual([]);
+            expect(revisedFinalParagraphMarks(written.toDocument())).toEqual(
+              [],
+            );
           }),
           propertyConfig({ numRuns: 12 }),
         );
@@ -1206,10 +1394,14 @@ describe("compareDocx", () => {
       const baseBlocks = BASE_CASES.at(-1)?.blocks ?? [];
       const movable = movableBlockIndexArb(baseBlocks);
       if (movable === null) {
-        throw new Error("The synthetic base offers no block the move pass would pair.");
+        throw new Error(
+          "The synthetic base offers no block the move pass would pair.",
+        );
       }
       const moveProperty = fc.asyncProperty(
-        fc.tuple(movable, movable).filter(([from, to]) => Math.abs(from - to) > 1),
+        fc
+          .tuple(movable, movable)
+          .filter(([from, to]) => Math.abs(from - to) > 1),
         async ([blockIndex, beforeBlockIndex]) => {
           const scripted = await applyEditScript(base, [
             { type: "moveParagraph", blockIndex, beforeBlockIndex },
@@ -1227,7 +1419,10 @@ describe("compareDocx", () => {
           expect(kindsOf(changes).every((kind) => kind === "move")).toBe(true);
         },
       );
-      await fc.assert(moveProperty, propertyConfig({ numRuns: 15, seed: 1658375732 }));
+      await fc.assert(
+        moveProperty,
+        propertyConfig({ numRuns: 15, seed: 1658375732 }),
+      );
       await fc.assert(moveProperty, propertyConfig({ numRuns: 15 }));
     },
     propertyTestTimeout(120_000),
@@ -1242,24 +1437,33 @@ describe("compareDocx", () => {
         const acceptedBase = await projectView(revisedBase, "final");
 
         await fc.assert(
-          fc.asyncProperty(editScriptArb(await blocksOf(revisedBase)), async (script) => {
-            const scripted = await applyEditScript(revisedBase, script);
-            if (scripted.isErr()) {
-              throw scripted.error;
-            }
-            const target = scripted.value.buffer;
-            const { buffer } = await compareOrThrow(revisedBase, target);
+          fc.asyncProperty(
+            editScriptArb(await blocksOf(revisedBase)),
+            async (script) => {
+              const scripted = await applyEditScript(revisedBase, script);
+              if (scripted.isErr()) {
+                throw scripted.error;
+              }
+              const target = scripted.value.buffer;
+              const { buffer } = await compareOrThrow(revisedBase, target);
 
-            // Rejecting lands on the base as it stands, not on the document
-            // before the previous reviewer touched it.
-            expect(await projectView(buffer, "original")).toEqual(acceptedBase);
-            expect(await projectView(buffer, "final")).toEqual(await projectView(target, "final"));
+              // Rejecting lands on the base as it stands, not on the document
+              // before the previous reviewer touched it.
+              expect(await projectView(buffer, "original")).toEqual(
+                acceptedBase,
+              );
+              expect(await projectView(buffer, "final")).toEqual(
+                await projectView(target, "final"),
+              );
 
-            // The prior reviewer's marks are resolved rather than layered
-            // under this comparison's: a reader has one redline to read, and
-            // rejecting it cannot land on a document neither side wrote.
-            expect(await authorsOfChanges(buffer)).not.toContain(PRIOR_AUTHOR);
-          }),
+              // The prior reviewer's marks are resolved rather than layered
+              // under this comparison's: a reader has one redline to read, and
+              // rejecting it cannot land on a document neither side wrote.
+              expect(await authorsOfChanges(buffer)).not.toContain(
+                PRIOR_AUTHOR,
+              );
+            },
+          ),
           propertyConfig({ numRuns: 10 }),
         );
       },

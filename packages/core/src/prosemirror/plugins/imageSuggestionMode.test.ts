@@ -11,7 +11,11 @@ import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
-import { acceptAIEditRevision, findNextChange, rejectAIEditRevision } from "../commands/comments";
+import {
+  acceptAIEditRevision,
+  findNextChange,
+  rejectAIEditRevision,
+} from "../commands/comments";
 import { schema } from "../schema";
 import { createSuggestionModePlugin } from "./suggestionMode";
 
@@ -37,10 +41,16 @@ function makeImageDoc(markName?: "insertion" | "deletion"): PMNode {
   return schema.nodes["doc"]!.create({}, [paragraph]);
 }
 
-function countMarkedImages(state: EditorState, markName: "insertion" | "deletion"): number {
+function countMarkedImages(
+  state: EditorState,
+  markName: "insertion" | "deletion",
+): number {
   let count = 0;
   state.doc.descendants((node) => {
-    if (node.type.name === "image" && node.marks.some((m) => m.type.name === markName)) {
+    if (
+      node.type.name === "image" &&
+      node.marks.some((m) => m.type.name === markName)
+    ) {
       count += 1;
     }
     return true;

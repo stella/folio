@@ -1,13 +1,13 @@
-import type {
-  FolioAIDiagnosticBlock,
-  FolioAIParagraphBlock,
-  FolioAIEditOperation,
-  FolioAIResolvedEditOperation,
-} from "../../src/ai-edits/types";
 import {
   resolveNewListOperations,
   stageNewListOperations,
 } from "../../src/ai-edits/newListNumbering";
+import type {
+  FolioAIDiagnosticBlock,
+  FolioAIEditOperation,
+  FolioAIParagraphBlock,
+  FolioAIResolvedEditOperation,
+} from "../../src/ai-edits/types";
 import { listLevelAttrPatch } from "../../src/prosemirror/styles/resolvedStyleAttrs";
 
 const request = {
@@ -20,7 +20,10 @@ const request = {
 // @ts-expect-error the allocator must resolve newList before application
 const unresolved: FolioAIResolvedEditOperation = request;
 
-const resolved = resolveNewListOperations(stageNewListOperations([request]), null).operations;
+const resolved = resolveNewListOperations(
+  stageNewListOperations([request]),
+  null,
+).operations;
 const applied: readonly FolioAIResolvedEditOperation[] = resolved;
 
 export type ResolvedNumberingProof = typeof applied | typeof unresolved;
@@ -29,7 +32,10 @@ export type ResolvedNumberingProof = typeof applied | typeof unresolved;
 
 const level: Parameters<typeof listLevelAttrPatch>[1] = 1;
 // @ts-expect-error a level change cannot request another list identity
-const differentList: Parameters<typeof listLevelAttrPatch>[1] = { numId: 2, ilvl: 1 };
+const differentList: Parameters<typeof listLevelAttrPatch>[1] = {
+  numId: 2,
+  ilvl: 1,
+};
 
 export type SameListLevelProof = typeof level | typeof differentList;
 
@@ -43,6 +49,4 @@ declare const paragraph: FolioAIParagraphBlock;
 const paragraphSource = paragraph.statedNumbering;
 
 export type BlockNumberingProof =
-  | typeof diagnosticSource
-  | typeof diagnosticList
-  | typeof paragraphSource;
+  typeof diagnosticSource | typeof diagnosticList | typeof paragraphSource;

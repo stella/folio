@@ -1,20 +1,31 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../test/property-testing";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../test/property-testing";
 import { normalizeLineText, textSimilarity } from "../textNorm";
 
 describe("normalizeLineText", () => {
   test("collapses long dot leaders for stable TOC matching", () => {
-    expect(normalizeLineText("Definitions ................ 2")).toBe("Definitions … 2");
+    expect(normalizeLineText("Definitions ................ 2")).toBe(
+      "Definitions … 2",
+    );
     expect(
-      normalizeLineText("Definitions ................................................ 2"),
+      normalizeLineText(
+        "Definitions ................................................ 2",
+      ),
     ).toBe("Definitions … 2");
   });
 
   test("canonicalizes PDF visual order for RTL dot-leader entries", () => {
-    expect(normalizeLineText("1 ........ ........ أ- عنوان عربي")).toBe("أ- عنوان عربي … 1");
-    expect(normalizeLineText("أ- عنوان عربي ........ 1")).toBe("أ- عنوان عربي … 1");
+    expect(normalizeLineText("1 ........ ........ أ- عنوان عربي")).toBe(
+      "أ- عنوان عربي … 1",
+    );
+    expect(normalizeLineText("أ- عنوان عربي ........ 1")).toBe(
+      "أ- عنوان عربي … 1",
+    );
     expect(normalizeLineText("1 ........ 𞤀𞤣𞤢𞤤")).toBe("𞤀𞤣𞤢𞤤 … 1");
   });
 
@@ -23,15 +34,21 @@ describe("normalizeLineText", () => {
     expect(normalizeLineText("1 عنوان عربي")).toBe("1 عنوان عربي");
     expect(normalizeLineText("1 ........ Terms وشروط")).toBe("1 … Terms وشروط");
     expect(normalizeLineText("- عنوان عربي 1")).toBe("- عنوان عربي 1");
-    expect(normalizeLineText("- Definitions 1 ........ 2")).toBe("- Definitions 1 … 2");
-    expect(normalizeLineText("- المبلغ 100 ........ 5")).toBe("- المبلغ 100 … 5");
+    expect(normalizeLineText("- Definitions 1 ........ 2")).toBe(
+      "- Definitions 1 … 2",
+    );
+    expect(normalizeLineText("- المبلغ 100 ........ 5")).toBe(
+      "- المبلغ 100 … 5",
+    );
     expect(normalizeLineText("- رابط https://example.com 2 ........ 7")).toBe(
       "- رابط https://example.com 2 … 7",
     );
   });
 
   test("normalizes Symbol-font copyright extraction noise", () => {
-    expect(normalizeLineText("\uf0e3 Loan Market Association")).toBe("ã Loan Market Association");
+    expect(normalizeLineText("\uf0e3 Loan Market Association")).toBe(
+      "ã Loan Market Association",
+    );
   });
 
   test("normalizes legacy Symbol-font bullets", () => {
@@ -52,14 +69,26 @@ describe("normalizeLineText", () => {
         "\u0648\u0632\u0627\u0631\u0629 \u0627\u0644\u062a\u0639\u0644\u064a\u0645",
       ),
     );
-    expect(normalizeLineText("\u0627\u0644\u0645\u0642\u0628\u0648\u0644\u0629 \u06be\u064a")).toBe(
-      normalizeLineText("\u0627\u0644\u0645\u0642\u0628\u0648\u0644\u0629 \u0647\u064a"),
+    expect(
+      normalizeLineText(
+        "\u0627\u0644\u0645\u0642\u0628\u0648\u0644\u0629 \u06be\u064a",
+      ),
+    ).toBe(
+      normalizeLineText(
+        "\u0627\u0644\u0645\u0642\u0628\u0648\u0644\u0629 \u0647\u064a",
+      ),
     );
   });
 
   test("folds mirrored bracket pairs on an RTL line", () => {
-    expect(normalizeLineText(")\u0633\u0628\u0628 \u0627\u0644\u063a\u064a\u0627\u0628(")).toBe(
-      normalizeLineText("(\u0633\u0628\u0628 \u0627\u0644\u063a\u064a\u0627\u0628)"),
+    expect(
+      normalizeLineText(
+        ")\u0633\u0628\u0628 \u0627\u0644\u063a\u064a\u0627\u0628(",
+      ),
+    ).toBe(
+      normalizeLineText(
+        "(\u0633\u0628\u0628 \u0627\u0644\u063a\u064a\u0627\u0628)",
+      ),
     );
   });
 
@@ -74,7 +103,10 @@ describe("normalizeLineText", () => {
   });
 });
 
-const referenceDistance = (a: readonly string[], b: readonly string[]): number => {
+const referenceDistance = (
+  a: readonly string[],
+  b: readonly string[],
+): number => {
   let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
   for (let i = 1; i <= a.length; i += 1) {
     const current = [i];
@@ -111,7 +143,9 @@ describe("textSimilarity", () => {
         for (const left of [a, a + a]) {
           const maxLength = Math.max(left.length, b.length);
           expect(textSimilarity(left, b)).toBe(
-            maxLength === 0 ? 1 : 1 - referenceDistance(left.split(""), b.split("")) / maxLength,
+            maxLength === 0
+              ? 1
+              : 1 - referenceDistance(left.split(""), b.split("")) / maxLength,
           );
         }
       }
@@ -159,16 +193,24 @@ describe("textSimilarity", () => {
     "matches an independent scalar Levenshtein oracle for generated strings",
     () => {
       const scalar = fc.constantFrom("a", "b", "é", "e\u0301", "😀", "😃", "𞤀");
-      const text = fc.array(scalar, { maxLength: 24 }).map((parts) => parts.join(""));
+      const text = fc
+        .array(scalar, { maxLength: 24 })
+        .map((parts) => parts.join(""));
       assertProperty(
         fc.property(text, text, (a, b) => {
           const left = Array.from(a.toWellFormed());
           const right = Array.from(b.toWellFormed());
           const maxLength = Math.max(left.length, right.length);
-          const expected = maxLength === 0 ? 1 : 1 - referenceDistance(left, right) / maxLength;
+          const expected =
+            maxLength === 0
+              ? 1
+              : 1 - referenceDistance(left, right) / maxLength;
           expect(textSimilarity(a, b)).toBe(expected);
         }),
-        { id: "fuzzy similarity matches independent scalar edit-distance oracle", numRuns: 100 },
+        {
+          id: "fuzzy similarity matches independent scalar edit-distance oracle",
+          numRuns: 100,
+        },
       );
     },
     propertyTestTimeout(10_000),
@@ -177,14 +219,26 @@ describe("textSimilarity", () => {
   test(
     "matches the scalar oracle after malformed UTF-16 normalization",
     () => {
-      const unit = fc.constantFrom("a", "😀", "😃", "\ud800", "\udc00", "\ufffd");
-      const text = fc.array(unit, { maxLength: 20 }).map((parts) => parts.join(""));
+      const unit = fc.constantFrom(
+        "a",
+        "😀",
+        "😃",
+        "\ud800",
+        "\udc00",
+        "\ufffd",
+      );
+      const text = fc
+        .array(unit, { maxLength: 20 })
+        .map((parts) => parts.join(""));
       assertProperty(
         fc.property(text, text, (a, b) => {
           const left = Array.from(a.toWellFormed());
           const right = Array.from(b.toWellFormed());
           const maxLength = Math.max(left.length, right.length);
-          const expected = maxLength === 0 ? 1 : 1 - referenceDistance(left, right) / maxLength;
+          const expected =
+            maxLength === 0
+              ? 1
+              : 1 - referenceDistance(left, right) / maxLength;
           expect(textSimilarity(a, b)).toBe(expected);
         }),
         {

@@ -1,5 +1,9 @@
 import { onScopeDispose, ref } from "vue";
-import { browserClock, type SchedulerClock } from "@stll/folio-core/controller/layoutScheduler";
+
+import {
+  browserClock,
+  type SchedulerClock,
+} from "@stll/folio-core/controller/layoutScheduler";
 
 const NOTICE_DURATION_MS = 3_000;
 

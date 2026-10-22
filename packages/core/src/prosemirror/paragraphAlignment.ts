@@ -7,7 +7,9 @@ import type { ParagraphAttrs } from "./schema/nodes";
  * explicit provenance; the final branch covers PM-created content whose
  * effective value is observably different from its style.
  */
-export const directParagraphAlignment = (attrs: ParagraphAttrs): ParagraphAlignment | undefined => {
+export const directParagraphAlignment = (
+  attrs: ParagraphAttrs,
+): ParagraphAlignment | undefined => {
   if (attrs._originalFormatting?.alignment != null) {
     return attrs._originalFormatting.alignment;
   }

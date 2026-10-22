@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+
 import {
   DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
   isKeydownInShortcutScope,
@@ -193,7 +194,9 @@ function prevPreset(currentZoom: number): number {
 /**
  * React hook for Ctrl+scroll zoom functionality
  */
-export function useWheelZoom(options: UseWheelZoomOptions = {}): UseWheelZoomReturn {
+export function useWheelZoom(
+  options: UseWheelZoomOptions = {},
+): UseWheelZoomReturn {
   const {
     initialZoom = DEFAULT_INITIAL_ZOOM,
     minZoom = DEFAULT_MIN_ZOOM,
@@ -220,7 +223,10 @@ export function useWheelZoom(options: UseWheelZoomOptions = {}): UseWheelZoomRet
    * Live current zoom. Controlled mode reads the external owner; uncontrolled
    * mode reads the hook's own mirror.
    */
-  const readZoom = useCallback(() => getCurrentZoom?.() ?? zoomRef.current, [getCurrentZoom]);
+  const readZoom = useCallback(
+    () => getCurrentZoom?.() ?? zoomRef.current,
+    [getCurrentZoom],
+  );
 
   /**
    * Set zoom with clamping and callback

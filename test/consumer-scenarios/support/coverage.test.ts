@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { hitUnreachableCells, type Expectations, type Ledger } from "./coverage.ts";
+import {
+  type Expectations,
+  hitUnreachableCells,
+  type Ledger,
+} from "./coverage.ts";
 
 const expectations: Expectations = {
   required: [],
@@ -21,13 +25,22 @@ test("unreachable patterns reject both applied and refused hits across wildcard 
   const merged: Ledger = {
     version: 1,
     cells: {
-      "insertText | header | suggested | pendingRevision | fresh": { applied: 2, refused: 0 },
+      "insertText | header | suggested | pendingRevision | fresh": {
+        applied: 2,
+        refused: 0,
+      },
       "deleteText | header | suggested | pendingRevision | reopened": {
         applied: 0,
         refused: 3,
       },
-      "mergeTableCells | main | direct | table | fresh": { applied: 0, refused: 1 },
-      "insertText | footer | direct | pendingRevision | fresh": { applied: 4, refused: 2 },
+      "mergeTableCells | main | direct | table | fresh": {
+        applied: 0,
+        refused: 1,
+      },
+      "insertText | footer | direct | pendingRevision | fresh": {
+        applied: 4,
+        refused: 2,
+      },
     },
   };
 
@@ -51,7 +64,10 @@ test("unreachable patterns with zero hits pass", () => {
   const merged: Ledger = {
     version: 1,
     cells: {
-      "insertText | footer | direct | pendingRevision | fresh": { applied: 1, refused: 0 },
+      "insertText | footer | direct | pendingRevision | fresh": {
+        applied: 1,
+        refused: 0,
+      },
     },
   };
 

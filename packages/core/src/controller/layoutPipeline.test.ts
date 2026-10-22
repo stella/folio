@@ -1,4 +1,4 @@
-import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
+import { panic } from "better-result";
 /**
  * Regression coverage for the layout pipeline's commit-vs-discard contract.
  *
@@ -14,10 +14,8 @@ import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
  * browser. Globals are swapped per-test and restored, and the canvas context +
  * measure caches are reset so nothing leaks across files.
  */
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
-import { panic } from "better-result";
 
 import {
   EXPECTED_CANCELLED_STYLE_TOGGLES,
@@ -25,23 +23,24 @@ import {
   makeStyleToggleDefinitions,
   makeStyleToggleParagraph,
 } from "../__tests__/styleToggleFlowFixture";
+import { convertHeaderFooterToContent } from "../layout-bridge/convert/headerFooterLayout";
 import type { LayoutInstrumentation } from "../layout-engine/layoutInstrumentation";
 import { clearAllCaches } from "../layout-engine/measure/cache";
 import {
   type HyphenationDictionaryId,
   resetHyphenationDictionaries,
 } from "../layout-engine/measure/hyphenationDictionaries";
+import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import type {
   FlowBlock,
   FootnoteContent,
   HeaderFooterContent,
   TextBoxBlock,
 } from "../layout-engine/types";
-import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
-import { convertHeaderFooterToContent } from "../layout-bridge/convert/headerFooterLayout";
 import { LayoutPainter } from "../layout-painter";
 import { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
 import { twipsToPixels } from "../paged-layout/sectionGeometry";
+import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import {
   createTemplatePreviewValuesPlugin,
@@ -100,7 +99,9 @@ class FakeElement {
   }
 
   get textContent(): string {
-    return this.ownText + this.children.map((child) => child.textContent).join("");
+    return (
+      this.ownText + this.children.map((child) => child.textContent).join("")
+    );
   }
 
   set textContent(value: string) {
@@ -230,7 +231,11 @@ function findByClass(root: FakeElement, className: string): FakeElement | null {
   return null;
 }
 
-function collectByClass(root: FakeElement, className: string, out: FakeElement[]): void {
+function collectByClass(
+  root: FakeElement,
+  className: string,
+  out: FakeElement[],
+): void {
   for (const child of root.children) {
     if (hasClass(child, className)) {
       out.push(child);
@@ -278,11 +283,17 @@ class FakeCustomEvent<T> {
 
 // --- Global swap plumbing ---------------------------------------------------
 
-const originalGlobalDescriptors = new Map<string, PropertyDescriptor | undefined>();
+const originalGlobalDescriptors = new Map<
+  string,
+  PropertyDescriptor | undefined
+>();
 
 function setGlobal(name: string, value: unknown): void {
   if (!originalGlobalDescriptors.has(name)) {
-    originalGlobalDescriptors.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+    originalGlobalDescriptors.set(
+      name,
+      Object.getOwnPropertyDescriptor(globalThis, name),
+    );
   }
   Object.defineProperty(globalThis, name, {
     configurable: true,
@@ -389,7 +400,9 @@ const makeImplicitSectionBoundaryState = (
     ]),
   });
 
-const makeSectionBoundaryDocument = (sectionStart: "continuous" | "nextPage") => {
+const makeSectionBoundaryDocument = (
+  sectionStart: "continuous" | "nextPage",
+) => {
   const document = createEmptyDocument();
   document.package.document.sections = [
     { properties: {}, content: [] },
@@ -401,7 +414,12 @@ const makeSectionBoundaryDocument = (sectionStart: "continuous" | "nextPage") =>
 // A template document whose middle block is conditional, plus the host's
 // verdict on it. The preview plugin turns the verdict into the hidden span the
 // pipeline reads off the editor state.
-const CONDITIONAL_PARAGRAPHS = ["{% if premium %}", "Premium terms.", "{% endif %}", "Tail."];
+const CONDITIONAL_PARAGRAPHS = [
+  "{% if premium %}",
+  "Premium terms.",
+  "{% endif %}",
+  "Tail.",
+];
 // PM position of the "Tail." paragraph node: every paragraph before it spans
 // its text plus the node's open and close tokens.
 const TAIL_PM_START = CONDITIONAL_PARAGRAPHS.slice(0, -1).reduce(
@@ -417,7 +435,9 @@ const makeConditionalPreviewState = (
     doc: schema.node(
       "doc",
       null,
-      CONDITIONAL_PARAGRAPHS.map((text) => schema.node("paragraph", null, [schema.text(text)])),
+      CONDITIONAL_PARAGRAPHS.map((text) =>
+        schema.node("paragraph", null, [schema.text(text)]),
+      ),
     ),
     plugins: [createTemplatePreviewValuesPlugin()],
   });
@@ -528,13 +548,20 @@ describe("runLayoutPipeline", () => {
       schema,
       doc: schema.node("doc", null, [
         schema.node("paragraph", null, [
-          schema.text("commented", [schema.marks["comment"]!.create({ commentId: 7 })]),
+          schema.text("commented", [
+            schema.marks["comment"]!.create({ commentId: 7 }),
+          ]),
         ]),
       ]),
     });
     const authored = state.doc.toJSON();
     const session = createLayoutSession();
-    for (const markupView of ["all-markup", "no-markup", "original", "all-markup"] as const) {
+    for (const markupView of [
+      "all-markup",
+      "no-markup",
+      "original",
+      "all-markup",
+    ] as const) {
       for (const showCommentHighlights of [true, false, true]) {
         const outcome = runLayoutPipeline(
           makeDeps(session, { markupView, showCommentHighlights }),
@@ -548,7 +575,9 @@ describe("runLayoutPipeline", () => {
         }
         const run = block.runs.find((candidate) => candidate.kind === "text");
         expect(run?.kind === "text" ? run.commentIds : undefined).toEqual(
-          markupView === "all-markup" && showCommentHighlights ? [7] : undefined,
+          markupView === "all-markup" && showCommentHighlights
+            ? [7]
+            : undefined,
         );
         expect(state.doc.toJSON()).toEqual(authored);
       }
@@ -581,7 +610,11 @@ describe("runLayoutPipeline", () => {
     expect(session.lastEditorState).toBe(state);
     expect(session.lastPmDoc).toBe(state.doc);
     expect(session.lastMeasureInputs?.fontSet).toBe("test-fonts");
-    expect(session.lastTemplatePreview).toEqual({ entries: [], hidden: [], mode: "plain" });
+    expect(session.lastTemplatePreview).toEqual({
+      entries: [],
+      hidden: [],
+      mode: "plain",
+    });
 
     expect(layoutCompletes).toHaveLength(1);
     expect(layoutErrors).toHaveLength(0);
@@ -591,12 +624,17 @@ describe("runLayoutPipeline", () => {
     // Same document and same layout inputs twice; only the host's verdict on
     // the `{% if premium %}` block differs, so any difference in the pages is
     // the hiding and nothing else.
-    const laidOut = (premium: boolean, mode: "highlighted" | "plain" = "plain") => {
+    const laidOut = (
+      premium: boolean,
+      mode: "highlighted" | "plain" = "plain",
+    ) => {
       const outcome = runLayoutPipeline(
         makeDeps(createLayoutSession()),
         makeConditionalPreviewState(premium, mode),
       );
-      const fragments = (outcome.layout?.pages ?? []).flatMap((page) => page.fragments);
+      const fragments = (outcome.layout?.pages ?? []).flatMap(
+        (page) => page.fragments,
+      );
       return { blocks: outcome.blocks ?? [], fragments };
     };
 
@@ -615,7 +653,9 @@ describe("runLayoutPipeline", () => {
 
     // Nothing is painted for a dropped block: no fragment addresses a PM
     // position inside the hidden span.
-    expect(hidden.fragments.map((fragment) => fragment.pmStart)).toEqual([TAIL_PM_START]);
+    expect(hidden.fragments.map((fragment) => fragment.pmStart)).toEqual([
+      TAIL_PM_START,
+    ]);
 
     // The tail keeps its PM position and moves up the page by the three
     // paragraphs that are no longer above it.
@@ -626,7 +666,10 @@ describe("runLayoutPipeline", () => {
     // A block that does apply keeps its body in `plain` mode and loses only its
     // tag paragraphs, so the pages read as the generated document.
     const tagsDropped = laidOut(true);
-    expect(tagsDropped.blocks.map(paragraphText)).toEqual(["Premium terms.", "Tail."]);
+    expect(tagsDropped.blocks.map(paragraphText)).toEqual([
+      "Premium terms.",
+      "Tail.",
+    ]);
     expect(yOf(tagsDropped.fragments)).toBeLessThan(yOf(shown.fragments) ?? 0);
   });
 
@@ -662,7 +705,9 @@ describe("runLayoutPipeline", () => {
       return following.y - marker.y;
     };
     const singleLineGap = gapUnder("Only line.");
-    expect(gapUnder(MULTILINE_PREVIEW_VALUE)).toBeGreaterThanOrEqual(singleLineGap * 3);
+    expect(gapUnder(MULTILINE_PREVIEW_VALUE)).toBeGreaterThanOrEqual(
+      singleLineGap * 3,
+    );
   });
 
   test("commits the session without a block lookup when no painter is attached", () => {
@@ -690,7 +735,10 @@ describe("runLayoutPipeline", () => {
       doc: schema.nodeFromJSON(toProseDoc(document, { styles }).toJSON()),
     });
 
-    const outcome = runLayoutPipeline(makeDeps(createLayoutSession(), { document, styles }), state);
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), { document, styles }),
+      state,
+    );
 
     expect(findStyleToggleRun(outcome.blocks ?? [])).toMatchObject(
       EXPECTED_CANCELLED_STYLE_TOGGLES,
@@ -698,61 +746,66 @@ describe("runLayoutPipeline", () => {
     expect(layoutErrors).toHaveLength(0);
   });
 
-  test.each(["no-markup", "original"] as const)("forwards %s to note measurement", (markupView) => {
-    const document = createEmptyDocument();
-    const noteDoc = schema.node("doc", null, [
-      schema.node("paragraph", null, [
-        schema.text("inserted", [schema.mark("insertion", { revisionId: 1 })]),
-        schema.text("deleted", [schema.mark("deletion", { revisionId: 2 })]),
-      ]),
-    ]);
-    document.package.footnotes = [
-      {
-        type: "footnote",
-        id: 1,
-        noteType: "normal",
-        content: proseDocToBlocks(noteDoc, []),
-      },
-    ];
-    const state = EditorState.create({
-      doc: schema.node("doc", null, [
+  test.each(["no-markup", "original"] as const)(
+    "forwards %s to note measurement",
+    (markupView) => {
+      const document = createEmptyDocument();
+      const noteDoc = schema.node("doc", null, [
         schema.node("paragraph", null, [
-          schema.text("Body"),
-          schema.text("1", [
-            schema.mark("footnoteRef", {
-              occurrenceId: "fixture-note",
-              id: "1",
-              noteType: "footnote",
-            }),
+          schema.text("inserted", [
+            schema.mark("insertion", { revisionId: 1 }),
+          ]),
+          schema.text("deleted", [schema.mark("deletion", { revisionId: 2 })]),
+        ]),
+      ]);
+      document.package.footnotes = [
+        {
+          type: "footnote",
+          id: 1,
+          noteType: "normal",
+          content: proseDocToBlocks(noteDoc, []),
+        },
+      ];
+      const state = EditorState.create({
+        doc: schema.node("doc", null, [
+          schema.node("paragraph", null, [
+            schema.text("Body"),
+            schema.text("1", [
+              schema.mark("footnoteRef", {
+                occurrenceId: "fixture-note",
+                id: "1",
+                noteType: "footnote",
+              }),
+            ]),
           ]),
         ]),
-      ]),
-    });
-    let captured: Map<number, FootnoteContent> | undefined;
-    runLayoutPipeline(
-      makeDeps(createLayoutSession(), {
-        document,
-        markupView,
-        painter: new LayoutPainter(),
-        pagesContainer: asContainer(fakeDocument.createElement("div")),
-        buildFootnoteRenderItems: (_pageMap, contentMap) => {
-          captured = contentMap;
-          return new Map();
-        },
-      }),
-      state,
-    );
-    const text = captured
-      ?.get(1)
-      ?.blocks.flatMap((block) =>
-        block.kind === "paragraph"
-          ? block.runs.map((run) => (run.kind === "text" ? run.text : ""))
-          : [],
-      )
-      .join("");
-    expect(text).toBe(markupView === "original" ? "1 deleted" : "1 inserted");
-    expect(layoutErrors).toHaveLength(0);
-  });
+      });
+      let captured: Map<number, FootnoteContent> | undefined;
+      runLayoutPipeline(
+        makeDeps(createLayoutSession(), {
+          document,
+          markupView,
+          painter: new LayoutPainter(),
+          pagesContainer: asContainer(fakeDocument.createElement("div")),
+          buildFootnoteRenderItems: (_pageMap, contentMap) => {
+            captured = contentMap;
+            return new Map();
+          },
+        }),
+        state,
+      );
+      const text = captured
+        ?.get(1)
+        ?.blocks.flatMap((block) =>
+          block.kind === "paragraph"
+            ? block.runs.map((run) => (run.kind === "text" ? run.text : ""))
+            : [],
+        )
+        .join("");
+      expect(text).toBe(markupView === "original" ? "1 deleted" : "1 inserted");
+      expect(layoutErrors).toHaveLength(0);
+    },
+  );
 
   test("forwards styles through top-level header, footer, and footnote layout", () => {
     const styles = makeStyleToggleDefinitions();
@@ -773,10 +826,16 @@ describe("runLayoutPipeline", () => {
     });
     const state = EditorState.create({
       doc: schema.node("doc", null, [
-        schema.node("paragraph", null, [schema.text("Body"), schema.text("1", [footnoteRef])]),
+        schema.node("paragraph", null, [
+          schema.text("Body"),
+          schema.text("1", [footnoteRef]),
+        ]),
       ]),
     });
-    const preparedBySection = new Map<"header" | "footer", HeaderFooterContent>();
+    const preparedBySection = new Map<
+      "header" | "footer",
+      HeaderFooterContent
+    >();
     let capturedFootnotes: Map<number, FootnoteContent> | undefined;
     const container = fakeDocument.createElement("div");
 
@@ -796,11 +855,23 @@ describe("runLayoutPipeline", () => {
         },
         painter: new LayoutPainter(),
         pagesContainer: asContainer(container),
-        renderHfFromContentOrPm: (content, _rId, _hfPMs, contentWidth, metrics, options) => {
+        renderHfFromContentOrPm: (
+          content,
+          _rId,
+          _hfPMs,
+          contentWidth,
+          metrics,
+          options,
+        ) => {
           if (!content) {
             return undefined;
           }
-          const prepared = convertHeaderFooterToContent(content, contentWidth, metrics, options);
+          const prepared = convertHeaderFooterToContent(
+            content,
+            contentWidth,
+            metrics,
+            options,
+          );
           if (prepared) {
             preparedBySection.set(metrics.section, prepared);
           }
@@ -814,15 +885,15 @@ describe("runLayoutPipeline", () => {
       state,
     );
 
-    expect(findStyleToggleRun(preparedBySection.get("header")?.blocks ?? [])).toMatchObject(
-      EXPECTED_CANCELLED_STYLE_TOGGLES,
-    );
-    expect(findStyleToggleRun(preparedBySection.get("footer")?.blocks ?? [])).toMatchObject(
-      EXPECTED_CANCELLED_STYLE_TOGGLES,
-    );
-    expect(findStyleToggleRun(capturedFootnotes?.get(1)?.blocks ?? [])).toMatchObject(
-      EXPECTED_CANCELLED_STYLE_TOGGLES,
-    );
+    expect(
+      findStyleToggleRun(preparedBySection.get("header")?.blocks ?? []),
+    ).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
+    expect(
+      findStyleToggleRun(preparedBySection.get("footer")?.blocks ?? []),
+    ).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
+    expect(
+      findStyleToggleRun(capturedFootnotes?.get(1)?.blocks ?? []),
+    ).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
     expect(layoutErrors).toHaveLength(0);
   });
 
@@ -832,7 +903,11 @@ describe("runLayoutPipeline", () => {
     // area; the positive-id continuationNotice must not shift the numbering.
     const session = createLayoutSession();
     const footnoteMark = (id: number, noteType: "footnote" | "endnote") =>
-      schema.mark("footnoteRef", { occurrenceId: `fixture-${id}`, id: String(id), noteType });
+      schema.mark("footnoteRef", {
+        occurrenceId: `fixture-${id}`,
+        id: String(id),
+        noteType,
+      });
     const state = EditorState.create({
       doc: schema.node("doc", null, [
         schema.node("paragraph", null, [
@@ -849,17 +924,45 @@ describe("runLayoutPipeline", () => {
     });
 
     const noteParagraph = (text: string): Footnote["content"] => [
-      { type: "paragraph", content: [{ type: "run", content: [{ type: "text", text }] }] },
+      {
+        type: "paragraph",
+        content: [{ type: "run", content: [{ type: "text", text }] }],
+      },
     ];
     const doc = createEmptyDocument();
     doc.package.footnotes = [
-      { type: "footnote", id: 1, noteType: "continuationNotice", content: noteParagraph("cont") },
-      { type: "footnote", id: 2, noteType: "normal", content: noteParagraph("two") },
-      { type: "footnote", id: 5, noteType: "normal", content: noteParagraph("five") },
-      { type: "footnote", id: 9, noteType: "normal", content: noteParagraph("nine") },
+      {
+        type: "footnote",
+        id: 1,
+        noteType: "continuationNotice",
+        content: noteParagraph("cont"),
+      },
+      {
+        type: "footnote",
+        id: 2,
+        noteType: "normal",
+        content: noteParagraph("two"),
+      },
+      {
+        type: "footnote",
+        id: 5,
+        noteType: "normal",
+        content: noteParagraph("five"),
+      },
+      {
+        type: "footnote",
+        id: 9,
+        noteType: "normal",
+        content: noteParagraph("nine"),
+      },
     ];
     doc.package.endnotes = [
-      { type: "endnote", id: 8, noteType: "normal", content: noteParagraph("end") },
+      {
+        type: "endnote",
+        id: 8,
+        noteType: "normal",
+        content: noteParagraph("end"),
+      },
     ];
 
     let capturedContentMap: Map<number, FootnoteContent> | undefined;
@@ -927,7 +1030,9 @@ describe("runLayoutPipeline", () => {
       state,
     );
 
-    expect(outcome.layout?.pages.at(0)?.margins.bottom).toBe(MARGINS.footer + 120);
+    expect(outcome.layout?.pages.at(0)?.margins.bottom).toBe(
+      MARGINS.footer + 120,
+    );
   });
 
   test("keeps authored body margin when a default footer stays below it", () => {
@@ -976,7 +1081,9 @@ describe("runLayoutPipeline", () => {
     );
 
     expect(outcome.layout?.pages.at(0)?.margins.top).toBe(MARGINS.header + 120);
-    expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(MARGINS.header + 120);
+    expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(
+      MARGINS.header + 120,
+    );
   });
 
   test("keeps authored body margin when a default header stays above it", () => {
@@ -1034,7 +1141,9 @@ describe("runLayoutPipeline", () => {
     // spans the page top to the pushed body top, `bottomMargin` the pushed body
     // bottom to the page bottom, and `margin` the pushed body box itself. Only
     // `page` stays on the sheet.
-    type Vertical = NonNullable<NonNullable<TextBoxBlock["position"]>["vertical"]>;
+    type Vertical = NonNullable<
+      NonNullable<TextBoxBlock["position"]>["vertical"]
+    >;
     type Furniture = "header" | "footer";
 
     const BOX_HEIGHT = 30;
@@ -1056,7 +1165,10 @@ describe("runLayoutPipeline", () => {
               height: BOX_HEIGHT,
               displayMode: "float",
               wrapType: "inFront",
-              position: { horizontal: { relativeTo: "page", posOffset: 0 }, vertical },
+              position: {
+                horizontal: { relativeTo: "page", posOffset: 0 },
+                vertical,
+              },
             },
             [schema.node("paragraph", null, [schema.text("Boxed")])],
           ),
@@ -1064,13 +1176,34 @@ describe("runLayoutPipeline", () => {
         ]),
       });
 
-    const boxY = (vertical: Vertical, furniture: Furniture): number | undefined => {
+    const boxY = (
+      vertical: Vertical,
+      furniture: Furniture,
+    ): number | undefined => {
       const outcome = runLayoutPipeline(
         makeDeps(createLayoutSession(), {
           ...(furniture === "header"
-            ? { headerContent: { type: "header", hdrFtrType: "default", content: [] } }
-            : { footerContent: { type: "footer", hdrFtrType: "default", content: [] } }),
-          renderHfFromContentOrPm: (hf, _rId, _hfPMs, _contentWidth, metrics) =>
+            ? {
+                headerContent: {
+                  type: "header",
+                  hdrFtrType: "default",
+                  content: [],
+                },
+              }
+            : {
+                footerContent: {
+                  type: "footer",
+                  hdrFtrType: "default",
+                  content: [],
+                },
+              }),
+          renderHfFromContentOrPm: (
+            hf,
+            _rId,
+            _hfPMs,
+            _contentWidth,
+            metrics,
+          ) =>
             hf && metrics.section === furniture ? tallFurniture : undefined,
         }),
         makeAnchoredBoxState(vertical),
@@ -1092,9 +1225,24 @@ describe("runLayoutPipeline", () => {
         "header",
         PUSHED_TOP - BOX_HEIGHT,
       ],
-      ["topMargin, offset", { relativeTo: "topMargin", posOffset: QUARTER_INCH_EMU }, "header", 24],
-      ["margin, offset 0", { relativeTo: "margin", posOffset: 0 }, "header", PUSHED_TOP],
-      ["page, offset", { relativeTo: "page", posOffset: QUARTER_INCH_EMU }, "header", 24],
+      [
+        "topMargin, offset",
+        { relativeTo: "topMargin", posOffset: QUARTER_INCH_EMU },
+        "header",
+        24,
+      ],
+      [
+        "margin, offset 0",
+        { relativeTo: "margin", posOffset: 0 },
+        "header",
+        PUSHED_TOP,
+      ],
+      [
+        "page, offset",
+        { relativeTo: "page", posOffset: QUARTER_INCH_EMU },
+        "header",
+        24,
+      ],
       [
         "bottomMargin, offset 0",
         { relativeTo: "bottomMargin", posOffset: 0 },
@@ -1107,7 +1255,11 @@ describe("runLayoutPipeline", () => {
   });
 
   test("uses authored margins for a blank even-page header and footer", () => {
-    const content = { type: "header", hdrFtrType: "default", content: [] } as const;
+    const content = {
+      type: "header",
+      hdrFtrType: "default",
+      content: [],
+    } as const;
     const outcome = runLayoutPipeline(
       makeDeps(createLayoutSession(), {
         headerContent: content,
@@ -1119,7 +1271,8 @@ describe("runLayoutPipeline", () => {
             footerDefault: "odd-footer",
           },
         ],
-        renderHfFromContentOrPm: (hf) => (hf ? makePreparedHeaderFooter(120) : undefined),
+        renderHfFromContentOrPm: (hf) =>
+          hf ? makePreparedHeaderFooter(120) : undefined,
         renderHeaderFooterContentByRId: (_source, _hfPMs, _width, metrics) =>
           new Map([
             [
@@ -1145,7 +1298,12 @@ describe("runLayoutPipeline", () => {
           { headerDefault: "first-header", footerDefault: "first-footer" },
           { headerDefault: "second-header", footerDefault: "second-footer" },
         ],
-        renderHeaderFooterContentByRId: (_source, _hfPMs, _contentWidth, metrics) => {
+        renderHeaderFooterContentByRId: (
+          _source,
+          _hfPMs,
+          _contentWidth,
+          metrics,
+        ) => {
           if (metrics.section === "header") {
             return new Map([
               ["first-header", makePreparedHeaderFooter(120)],
@@ -1162,8 +1320,12 @@ describe("runLayoutPipeline", () => {
     );
 
     expect(outcome.layout?.pages.at(0)?.margins.top).toBe(MARGINS.header + 120);
-    expect(outcome.layout?.pages.at(0)?.margins.bottom).toBe(MARGINS.footer + 120);
-    expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(MARGINS.header + 120);
+    expect(outcome.layout?.pages.at(0)?.margins.bottom).toBe(
+      MARGINS.footer + 120,
+    );
+    expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(
+      MARGINS.header + 120,
+    );
   });
 
   test("keeps a section's authored margin when its referenced header fits above it", () => {
@@ -1187,7 +1349,11 @@ describe("runLayoutPipeline", () => {
     const withTallFirstHeader = runLayoutPipeline(
       makeDeps(createLayoutSession(), {
         sectionProperties: { titlePg: true },
-        firstPageHeaderContent: { type: "header", hdrFtrType: "first", content: [] },
+        firstPageHeaderContent: {
+          type: "header",
+          hdrFtrType: "first",
+          content: [],
+        },
         renderHfFromContentOrPm: (hf, _rId, _hfPMs, _contentWidth, metrics) =>
           hf && metrics.section === "header"
             ? {
@@ -1218,7 +1384,11 @@ describe("runLayoutPipeline", () => {
     const withTallFirstFooter = runLayoutPipeline(
       makeDeps(createLayoutSession(), {
         sectionProperties: { titlePg: true },
-        firstPageFooterContent: { type: "footer", hdrFtrType: "first", content: [] },
+        firstPageFooterContent: {
+          type: "footer",
+          hdrFtrType: "first",
+          content: [],
+        },
         renderHfFromContentOrPm: (hf, _rId, _hfPMs, _contentWidth, metrics) =>
           hf && metrics.section === "footer"
             ? {
@@ -1238,7 +1408,9 @@ describe("runLayoutPipeline", () => {
     const baselineFirstPage = baseline.layout?.pages.at(0);
     const pushedFirstPage = withTallFirstFooter.layout?.pages.at(0);
     expect(pushedFirstPage?.margins.bottom).toBe(MARGINS.footer + 120);
-    expect(pushedFirstPage?.margins.bottom).toBeGreaterThan(baselineFirstPage?.margins.bottom ?? 0);
+    expect(pushedFirstPage?.margins.bottom).toBeGreaterThan(
+      baselineFirstPage?.margins.bottom ?? 0,
+    );
   });
 
   test("threads the final section geometry into layout", () => {
@@ -1258,7 +1430,10 @@ describe("runLayoutPipeline", () => {
       },
     ];
 
-    const outcome = runLayoutPipeline(makeDeps(createLayoutSession(), { document }), makeState());
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), { document }),
+      makeState(),
+    );
 
     expect(outcome.layout?.pages.at(0)?.size).toEqual({
       w: twipsToPixels(16_860),
@@ -1276,8 +1451,13 @@ describe("runLayoutPipeline", () => {
       hyphenationZoneTwips: 720,
     };
 
-    const outcome = runLayoutPipeline(makeDeps(createLayoutSession(), { document }), makeState());
-    const paragraph = outcome.blocks?.find((block) => block.kind === "paragraph");
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), { document }),
+      makeState(),
+    );
+    const paragraph = outcome.blocks?.find(
+      (block) => block.kind === "paragraph",
+    );
 
     expect(paragraph?.attrs?.automaticHyphenation).toEqual({
       enabled: true,
@@ -1298,7 +1478,12 @@ describe("runLayoutPipeline", () => {
           {
             type: "run",
             formatting: { language: { val: "sk-SK" } },
-            content: [{ type: "text", text: "najneobhospodarovávateľnejší ".repeat(12).trim() }],
+            content: [
+              {
+                type: "text",
+                text: "najneobhospodarovávateľnejší ".repeat(12).trim(),
+              },
+            ],
           },
         ],
       },
@@ -1363,7 +1548,9 @@ describe("runLayoutPipeline", () => {
       makeState(),
     );
 
-    const watermarkLayer = pagesContainer.querySelector(".layout-page-watermark");
+    const watermarkLayer = pagesContainer.querySelector(
+      ".layout-page-watermark",
+    );
     expect(watermarkLayer?.children.at(0)).toMatchObject({
       src: imageSrc,
       tagName: "img",
@@ -1448,7 +1635,10 @@ describe("runLayoutPipeline", () => {
 
   test("uses the supplied vertical alignment when document metadata is unavailable", () => {
     const top = runLayoutPipeline(
-      makeDeps(createLayoutSession(), { document: null, sectionProperties: {} }),
+      makeDeps(createLayoutSession(), {
+        document: null,
+        sectionProperties: {},
+      }),
       makeState(),
     );
     const centered = runLayoutPipeline(
@@ -1485,7 +1675,12 @@ describe("runLayoutPipeline", () => {
       makeDeps(createLayoutSession(), {
         document,
         sectionHeaderFooterRefs: [{ footerDefault: "final-footer" }],
-        renderHeaderFooterContentByRId: (_source, _hfPMs, _contentWidth, metrics) =>
+        renderHeaderFooterContentByRId: (
+          _source,
+          _hfPMs,
+          _contentWidth,
+          metrics,
+        ) =>
           metrics.section === "footer"
             ? new Map([
                 [
@@ -1544,7 +1739,11 @@ describe("runLayoutPipeline", () => {
     expect(session.lastEditorState).toBeNull();
     expect(session.lastPmDoc).toBeNull();
     expect(session.lastMeasureInputs).toBeNull();
-    expect(session.lastTemplatePreview).toEqual({ entries: [], hidden: [], mode: "plain" });
+    expect(session.lastTemplatePreview).toEqual({
+      entries: [],
+      hidden: [],
+      mode: "plain",
+    });
 
     // The error recorder ran; no completion was recorded.
     expect(layoutErrors).toHaveLength(1);

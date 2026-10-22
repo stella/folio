@@ -1,14 +1,14 @@
 import { emuToPixels } from "../../utils/units";
-import { createTableCellFlowState, placeTableCellBlock } from "./tableCellFlow";
 import {
+  type ImageRun,
   isFloatingImageRun,
   resolveTableCellPadding,
-  type ImageRun,
   type TableCell,
   type TableCellMeasure,
 } from "../types";
 import { clampFloatingWrapMargins } from "./clampFloatingWrapMargins";
 import type { FloatingImageZone } from "./floatingZones";
+import { createTableCellFlowState, placeTableCellBlock } from "./tableCellFlow";
 
 export type TableCellFloatingImage = {
   src: string;
@@ -37,7 +37,10 @@ export type TableCellFloatingImage = {
   pmEnd?: number;
 };
 
-type TableCellFloatingPosition = Pick<TableCellFloatingImage, "x" | "y" | "side">;
+type TableCellFloatingPosition = Pick<
+  TableCellFloatingImage,
+  "x" | "y" | "side"
+>;
 
 export type ResolveTableCellFloatingPosition = (
   run: ImageRun,
@@ -129,7 +132,9 @@ export function getTableCellFloatingImages(
       const distLeft = run.distLeft ?? 12;
       const distRight = run.distRight ?? 12;
       const verticalOriginY =
-        run.position?.vertical?.relativeTo === "paragraph" ? placement.top : placement.contentTop;
+        run.position?.vertical?.relativeTo === "paragraph"
+          ? placement.top
+          : placement.contentTop;
 
       if (run.layoutInCell === false && !resolvePosition) {
         // Anchored relative to the page rather than this cell, but no page
@@ -240,7 +245,11 @@ function tableCellFloatingZone(
     return belowPicture;
   }
 
-  const clamped = clampFloatingWrapMargins(leftMargin, rightMargin, contentWidth);
+  const clamped = clampFloatingWrapMargins(
+    leftMargin,
+    rightMargin,
+    contentWidth,
+  );
   return {
     leftMargin: clamped.leftMargin,
     rightMargin: clamped.rightMargin,

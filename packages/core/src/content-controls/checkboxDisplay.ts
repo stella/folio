@@ -1,4 +1,3 @@
-import type { RunContent } from "../types/document";
 import {
   findChildByNamespaceUri,
   getAttributeByNamespaceUri,
@@ -7,6 +6,7 @@ import {
   parseXml,
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "../docx/xmlParser";
+import type { RunContent } from "../types/document";
 
 const CHECKBOX_NAMESPACE_URIS: ReadonlySet<string> = new Set([
   NAMESPACES.w14,
@@ -18,7 +18,10 @@ const DEFAULT_CHECKBOX_FONT = "MS Gothic";
 const HEX_CODE_POINT = /^[\dA-Fa-f]{1,6}$/u;
 const MAX_CHECKBOX_PROPERTIES_CHARACTERS = 65_536;
 
-type CheckboxDisplayContent = Extract<RunContent, { type: "symbol" } | { type: "text" }>;
+type CheckboxDisplayContent = Extract<
+  RunContent,
+  { type: "symbol" } | { type: "text" }
+>;
 
 const defaultDisplay = (checked: boolean): CheckboxDisplayContent => ({
   type: "symbol",
@@ -47,13 +50,21 @@ export const checkboxDisplayContent = (
   } catch {
     return defaultDisplay(checked);
   }
-  const checkbox = findChildByNamespaceUri(root, CHECKBOX_NAMESPACE_URIS, "checkbox");
+  const checkbox = findChildByNamespaceUri(
+    root,
+    CHECKBOX_NAMESPACE_URIS,
+    "checkbox",
+  );
   const state = findChildByNamespaceUri(
     checkbox,
     CHECKBOX_NAMESPACE_URIS,
     checked ? "checkedState" : "uncheckedState",
   );
-  const rawCharacter = getAttributeByNamespaceUri(state, CHECKBOX_NAMESPACE_URIS, "val");
+  const rawCharacter = getAttributeByNamespaceUri(
+    state,
+    CHECKBOX_NAMESPACE_URIS,
+    "val",
+  );
   if (!rawCharacter || !HEX_CODE_POINT.test(rawCharacter)) {
     return defaultDisplay(checked);
   }
@@ -67,9 +78,14 @@ export const checkboxDisplayContent = (
     return defaultDisplay(checked);
   }
   const font =
-    getAttributeByNamespaceUri(state, CHECKBOX_NAMESPACE_URIS, "font") ?? DEFAULT_CHECKBOX_FONT;
+    getAttributeByNamespaceUri(state, CHECKBOX_NAMESPACE_URIS, "font") ??
+    DEFAULT_CHECKBOX_FONT;
   if (codePoint <= 0xffff) {
-    return { type: "symbol", char: codePoint.toString(16).toUpperCase().padStart(4, "0"), font };
+    return {
+      type: "symbol",
+      char: codePoint.toString(16).toUpperCase().padStart(4, "0"),
+      font,
+    };
   }
   return { type: "text", text: String.fromCodePoint(codePoint) };
 };

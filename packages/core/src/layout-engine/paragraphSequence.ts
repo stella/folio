@@ -11,7 +11,10 @@ export const continuesNumberedSequence = (
   }
   const previousNumPr = previous.attrs?.numPr;
   const currentNumPr = current.attrs?.numPr;
-  if (previousNumPr?.kind !== "reference" || currentNumPr?.kind !== "reference") {
+  if (
+    previousNumPr?.kind !== "reference" ||
+    currentNumPr?.kind !== "reference"
+  ) {
     return false;
   }
   return sameStatedParagraphNumbering(previousNumPr, currentNumPr);
@@ -24,7 +27,10 @@ export const continuesTabbedParagraphSequence = (
   if (previous?.kind !== "paragraph" || current.kind !== "paragraph") {
     return false;
   }
-  if (!previous.attrs?.styleId || previous.attrs.styleId !== current.attrs?.styleId) {
+  if (
+    !previous.attrs?.styleId ||
+    previous.attrs.styleId !== current.attrs?.styleId
+  ) {
     return false;
   }
   if (
@@ -53,7 +59,9 @@ export const continuesTabbedParagraphSequence = (
         return false;
       }
       return (
-        tab.val === currentTab.val && tab.pos === currentTab.pos && tab.leader === currentTab.leader
+        tab.val === currentTab.val &&
+        tab.pos === currentTab.pos &&
+        tab.leader === currentTab.leader
       );
     })
   );

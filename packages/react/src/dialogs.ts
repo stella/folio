@@ -37,7 +37,10 @@ export {
   type InsertTableDialogProps,
   type InsertTableStyleOption,
 } from "./components/dialogs/InsertTableDialog";
-export { PageSetupDialog, type PageSetupDialogProps } from "./components/dialogs/PageSetupDialog";
+export {
+  PageSetupDialog,
+  type PageSetupDialogProps,
+} from "./components/dialogs/PageSetupDialog";
 export {
   PasteSpecialDialog,
   type PasteSpecialDialogProps,
@@ -53,4 +56,7 @@ export {
   type TableProperties,
   type TablePropertiesDialogProps,
 } from "./components/dialogs/TablePropertiesDialog";
-export { WatermarkDialog, type WatermarkDialogProps } from "./components/dialogs/WatermarkDialog";
+export {
+  WatermarkDialog,
+  type WatermarkDialogProps,
+} from "./components/dialogs/WatermarkDialog";

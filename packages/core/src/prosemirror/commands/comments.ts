@@ -1,100 +1,113 @@
-import { resolvedCommentPoints } from "../replacedAnnotations";
+import { panic } from "better-result";
 /**
  * Comment and Track Changes Commands
  *
  * PM commands for adding/removing comments and accepting/rejecting tracked changes.
  */
-
-import { resolvedPreservedXmlAttrs } from "../preservedXmlReview";
-import { canonicalFieldNode } from "../fieldRepresentation";
-
-import { Fragment, type Mark, type MarkType, type Node as PMNode } from "prosemirror-model";
+import {
+  Fragment,
+  type Mark,
+  type MarkType,
+  type Node as PMNode,
+} from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
-import { resolveStateStory } from "../markupViewProjection";
-import { finalRevisionParagraphRanges } from "../../internal/revisionResolutionTracking";
-import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
-import { requestDeterministicParaIds } from "../extensions/features/ParaIdAllocatorExtension";
-import { trackedRevisionPathOf, retainedTrackedRevisionMark } from "../trackedRevisionPath";
 import { Mapping } from "prosemirror-transform";
-import { panic } from "better-result";
-import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
-import { resolveParagraphChangeAttrs } from "./resolveParagraphProperties";
-import { resolveNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
+import {
+  PARAGRAPH_MARK_CHANGE_KINDS,
+  type ParagraphMarkChangeKind,
+  REVIEW_CARRIERS,
+} from "@stll/docx-core/model";
+import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
 import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
 import { markParagraphPropertySourceTransfers } from "../../docx/paragraphPropertySource";
-
+import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
+import { finalRevisionParagraphRanges } from "../../internal/revisionResolutionTracking";
 import type { RemovedSectionReference } from "../../internal/sectionEndpointResolution";
 import type { RunPropertyChange } from "../../types/document";
 import {
-  PARAGRAPH_MARK_CHANGE_KINDS,
-  REVIEW_CARRIERS,
-  type ParagraphMarkChangeKind,
-} from "@stll/docx-core/model";
-
+  deleteTextBoxesAnchoredAt,
+  droppedTextBoxAnchorIds,
+  moveTextBoxesPastNextParagraph,
+} from "../anchoredTextBoxes";
 import {
   expectFieldAttrs,
   expectParagraphAttrs,
   expectRunPropertyChangeMarkAttrs,
   expectTrackedChangeMarkAttrs,
 } from "../attrs";
-import { resolveEmptyFieldResultRuns } from "../emptyFieldResultRuns";
-import type { TrackedRevisionAncestor } from "../schema/marks";
-import { addedBreakCarrierBefore, finalParagraphsOf } from "../containerFinalParagraph";
-import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
 import {
-  markChangedParagraphRanges,
-  markStructuralChange,
-  markTrackedSectionEndpointRemoval,
-} from "../extensions/features/ParagraphChangeTrackerExtension";
-import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
+  addedBreakCarrierBefore,
+  finalParagraphsOf,
+} from "../containerFinalParagraph";
 import {
   enclosingRevisionIds,
   resolutionRemovesControl,
   withoutResolvedEnclosures,
 } from "../contentControlRevisions";
+import { resolveEmptyFieldResultRuns } from "../emptyFieldResultRuns";
+import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
+import {
+  markChangedParagraphRanges,
+  markStructuralChange,
+  markTrackedSectionEndpointRemoval,
+} from "../extensions/features/ParagraphChangeTrackerExtension";
+import { requestDeterministicParaIds } from "../extensions/features/ParaIdAllocatorExtension";
+import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
+import { canonicalFieldNode } from "../fieldRepresentation";
+import { resolveStateStory } from "../markupViewProjection";
+import { joinAtParagraphMark } from "../paragraphMarkJoin";
+import {
+  carryParagraphProperties,
+  paragraphLeftAfter,
+} from "../paragraphPropertyCarry";
 import { getDocumentNumbering } from "../plugins/documentNumbering";
 import { getDocumentStyleResolver } from "../plugins/documentStyleState";
-import { paragraphRunStyleContextAt } from "../runStyleFormatting";
+import { resolvedPreservedXmlAttrs } from "../preservedXmlReview";
+import { readRangeAnchorAttrs } from "../rangeAnchorAttrs";
+import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
+import { rejoinRunsAt } from "../rejoinRunCarriers";
+import { resolvedCommentPoints } from "../replacedAnnotations";
+import {
+  getFolioNodeRevisionCarriers,
+  nodePropertyRevisionSites,
+} from "../revisionCarriers";
+import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import {
   reconstructRejectedRunFormattingMarks,
   restoreHistoricalRunFormatting,
 } from "../runPropertyChangeResolution";
-import { holdsNoContent } from "../zeroWidthAnchors";
-import {
-  deleteTextBoxesAnchoredAt,
-  droppedTextBoxAnchorIds,
-  moveTextBoxesPastNextParagraph,
-} from "../anchoredTextBoxes";
-import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
-import { joinAtParagraphMark } from "../paragraphMarkJoin";
-import { carryParagraphProperties, paragraphLeftAfter } from "../paragraphPropertyCarry";
-import { runInCellPending, runParagraphIntoTable } from "../tableRunIn";
-import { rejoinRunsAt } from "../rejoinRunCarriers";
-import { readRangeAnchorAttrs } from "../rangeAnchorAttrs";
-import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
-import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
-import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
+import { paragraphRunStyleContextAt } from "../runStyleFormatting";
+import type { TrackedRevisionAncestor } from "../schema/marks";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
+import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
 import {
+  markRowEmptiedInBatch,
   reconcileTableGridAfterColumnRemoval,
   removeRowsWithoutCellsAfterBatch,
-  markRowEmptiedInBatch,
-  type RowsEmptiedInBatch,
   removeTableRow,
+  type RowsEmptiedInBatch,
 } from "../tableGridMutation";
+import { runInCellPending, runParagraphIntoTable } from "../tableRunIn";
+import {
+  retainedTrackedRevisionMark,
+  trackedRevisionPathOf,
+} from "../trackedRevisionPath";
+import { holdsNoContent } from "../zeroWidthAnchors";
+import {
+  hasSerializableParagraphPropertyChange,
+  paragraphPropertiesSnapshot,
+} from "./propertyChangeScope";
+import { resolveNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
+import { resolveParagraphChangeAttrs } from "./resolveParagraphProperties";
 import {
   hasMatchingCollapsedTableCellMerge,
   resolveCollapsedTableCellMerge,
   resolveVisibleTableCellMerge,
 } from "./tableCellMergeResolution";
-import {
-  hasSerializableParagraphPropertyChange,
-  paragraphPropertiesSnapshot,
-} from "./propertyChangeScope";
 
 /**
  * Add a comment mark to the current selection.
@@ -134,7 +147,10 @@ export function removeCommentMark(commentId: number): Command {
       state.doc.descendants((node, pos) => {
         if (node.isText) {
           for (const mark of node.marks) {
-            if (mark.type === commentType && mark.attrs["commentId"] === commentId) {
+            if (
+              mark.type === commentType &&
+              mark.attrs["commentId"] === commentId
+            ) {
               tr.removeMark(pos, pos + node.nodeSize, mark);
             }
           }
@@ -150,7 +166,10 @@ export function removeCommentMark(commentId: number): Command {
 
 type ResolveMode = "accept" | "reject";
 
-const revisionLayerRemovesContent = (layer: TrackedRevisionAncestor, mode: ResolveMode): boolean =>
+const revisionLayerRemovesContent = (
+  layer: TrackedRevisionAncestor,
+  mode: ResolveMode,
+): boolean =>
   mode === "accept"
     ? layer.type === "deletion" || layer.type === "moveFrom"
     : layer.type === "insertion" || layer.type === "moveTo";
@@ -181,13 +200,16 @@ function resolveChange(
 
     const keepType = mode === "accept" ? insertionType : deletionType;
     const removeType = mode === "accept" ? deletionType : insertionType;
-    const revisionSet = revisionIds === undefined ? null : new Set<number>(revisionIds);
+    const revisionSet =
+      revisionIds === undefined ? null : new Set<number>(revisionIds);
     // A range-wide removal lets ProseMirror coalesce one revision split by
     // inline formatting. The id-scoped path must keep matching each mark.
-    const removeKeptMarksInBulk = revisionSet === null && keepType !== undefined;
+    const removeKeptMarksInBulk =
+      revisionSet === null && keepType !== undefined;
     const matchesRevision = (mark: { attrs: Record<string, unknown> }) =>
       revisionSet === null ||
-      (typeof mark.attrs["revisionId"] === "number" && revisionSet.has(mark.attrs["revisionId"]));
+      (typeof mark.attrs["revisionId"] === "number" &&
+        revisionSet.has(mark.attrs["revisionId"]));
 
     if (dispatch) {
       const points =
@@ -197,22 +219,40 @@ function resolveChange(
               retiresStructure: (node, position) => {
                 if (node.type.name === "paragraph")
                   return (
-                    collectPPrMarkOp(node, position, from, to, mode, revisionSet)?.action === "join"
+                    collectPPrMarkOp(
+                      node,
+                      position,
+                      from,
+                      to,
+                      mode,
+                      revisionSet,
+                    )?.action === "join"
                   );
                 if (!rangeCoversNode(from, to, position, node)) return false;
                 if (node.type.name === "tableRow")
                   return (
-                    collectTableRowStructuralOp(node, position, mode, revisionSet)?.action ===
-                    "remove"
+                    collectTableRowStructuralOp(
+                      node,
+                      position,
+                      mode,
+                      revisionSet,
+                    )?.action === "remove"
                   );
-                return collectTableCellStructuralOps(node, position, mode, revisionSet).some(
+                return collectTableCellStructuralOps(
+                  node,
+                  position,
+                  mode,
+                  revisionSet,
+                ).some(
                   (op) => op.type === "membership" && op.action === "remove",
                 );
               },
               removes: (node, position) =>
                 position >= from &&
                 position + node.nodeSize <= to &&
-                node.marks.some((mark) => mark.type === removeType && matchesRevision(mark)),
+                node.marks.some(
+                  (mark) => mark.type === removeType && matchesRevision(mark),
+                ),
             })
           : new Map<number, number>();
       const tr = state.tr;
@@ -228,7 +268,11 @@ function resolveChange(
       const removedSectionReferences: RemovedSectionReference[] = [];
       const countedSectionEndpoints = new Set<PMNode>();
       const countRemovedSectionEndpoint = (paragraph: PMNode): void => {
-        if (!ownsSectionEndpoint(paragraph) || countedSectionEndpoints.has(paragraph)) return;
+        if (
+          !ownsSectionEndpoint(paragraph) ||
+          countedSectionEndpoints.has(paragraph)
+        )
+          return;
         countedSectionEndpoints.add(paragraph);
         removedSectionEndpointCount++;
         removedSectionReferences.push(...sectionReferencesOf(paragraph));
@@ -245,7 +289,10 @@ function resolveChange(
           revisionSet.has(mark.info.id)
         )
           return;
-        const survivor = paragraphLeftAfter({ doc: tr.doc, paragraphPos: position });
+        const survivor = paragraphLeftAfter({
+          doc: tr.doc,
+          paragraphPos: position,
+        });
         if (survivor === null) return;
         carryParagraphProperties({
           tr,
@@ -264,7 +311,12 @@ function resolveChange(
             pPrMarkOps.push(op);
           }
 
-          const boundaryCovered = rangeCoversParagraphBoundary(from, to, pos, node);
+          const boundaryCovered = rangeCoversParagraphBoundary(
+            from,
+            to,
+            pos,
+            node,
+          );
           const nextAttrs = resolveParagraphChangeAttrs({
             node,
             boundaryCovered,
@@ -295,14 +347,18 @@ function resolveChange(
           return true;
         }
 
-        if (node.type.name === "tableRow" && rangeCoversNode(from, to, pos, node)) {
+        if (
+          node.type.name === "tableRow" &&
+          rangeCoversNode(from, to, pos, node)
+        ) {
           const op = collectTableRowStructuralOp(node, pos, mode, revisionSet);
           if (op) {
             tableRowStructuralOps.push(op);
           }
         }
         if (
-          (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
+          (node.type.name === "tableCell" ||
+            node.type.name === "tableHeader") &&
           rangeCoversNode(from, to, pos, node)
         ) {
           tableCellStructuralOps.push(
@@ -351,7 +407,13 @@ function resolveChange(
           }
           const resolvesRevision = (revisionId: number): boolean =>
             revisionSet === null || revisionSet.has(revisionId);
-          if (resolutionRemovesControl({ control: node, removeType, resolves: resolvesRevision })) {
+          if (
+            resolutionRemovesControl({
+              control: node,
+              removeType,
+              resolves: resolvesRevision,
+            })
+          ) {
             deleteRanges.push({ from: pos, to: nodeEnd });
             return false;
           }
@@ -367,13 +429,16 @@ function resolveChange(
         );
         const removesNode =
           removeType !== undefined &&
-          node.marks.some((mark) => mark.type === removeType && matchesRevision(mark));
+          node.marks.some(
+            (mark) => mark.type === removeType && matchesRevision(mark),
+          );
         const resolvesNode =
           removesNode ||
           runPropertyChangeMark !== undefined ||
           node.marks.some(
             (mark) =>
-              (mark.type === insertionType || mark.type === deletionType) && matchesRevision(mark),
+              (mark.type === insertionType || mark.type === deletionType) &&
+              matchesRevision(mark),
           );
         if (resolvesNode) {
           resolvedBoundaries.push(rangeFrom, rangeTo);
@@ -407,7 +472,8 @@ function resolveChange(
               tr.removeMark(rangeFrom, rangeTo, mark);
           }
           for (const mark of nextMarks) {
-            if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name)) tr.addMark(rangeFrom, rangeTo, mark);
+            if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name))
+              tr.addMark(rangeFrom, rangeTo, mark);
           }
         }
         if (runPropertyChangeMark) {
@@ -426,18 +492,27 @@ function resolveChange(
         const nestedMark = node.marks.find(
           (mark) =>
             (mark.type === insertionType || mark.type === deletionType) &&
-            (expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.length ?? 0) > 0,
+            (expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors
+              ?.length ?? 0) > 0,
         );
         if (nestedMark) {
           const path = trackedRevisionPathOf(nestedMark);
           const selected = (layer: TrackedRevisionAncestor): boolean =>
             revisionSet === null || revisionSet.has(layer.revisionId);
           if (path.some(selected)) {
-            if (path.some((layer) => selected(layer) && revisionLayerRemovesContent(layer, mode))) {
+            if (
+              path.some(
+                (layer) =>
+                  selected(layer) && revisionLayerRemovesContent(layer, mode),
+              )
+            ) {
               deleteRanges.push({ from: rangeFrom, to: rangeTo });
             } else {
               tr.removeMark(rangeFrom, rangeTo, nestedMark);
-              const retained = retainedTrackedRevisionMark(nestedMark, (layer) => !selected(layer));
+              const retained = retainedTrackedRevisionMark(
+                nestedMark,
+                (layer) => !selected(layer),
+              );
               if (retained) tr.addMark(rangeFrom, rangeTo, retained);
             }
           }
@@ -456,7 +531,9 @@ function resolveChange(
         if (
           !removesNode &&
           keepType &&
-          node.marks.some((mark) => mark.type === keepType && matchesRevision(mark))
+          node.marks.some(
+            (mark) => mark.type === keepType && matchesRevision(mark),
+          )
         ) {
           const retained = node.marks.filter(
             (mark) => !(mark.type === keepType && matchesRevision(mark)),
@@ -513,7 +590,12 @@ function resolveChange(
       }
       // A text box goes with its anchor, and before any paragraph mark joins:
       // the box stands between its paragraph and the next one.
-      if (deleteTextBoxesAnchoredAt(tr, droppedTextBoxAnchorIds(state.doc, tr.doc))) {
+      if (
+        deleteTextBoxesAnchoredAt(
+          tr,
+          droppedTextBoxAnchorIds(state.doc, tr.doc),
+        )
+      ) {
         markStructuralChange(tr);
       }
 
@@ -550,20 +632,30 @@ function resolveChange(
         markStructuralChange(tr);
       }
 
-      tableCellStructuralOps.sort((left, right) => right.cellPos - left.cellPos);
+      tableCellStructuralOps.sort(
+        (left, right) => right.cellPos - left.cellPos,
+      );
       let resolvedTableCellStructure = false;
       let failedTableCellMergeResolution = false;
       const emptiedTables: RowsEmptiedInBatch = { pending: false };
       for (const op of tableCellStructuralOps) {
         const mappedPos = tr.mapping.map(op.cellPos);
         const cell = tr.doc.nodeAt(mappedPos);
-        if (!cell || (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader")) {
+        if (
+          !cell ||
+          (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader")
+        ) {
           continue;
         }
         if (op.type === "merge") {
           const resolved =
             op.source === "collapsed"
-              ? resolveCollapsedTableCellMerge(tr, mappedPos, op.mode, op.revisionSet)
+              ? resolveCollapsedTableCellMerge(
+                  tr,
+                  mappedPos,
+                  op.mode,
+                  op.revisionSet,
+                )
               : resolveVisibleTableCellMerge({
                   tr,
                   cellPos: mappedPos,
@@ -634,23 +726,29 @@ function resolveChange(
           boundaries.push(boundary);
           nextPos += boundary.nodeSize;
         }
-        const nextNode = nextPos < tr.doc.content.size ? tr.doc.nodeAt(nextPos) : null;
+        const nextNode =
+          nextPos < tr.doc.content.size ? tr.doc.nodeAt(nextPos) : null;
         const joinable = nextNode?.type.name === paragraph.type.name;
         let follows: "paragraph" | "table" | "nothing" = "nothing";
         if (joinable) follows = "paragraph";
-        else if (nextNode?.type.spec["tableRole"] === "table") follows = "table";
+        else if (nextNode?.type.spec["tableRole"] === "table")
+          follows = "table";
         const resolved = tr.doc.resolve(mappedPos);
-        const sectionProperties = expectParagraphAttrs(paragraph)._sectionProperties;
+        const sectionProperties =
+          expectParagraphAttrs(paragraph)._sectionProperties;
         const preceding = resolved.parent.maybeChild(resolved.index() - 1);
         const precedingProperties =
           preceding?.type.name === "paragraph"
             ? expectParagraphAttrs(preceding)._sectionProperties
             : undefined;
-        let precedingSectionOwner: "unavailable" | "available" | "same" | "occupied" =
-          "unavailable";
+        let precedingSectionOwner:
+          "unavailable" | "available" | "same" | "occupied" = "unavailable";
         if (preceding?.type.name === "paragraph") {
           if (precedingProperties == null) precedingSectionOwner = "available";
-          else if (JSON.stringify(precedingProperties) === JSON.stringify(sectionProperties))
+          else if (
+            JSON.stringify(precedingProperties) ===
+            JSON.stringify(sectionProperties)
+          )
             precedingSectionOwner = "same";
           else precedingSectionOwner = "occupied";
         }
@@ -660,20 +758,29 @@ function resolveChange(
           markWasAdded: op.markWasAdded,
           // Removing this final paragraph leaves the block before it last.
           containerStillEndsWithParagraph:
-            resolved.parent.maybeChild(resolved.index() - 1)?.type.name === "paragraph",
+            resolved.parent.maybeChild(resolved.index() - 1)?.type.name ===
+            "paragraph",
           followingTableCanReceiveRunIn:
             follows === "table" &&
             boundaries.length === 0 &&
-            !pendingTables.some((position) => tr.mapping.map(position) === nextPos) &&
+            !pendingTables.some(
+              (position) => tr.mapping.map(position) === nextPos,
+            ) &&
             !ownsSectionEndpoint(paragraph),
-          removedSectionProperties: op.markWasAdded && sectionProperties != null,
+          removedSectionProperties:
+            op.markWasAdded && sectionProperties != null,
           precedingSectionOwner,
           followingHasSectionProperties:
-            nextNode?.type.name === "paragraph" && ownsSectionEndpoint(nextNode),
+            nextNode?.type.name === "paragraph" &&
+            ownsSectionEndpoint(nextNode),
         });
         const ranIn =
           outcome.kind === "run-in"
-            ? runParagraphIntoTable({ tr, paragraphPos: mappedPos, styleResolver })
+            ? runParagraphIntoTable({
+                tr,
+                paragraphPos: mappedPos,
+                styleResolver,
+              })
             : null;
         if (ranIn) {
           tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
@@ -735,18 +842,30 @@ function resolveChange(
         // Section properties live on the removed paragraph mark. The shared
         // paragraph-mark rule chooses the surviving mark that inherits them.
         try {
-          if (outcome.sectionDestination === "preceding" && preceding?.type.name === "paragraph") {
+          if (
+            outcome.sectionDestination === "preceding" &&
+            preceding?.type.name === "paragraph"
+          ) {
             const precedingPos = mappedPos - preceding.nodeSize;
-            tr.setNodeAttribute(precedingPos, "_sectionProperties", sectionProperties);
+            tr.setNodeAttribute(
+              precedingPos,
+              "_sectionProperties",
+              sectionProperties,
+            );
           } else if (outcome.sectionDestination === "following") {
-            tr.setNodeAttribute(nextPos, "_sectionProperties", sectionProperties);
+            tr.setNodeAttribute(
+              nextPos,
+              "_sectionProperties",
+              sectionProperties,
+            );
           }
           const destination = tr.doc.nodeAt(nextPos);
           joinAtParagraphMark({
             tr,
             paragraphPos: mappedPos,
             paragraph,
-            next: destination?.type.name === "paragraph" ? destination : nextNode,
+            next:
+              destination?.type.name === "paragraph" ? destination : nextNode,
             styleResolver,
           });
           joinSeams.push({
@@ -778,7 +897,9 @@ function resolveChange(
       // The pieces a revision split off its run are one run again; runs that
       // only meet because their paragraphs joined are not pieces of one run.
       const seams = new Set(
-        joinSeams.map(({ position, step }) => tr.mapping.slice(step).map(position)),
+        joinSeams.map(({ position, step }) =>
+          tr.mapping.slice(step).map(position),
+        ),
       );
       rejoinRunsAt({
         tr,
@@ -791,12 +912,14 @@ function resolveChange(
       const resolvedFields: { node: PMNode; position: number }[] = [];
       tr.doc.descendants((node, position) => {
         const canonical = canonicalFieldNode(node);
-        if (canonical !== node) resolvedFields.push({ node: canonical, position });
+        if (canonical !== node)
+          resolvedFields.push({ node: canonical, position });
       });
       for (const { node, position } of resolvedFields.toReversed()) {
         const field = tr.doc.nodeAt(position);
         if (!field) continue;
-        if (field.type === node.type) tr.setNodeMarkup(position, undefined, node.attrs, node.marks);
+        if (field.type === node.type)
+          tr.setNodeMarkup(position, undefined, node.attrs, node.marks);
         else tr.replaceWith(position, position + field.nodeSize, node);
       }
       // A range that loses all covered content is removed rather than
@@ -805,7 +928,10 @@ function resolveChange(
         const doomed = new Set(points.keys());
         const carriers: { position: number; size: number }[] = [];
         tr.doc.descendants((node, position) => {
-          if (node.type.name === "commentReference" && doomed.has(node.attrs["commentId"])) {
+          if (
+            node.type.name === "commentReference" &&
+            doomed.has(node.attrs["commentId"])
+          ) {
             carriers.push({ position, size: node.nodeSize });
             return false;
           }
@@ -853,15 +979,20 @@ const terminalTableDeletionIsPending = (tr: Transaction): boolean => {
   let pending = false;
   terminalTable.descendants((node) => {
     pending ||=
-      (node.type.name === "tableRow" && isTableRowRevisionAttr(node.attrs["trDel"])) ||
-      (node.type.name !== "tableRow" && node.marks.some((mark) => mark.type.name === "deletion"));
+      (node.type.name === "tableRow" &&
+        isTableRowRevisionAttr(node.attrs["trDel"])) ||
+      (node.type.name !== "tableRow" &&
+        node.marks.some((mark) => mark.type.name === "deletion"));
     return !pending;
   });
   return pending;
 };
 
 /** Resolve the Folio-only receiver Word needs after a terminal deleted table. */
-const resolveTerminalTableReviewCarrier = (tr: Transaction, mode: ResolveMode): void => {
+const resolveTerminalTableReviewCarrier = (
+  tr: Transaction,
+  mode: ResolveMode,
+): void => {
   const carrier = tr.doc.lastChild;
   if (
     carrier?.type.name !== "paragraph" ||
@@ -918,7 +1049,11 @@ const resolveRunPropertyChange = ({
       ? expectFieldAttrs(node)._docxEmptyResultRuns
       : undefined;
   const resolvedRuns = emptyRuns
-    ? resolveEmptyFieldResultRuns({ runs: emptyRuns, mode, revisionIds: revisionSet })
+    ? resolveEmptyFieldResultRuns({
+        runs: emptyRuns,
+        mode,
+        revisionIds: revisionSet,
+      })
     : null;
   if (resolvedRuns) {
     const current = tr.doc.nodeAt(from);
@@ -928,7 +1063,11 @@ const resolveRunPropertyChange = ({
       _docxEmptyResultRuns: resolvedRuns.runs,
     });
     if (resolvedRuns.visibleFormattingChanged) {
-      const styleContext = paragraphRunStyleContextAt({ doc: tr.doc, pos: from, styleResolver });
+      const styleContext = paragraphRunStyleContextAt({
+        doc: tr.doc,
+        pos: from,
+        styleResolver,
+      });
       for (const currentMark of node.marks) {
         if (RUN_FORMATTING_MARK_NAMES.has(currentMark.type.name)) {
           tr.removeMark(from, to, currentMark.type);
@@ -951,7 +1090,11 @@ const resolveRunPropertyChange = ({
 
   const previousFormatting: RunPropertyChange["previousFormatting"] =
     matches.at(0)?.previousFormatting;
-  const styleContext = paragraphRunStyleContextAt({ doc: tr.doc, pos: from, styleResolver });
+  const styleContext = paragraphRunStyleContextAt({
+    doc: tr.doc,
+    pos: from,
+    styleResolver,
+  });
   for (const currentMark of node.marks) {
     if (RUN_FORMATTING_MARK_NAMES.has(currentMark.type.name)) {
       tr.removeMark(from, to, currentMark.type);
@@ -1062,7 +1205,10 @@ function isTableRowRevisionAttr(value: unknown): value is TableRowRevisionAttr {
  * fresh `w:id` per element, so an author + timestamp match counts too. A third
  * party's edit inside the same row matches neither and survives untouched.
  */
-function markBelongsToRowRevision(mark: Mark, revision: TableRowRevisionAttr): boolean {
+function markBelongsToRowRevision(
+  mark: Mark,
+  revision: TableRowRevisionAttr,
+): boolean {
   if (mark.attrs["revisionId"] === revision.revisionId) {
     return true;
   }
@@ -1142,7 +1288,9 @@ function collectTableCellStructuralOps(
       operations.push({
         type: "membership",
         cellPos,
-        action: isTableCellRetainedInReviewView(marker.kind, view) ? "clear" : "remove",
+        action: isTableCellRetainedInReviewView(marker.kind, view)
+          ? "clear"
+          : "remove",
       });
     }
   }
@@ -1158,8 +1306,15 @@ function collectTableCellStructuralOps(
   return operations;
 }
 
-function isTableCellRevisionAttr(value: unknown): value is TableCellRevisionAttr {
-  if (typeof value !== "object" || value === null || !("kind" in value) || !("info" in value)) {
+function isTableCellRevisionAttr(
+  value: unknown,
+): value is TableCellRevisionAttr {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("kind" in value) ||
+    !("info" in value)
+  ) {
     return false;
   }
   if (value.kind !== "ins" && value.kind !== "del" && value.kind !== "merge") {
@@ -1175,9 +1330,16 @@ function isTableCellRevisionAttr(value: unknown): value is TableCellRevisionAttr
 }
 
 /** Record rows for a final sweep after every cell revision has resolved. */
-function deleteTableCellAt(tr: Transaction, cellPos: number, emptied: RowsEmptiedInBatch): void {
+function deleteTableCellAt(
+  tr: Transaction,
+  cellPos: number,
+  emptied: RowsEmptiedInBatch,
+): void {
   const cell = tr.doc.nodeAt(cellPos);
-  if (!cell || (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader")) {
+  if (
+    !cell ||
+    (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader")
+  ) {
     return;
   }
   const resolved = tr.doc.resolve(cellPos);
@@ -1232,7 +1394,11 @@ function deleteTableRowAt(tr: Transaction, rowPos: number): void {
   }
   const rowIndex = resolved.index();
   if (table.childCount > 1) {
-    removeTableRow(tr, { map: TableMap.get(table), table, tableStart: resolved.start() }, rowIndex);
+    removeTableRow(
+      tr,
+      { map: TableMap.get(table), table, tableStart: resolved.start() },
+      rowIndex,
+    );
     return;
   }
 
@@ -1248,7 +1414,12 @@ function deleteTableRowAt(tr: Transaction, rowPos: number): void {
   const emptyParagraph = tr.doc.type.schema.nodes["paragraph"]?.createAndFill();
   if (
     emptyParagraph &&
-    parent.canReplaceWith(tableIndex, tableIndex + 1, emptyParagraph.type, emptyParagraph.marks)
+    parent.canReplaceWith(
+      tableIndex,
+      tableIndex + 1,
+      emptyParagraph.type,
+      emptyParagraph.marks,
+    )
   ) {
     tr.replaceWith(tablePosition, tableEnd, emptyParagraph);
   }
@@ -1290,7 +1461,8 @@ function collectPPrMarkOp(
   // Accepting an added break, or rejecting a removed one, keeps the break
   // (clear the attr). The other two remove it (join with the next paragraph).
   const markWasAdded = paragraphMarkWasAdded(pPrMark.kind);
-  const action: PPrMarkOp["action"] = markWasAdded === (mode === "accept") ? "clear" : "join";
+  const action: PPrMarkOp["action"] =
+    markWasAdded === (mode === "accept") ? "clear" : "join";
   return { paragraphPos: pos, action, markWasAdded };
 }
 
@@ -1391,7 +1563,10 @@ function getListPropertyChangeType(
   change: ParagraphPropertyChangeAttrs,
 ): ParagraphBoundaryChange["type"] | null {
   const previousFormatting = change.previousFormatting;
-  if (previousFormatting == null || !Object.hasOwn(previousFormatting, "numPr")) {
+  if (
+    previousFormatting == null ||
+    !Object.hasOwn(previousFormatting, "numPr")
+  ) {
     return null;
   }
 
@@ -1577,7 +1752,9 @@ export function findAIEditRevisionRange(
   const insertionType = state.schema.marks["insertion"];
   const deletionType = state.schema.marks["deletion"];
   const runPropertyChangeType = state.schema.marks["runPropertyChange"];
-  const idSet = new Set<number>(typeof revisionIds === "number" ? [revisionIds] : revisionIds);
+  const idSet = new Set<number>(
+    typeof revisionIds === "number" ? [revisionIds] : revisionIds,
+  );
 
   const range = { from: null as number | null, to: null as number | null };
   const includeRange = (from: number, to: number): void => {
@@ -1635,7 +1812,9 @@ export function findAIEditRevisionRange(
     for (const mark of node.marks) {
       if (
         mark.type === runPropertyChangeType &&
-        expectRunPropertyChangeMarkAttrs(mark).changes.some((change) => idSet.has(change.info.id))
+        expectRunPropertyChangeMarkAttrs(mark).changes.some((change) =>
+          idSet.has(change.info.id),
+        )
       ) {
         includeRange(pos, pos + node.nodeSize);
         break;
@@ -1643,9 +1822,9 @@ export function findAIEditRevisionRange(
       if (
         (mark.type === insertionType || mark.type === deletionType) &&
         (idSet.has(expectTrackedChangeMarkAttrs(mark).revisionId) ||
-          (expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors ?? []).some((ancestor) =>
-            idSet.has(ancestor.revisionId),
-          ))
+          (
+            expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors ?? []
+          ).some((ancestor) => idSet.has(ancestor.revisionId)))
       ) {
         includeRange(pos, pos + node.nodeSize);
         break;
@@ -1666,7 +1845,9 @@ export function findAIEditRevisionRange(
  * full id list for a replace (one id per side). Returns false when
  * none of the ids match anything in the doc.
  */
-export function acceptAIEditRevision(revisionIds: number | readonly number[]): Command {
+export function acceptAIEditRevision(
+  revisionIds: number | readonly number[],
+): Command {
   return (state, dispatch) => {
     const range = findAIEditRevisionRange(state, revisionIds);
     if (!range) {
@@ -1681,7 +1862,9 @@ export function acceptAIEditRevision(revisionIds: number | readonly number[]): C
  * Reject the tracked-change marks belonging to an AI-edit operation.
  * See {@link acceptAIEditRevision} for the id semantics.
  */
-export function rejectAIEditRevision(revisionIds: number | readonly number[]): Command {
+export function rejectAIEditRevision(
+  revisionIds: number | readonly number[],
+): Command {
   return (state, dispatch) => {
     const range = findAIEditRevisionRange(state, revisionIds);
     if (!range) {
@@ -1704,10 +1887,15 @@ export function rejectAIEditRevision(revisionIds: number | readonly number[]): C
  * and are undoable.
  */
 
-const SUGGESTION_MARK_NAMES = new Set(["insertion", "deletion", "runPropertyChange"]);
+const SUGGESTION_MARK_NAMES = new Set([
+  "insertion",
+  "deletion",
+  "runPropertyChange",
+]);
 
 const isSuggestionMark = (mark: Mark): boolean =>
-  mark.attrs["provenance"] === "suggested" && SUGGESTION_MARK_NAMES.has(mark.type.name);
+  mark.attrs["provenance"] === "suggested" &&
+  SUGGESTION_MARK_NAMES.has(mark.type.name);
 
 export type SuggestionKind =
   | "insertion"
@@ -1786,7 +1974,10 @@ const readSuggestedMarker = (
 const readSuggestedParagraphPropertyChange = (
   change: ParagraphPropertyChangeAttrs,
 ): { suggestionId: string; revisionId: number } | null => {
-  if (change.info.provenance !== "suggested" || typeof change.info.suggestionId !== "string") {
+  if (
+    change.info.provenance !== "suggested" ||
+    typeof change.info.suggestionId !== "string"
+  ) {
     return null;
   }
   return { suggestionId: change.info.suggestionId, revisionId: change.info.id };
@@ -1794,7 +1985,11 @@ const readSuggestedParagraphPropertyChange = (
 
 const readSuggestedParagraphMark = (
   node: PMNode,
-): { suggestionId: string; revisionId: number; kind: SuggestionKind } | null => {
+): {
+  suggestionId: string;
+  revisionId: number;
+  kind: SuggestionKind;
+} | null => {
   if (node.type.name !== "paragraph") return null;
   const mark = node.attrs["pPrMark"];
   if (!isPPrMarkAttr(mark)) return null;
@@ -1814,7 +2009,9 @@ const readSuggestedParagraphMark = (
   };
 };
 
-const readStructuralSuggestion = (node: PMNode): StructuralSuggestion | null => {
+const readStructuralSuggestion = (
+  node: PMNode,
+): StructuralSuggestion | null => {
   const attrs = node.attrs;
   // `_suggestedInsert` only carries whole-node semantics for paragraphs
   // (accept → paragraph-mark `w:ins`) and tables (accept → direct). Rows and
@@ -1827,7 +2024,8 @@ const readStructuralSuggestion = (node: PMNode): StructuralSuggestion | null => 
     typeof insertMarker === "object" &&
     insertMarker !== null
   ) {
-    const suggestionId = (insertMarker as { suggestionId?: unknown }).suggestionId;
+    const suggestionId = (insertMarker as { suggestionId?: unknown })
+      .suggestionId;
     const revisionId = (insertMarker as { revisionId?: unknown }).revisionId;
     if (typeof suggestionId === "string" && typeof revisionId === "number") {
       return {
@@ -1857,9 +2055,12 @@ const readStructuralSuggestion = (node: PMNode): StructuralSuggestion | null => 
       // mis-classified as a column insertion.
       const markerKind = (cellMarker as { kind?: unknown }).kind;
       if (markerKind === "ins" || markerKind === "del") {
-        const marker = readSuggestedMarker((cellMarker as { info?: unknown }).info);
+        const marker = readSuggestedMarker(
+          (cellMarker as { info?: unknown }).info,
+        );
         if (marker) {
-          const kind: SuggestionKind = markerKind === "del" ? "deleteColumn" : "insertColumn";
+          const kind: SuggestionKind =
+            markerKind === "del" ? "deleteColumn" : "insertColumn";
           return { ...marker, kind, isNodeInsert: false };
         }
       }
@@ -1874,7 +2075,9 @@ type SuggestionAccumulator = {
   revisionIds: Set<number>;
 };
 
-const collectSuggestions = (state: EditorState): Map<string, SuggestionAccumulator> => {
+const collectSuggestions = (
+  state: EditorState,
+): Map<string, SuggestionAccumulator> => {
   const runPropertyChangeType = state.schema.marks["runPropertyChange"];
   const bySuggestion = new Map<string, SuggestionAccumulator>();
   const entryFor = (suggestionId: string): SuggestionAccumulator => {
@@ -1955,7 +2158,9 @@ const collectSuggestions = (state: EditorState): Map<string, SuggestionAccumulat
  * mixes a table insert with any other kind (a caller stamping heterogeneous
  * operations with one `suggestionId`) is `"mixed"`.
  */
-const suggestionAppliedAs = (kinds: ReadonlySet<SuggestionKind>): SuggestionAppliedAs => {
+const suggestionAppliedAs = (
+  kinds: ReadonlySet<SuggestionKind>,
+): SuggestionAppliedAs => {
   if (!kinds.has("insertTable")) {
     return "tracked";
   }
@@ -1967,7 +2172,9 @@ const suggestionAppliedAs = (kinds: ReadonlySet<SuggestionKind>): SuggestionAppl
 const mergeSegments = (
   segments: readonly { from: number; to: number }[],
 ): { from: number; to: number }[] => {
-  const sorted = [...segments].toSorted((a, b) => a.from - b.from || a.to - b.to);
+  const sorted = [...segments].toSorted(
+    (a, b) => a.from - b.from || a.to - b.to,
+  );
   const merged: { from: number; to: number }[] = [];
   for (const segment of sorted) {
     const last = merged.at(-1);
@@ -2009,11 +2216,16 @@ export function getSuggestions(state: EditorState): FolioSuggestion[] {
     });
   }
   // Document order by first range start keeps output stable for the host.
-  return suggestions.toSorted((a, b) => (a.ranges[0]?.from ?? 0) - (b.ranges[0]?.from ?? 0));
+  return suggestions.toSorted(
+    (a, b) => (a.ranges[0]?.from ?? 0) - (b.ranges[0]?.from ?? 0),
+  );
 }
 
 /** The suggestion a revision belongs to, or `null` for an ordinary tracked change. */
-export function suggestionIdOfRevision(state: EditorState, revisionId: number): string | null {
+export function suggestionIdOfRevision(
+  state: EditorState,
+  revisionId: number,
+): string | null {
   for (const [suggestionId, entry] of collectSuggestions(state)) {
     if (entry.revisionIds.has(revisionId)) {
       return suggestionId;
@@ -2062,7 +2274,9 @@ const normalizeAcceptDate = (date: string | undefined): string => {
     return new Date().toISOString();
   }
   const parsed = new Date(date);
-  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+  return Number.isNaN(parsed.getTime())
+    ? new Date().toISOString()
+    : parsed.toISOString();
 };
 
 type AddedParagraphMark = {
@@ -2084,7 +2298,11 @@ const acceptedParagraphMark = (
     return null;
   }
   const marker: unknown = node.attrs["_suggestedInsert"];
-  if (typeof marker !== "object" || marker === null || !("revisionId" in marker)) {
+  if (
+    typeof marker !== "object" ||
+    marker === null ||
+    !("revisionId" in marker)
+  ) {
     return null;
   }
   if (typeof marker.revisionId !== "number") {
@@ -2123,7 +2341,9 @@ const convertStructuralSuggestionAttrs = (
       revisionId: source.revisionId,
       author,
       date,
-      ...(typeof source.initials === "string" ? { initials: source.initials } : {}),
+      ...(typeof source.initials === "string"
+        ? { initials: source.initials }
+        : {}),
     };
   };
 
@@ -2157,14 +2377,21 @@ const convertStructuralSuggestionAttrs = (
   }
   if (node.type.name === "tableRow") {
     if (readSuggestedMarker(attrs["trIns"])) {
-      return { ...attrs, trIns: userInfo(attrs["trIns"] as { revisionId?: unknown }) };
+      return {
+        ...attrs,
+        trIns: userInfo(attrs["trIns"] as { revisionId?: unknown }),
+      };
     }
     if (readSuggestedMarker(attrs["trDel"])) {
-      return { ...attrs, trDel: userInfo(attrs["trDel"] as { revisionId?: unknown }) };
+      return {
+        ...attrs,
+        trDel: userInfo(attrs["trDel"] as { revisionId?: unknown }),
+      };
     }
   }
   if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
-    const cellMarker = attrs["cellMarker"] as { kind?: unknown; info?: unknown } | null | undefined;
+    const cellMarker = attrs["cellMarker"] as
+      { kind?: unknown; info?: unknown } | null | undefined;
     // Merge markers never carry suggestion provenance (cell merge/split is
     // `unsupportedMode`), so only ins/del markers can convert to user changes.
     if (
@@ -2196,7 +2423,8 @@ const reauthorParagraphPropertySuggestions = ({
   matchesSuggestion,
   author,
   date,
-}: ReauthorParagraphPropertySuggestionsOptions): ParagraphPropertyChangeAttrs[] | null => {
+}: ReauthorParagraphPropertySuggestionsOptions):
+  ParagraphPropertyChangeAttrs[] | null => {
   if (node.type.name !== "paragraph") {
     return null;
   }
@@ -2280,7 +2508,8 @@ const appendRotatedParagraphPropertyChange = ({
   if (!current || current.type.name !== "paragraph") {
     return false;
   }
-  const author = typeof mark.info.author === "string" ? mark.info.author : fallbackAuthor;
+  const author =
+    typeof mark.info.author === "string" ? mark.info.author : fallbackAuthor;
   if (author === undefined) {
     return false;
   }
@@ -2297,8 +2526,12 @@ const appendRotatedParagraphPropertyChange = ({
         info: {
           id: mark.info.id,
           author,
-          ...(typeof mark.info.date === "string" ? { date: mark.info.date } : {}),
-          ...(typeof mark.info.initials === "string" ? { initials: mark.info.initials } : {}),
+          ...(typeof mark.info.date === "string"
+            ? { date: mark.info.date }
+            : {}),
+          ...(typeof mark.info.initials === "string"
+            ? { initials: mark.info.initials }
+            : {}),
         },
         previousFormatting: paragraphPropertiesSnapshot(previous),
       } satisfies ParagraphPropertyChangeAttrs,
@@ -2318,9 +2551,10 @@ const rotateAddedFinalParagraphBreaks = ({
   shouldRotate,
   fallbackAuthor,
 }: FinalParagraphRotationOptions): boolean => {
-  const paragraphTypeName = tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
-  const finals = finalParagraphsOf(tr.doc, paragraphTypeName).filter(({ node, position }) =>
-    shouldRotate(node, position),
+  const paragraphTypeName =
+    tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
+  const finals = finalParagraphsOf(tr.doc, paragraphTypeName).filter(
+    ({ node, position }) => shouldRotate(node, position),
   );
 
   for (const { position: finalPosition } of finals) {
@@ -2351,7 +2585,8 @@ type PlaceAcceptedParagraphBreakOptions = {
   fallbackAuthor: string;
 };
 
-type FirstRotatedPropertyChange = { type: "append" } | { type: "rebase"; revisionId: number };
+type FirstRotatedPropertyChange =
+  { type: "append" } | { type: "rebase"; revisionId: number };
 
 type ShiftAddedParagraphBreakBeforeOptions = {
   tr: Transaction;
@@ -2390,7 +2625,9 @@ const rebaseRotatedParagraphPropertyChange = ({
     ...current.attrs,
     _propertyChanges: existing.map((change) =>
       change.info.id === revisionId
-        ? Object.assign({}, change, { previousFormatting: paragraphPropertiesSnapshot(previous) })
+        ? Object.assign({}, change, {
+            previousFormatting: paragraphPropertiesSnapshot(previous),
+          })
         : change,
     ),
   });
@@ -2422,7 +2659,11 @@ const rebaseAddedParagraphBreakChain = ({
   let current = carrier;
   let nextPosition = carrierPosition + carrier.nodeSize;
 
-  for (let index = resolved.index() + 1; index < resolved.parent.childCount; index++) {
+  for (
+    let index = resolved.index() + 1;
+    index < resolved.parent.childCount;
+    index++
+  ) {
     const currentMark = current.attrs["pPrMark"];
     if (!isAddedPPrMarkAttr(currentMark)) {
       return true;
@@ -2474,7 +2715,10 @@ const shiftAddedParagraphBreakBefore = ({
     return false;
   }
   const resolved = tr.doc.resolve(paragraphPosition);
-  const carrier = addedBreakCarrierBefore({ at: resolved, paragraphTypeName: paragraph.type.name });
+  const carrier = addedBreakCarrierBefore({
+    at: resolved,
+    paragraphTypeName: paragraph.type.name,
+  });
   if (!carrier) {
     return false;
   }
@@ -2582,8 +2826,11 @@ type AddedBreakRotationCandidate = {
  * becomes final because of those removals, it must rotate with its own
  * revision rather than remain as an unresolvable final mark.
  */
-const collectAddedBreakRotationCandidates = (doc: PMNode): AddedBreakRotationCandidate[] => {
-  const paragraphTypeName = doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
+const collectAddedBreakRotationCandidates = (
+  doc: PMNode,
+): AddedBreakRotationCandidate[] => {
+  const paragraphTypeName =
+    doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
   const finalPositions = new Set(
     finalParagraphsOf(doc, paragraphTypeName).map(({ position }) => position),
   );
@@ -2609,7 +2856,10 @@ type MappedRotationCandidatePredicateOptions = {
 const mappedRotationCandidatePredicate = ({
   candidates,
   tr,
-}: MappedRotationCandidatePredicateOptions): ((node: PMNode, position: number) => boolean) => {
+}: MappedRotationCandidatePredicateOptions): ((
+  node: PMNode,
+  position: number,
+) => boolean) => {
   const revisionIdsByPosition = new Map<number, Set<number>>();
   for (const candidate of candidates) {
     const mapped = tr.mapping.mapResult(candidate.position, 1);
@@ -2617,7 +2867,8 @@ const mappedRotationCandidatePredicate = ({
       continue;
     }
     const mappedPosition = mapped.pos;
-    const revisionIds = revisionIdsByPosition.get(mappedPosition) ?? new Set<number>();
+    const revisionIds =
+      revisionIdsByPosition.get(mappedPosition) ?? new Set<number>();
     revisionIds.add(candidate.revisionId);
     revisionIdsByPosition.set(mappedPosition, revisionIds);
   }
@@ -2665,7 +2916,10 @@ const removeSuggestedInsertNodes = ({
         tr,
         paragraphPosition: position,
         mark: followingBreak,
-        firstPropertyChange: { type: "rebase", revisionId: followingBreak.info.id },
+        firstPropertyChange: {
+          type: "rebase",
+          revisionId: followingBreak.info.id,
+        },
       })
     ) {
       return false;
@@ -2684,7 +2938,9 @@ const acceptSuggestions = (
   options: AcceptSuggestionOptions,
 ): Command => {
   return (state, dispatch) => {
-    if (!canReauthorParagraphPropertySuggestions(state.doc, matchesSuggestion)) {
+    if (
+      !canReauthorParagraphPropertySuggestions(state.doc, matchesSuggestion)
+    ) {
       return false;
     }
     const insertionType = state.schema.marks["insertion"];
@@ -2705,7 +2961,11 @@ const acceptSuggestions = (
       const structural = readStructuralSuggestion(node);
       let nextAttrs: Record<string, unknown> | null = null;
       if (structural && matchesSuggestion(structural.suggestionId)) {
-        nextAttrs = convertStructuralSuggestionAttrs(node, options.author, date);
+        nextAttrs = convertStructuralSuggestionAttrs(
+          node,
+          options.author,
+          date,
+        );
         if (structural.kind === "insertBlock") {
           const mark = acceptedParagraphMark(node, options.author, date);
           if (!mark) {
@@ -2725,7 +2985,10 @@ const acceptSuggestions = (
         date,
       });
       if (propertyChanges) {
-        nextAttrs = { ...(nextAttrs ?? node.attrs), _propertyChanges: propertyChanges };
+        nextAttrs = {
+          ...(nextAttrs ?? node.attrs),
+          _propertyChanges: propertyChanges,
+        };
       }
       const paragraphMark = readSuggestedParagraphMark(node);
       if (paragraphMark && matchesSuggestion(paragraphMark.suggestionId)) {
@@ -2778,7 +3041,11 @@ const acceptSuggestions = (
           tr.addMark(
             from,
             to,
-            mark.type.create({ changes: nextChanges, provenance: "user", suggestionId: null }),
+            mark.type.create({
+              changes: nextChanges,
+              provenance: "user",
+              suggestionId: null,
+            }),
           );
           continue;
         }
@@ -2813,13 +3080,16 @@ const acceptSuggestions = (
       }
     }
     const directlyMarkedParagraphPositions = new Set(
-      acceptedParagraphBreaks.filter(({ hadBreak }) => !hadBreak).map(({ position }) => position),
+      acceptedParagraphBreaks
+        .filter(({ hadBreak }) => !hadBreak)
+        .map(({ position }) => position),
     );
     if (
       directlyMarkedParagraphPositions.size > 0 &&
       !rotateAddedFinalParagraphBreaks({
         tr,
-        shouldRotate: (_node, position) => directlyMarkedParagraphPositions.has(position),
+        shouldRotate: (_node, position) =>
+          directlyMarkedParagraphPositions.has(position),
         fallbackAuthor: options.author,
       })
     ) {
@@ -2843,12 +3113,17 @@ const acceptSuggestions = (
  * everything else becomes a tracked change. See {@link getSuggestions} for the
  * per-suggestion `appliedAs`.
  */
-export function acceptSuggestion(suggestionId: string, options: AcceptSuggestionOptions): Command {
+export function acceptSuggestion(
+  suggestionId: string,
+  options: AcceptSuggestionOptions,
+): Command {
   return acceptSuggestions((id) => id === suggestionId, options);
 }
 
 /** Accept every suggestion in the document. */
-export function acceptAllSuggestions(options: AcceptSuggestionOptions): Command {
+export function acceptAllSuggestions(
+  options: AcceptSuggestionOptions,
+): Command {
   return acceptSuggestions(() => true, options);
 }
 
@@ -2873,7 +3148,8 @@ export function rejectSuggestion(suggestionId: string): Command {
       return false;
     }
 
-    const removesWholeNode = entry.kinds.has("insertBlock") || entry.kinds.has("insertTable");
+    const removesWholeNode =
+      entry.kinds.has("insertBlock") || entry.kinds.has("insertTable");
     const rotationCandidates = removesWholeNode
       ? collectAddedBreakRotationCandidates(state.doc)
       : [];
@@ -2885,9 +3161,12 @@ export function rejectSuggestion(suggestionId: string): Command {
       const ranges = mergeSegments(entry.segments);
       const from = ranges[0]?.from ?? 0;
       const to = ranges.at(-1)?.to ?? from;
-      resolveChange(from, to, "reject", [...entry.revisionIds])(state, (resolved) => {
-        tr = resolved;
-      });
+      resolveChange(from, to, "reject", [...entry.revisionIds])(
+        state,
+        (resolved) => {
+          tr = resolved;
+        },
+      );
     }
     const workingTr: Transaction = tr ?? state.tr;
 
@@ -2895,7 +3174,10 @@ export function rejectSuggestion(suggestionId: string): Command {
     const positions: number[] = [];
     workingTr.doc.descendants((node, pos) => {
       const structural = readStructuralSuggestion(node);
-      if (structural?.isNodeInsert && structural.suggestionId === suggestionId) {
+      if (
+        structural?.isNodeInsert &&
+        structural.suggestionId === suggestionId
+      ) {
         positions.push(pos);
       }
       return undefined;
@@ -2943,7 +3225,8 @@ export function rejectAllSuggestions(): Command {
     const revisionIds = new Set<number>();
     let removesWholeNode = false;
     for (const entry of bySuggestion.values()) {
-      removesWholeNode ||= entry.kinds.has("insertBlock") || entry.kinds.has("insertTable");
+      removesWholeNode ||=
+        entry.kinds.has("insertBlock") || entry.kinds.has("insertTable");
       for (const id of entry.revisionIds) {
         revisionIds.add(id);
       }
@@ -2957,9 +3240,12 @@ export function rejectAllSuggestions(): Command {
     // so whole-node inserts can be dropped from the same transaction below.
     let tr: Transaction | null = null;
     if (revisionIds.size > 0) {
-      resolveChange(0, state.doc.content.size, "reject", [...revisionIds])(state, (resolved) => {
-        tr = resolved;
-      });
+      resolveChange(0, state.doc.content.size, "reject", [...revisionIds])(
+        state,
+        (resolved) => {
+          tr = resolved;
+        },
+      );
     }
     const workingTr: Transaction = tr ?? state.tr;
 
@@ -3065,7 +3351,9 @@ export function findChangeAtPosition(
 
   if (foundMark === undefined) {
     const paragraphChange = findParagraphBoundaryChangeAtPosition(state, from);
-    return paragraphChange ? { from: paragraphChange.from, to: paragraphChange.to } : { from, to };
+    return paragraphChange
+      ? { from: paragraphChange.from, to: paragraphChange.to }
+      : { from, to };
   }
 
   // Expand to adjacent nodes carrying the *same* mark instance (matching
@@ -3175,7 +3463,10 @@ function expandTrackedChangeRange(
  * range of the change (including adjacent text nodes that share the same
  * insertion/deletion mark instance), not just the first text node.
  */
-export function findNextChange(state: EditorState, startPos: number): ChangeRange | null {
+export function findNextChange(
+  state: EditorState,
+  startPos: number,
+): ChangeRange | null {
   const insertionType = state.schema.marks["insertion"];
   const deletionType = state.schema.marks["deletion"];
   if (!insertionType && !deletionType) {
@@ -3206,7 +3497,12 @@ export function findNextChange(state: EditorState, startPos: number): ChangeRang
         // returned range must see the whole revision — clamping `from`
         // up to `startPos` truncates the earlier portion of the same
         // change and leaves orphaned marks behind after accept.
-        const expanded = expandTrackedChangeRange(state, mark, pos, pos + node.nodeSize);
+        const expanded = expandTrackedChangeRange(
+          state,
+          mark,
+          pos,
+          pos + node.nodeSize,
+        );
         result.value = {
           from: expanded.from,
           to: expanded.to,
@@ -3231,7 +3527,10 @@ export function findNextChange(state: EditorState, startPos: number): ChangeRang
  * full range of the change (including adjacent text nodes that share the
  * same insertion/deletion mark instance), not just the last text node.
  */
-export function findPreviousChange(state: EditorState, startPos: number): ChangeRange | null {
+export function findPreviousChange(
+  state: EditorState,
+  startPos: number,
+): ChangeRange | null {
   const insertionType = state.schema.marks["insertion"];
   const deletionType = state.schema.marks["deletion"];
   if (!insertionType && !deletionType) {
@@ -3261,7 +3560,9 @@ export function findPreviousChange(state: EditorState, startPos: number): Change
       resultMark &&
       pos < result.value.to &&
       node.marks.every(
-        (m) => (m.type !== insertionType && m.type !== deletionType) || m.eq(resultMark!),
+        (m) =>
+          (m.type !== insertionType && m.type !== deletionType) ||
+          m.eq(resultMark!),
       )
     ) {
       // Already covered by the previous expansion AND no additional
@@ -3271,7 +3572,12 @@ export function findPreviousChange(state: EditorState, startPos: number): Change
 
     for (const mark of node.marks) {
       if (mark.type === insertionType || mark.type === deletionType) {
-        const expanded = expandTrackedChangeRange(state, mark, pos, pos + node.nodeSize);
+        const expanded = expandTrackedChangeRange(
+          state,
+          mark,
+          pos,
+          pos + node.nodeSize,
+        );
         result.value = {
           from: expanded.from,
           to: expanded.to,

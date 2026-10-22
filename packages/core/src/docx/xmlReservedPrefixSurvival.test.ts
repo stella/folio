@@ -24,8 +24,10 @@ import JSZip from "jszip";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
@@ -38,23 +40,33 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
 };
 
 const documentXmlOf = async (saved: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(saved)
+  )
+    .file("word/document.xml")
+    ?.async("text")) ?? "";
 
 /** Parse and save, with no editor round trip in between: the plainest resave. */
 const roundTrip = async (body: string): Promise<string> => {
-  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
+  const parsed = await parseDocx(await buildDocx(body), {
+    preloadFonts: false,
+  });
   return documentXmlOf(await repackDocx(parsed, { updateModifiedDate: false }));
 };
 
 describe("xml: attributes on unmodelled containers", () => {
   test("w:p keeps xml:space prefixed", async () => {
-    const xml = await roundTrip('<w:p xml:space="preserve"><w:r><w:t>a</w:t></w:r></w:p>');
+    const xml = await roundTrip(
+      '<w:p xml:space="preserve"><w:r><w:t>a</w:t></w:r></w:p>',
+    );
     expect(xml).toContain('xml:space="preserve"');
     expect(xml).not.toMatch(/<w:p[^>]*\sspace="preserve"/);
   });
 
   test("w:r keeps xml:space prefixed", async () => {
-    const xml = await roundTrip('<w:p><w:r xml:space="preserve"><w:t> a</w:t></w:r></w:p>');
+    const xml = await roundTrip(
+      '<w:p><w:r xml:space="preserve"><w:t> a</w:t></w:r></w:p>',
+    );
     expect(xml).toContain('xml:space="preserve"');
     expect(xml).not.toMatch(/<w:r[^>]*\sspace="preserve"/);
   });

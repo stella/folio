@@ -1,4 +1,5 @@
 import type { SelectionState } from "@stll/folio-core/prosemirror";
+
 import type { SelectionFormatting } from "./toolbarPrimitives";
 import type { ListState } from "./ui/ListButtons";
 

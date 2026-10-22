@@ -2,14 +2,29 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import { fromMarkdown } from "@stll/folio-core/markdown";
-import { createDocx, FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
+import {
+  createDocx,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+} from "@stll/folio-core/server";
 
 import { openReviewer } from "../support/documents.ts";
-import { projectContentPair, projectSnapshotIdentities } from "../support/identity.ts";
+import {
+  projectContentPair,
+  projectSnapshotIdentities,
+} from "../support/identity.ts";
 import { saveAndReopen, visibleState } from "../support/invariants.ts";
-import { ENABLED_RELATIONS, relationCheckCount, startRelations } from "../support/metamorphic.ts";
+import {
+  ENABLED_RELATIONS,
+  relationCheckCount,
+  startRelations,
+} from "../support/metamorphic.ts";
 
-type Row = { id: string; idStability?: "stable" | "positional"; text: string; kind: string };
+type Row = {
+  id: string;
+  idStability?: "stable" | "positional";
+  text: string;
+  kind: string;
+};
 
 type PairRows = { left: readonly Row[]; right: readonly Row[] };
 const assertPair = ({ left, right }: PairRows) => {
@@ -42,7 +57,10 @@ describe("save comparison block identity", () => {
       const right = left.map((row, index) => {
         const reminted = {
           ...row,
-          id: row.idStability === "positional" ? `recomputed-${String(index)}` : row.id,
+          id:
+            row.idStability === "positional"
+              ? `recomputed-${String(index)}`
+              : row.id,
         };
         if (row.idStability === "positional" && index % 2 === 0) {
           reminted.idStability = "stable";
@@ -54,11 +72,18 @@ describe("save comparison block identity", () => {
       assertPair({ left: left, right: right });
       for (const [index, row] of left.entries()) {
         const rightRow = rowAt(right, index);
-        const changedId = right.with(index, { ...rightRow, id: `mutated-${String(index)}` });
-        if (row.idStability !== "positional") assertPairUnequal({ left: left, right: changedId });
+        const changedId = right.with(index, {
+          ...rightRow,
+          id: `mutated-${String(index)}`,
+        });
+        if (row.idStability !== "positional")
+          assertPairUnequal({ left: left, right: changedId });
         assertPairUnequal({
           left: left,
-          right: right.with(index, { ...rightRow, text: `Changed ${String(index)}` }),
+          right: right.with(index, {
+            ...rightRow,
+            text: `Changed ${String(index)}`,
+          }),
         });
       }
     }
@@ -67,7 +92,12 @@ describe("save comparison block identity", () => {
   test("a recomputed positional id cannot hide authored identity, order, count, or content drift", () => {
     const live: Row[] = [
       { id: "authored-a", kind: "paragraph", text: "First" },
-      { id: "positional-b", idStability: "positional", kind: "paragraph", text: "Second" },
+      {
+        id: "positional-b",
+        idStability: "positional",
+        kind: "paragraph",
+        text: "Second",
+      },
       { id: "authored-c", kind: "paragraph", text: "Third" },
     ];
     const reminted: Row[] = [
@@ -79,7 +109,10 @@ describe("save comparison block identity", () => {
 
     assertPairUnequal({
       left: live,
-      right: reminted.with(0, { ...rowAt(reminted, 0), id: "changed-authored-a" }),
+      right: reminted.with(0, {
+        ...rowAt(reminted, 0),
+        id: "changed-authored-a",
+      }),
     });
     assertPairUnequal({ left: live, right: reminted.toSpliced(0, 1) });
     assertPairUnequal({
@@ -101,7 +134,9 @@ describe("save comparison block identity", () => {
         text: "Resolved text",
       },
     ];
-    const reopened: Row[] = [{ id: "after-resolution", kind: "paragraph", text: "Resolved text" }];
+    const reopened: Row[] = [
+      { id: "after-resolution", kind: "paragraph", text: "Resolved text" },
+    ];
     assertPair({ left: resolved, right: reopened });
     assert.notDeepEqual(
       projectContentPair({ leftRows: resolved, rightRows: reopened }).left,
@@ -131,9 +166,16 @@ describe("save comparison block identity", () => {
 
   test("a live authored id reused at a positional slot remains visible", () => {
     const live: Row[] = [
-      { id: "position", idStability: "positional", kind: "paragraph", text: "Generated" },
+      {
+        id: "position",
+        idStability: "positional",
+        kind: "paragraph",
+        text: "Generated",
+      },
     ];
-    const reopened: Row[] = [{ id: "authored", kind: "paragraph", text: "Generated" }];
+    const reopened: Row[] = [
+      { id: "authored", kind: "paragraph", text: "Generated" },
+    ];
     const projected = projectContentPair({
       leftRows: live,
       rightRows: reopened,
@@ -161,7 +203,12 @@ describe("save comparison block identity", () => {
 
     const authored: Row[] = [
       { id: "authored", kind: "paragraph", text: "Authored" },
-      { id: "position", idStability: "positional", kind: "paragraph", text: "Generated" },
+      {
+        id: "position",
+        idStability: "positional",
+        kind: "paragraph",
+        text: "Generated",
+      },
     ];
     const rightUsesAuthored: Row[] = [
       { id: "authored", kind: "paragraph", text: "Authored" },
@@ -172,7 +219,9 @@ describe("save comparison block identity", () => {
 
   test("bridge snapshot projection maps typed block and anchor identities only", async () => {
     const reviewer = await openReviewer(
-      new Uint8Array(await createDocx(fromMarkdown("First paragraph.\n\nSecond paragraph."))),
+      new Uint8Array(
+        await createDocx(fromMarkdown("First paragraph.\n\nSecond paragraph.")),
+      ),
     );
     const snapshot = reviewer.snapshot();
     const first = snapshot.blocks.at(0);
@@ -203,7 +252,10 @@ describe("save comparison block identity", () => {
       },
       opaque: "minted",
     };
-    const projected = projectSnapshotIdentities(fixture, new Map([["minted", "position:0"]]));
+    const projected = projectSnapshotIdentities(
+      fixture,
+      new Map([["minted", "position:0"]]),
+    );
     const projectedBlock = projected.blocks.at(0);
     const stableBlock = projected.blocks.at(1);
     assert.ok(projectedBlock);
@@ -244,7 +296,9 @@ describe("save comparison block identity", () => {
     );
     assert.equal(receipt.applied.length, 1);
     reviewer.acceptAll();
-    const resolved = reviewer.getContent().find(({ text }) => text === "First resolved text.");
+    const resolved = reviewer
+      .getContent()
+      .find(({ text }) => text === "First resolved text.");
     assert.ok(resolved);
     assert.equal(resolved.idStability, "positional");
     const expected = visibleState(reviewer);
@@ -262,7 +316,9 @@ describe("save comparison block identity", () => {
     { skip: !ENABLED_RELATIONS.has("readerStability") },
     async () => {
       const fixture = new Uint8Array(
-        await createDocx(fromMarkdown("First source text.\n\nSecond paragraph.")),
+        await createDocx(
+          fromMarkdown("First source text.\n\nSecond paragraph."),
+        ),
       );
       const reviewer = await openReviewer(fixture);
       const first = reviewer.getContent().at(0);
@@ -292,10 +348,18 @@ describe("save comparison block identity", () => {
       );
       assert.equal(receipt.applied.length, 1);
       reviewer.acceptAll();
-      const saved = await saveAndReopen(reviewer, "reader stability positional ids", {
-        compare: false,
-      });
-      await relations.afterStep(reviewer, saved, "reader stability positional ids");
+      const saved = await saveAndReopen(
+        reviewer,
+        "reader stability positional ids",
+        {
+          compare: false,
+        },
+      );
+      await relations.afterStep(
+        reviewer,
+        saved,
+        "reader stability positional ids",
+      );
       assert.equal(relationCheckCount("readerStability"), before + 1);
     },
   );

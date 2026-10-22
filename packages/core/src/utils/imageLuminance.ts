@@ -11,7 +11,9 @@ export const normalizeImageLuminancePercent = (value: number): number =>
   Math.max(-MAX_PERCENT, Math.min(MAX_PERCENT, value));
 
 const finitePercent = (value: number | null | undefined): number =>
-  value == null || !Number.isFinite(value) ? 0 : normalizeImageLuminancePercent(value);
+  value == null || !Number.isFinite(value)
+    ? 0
+    : normalizeImageLuminancePercent(value);
 
 const styleNumber = (value: number): string => {
   const rounded = Math.round(value * 1_000_000) / 1_000_000;

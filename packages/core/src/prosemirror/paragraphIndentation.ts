@@ -2,17 +2,20 @@ import { panic } from "better-result";
 
 import type { FolioContentParagraphIndentation } from "../compare/content-types";
 import type { ParagraphFormatting } from "../types/document";
-import type { ParagraphAttrs } from "./schema/nodes";
 import {
-  paragraphNumberingSourcesFromBoundary,
   effectiveParagraphNumberingReference,
+  paragraphNumberingSourcesFromBoundary,
 } from "./numberingAttr";
+import type { ParagraphAttrs } from "./schema/nodes";
 
-type ModelIndentation = Pick<ParagraphFormatting, keyof FolioContentParagraphIndentation>;
-type IndentationModelAgreement = [FolioContentParagraphIndentation, ModelIndentation] extends [
-  ModelIndentation,
+type ModelIndentation = Pick<
+  ParagraphFormatting,
+  keyof FolioContentParagraphIndentation
+>;
+type IndentationModelAgreement = [
   FolioContentParagraphIndentation,
-]
+  ModelIndentation,
+] extends [ModelIndentation, FolioContentParagraphIndentation]
   ? unknown
   : never;
 
@@ -33,7 +36,11 @@ type CopyIndentationValueOptions = {
   value: number | boolean | null | undefined;
 };
 
-const copyIndentationValue = ({ target, key, value }: CopyIndentationValueOptions): void => {
+const copyIndentationValue = ({
+  target,
+  key,
+  value,
+}: CopyIndentationValueOptions): void => {
   switch (key) {
     case "hangingIndent":
       if (typeof value === "boolean") {
@@ -49,7 +56,9 @@ const copyIndentationValue = ({ target, key, value }: CopyIndentationValueOption
       return;
     default: {
       const unreachable: never = key;
-      return panic("Unhandled paragraph indentation property", { key: unreachable });
+      return panic("Unhandled paragraph indentation property", {
+        key: unreachable,
+      });
     }
   }
 };
@@ -68,13 +77,20 @@ export const paragraphIndentationFromFormatting = (
   // `w:firstLine` and `w:hanging` are mutually exclusive alternatives. A
   // direct first-line value, including zero, clears any hanging indent a list
   // level or paragraph style supplied.
-  if (indentation.indentFirstLine !== undefined && indentation.hangingIndent === undefined) {
+  if (
+    indentation.indentFirstLine !== undefined &&
+    indentation.hangingIndent === undefined
+  ) {
     indentation.hangingIndent = false;
   }
   return Object.keys(indentation).length > 0 ? indentation : undefined;
 };
 
-const PARAGRAPH_INDENTATION_VALUE_KEYS = ["indentLeft", "indentRight", "indentFirstLine"] as const;
+const PARAGRAPH_INDENTATION_VALUE_KEYS = [
+  "indentLeft",
+  "indentRight",
+  "indentFirstLine",
+] as const;
 
 /**
  * Read direct indentation without materializing values inherited from a style:
@@ -109,7 +125,8 @@ export const directParagraphIndentation = (
     // indent only where a numbering level could supply another value.
     const zeroIsDefault = key === "indentRight" || !numbered;
     const inherited =
-      resolved?.[key] === value || (original === undefined && value === 0 && zeroIsDefault);
+      resolved?.[key] === value ||
+      (original === undefined && value === 0 && zeroIsDefault);
     if (stated || !inherited) {
       copyIndentationValue({ target: indentation, key, value });
     }
@@ -135,7 +152,10 @@ export const directParagraphIndentation = (
 export const paragraphIndentationEqual = (
   left: DirectParagraphIndentation | null | undefined,
   right: DirectParagraphIndentation | null | undefined,
-): boolean => DIRECT_PARAGRAPH_INDENTATION_KEYS.every((key) => left?.[key] === right?.[key]);
+): boolean =>
+  DIRECT_PARAGRAPH_INDENTATION_KEYS.every(
+    (key) => left?.[key] === right?.[key],
+  );
 
 /** Replace the complete direct `w:ind` cluster in canonical formatting. */
 export const withDirectParagraphIndentation = (

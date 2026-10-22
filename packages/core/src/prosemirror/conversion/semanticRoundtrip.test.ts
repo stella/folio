@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import type {
   Document,
+  InlineSdt,
   MathEquation,
   Paragraph,
   Run,
   ShapeContent,
   SimpleField,
-  InlineSdt,
 } from "../../types/document";
 import { pixelsToEmu } from "../../utils/units";
 import { validateProseMirrorDocument } from "../validation";
@@ -240,7 +240,9 @@ describe("semantic ProseMirror round-trip fixture", () => {
     const document = buildSemanticFixture();
     const pmDoc = toProseDoc(document);
     const pmValidation = validateProseMirrorDocument(pmDoc);
-    const roundtripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundtripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = firstParagraph(roundtripped);
 
     expect(pmValidation.valid).toBe(true);
@@ -363,7 +365,9 @@ describe("semantic ProseMirror round-trip fixture", () => {
       leader: "dot",
     });
 
-    const roundtripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundtripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     expect(firstParagraph(roundtripped).content.at(1)).toEqual({
       type: "run",
       content: [

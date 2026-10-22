@@ -1,21 +1,36 @@
 import { EMPTY_PROPERTY_SETS } from "@stll/docx-core/ops";
-import type { Run, TextFormatting, PreservedAttribute } from "../types/document";
+
+import type {
+  PreservedAttribute,
+  Run,
+  TextFormatting,
+} from "../types/document";
 import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
 import { getAttributeByNamespaceUri, type XmlElement } from "./xmlParser";
 
 export const EMPTY_RUN_PROPERTIES_ATTRIBUTE = "emptyRunProperties";
 const PREVIOUS_PROPERTIES_ATTRIBUTE = "previousProperties";
-const HISTORY_NAMESPACES: ReadonlySet<string> = new Set([OOXML_NAMESPACES.folio.uri]);
+const HISTORY_NAMESPACES: ReadonlySet<string> = new Set([
+  OOXML_NAMESPACES.folio.uri,
+]);
 
 export const retainsEmptyRunProperties = (element: XmlElement): boolean =>
-  getAttributeByNamespaceUri(element, HISTORY_NAMESPACES, EMPTY_RUN_PROPERTIES_ATTRIBUTE) ===
-  EMPTY_PROPERTY_SETS.KEEP;
+  getAttributeByNamespaceUri(
+    element,
+    HISTORY_NAMESPACES,
+    EMPTY_RUN_PROPERTIES_ATTRIBUTE,
+  ) === EMPTY_PROPERTY_SETS.KEEP;
 
 export const omitsPreviousRunProperties = (element: XmlElement): boolean =>
-  getAttributeByNamespaceUri(element, HISTORY_NAMESPACES, PREVIOUS_PROPERTIES_ATTRIBUTE) ===
-  EMPTY_PROPERTY_SETS.OMIT;
+  getAttributeByNamespaceUri(
+    element,
+    HISTORY_NAMESPACES,
+    PREVIOUS_PROPERTIES_ATTRIBUTE,
+  ) === EMPTY_PROPERTY_SETS.OMIT;
 
-export const serializePreviousRunProperties = (properties: TextFormatting | undefined): string =>
+export const serializePreviousRunProperties = (
+  properties: TextFormatting | undefined,
+): string =>
   properties === undefined
     ? ` folio:${PREVIOUS_PROPERTIES_ATTRIBUTE}="${EMPTY_PROPERTY_SETS.OMIT}"`
     : "";
@@ -31,4 +46,5 @@ export const isEmptyRunPropertiesAttribute = ({
   namespace,
   name,
 }: Pick<PreservedAttribute, "namespace" | "name">): boolean =>
-  namespace === OOXML_NAMESPACES.folio.uri && name === EMPTY_RUN_PROPERTIES_ATTRIBUTE;
+  namespace === OOXML_NAMESPACES.folio.uri &&
+  name === EMPTY_RUN_PROPERTIES_ATTRIBUTE;

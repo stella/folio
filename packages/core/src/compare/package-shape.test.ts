@@ -9,15 +9,22 @@
  * instead.
  */
 
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
-import { MAX_REVISION_ID } from "@stll/docx-core/model";
-import { panic } from "better-result";
 
-import { buildBodySequenceDocx, type BodyItem } from "./__fixtures__/body-sequence";
+import { MAX_REVISION_ID } from "@stll/docx-core/model";
+
+import {
+  type BodyItem,
+  buildBodySequenceDocx,
+} from "./__fixtures__/body-sequence";
 import { compareDocx } from "./compare";
 
-const OPTIONS = { author: "compare", timestamp: "2024-03-01T00:00:00.000Z" } as const;
+const OPTIONS = {
+  author: "compare",
+  timestamp: "2024-03-01T00:00:00.000Z",
+} as const;
 
 type ComparedDocumentOptions = {
   /**
@@ -111,10 +118,12 @@ const hyperlinkAncestors = (xml: string): string[][] => {
   return ancestors;
 };
 
-const PARAGRAPH_ID = /\b(?:w|w14|w15|w16cid):(?:paraId|paraIdParent|textId)="([0-9A-Fa-f]{8})"/gu;
+const PARAGRAPH_ID =
+  /\b(?:w|w14|w15|w16cid):(?:paraId|paraIdParent|textId)="([0-9A-Fa-f]{8})"/gu;
 
 /** A paragraph id is `ST_LongHexNumber` with a maximum: the values are 31-bit. */
-const isParagraphIdInRange = (id: string): boolean => Number.parseInt(id, 16) < 0x8000_0000;
+const isParagraphIdInRange = (id: string): boolean =>
+  Number.parseInt(id, 16) < 0x8000_0000;
 
 const paragraphIdsOf = (xml: string): string[] =>
   [...xml.matchAll(PARAGRAPH_ID)].map(([, id]) => id ?? "");
@@ -124,9 +133,14 @@ const paragraphIdsOf = (xml: string): string[] =>
  * marker written beside one, not identity, and two paragraphs may share it.
  */
 const paraIdsOf = (xml: string): string[] =>
-  [...xml.matchAll(/\bw(?:14)?:paraId="([0-9A-Fa-f]{8})"/gu)].map(([, id]) => id ?? "");
+  [...xml.matchAll(/\bw(?:14)?:paraId="([0-9A-Fa-f]{8})"/gu)].map(
+    ([, id]) => id ?? "",
+  );
 
-const LINK = { text: "the guide", href: "https://example.invalid/guide" } as const;
+const LINK = {
+  text: "the guide",
+  href: "https://example.invalid/guide",
+} as const;
 
 const TABLE: BodyItem = {
   kind: "table",
@@ -185,7 +199,9 @@ describe("table placement", () => {
     {
       name: "a row added at the top",
       base: [TABLE] satisfies BodyItem[],
-      target: [{ kind: "table", rows: [["new1", "new2"], ...TABLE.rows] }] satisfies BodyItem[],
+      target: [
+        { kind: "table", rows: [["new1", "new2"], ...TABLE.rows] },
+      ] satisfies BodyItem[],
     },
     {
       name: "a row added in the middle",
@@ -200,7 +216,9 @@ describe("table placement", () => {
     {
       name: "a row added at the end",
       base: [TABLE] satisfies BodyItem[],
-      target: [{ kind: "table", rows: [...TABLE.rows, ["new1", "new2"]] }] satisfies BodyItem[],
+      target: [
+        { kind: "table", rows: [...TABLE.rows, ["new1", "new2"]] },
+      ] satisfies BodyItem[],
     },
     {
       name: "a row removed from the middle",
@@ -212,7 +230,9 @@ describe("table placement", () => {
     {
       name: "the last row removed",
       base: [TABLE] satisfies BodyItem[],
-      target: [{ kind: "table", rows: TABLE.rows.slice(0, 2) }] satisfies BodyItem[],
+      target: [
+        { kind: "table", rows: TABLE.rows.slice(0, 2) },
+      ] satisfies BodyItem[],
     },
   ])(
     "$name keeps every row after the table's properties and grid",
@@ -240,18 +260,26 @@ describe("hyperlink nesting", () => {
   test.each([
     {
       name: "a deleted hyperlink",
-      base: [{ kind: "paragraph", text: "keep" }, LINKED_PARAGRAPH] satisfies BodyItem[],
+      base: [
+        { kind: "paragraph", text: "keep" },
+        LINKED_PARAGRAPH,
+      ] satisfies BodyItem[],
       target: [{ kind: "paragraph", text: "keep" }] satisfies BodyItem[],
     },
     {
       name: "an inserted hyperlink",
       base: [{ kind: "paragraph", text: "keep" }] satisfies BodyItem[],
-      target: [{ kind: "paragraph", text: "keep" }, LINKED_PARAGRAPH] satisfies BodyItem[],
+      target: [
+        { kind: "paragraph", text: "keep" },
+        LINKED_PARAGRAPH,
+      ] satisfies BodyItem[],
     },
     {
       name: "text edited around a hyperlink",
       base: [LINKED_PARAGRAPH] satisfies BodyItem[],
-      target: [{ kind: "paragraph", text: ["read ", LINK, " for more"] }] satisfies BodyItem[],
+      target: [
+        { kind: "paragraph", text: ["read ", LINK, " for more"] },
+      ] satisfies BodyItem[],
     },
   ])("$name keeps the revision inside the link", async ({ base, target }) => {
     const xml = await comparedDocumentXml(base, target);
@@ -269,7 +297,11 @@ describe("hyperlink nesting", () => {
       [{ kind: "paragraph", text: "keep" }],
     );
     expect(xml).toContain(`<w:hyperlink r:id="rId2"><w:del`);
-    expect(/<w:hyperlink[^>]*><w:del\b[^>]*>(?:(?!<\/w:del>).)*<w:delText/su.test(xml)).toBe(true);
+    expect(
+      /<w:hyperlink[^>]*><w:del\b[^>]*>(?:(?!<\/w:del>).)*<w:delText/su.test(
+        xml,
+      ),
+    ).toBe(true);
   });
 });
 
@@ -278,7 +310,9 @@ describe("determinism", () => {
     "loaded maximum revisions use bounded deterministic ids, %s a retained section revision",
     async (sectionRevision) => {
       const zip = await JSZip.loadAsync(
-        await buildBodySequenceDocx([{ kind: "paragraph", text: "alpha beta gamma" }]),
+        await buildBodySequenceDocx([
+          { kind: "paragraph", text: "alpha beta gamma" },
+        ]),
       );
       const xml = await zip.file("word/document.xml")?.async("text");
       if (xml === undefined) panic("Fixture has no document part");
@@ -291,12 +325,16 @@ describe("determinism", () => {
         revised = revised.replace("</w:sectPr>", `${sectionChange}</w:sectPr>`);
       zip.file("word/document.xml", revised);
       const base = await zip.generateAsync({ type: "arraybuffer" });
-      const target = await buildBodySequenceDocx([{ kind: "paragraph", text: "alpha BETA gamma" }]);
+      const target = await buildBodySequenceDocx([
+        { kind: "paragraph", text: "alpha BETA gamma" },
+      ]);
       // A pending input section change is an established verification gap; inspect
       // emitted markup while requiring the comparison to report that limitation.
       const options = {
         ...OPTIONS,
-        ...(sectionRevision === "with" ? { onUnverified: "emit" as const } : {}),
+        ...(sectionRevision === "with"
+          ? { onUnverified: "emit" as const }
+          : {}),
       };
       const [first, second] = await Promise.all([
         compareDocx(base, target, options),
@@ -304,7 +342,9 @@ describe("determinism", () => {
       ]);
       if (first.isErr()) throw first.error;
       if (second.isErr()) throw second.error;
-      expect(new Uint8Array(second.value.buffer)).toEqual(new Uint8Array(first.value.buffer));
+      expect(new Uint8Array(second.value.buffer)).toEqual(
+        new Uint8Array(first.value.buffer),
+      );
       const savedZip = await JSZip.loadAsync(first.value.buffer);
       const savedXml = await savedZip.file("word/document.xml")?.async("text");
       if (savedXml === undefined) panic("Comparison has no document part");
@@ -314,7 +354,9 @@ describe("determinism", () => {
         if (first.value.verification.status === "unverified") {
           expect(
             first.value.verification.failures.some(
-              ({ detail }) => detail === "input final section already carries tracked changes",
+              ({ detail }) =>
+                detail ===
+                "input final section already carries tracked changes",
             ),
           ).toBe(true);
         }
@@ -355,7 +397,9 @@ describe("determinism", () => {
     if (second.isErr()) {
       throw second.error;
     }
-    expect(new Uint8Array(second.value.buffer)).toEqual(new Uint8Array(first.value.buffer));
+    expect(new Uint8Array(second.value.buffer)).toEqual(
+      new Uint8Array(first.value.buffer),
+    );
 
     const zip = await JSZip.loadAsync(first.value.buffer);
     expect(await zip.file("docProps/core.xml")?.async("text")).toContain(
@@ -396,7 +440,9 @@ describe("paragraph ids", () => {
       [{ kind: "paragraph", text: "alpha beta", paraId: OUT_OF_RANGE[1] }],
       [{ kind: "paragraph", text: "alpha BETA", paraId: OUT_OF_RANGE[1] }],
     ];
-    expect(await comparedDocumentXml(...pair)).toBe(await comparedDocumentXml(...pair));
+    expect(await comparedDocumentXml(...pair)).toBe(
+      await comparedDocumentXml(...pair),
+    );
   });
 });
 
@@ -414,6 +460,8 @@ describe("extended properties", () => {
     );
 
     const xml = (await zip.file("docProps/app.xml")?.async("text")) ?? "";
-    expect(/<AppVersion>([^<]*)<\/AppVersion>/u.exec(xml)?.[1] ?? "").toMatch(SCHEMA_FORM);
+    expect(/<AppVersion>([^<]*)<\/AppVersion>/u.exec(xml)?.[1] ?? "").toMatch(
+      SCHEMA_FORM,
+    );
   });
 });

@@ -12,12 +12,12 @@ import { describe, expect, test } from "bun:test";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, TrackedRunContent } from "../types/document";
-
 import { parseParagraph } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument } from "./xmlParser";
 
-const WORDPROCESSINGML_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const WORDPROCESSINGML_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 const TRACKED_WRAPPERS = [
   { tag: "ins", type: "insertion" },
@@ -36,7 +36,8 @@ const MOVE_RANGE_MARKERS = [
   {
     tag: "moveFromRangeEnd",
     xml: '<w:moveFromRangeEnd w:id="42" w:displacedByCustomXml="prev"/>',
-    pairXml: '<w:moveFromRangeStart w:id="42" w:name="source-end" w:author="Reviewer"/>',
+    pairXml:
+      '<w:moveFromRangeStart w:id="42" w:name="source-end" w:author="Reviewer"/>',
     starts: false,
   },
   {
@@ -48,7 +49,8 @@ const MOVE_RANGE_MARKERS = [
   {
     tag: "moveToRangeEnd",
     xml: '<w:moveToRangeEnd w:id="44" w:displacedByCustomXml="prev"/>',
-    pairXml: '<w:moveToRangeStart w:id="44" w:name="destination-end" w:author="Reviewer"/>',
+    pairXml:
+      '<w:moveToRangeStart w:id="44" w:name="destination-end" w:author="Reviewer"/>',
     starts: false,
   },
 ] as const satisfies ReadonlyArray<{
@@ -112,12 +114,18 @@ describe("move-range boundaries inside tracked changes", () => {
     for (const marker of MOVE_RANGE_MARKERS) {
       test(`w:${wrapper.tag} keeps w:${marker.tag} through parse, edit, and repeated save`, () => {
         const parsed = parseParagraphXml(fixtureXml(wrapper, marker));
-        const tracked = parsed.content.find((content) => content.type === wrapper.type);
+        const tracked = parsed.content.find(
+          (content) => content.type === wrapper.type,
+        );
         expect(tracked?.type).toBe(wrapper.type);
         if (tracked?.type !== wrapper.type) {
           throw new Error(`Expected parsed ${wrapper.type}`);
         }
-        expect(tracked.content.map(({ type }) => type)).toEqual(["run", marker.tag, "run"]);
+        expect(tracked.content.map(({ type }) => type)).toEqual([
+          "run",
+          marker.tag,
+          "run",
+        ]);
 
         const serialized = serializeParagraph(parsed);
         const serializedWrapper = trackedWrapperXml(serialized, wrapper.tag);
@@ -132,7 +140,9 @@ describe("move-range boundaries inside tracked changes", () => {
         const edited = serializeParagraph(throughEditor(parsed));
         expect(trackedWrapperXml(edited, wrapper.tag)).toContain(marker.xml);
 
-        const fixedPoint = serializeParagraph(throughEditor(parseParagraphXml(edited)));
+        const fixedPoint = serializeParagraph(
+          throughEditor(parseParagraphXml(edited)),
+        );
         expect(fixedPoint).toBe(edited);
       });
     }

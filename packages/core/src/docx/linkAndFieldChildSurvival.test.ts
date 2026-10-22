@@ -17,11 +17,13 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph } from "../types/document";
-
 import { parseParagraph } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
@@ -64,7 +66,10 @@ const parseParagraphXml = (xml: string): Paragraph => {
   return parseParagraph(root, null, null, null, null, null);
 };
 
-const paragraphXml = (container: (typeof CONTAINERS)[number], child: string): string =>
+const paragraphXml = (
+  container: (typeof CONTAINERS)[number],
+  child: string,
+): string =>
   `<w:p xmlns:w="${W}">` +
   `<w:${container.tag}${container.attributes}>` +
   `<w:r><w:t>text</w:t></w:r>${child}` +
@@ -99,12 +104,19 @@ const throughTheEditor = (paragraph: Paragraph): Paragraph => {
 describe("a link and a simple field keep the children folio does not model", () => {
   for (const container of CONTAINERS) {
     test(`w:${container.tag} keeps a w:permStart inside itself across a save`, () => {
-      const paragraph = parseParagraphXml(paragraphXml(container, '<w:permStart w:id="7"/>'));
+      const paragraph = parseParagraphXml(
+        paragraphXml(container, '<w:permStart w:id="7"/>'),
+      );
 
       const item = paragraph.content.at(0);
       const held = item?.type === "hyperlink" ? item.children : undefined;
-      const fieldContent = item?.type === "simpleField" ? item.content : undefined;
-      expect((held ?? fieldContent)?.some((child) => child.type === "preservedInline")).toBe(true);
+      const fieldContent =
+        item?.type === "simpleField" ? item.content : undefined;
+      expect(
+        (held ?? fieldContent)?.some(
+          (child) => child.type === "preservedInline",
+        ),
+      ).toBe(true);
 
       expect(inside(serializeParagraph(paragraph), container.tag)).toContain(
         '<w:permStart w:id="7"/>',
@@ -118,13 +130,17 @@ describe("a link and a simple field keep the children folio does not model", () 
         fc.constantFrom(...CONTAINERS),
         fc.constantFrom(...UNMODELLED_CHILDREN),
         (container, child) => {
-          const saved = serializeParagraph(parseParagraphXml(paragraphXml(container, child)));
+          const saved = serializeParagraph(
+            parseParagraphXml(paragraphXml(container, child)),
+          );
           expect(inside(saved, container.tag)).toContain(child);
 
           // Save, reopen, save: the second save is where a capture that only
           // replays and does not re-parse stops being a fixed point.
           const reparsed = serializeParagraph(
-            parseParagraphXml(`<w:p xmlns:w="${W}">${saved.slice(saved.indexOf(">") + 1)}`),
+            parseParagraphXml(
+              `<w:p xmlns:w="${W}">${saved.slice(saved.indexOf(">") + 1)}`,
+            ),
           );
           expect(inside(reparsed, container.tag)).toContain(child);
         },
@@ -139,8 +155,12 @@ describe("a link and a simple field keep the children folio does not model", () 
         fc.constantFrom(...CONTAINERS),
         fc.constantFrom(...UNMODELLED_CHILDREN),
         (container, child) => {
-          const reopened = throughTheEditor(parseParagraphXml(paragraphXml(container, child)));
-          expect(inside(serializeParagraph(reopened), container.tag)).toContain(child);
+          const reopened = throughTheEditor(
+            parseParagraphXml(paragraphXml(container, child)),
+          );
+          expect(inside(serializeParagraph(reopened), container.tag)).toContain(
+            child,
+          );
         },
       ),
       propertyConfig({ numRuns: 100 }),
@@ -161,7 +181,9 @@ describe("a link and a simple field keep the children folio does not model", () 
     // capture has to land in the link that held it rather than at the end of
     // whatever segment the walk happened to be building.
     const saved = serializeParagraph(paragraph);
-    expect(saved.indexOf("<w:permStart")).toBeLessThan(saved.indexOf("<w:ins "));
+    expect(saved.indexOf("<w:permStart")).toBeLessThan(
+      saved.indexOf("<w:ins "),
+    );
     expect(inside(saved, "hyperlink")).toContain('<w:permStart w:id="7"/>');
   });
 });

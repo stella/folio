@@ -22,26 +22,30 @@
  *   bun scripts/generate-strict-value-encodings.ts check
  */
 
+import { TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-
-import { TaggedError } from "better-result";
 
 import {
   attributesOf,
   buildIndex,
   elementTypes,
   type Index,
-  localName,
   loadSchemaGraph,
+  localName,
   type SchemaGraph,
 } from "./lib/ooxml-schema-graph";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const OUTPUT_PATH = path.join(REPO_ROOT, "packages/core/src/docx/strictValueEncodings.gen.ts");
+const OUTPUT_PATH = path.join(
+  REPO_ROOT,
+  "packages/core/src/docx/strictValueEncodings.gen.ts",
+);
 
-class GenerateStrictValueEncodingsError extends TaggedError("GenerateStrictValueEncodingsError")<{
+class GenerateStrictValueEncodingsError extends TaggedError(
+  "GenerateStrictValueEncodingsError",
+)<{
   message: string;
 }> {}
 
@@ -54,7 +58,9 @@ class GenerateStrictValueEncodingsError extends TaggedError("GenerateStrictValue
  * `w:readModeInkLockDown/@w:fontSz`, and every element carrying it lives in
  * `settings.xml`, which folio copies through rather than rebuilds.
  */
-const UNION_ENCODINGS: Readonly<Record<string, { measure?: string; percent?: string } | null>> = {
+const UNION_ENCODINGS: Readonly<
+  Record<string, { measure?: string; percent?: string } | null>
+> = {
   ST_AdjCoordinate: { measure: "emu" },
   ST_Coordinate: { measure: "emu" },
   ST_Coordinate32: { measure: "emu" },
@@ -116,7 +122,9 @@ const spellingsOf = (
     }
     return spellings;
   }
-  const patterns = (symbol.facets ?? []).filter((facet) => facet.kind === "pattern");
+  const patterns = (symbol.facets ?? []).filter(
+    (facet) => facet.kind === "pattern",
+  );
   if (patterns.some((facet) => MEASURE_PATTERN.test(facet.value))) {
     spellings.add("measure");
     return spellings;
@@ -141,7 +149,10 @@ const encodingFor = (
   type: string,
 ): { measure?: string; percent?: string } | null | undefined => {
   const spellings = spellingsOf(index, type);
-  if (!spellings.has("numeric") || (!spellings.has("measure") && !spellings.has("percent"))) {
+  if (
+    !spellings.has("numeric") ||
+    (!spellings.has("measure") && !spellings.has("percent"))
+  ) {
     return undefined;
   }
   const union = localName(type);
@@ -162,7 +173,9 @@ const collectSlots = (graph: SchemaGraph, index: Index): Slot[] => {
     for (const type of types) {
       const simple = index.byId.get(`simpleType:${type}`);
       const complex = index.byId.get(`complexType:${type}`);
-      const textType = simple ? type : (index.baseOf.get(complex?.id ?? "") ?? undefined);
+      const textType = simple
+        ? type
+        : (index.baseOf.get(complex?.id ?? "") ?? undefined);
       if (textType !== undefined && index.byId.get(`simpleType:${textType}`)) {
         const encoding = encodingFor(index, textType);
         if (encoding) {
@@ -204,14 +217,20 @@ const collectSlots = (graph: SchemaGraph, index: Index): Slot[] => {
  * content types exactly as a Transitional one does.
  */
 const strictUriFor = (transitional: string): string | undefined => {
-  const match = /^http:\/\/schemas\.openxmlformats\.org\/(.+)\/2006\/(.+)$/u.exec(transitional);
+  const match =
+    /^http:\/\/schemas\.openxmlformats\.org\/(.+)\/2006\/(.+)$/u.exec(
+      transitional,
+    );
   if (match === null || match[1] === "package") {
     return undefined;
   }
   return `http://purl.oclc.org/ooxml/${match[1]}/${match[2]}`;
 };
 
-const renderModule = (slots: Slot[], namespacePairs: Array<[string, string]>): string => {
+const renderModule = (
+  slots: Slot[],
+  namespacePairs: Array<[string, string]>,
+): string => {
   const bySlot = new Map<string, Slot>();
   for (const slot of slots) {
     const key = `${slot.namespace} ${slot.element}${slot.attribute === null ? "" : ` @${slot.attribute}`}`;
@@ -224,9 +243,15 @@ const renderModule = (slots: Slot[], namespacePairs: Array<[string, string]>): s
     bySlot.set(key, slot);
   }
 
-  const entries = [...bySlot.entries()].sort(([left], [right]) => (left < right ? -1 : 1));
+  const entries = [...bySlot.entries()].sort(([left], [right]) =>
+    left < right ? -1 : 1,
+  );
   const encodings = entries.map(([key, slot]) => {
-    const columns = [key, slot.encoding.measure ?? "", slot.encoding.percent ?? ""];
+    const columns = [
+      key,
+      slot.encoding.measure ?? "",
+      slot.encoding.percent ?? "",
+    ];
     while (columns.at(-1) === "") {
       columns.pop();
     }
@@ -314,13 +339,15 @@ export const TRANSITIONAL_NAMESPACE_BY_STRICT_URI: ReadonlyMap<string, string> =
 `;
 };
 
-const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
+const digest = (value: string): string =>
+  createHash("sha256").update(value).digest("hex");
 
 const main = async (): Promise<void> => {
   const mode = process.argv.at(2) ?? "write";
   if (mode !== "check" && mode !== "write") {
     throw new GenerateStrictValueEncodingsError({
-      message: "Usage: bun scripts/generate-strict-value-encodings.ts [check|write]",
+      message:
+        "Usage: bun scripts/generate-strict-value-encodings.ts [check|write]",
     });
   }
 
@@ -338,7 +365,8 @@ const main = async (): Promise<void> => {
 
   if (!slots.some((slot) => slot.element === "tcW" && slot.attribute === "w")) {
     throw new GenerateStrictValueEncodingsError({
-      message: "w:tcW/@w:w must be a twips slot; the schema graph or the derivation drifted.",
+      message:
+        "w:tcW/@w:w must be a twips slot; the schema graph or the derivation drifted.",
     });
   }
 

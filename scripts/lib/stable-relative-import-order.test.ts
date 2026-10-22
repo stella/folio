@@ -1,10 +1,12 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../test/property-testing";
-
-import coreConfigs from "../../packages/core/tsdown.config";
 import agentsConfigs from "../../packages/agents/tsdown.config";
+import coreConfigs from "../../packages/core/tsdown.config";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../test/property-testing";
 import {
   canonicalizeRelativeImportOrder,
   STABLE_RELATIVE_IMPORT_ORDER_PLUGIN,
@@ -47,10 +49,14 @@ const relativeImportSpans = (lines: readonly string[]) => {
   let offset = 0;
   let group = 0;
   let previousWasRelative = false;
-  const spans: { start: number; end: number; source: string; group: number }[] = [];
+  const spans: { start: number; end: number; source: string; group: number }[] =
+    [];
   for (const line of lines) {
     const source = importSource(line);
-    if (source?.startsWith(".") && (line.startsWith('import "') || line.includes(' from ".'))) {
+    if (
+      source?.startsWith(".") &&
+      (line.startsWith('import "') || line.includes(' from ".'))
+    ) {
       if (!previousWasRelative) {
         group += 1;
       }
@@ -67,37 +73,47 @@ const relativeImportSpans = (lines: readonly string[]) => {
 describe("stableRelativeImportOrder", () => {
   test("canonicalizes every relative-import permutation without moving external imports", () => {
     fc.assert(
-      fc.property(firstGroupPermutation, secondGroupPermutation, (first, second) => {
-        const firstGroup = first.flatMap((index) => {
-          const line = RELATIVE_IMPORTS.at(index);
-          return line ? [line] : [];
-        });
-        const secondGroup = second.flatMap((index) => {
-          const line = RELATIVE_IMPORTS.at(index);
-          return line ? [line] : [];
-        });
-        const lines = [
-          ...firstGroup,
-          'import { externalA } from "external-a";',
-          ...secondGroup,
-          'import "external-b";',
-          "export {};",
-        ];
-        const expected = [
-          ...sortImports(firstGroup),
-          'import { externalA } from "external-a";',
-          ...sortImports(secondGroup),
-          'import "external-b";',
-          "export {};",
-        ].join("\n");
-        const code = lines.join("\n");
-        const canonical = canonicalizeRelativeImportOrder(code, relativeImportSpans(lines));
+      fc.property(
+        firstGroupPermutation,
+        secondGroupPermutation,
+        (first, second) => {
+          const firstGroup = first.flatMap((index) => {
+            const line = RELATIVE_IMPORTS.at(index);
+            return line ? [line] : [];
+          });
+          const secondGroup = second.flatMap((index) => {
+            const line = RELATIVE_IMPORTS.at(index);
+            return line ? [line] : [];
+          });
+          const lines = [
+            ...firstGroup,
+            'import { externalA } from "external-a";',
+            ...secondGroup,
+            'import "external-b";',
+            "export {};",
+          ];
+          const expected = [
+            ...sortImports(firstGroup),
+            'import { externalA } from "external-a";',
+            ...sortImports(secondGroup),
+            'import "external-b";',
+            "export {};",
+          ].join("\n");
+          const code = lines.join("\n");
+          const canonical = canonicalizeRelativeImportOrder(
+            code,
+            relativeImportSpans(lines),
+          );
 
-        expect(canonical).toBe(expected);
-        expect(
-          canonicalizeRelativeImportOrder(canonical, relativeImportSpans(expected.split("\n"))),
-        ).toBe(canonical);
-      }),
+          expect(canonical).toBe(expected);
+          expect(
+            canonicalizeRelativeImportOrder(
+              canonical,
+              relativeImportSpans(expected.split("\n")),
+            ),
+          ).toBe(canonical);
+        },
+      ),
       propertyConfig(),
     );
   });
@@ -106,7 +122,9 @@ describe("stableRelativeImportOrder", () => {
     for (const config of [coreConfigs.at(0), agentsConfigs.at(0)]) {
       expect(config?.plugins).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ name: STABLE_RELATIVE_IMPORT_ORDER_PLUGIN }),
+          expect.objectContaining({
+            name: STABLE_RELATIVE_IMPORT_ORDER_PLUGIN,
+          }),
         ]),
       );
     }

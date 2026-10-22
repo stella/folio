@@ -1,22 +1,28 @@
-import { expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { panic } from "better-result";
+import { expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { fromMarkdown } from "./fromMarkdown";
-import { toMarkdown } from "./index";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import { paragraphNumberingFromSlots } from "../docx/numberingReference";
 import {
   createStyleResolver,
   resolveStyleParagraphNumbering,
   StyleResolver,
 } from "../prosemirror/styles/styleResolver";
-import { paragraphNumberingFromSlots } from "../docx/numberingReference";
+import { fromMarkdown } from "./fromMarkdown";
+import { toMarkdown } from "./index";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
 
 test("Markdown numbering avoids the full run-formatting style cascade", () => {
   const fullCascade = spyOn(StyleResolver.prototype, "resolveParagraphStyle");
   try {
-    expect(toMarkdown(fromMarkdown("1. First\n2. Second")).trim()).toBe("1. First\n2. Second");
+    expect(toMarkdown(fromMarkdown("1. First\n2. Second")).trim()).toBe(
+      "1. First\n2. Second",
+    );
     expect(fullCascade).not.toHaveBeenCalled();
   } finally {
     fullCascade.mockRestore();
@@ -25,20 +31,32 @@ test("Markdown numbering avoids the full run-formatting style cascade", () => {
 
 test("repeated list definitions keep independent counters and observe edits between renders", async () => {
   await assertProperty(
-    fc.property(fc.integer({ min: 2, max: 8 }), fc.integer({ min: 1, max: 20 }), (count, start) => {
-      const document = fromMarkdown(
-        Array.from({ length: count }, (_, index) => `${index + 1}. Item`).join("\n"),
-      );
-      const level = document.package.numbering?.abstractNums.at(0)?.levels.at(0);
-      if (!level) return panic("Missing generated list definition.");
-      for (const suffix of [".", ")", "."] as const) {
-        level.lvlText = `%1${suffix}`;
-        level.start = start;
-        expect(toMarkdown(document).trim().split("\n")).toEqual(
-          Array.from({ length: count }, (_, index) => `${start + index}${suffix} Item`),
+    fc.property(
+      fc.integer({ min: 2, max: 8 }),
+      fc.integer({ min: 1, max: 20 }),
+      (count, start) => {
+        const document = fromMarkdown(
+          Array.from(
+            { length: count },
+            (_, index) => `${index + 1}. Item`,
+          ).join("\n"),
         );
-      }
-    }),
+        const level = document.package.numbering?.abstractNums
+          .at(0)
+          ?.levels.at(0);
+        if (!level) return panic("Missing generated list definition.");
+        for (const suffix of [".", ")", "."] as const) {
+          level.lvlText = `%1${suffix}`;
+          level.start = start;
+          expect(toMarkdown(document).trim().split("\n")).toEqual(
+            Array.from(
+              { length: count },
+              (_, index) => `${start + index}${suffix} Item`,
+            ),
+          );
+        }
+      },
+    ),
     {
       numRuns: 30,
       id: "repeated list definitions keep independent counters and observe edits between renders",
@@ -49,7 +67,10 @@ test("repeated list definitions keep independent counters and observe edits betw
 test("numbering-only style resolution stays bound to the full paragraph cascade", async () => {
   const numbering = fc.option(
     fc
-      .record({ numId: fc.integer({ min: 0, max: 3 }), ilvl: fc.integer({ min: 0, max: 8 }) })
+      .record({
+        numId: fc.integer({ min: 0, max: 3 }),
+        ilvl: fc.integer({ min: 0, max: 8 }),
+      })
       .map(paragraphNumberingFromSlots),
     { nil: undefined },
   );
@@ -58,7 +79,12 @@ test("numbering-only style resolution stays bound to the full paragraph cascade"
       const resolver = createStyleResolver({
         docDefaults: { pPr: { numPr: defaults } },
         styles: [
-          { styleId: "Normal", type: "paragraph", default: true, pPr: { numPr: normal } },
+          {
+            styleId: "Normal",
+            type: "paragraph",
+            default: true,
+            pPr: { numPr: normal },
+          },
           { styleId: "Custom", type: "paragraph", pPr: { numPr: custom } },
         ],
       });

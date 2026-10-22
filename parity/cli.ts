@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { TaggedError } from "better-result";
 /**
  * Multi-engine DOCX rendering comparison: CLI entry point.
  *
@@ -22,7 +23,7 @@
 import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { TaggedError } from "better-result";
+import { compareGeoms } from "./compare";
 import { CACHE_DIR, DEFAULT_CORPUS_DIRS } from "./config";
 import {
   attributeDivergences,
@@ -37,11 +38,12 @@ import type { FolioExtraction, FolioExtractor } from "./folioExtract";
 import { planFontAliases } from "./fontAliases";
 import type { FontFaceRecord } from "./fontFaces";
 import { comparePageRasters } from "./rasterCompare";
-import { compareGeoms } from "./compare";
-import { getReferenceRenderer, isReferenceRendererId } from "./referenceRenderer";
+import {
+  getReferenceRenderer,
+  isReferenceRendererId,
+} from "./referenceRenderer";
 import type { ReferenceRenderer } from "./referenceRenderer";
 import { comparisonAssetKey, writeHtmlReport } from "./report";
-import { getReferenceFontFaces, getReferenceLocalFonts } from "./wordFonts";
 import type { DocAssets } from "./report";
 import type {
   CorpusReport,
@@ -54,6 +56,7 @@ import type {
   ReviewView,
 } from "./types";
 import { isGeometryScoreReliable } from "./types";
+import { getReferenceFontFaces, getReferenceLocalFonts } from "./wordFonts";
 
 const EXIT_OK = 0;
 const EXIT_DIVERGENT = 1;
@@ -82,7 +85,8 @@ const requireSourceSha256 = (geometry: DocGeom) => {
 
 /** Word lock files ("~$name.docx") and dotfiles are never real documents. */
 const DOCX_GLOB = "**/*.docx";
-const isRealDocxName = (name: string): boolean => !name.startsWith("~$") && !name.startsWith(".");
+const isRealDocxName = (name: string): boolean =>
+  !name.startsWith("~$") && !name.startsWith(".");
 
 type CliFlags = {
   help: boolean;
@@ -182,7 +186,10 @@ Examples:
   bun parity/cli.ts some/dir --json --output /tmp/parity.json
 `;
 
-const limitGeomPages = (geom: DocGeom, maxPages: number | undefined): DocGeom => {
+const limitGeomPages = (
+  geom: DocGeom,
+  maxPages: number | undefined,
+): DocGeom => {
   if (maxPages === undefined) {
     return geom;
   }
@@ -276,7 +283,10 @@ const extractInReferenceFontEnvironment = async ({
   );
   if (plan.fonts.length === 0) return { folio, fontEnvironment };
 
-  const aliased = await extractor.extract(doc, { ...pageLimit, aliasFonts: plan.fonts });
+  const aliased = await extractor.extract(doc, {
+    ...pageLimit,
+    aliasFonts: plan.fonts,
+  });
   return {
     folio: aliased,
     fontEnvironment: {
@@ -324,7 +334,9 @@ export const runPipeline = async (
 
           try {
             // oxlint-disable-next-line no-await-in-loop -- paragraph text follows the active review view
-            const extractedFeatures = await extractDocFeatures(doc, { reviewView });
+            const extractedFeatures = await extractDocFeatures(doc, {
+              reviewView,
+            });
 
             // oxlint-disable-next-line no-await-in-loop -- references are rendered sequentially for deterministic app automation
             const referenceGeom = limitGeomPages(
@@ -350,22 +362,30 @@ export const runPipeline = async (
                 ? { reviewView }
                 : { maxPages: flags.maxPages, reviewView };
             // oxlint-disable-next-line no-await-in-loop -- the extractor shares one browser page across docs and views
-            const { folio, fontEnvironment } = await extractInReferenceFontEnvironment({
-              extractor,
-              doc,
-              pageLimit,
-              referenceGeom,
-              loadReferenceFontFaces,
-            });
+            const { folio, fontEnvironment } =
+              await extractInReferenceFontEnvironment({
+                extractor,
+                doc,
+                pageLimit,
+                referenceGeom,
+                loadReferenceFontFaces,
+              });
 
             const result = compareGeoms(referenceGeom, folio.geom, undefined, {
-              excludeFontMismatchedLines: fontEnvironment.status === "partial-mismatch",
+              excludeFontMismatchedLines:
+                fontEnvironment.status === "partial-mismatch",
             });
             const docFeatures = {
               ...extractedFeatures,
-              docFeatures: [...extractedFeatures.docFeatures, `review-view:${reviewView}`],
+              docFeatures: [
+                ...extractedFeatures.docFeatures,
+                `review-view:${reviewView}`,
+              ],
             };
-            if (fontEnvironment.aliases !== undefined && fontEnvironment.aliases.length > 0) {
+            if (
+              fontEnvironment.aliases !== undefined &&
+              fontEnvironment.aliases.length > 0
+            ) {
               process.stderr.write(
                 `(aliased ${fontEnvironment.aliases.map(({ requestedFamily, faceFamily }) => `${requestedFamily} -> ${faceFamily}`).join(", ")}) `,
               );
@@ -378,7 +398,9 @@ export const runPipeline = async (
                 `(shared substituted font: ${fontEnvironment.tags.join(", ")}; ${fontEnvironment.comparedLines} lines) `,
               );
             } else if (fontEnvironment.status === "mismatch") {
-              if (fontEnvironment.tags.includes("font-renderer-metric-mismatch")) {
+              if (
+                fontEnvironment.tags.includes("font-renderer-metric-mismatch")
+              ) {
                 process.stderr.write(
                   `(${referenceRenderer.displayName}/Folio font metric mismatch despite ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} matching family names) `,
                 );
@@ -444,8 +466,11 @@ export const runPipeline = async (
                 : "";
             process.stderr.write(`score ${scoreLabel}${rasterScoreLabel}\n`);
           } catch (error) {
-            const err = error instanceof Error ? error : new Error(String(error));
-            process.stderr.write(`\n${label}: FAILED — ${err.name}: ${err.message}\n`);
+            const err =
+              error instanceof Error ? error : new Error(String(error));
+            process.stderr.write(
+              `\n${label}: FAILED — ${err.name}: ${err.message}\n`,
+            );
             failures.push({ file: doc, reviewView, error: err });
           }
         }
@@ -491,7 +516,10 @@ const compactDivergenceCounts = (divergences: Divergence[]): string => {
     .join(", ");
 };
 
-const printHumanSummary = (report: CorpusReport, failures: DocFailure[]): void => {
+const printHumanSummary = (
+  report: CorpusReport,
+  failures: DocFailure[],
+): void => {
   const docCount = new Set([
     ...report.results.map((result) => result.file),
     ...failures.map((failure) => failure.file),
@@ -507,7 +535,8 @@ const printHumanSummary = (report: CorpusReport, failures: DocFailure[]): void =
       ? `${(result.score * 100).toFixed(1)}%`
       : "unscored";
     const pages = `pages ${result.referencePages}/${result.folioPages}`;
-    const counts = compactDivergenceCounts(result.divergences) || "no divergences";
+    const counts =
+      compactDivergenceCounts(result.divergences) || "no divergences";
     console.log(
       `  ${path.basename(result.file).padEnd(32)} ${result.reviewView.padEnd(10)} ${pct.padStart(6)}  ${pages}  ${counts}`,
     );
@@ -536,7 +565,10 @@ const printHumanSummary = (report: CorpusReport, failures: DocFailure[]): void =
 };
 
 /** Return whether a report is clean, including every available raster check. */
-export const isFullyClean = (report: CorpusReport, failures: DocFailure[]): boolean =>
+export const isFullyClean = (
+  report: CorpusReport,
+  failures: DocFailure[],
+): boolean =>
   failures.length === 0 &&
   report.results.every(
     (result) =>
@@ -547,7 +579,10 @@ export const isFullyClean = (report: CorpusReport, failures: DocFailure[]): bool
           result.rasterComparison.score === PERFECT_SCORE)),
   );
 
-const writeJsonReport = async (report: CorpusReport, outputPath: string): Promise<string> => {
+const writeJsonReport = async (
+  report: CorpusReport,
+  outputPath: string,
+): Promise<string> => {
   const resolved = path.resolve(outputPath);
   await mkdir(path.dirname(resolved), { recursive: true });
   await Bun.write(resolved, `${JSON.stringify(report, null, 2)}\n`);
@@ -575,7 +610,9 @@ const main = async (argv: string[]): Promise<number> => {
 
   const docs = await resolveCorpus(flags.paths);
   if (docs.length === 0) {
-    console.error("No .docx files found in the given paths (or the default corpus dirs).");
+    console.error(
+      "No .docx files found in the given paths (or the default corpus dirs).",
+    );
     return EXIT_OK;
   }
 
@@ -632,7 +669,9 @@ if (import.meta.main) {
     process.exitCode = await main(process.argv.slice(2));
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
-    console.error(`DOCX interoperability comparison failed: ${err.name}: ${err.message}`);
+    console.error(
+      `DOCX interoperability comparison failed: ${err.name}: ${err.message}`,
+    );
     process.exitCode = EXIT_INFRA_FAILURE;
   }
 }

@@ -1,11 +1,14 @@
 /** Convert browser list markup into the editor's numbered-paragraph model. */
 
 import { panic } from "better-result";
-import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
 import { mintListInstance } from "../../../docx/listNumberingInstances";
-import { createNumberingMap, type NumberingMap } from "../../../docx/numberingParser";
+import {
+  createNumberingMap,
+  type NumberingMap,
+} from "../../../docx/numberingParser";
 import { expectParagraphAttrs } from "../../attrs";
 import { completeNumberingForDoc } from "../../listInstanceReferences";
 import { listItemAttrs } from "../../listNumbering";
@@ -15,7 +18,8 @@ const isList = (element: Element): boolean =>
   element.localName === "ul" || element.localName === "ol";
 
 const hasListHint = (node: PMNode | null): boolean =>
-  node?.type.name === "paragraph" && Boolean(expectParagraphAttrs(node)._pastedHtmlList);
+  node?.type.name === "paragraph" &&
+  Boolean(expectParagraphAttrs(node)._pastedHtmlList);
 
 /**
  * Flatten only list containers. Other HTML remains in place for the normal
@@ -34,7 +38,8 @@ export const flattenPastedHtmlLists = (html: string): string => {
     const group = ++nextGroup;
     const kind = list.localName === "ul" ? "bullet" : "numbered";
     const rawStart = Number(list.getAttribute("start"));
-    const start = Number.isSafeInteger(rawStart) && rawStart > 0 ? rawStart : undefined;
+    const start =
+      Number.isSafeInteger(rawStart) && rawStart > 0 ? rawStart : undefined;
 
     for (const item of Array.from(list.children)) {
       if (item.localName !== "li") {
@@ -44,7 +49,10 @@ export const flattenPastedHtmlLists = (html: string): string => {
       let emitted = false;
       const mark = (element: Element): void => {
         element.setAttribute("data-folio-list-group", String(group));
-        element.setAttribute("data-folio-list-level", String(Math.min(level, 8)));
+        element.setAttribute(
+          "data-folio-list-level",
+          String(Math.min(level, 8)),
+        );
         element.setAttribute("data-folio-list-kind", kind);
         if (start !== undefined) {
           element.setAttribute("data-folio-list-start", String(start));
@@ -69,7 +77,10 @@ export const flattenPastedHtmlLists = (html: string): string => {
           mark(child);
           fragment.append(child);
           emitted = true;
-        } else if (child.nodeType !== Node.TEXT_NODE || child.textContent?.trim()) {
+        } else if (
+          child.nodeType !== Node.TEXT_NODE ||
+          child.textContent?.trim()
+        ) {
           paragraph.append(child);
         }
       }
@@ -92,7 +103,10 @@ export const flattenPastedHtmlLists = (html: string): string => {
 };
 
 /** Resolve clipboard-only list hints against fresh document numbering ids. */
-export const numberPastedHtmlLists = (slice: Slice, view: EditorView): Slice => {
+export const numberPastedHtmlLists = (
+  slice: Slice,
+  view: EditorView,
+): Slice => {
   let hasList = false;
   slice.content.descendants((node) => {
     if (hasListHint(node)) {
@@ -112,7 +126,10 @@ export const numberPastedHtmlLists = (slice: Slice, view: EditorView): Slice => 
   );
   let definitions = source;
   let numbering: NumberingMap | null = null;
-  const groups = new Map<number, { numId: number; kind: "bullet" | "numbered" }>();
+  const groups = new Map<
+    number,
+    { numId: number; kind: "bullet" | "numbered" }
+  >();
   let changed = false;
 
   const convert = (node: PMNode): PMNode => {
@@ -137,7 +154,11 @@ export const numberPastedHtmlLists = (slice: Slice, view: EditorView): Slice => 
         }
         const { _pastedHtmlList: _consumed, ...unhinted } = attrs;
         result = node.type.create(
-          listItemAttrs(unhinted, { numId: group.numId, ilvl: hint.level }, numbering),
+          listItemAttrs(
+            unhinted,
+            { numId: group.numId, ilvl: hint.level },
+            numbering,
+          ),
           node.content,
           node.marks,
         );

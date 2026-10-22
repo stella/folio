@@ -1,17 +1,19 @@
-import fc from "fast-check";
 import { panic } from "better-result";
+import fc from "fast-check";
+
 import { NUM_RUNS_FACTOR_ENV, numRunsFactor } from "./property-run-factor";
 
 export { propertyTestTimeout } from "./property-timeout";
-import { PROPERTY_SEEDS_FILE, readSeedRegistry, seedFileFor } from "./seed-registry";
+import {
+  PROPERTY_SEEDS_FILE,
+  readSeedRegistry,
+  seedFileFor,
+} from "./seed-registry";
 
 export { PROPERTY_SEEDS_FILE, seedFileFor } from "./seed-registry";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { classifyFuzzRun } from "./fuzz-health";
-import { reportFuzzHealth } from "./consumer-scenarios/support/fuzz-health";
 
 import { commitSeed } from "./commit-seed";
 import {
@@ -20,6 +22,8 @@ import {
   logFailureMarker,
   writeFailureRecord,
 } from "./consumer-scenarios/support/failure-fingerprints";
+import { reportFuzzHealth } from "./consumer-scenarios/support/fuzz-health";
+import { classifyFuzzRun } from "./fuzz-health";
 
 /**
  * Shared fast-check configuration for the repo's property tests. Every
@@ -79,7 +83,9 @@ const readSeed = (raw: string | undefined): number | undefined => {
   // An unreadable seed must not silently turn into fast-check's own random
   // one: a sweep would then report a "failing seed" nothing can replay.
   if (!Number.isInteger(parsed)) {
-    throw new Error(`${SEED_ENV} must be an integer, received ${JSON.stringify(raw)}.`);
+    throw new Error(
+      `${SEED_ENV} must be an integer, received ${JSON.stringify(raw)}.`,
+    );
   }
   return parsed;
 };
@@ -88,7 +94,8 @@ const readSeed = (raw: string | undefined): number | undefined => {
  * The seed every property in this process runs under, or `undefined` when
  * fast-check should pick its own.
  */
-export const propertyTestSeed = (): number | undefined => readSeed(process.env[SEED_ENV]);
+export const propertyTestSeed = (): number | undefined =>
+  readSeed(process.env[SEED_ENV]);
 
 // Treat the common CI values as enabled, but honor an explicit opt-out
 // (`CI=false`/`0`) so verbose reporting can be silenced locally.
@@ -109,9 +116,12 @@ type CallSite = {
   line: number;
 };
 
-const FRAME = /\(?((?:file:\/\/)?(?:\/|[A-Za-z]:[\\/])[^()]*?):(\d+):\d+\)?\s*$/;
+const FRAME =
+  /\(?((?:file:\/\/)?(?:\/|[A-Za-z]:[\\/])[^()]*?):(\d+):\d+\)?\s*$/;
 
-const parseFrame = (frame: string): { absolute: string; line: number } | undefined => {
+const parseFrame = (
+  frame: string,
+): { absolute: string; line: number } | undefined => {
   const match = FRAME.exec(frame);
   if (match === null) {
     return undefined;
@@ -137,7 +147,9 @@ const callSite = (): CallSite | undefined => {
     .slice(1)
     .map(parseFrame)
     .filter((frame) => frame !== undefined && frame.absolute !== SELF);
-  const frame = frames.find((candidate) => /\.test\.tsx?$/.test(candidate!.absolute)) ?? frames[0];
+  const frame =
+    frames.find((candidate) => /\.test\.tsx?$/.test(candidate!.absolute)) ??
+    frames[0];
   if (frame === undefined) {
     return undefined;
   }
@@ -162,13 +174,17 @@ const linesOf = (absolute: string): readonly string[] => {
   return lines;
 };
 
-const indentOf = (text: string): number => text.length - text.trimStart().length;
+const indentOf = (text: string): number =>
+  text.length - text.trimStart().length;
 
 const OPENER = /^\s*(?:describe|test|it)\b[\w.]*(?:\([^()]*\))?\(\s*(.*)$/;
 const TITLE = /^(["'`])((?:\\.|(?!\1)[^\\])*)\1/;
 
 /** The title a `describe`/`test`/`it` opener at `index` gives, as written. */
-const openerTitle = (lines: readonly string[], index: number): string | undefined => {
+const openerTitle = (
+  lines: readonly string[],
+  index: number,
+): string | undefined => {
   const opener = OPENER.exec(lines[index] ?? "");
   if (opener === null) {
     return undefined;
@@ -185,12 +201,19 @@ const openerTitle = (lines: readonly string[], index: number): string | undefine
  * read from the formatted source by indentation. Titles are as written, so a
  * template title keeps its `${…}` placeholders.
  */
-export const enclosingTitles = (lines: readonly string[], line: number): string[] => {
+export const enclosingTitles = (
+  lines: readonly string[],
+  line: number,
+): string[] => {
   let indent = indentOf(lines[line - 1] ?? "");
   const titles: string[] = [];
   for (let index = line - 2; index >= 0 && indent > 0; index -= 1) {
     const text = lines[index] as string;
-    if (text.trim() === "" || indentOf(text) >= indent || /^\s*[)}\]]/.test(text)) {
+    if (
+      text.trim() === "" ||
+      indentOf(text) >= indent ||
+      /^\s*[)}\]]/.test(text)
+    ) {
       continue;
     }
     indent = indentOf(text);
@@ -227,9 +250,11 @@ const identify = (): PropertyIdentity => {
 };
 
 const identifyProperty = (id: string): PropertyIdentity => {
-  if (typeof id !== "string" || id.trim() === "") return panic("A property needs an explicit ID.");
+  if (typeof id !== "string" || id.trim() === "")
+    return panic("A property needs an explicit ID.");
   const { site, title } = identify();
-  if (site === undefined) return panic("A property ID needs an attributable source file.");
+  if (site === undefined)
+    return panic("A property ID needs an attributable source file.");
   return { site, id, title, key: `${site.file}::${id}` };
 };
 
@@ -274,7 +299,9 @@ export const overridePinnedSeedsForTesting = (
 };
 
 const pinnedFor = (key: string | undefined): readonly PinnedSeed[] =>
-  key === undefined ? [] : ((pinnedSeedsOverride ?? readPinnedSeeds())[key] ?? []);
+  key === undefined
+    ? []
+    : ((pinnedSeedsOverride ?? readPinnedSeeds())[key] ?? []);
 
 // ---------------------------------------------------------------------------
 // Replay reporting
@@ -293,7 +320,8 @@ const packageDirOf = (absolute: string): string => {
   return REPO_ROOT;
 };
 
-const shellQuote = (text: string): string => `'${text.replaceAll("'", `'\\''`)}'`;
+const shellQuote = (text: string): string =>
+  `'${text.replaceAll("'", `'\\''`)}'`;
 
 /** A `bun test -t` pattern for a title as written: `${…}` matches anything. */
 export const titlePattern = (title: string): string =>
@@ -323,7 +351,8 @@ const replayCommand = (identity: PropertyIdentity, replay: Replay): string => {
     packageDir === REPO_ROOT
       ? ""
       : `cd ${path.relative(REPO_ROOT, packageDir).replaceAll("\\", "/")} && `;
-  const filter = title === undefined ? "" : ` -t ${shellQuote(titlePattern(title))}`;
+  const filter =
+    title === undefined ? "" : ` -t ${shellQuote(titlePattern(title))}`;
   return `${cd}${env.join(" ")} bun test ./${file}${filter}`;
 };
 
@@ -347,7 +376,9 @@ const errorText = (error: unknown): string => {
 const replayReporter =
   <Ts>(identity: PropertyIdentity, pinned: PinnedSeed | undefined) =>
   (details: fc.RunDetails<Ts>): void => {
-    const registryFile = identity.site ? seedFileFor(identity.site.file) : PROPERTY_SEEDS_FILE;
+    const registryFile = identity.site
+      ? seedFileFor(identity.site.file)
+      : PROPERTY_SEEDS_FILE;
     const health = classifyFuzzRun(details);
     reportFuzzHealth(health);
     if (health.status === "infrastructure") {
@@ -367,14 +398,20 @@ const replayReporter =
         test: identity.key ?? identity.title ?? "property",
         seed: details.seed,
         path: details.counterexamplePath,
-        repro: replayCommand(identity, { seed: details.seed, path: details.counterexamplePath }),
+        repro: replayCommand(identity, {
+          seed: details.seed,
+          path: details.counterexamplePath,
+        }),
         failure: details.errorInstance,
       });
       if (marker.fingerprint === expected.fingerprint) return;
       throw details.errorInstance;
     }
     const counterexamplePath = details.counterexamplePath;
-    const replay = replayCommand(identity, { seed: details.seed, path: counterexamplePath });
+    const replay = replayCommand(identity, {
+      seed: details.seed,
+      path: counterexamplePath,
+    });
     const entry = {
       seed: details.seed,
       ...(counterexamplePath === null ? {} : { path: counterexamplePath }),
@@ -404,7 +441,9 @@ const replayReporter =
       if (directory !== undefined)
         writeFailureRecord(
           directory,
-          failureRecord(marker, details.errorInstance, { flow: details.counterexample }),
+          failureRecord(marker, details.errorInstance, {
+            flow: details.counterexample,
+          }),
         );
       console.error(
         `PROPERTY_FAILURE ${JSON.stringify({
@@ -442,7 +481,9 @@ const defaultSeed = (identity: PropertyIdentity): number | undefined => {
     return undefined;
   }
   const salt = [
-    identity.site === undefined ? "" : `${identity.site.file}:${String(identity.site.line)}`,
+    identity.site === undefined
+      ? ""
+      : `${identity.site.file}:${String(identity.site.line)}`,
     String(numRunsFactor()),
     process.env[SEED_SALT_ENV] ?? "",
   ].join("\0");
@@ -453,10 +494,16 @@ const defaultSeed = (identity: PropertyIdentity): number | undefined => {
  * `PROPERTY_TEST_PATH` for a property running under the `PROPERTY_TEST_SEED`
  * it was found with; otherwise the property's own `path`, if any.
  */
-const envReplayPath = (seed: number | undefined, own: string | undefined): string | undefined => {
+const envReplayPath = (
+  seed: number | undefined,
+  own: string | undefined,
+): string | undefined => {
   const envPath = process.env[PATH_ENV];
   const applies =
-    envPath !== undefined && envPath !== "" && seed !== undefined && seed === propertyTestSeed();
+    envPath !== undefined &&
+    envPath !== "" &&
+    seed !== undefined &&
+    seed === propertyTestSeed();
   return applies ? envPath : own;
 };
 
@@ -467,8 +514,10 @@ const buildConfig = <Ts>(
 ): fc.Parameters<Ts> => {
   const baseNumRuns = params.numRuns ?? FAST_CHECK_DEFAULT_NUM_RUNS;
   const seed = pinned?.seed ?? params.seed ?? defaultSeed(identity);
-  const replayPath = pinned === undefined ? envReplayPath(seed, params.path) : pinned.path;
-  const own = params.reporter === undefined && params.asyncReporter === undefined;
+  const replayPath =
+    pinned === undefined ? envReplayPath(seed, params.path) : pinned.path;
+  const own =
+    params.reporter === undefined && params.asyncReporter === undefined;
   const expected = pinned?.expectedFailure;
   const config: fc.Parameters<Ts> = {
     verbose: isCi(),
@@ -499,8 +548,9 @@ const buildConfig = <Ts>(
  * fc.assert(fc.property(arb, predicate), propertyConfig({ numRuns: 200 }));
  * ```
  */
-export const propertyConfig = <Ts>(params: fc.Parameters<Ts> = {}): fc.Parameters<Ts> =>
-  configFor(params, identify(), false);
+export const propertyConfig = <Ts>(
+  params: fc.Parameters<Ts> = {},
+): fc.Parameters<Ts> => configFor(params, identify(), false);
 
 const configFor = <Ts>(
   params: fc.Parameters<Ts>,
@@ -539,7 +589,9 @@ export function assertProperty<Ts>(
   const pinned = pinnedFor(identity.key);
   // Examples run in the generated pass; including them in a pinned replay
   // shifts fast-check's path indices away from the recorded counterexample.
-  const replays = pinned.map((entry) => buildConfig({ ...params, examples: [] }, identity, entry));
+  const replays = pinned.map((entry) =>
+    buildConfig({ ...params, examples: [] }, identity, entry),
+  );
   const generated = configFor(params, identity, true);
   return runConfiguredProperty(property, [...replays, generated]);
 }
@@ -561,11 +613,16 @@ export function assertKnownProperty<Ts>(
   property: fc.IRawProperty<Ts>,
   { id, expectedFailures, ...params }: KnownPropertyParameters<Ts>,
 ): Promise<void> | void {
-  if (expectedFailures.length === 0) throw new Error("Known property requires a recorded cause");
+  if (expectedFailures.length === 0)
+    throw new Error("Known property requires a recorded cause");
   const identity = identifyProperty(id);
   const seen = new Set<KnownPropertyFailure<Ts>>();
-  const inspect = (value: Ts, outcome: fc.PreconditionFailure | fc.PropertyFailure | null) => {
-    if (outcome === null || outcome instanceof fc.PreconditionFailure) return outcome;
+  const inspect = (
+    value: Ts,
+    outcome: fc.PreconditionFailure | fc.PropertyFailure | null,
+  ) => {
+    if (outcome === null || outcome instanceof fc.PreconditionFailure)
+      return outcome;
     const marker = failureMarker({
       test: identity.key ?? identity.title ?? "property",
       seed: 0,
@@ -634,7 +691,9 @@ export function assertPinnedProperty<Ts>(
   const identity = identifyProperty(id);
   const pinned = pinnedFor(identity.key);
   if (pinned.length === 0)
-    throw new Error(`No fixed regression seeds registered for ${String(identity.key)}`);
+    throw new Error(
+      `No fixed regression seeds registered for ${String(identity.key)}`,
+    );
   const replays = pinned.map((entry) => {
     const config = buildConfig({ ...params, examples: [] }, identity, entry);
     config.numRuns = 1;

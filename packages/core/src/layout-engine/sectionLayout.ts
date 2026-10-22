@@ -5,9 +5,11 @@
  */
 
 import { panic } from "better-result";
+
 import type { SectionStart } from "@stll/docx-core/model";
+
 import { measuredLineAdvance } from "./lineFlow";
-import { SECTION_START_PLACEMENT, createPaginator } from "./paginator";
+import { createPaginator, SECTION_START_PLACEMENT } from "./paginator";
 import type { PageState } from "./paginator";
 import {
   collapseParagraphSpacing,
@@ -16,10 +18,10 @@ import {
 } from "./paragraphSpacing";
 import { physicalColumnRegionIsShared } from "./section-breaks";
 import type {
+  ColumnLayout,
   FlowBlock,
   Measure,
   PageMargins,
-  ColumnLayout,
   SectionBreakBlock,
   SectionPageNumbering,
 } from "./types";
@@ -32,7 +34,9 @@ export type SectionLayoutConfig = {
 };
 
 export const DEFAULT_COLUMNS: ColumnLayout = { count: 1, gap: 0 };
-export const CONTINUE_PAGE_NUMBERING: SectionPageNumbering = { type: "continue" };
+export const CONTINUE_PAGE_NUMBERING: SectionPageNumbering = {
+  type: "continue",
+};
 
 export function collectSectionConfigs(
   blocks: FlowBlock[],
@@ -112,7 +116,9 @@ export function balancedParagraphSectionHeight({
     if (
       block.attrs?.keepNext === true ||
       block.attrs?.keepLines === true ||
-      block.runs.some((run) => run.kind === "text" && run.footnoteRefId !== undefined)
+      block.runs.some(
+        (run) => run.kind === "text" && run.footnoteRefId !== undefined,
+      )
     ) {
       return undefined;
     }
@@ -139,7 +145,10 @@ export function balancedParagraphSectionHeight({
       totalHeight += unitHeight;
       tallestUnit = Math.max(tallestUnit, unitHeight);
     }
-    if (tallestUnit > availableHeight || totalHeight > availableHeight * columnCount) {
+    if (
+      tallestUnit > availableHeight ||
+      totalHeight > availableHeight * columnCount
+    ) {
       return undefined;
     }
     trailingSpacing = getParagraphSpacingAfter(block);
@@ -261,7 +270,10 @@ function insertOddEvenFillerPage(
 ): void {
   // A page that selects no header or footer part paints none.
   filler.page.headerFooterRefs = {};
-  paginator.startSection({ sectionIndex, pageNumbering: sectionConfig.pageNumbering });
+  paginator.startSection({
+    sectionIndex,
+    pageNumbering: sectionConfig.pageNumbering,
+  });
   paginator.forcePageBreak();
 }
 
@@ -281,7 +293,10 @@ export function handleSectionBreak(
 ): void {
   switch (nextSectionType) {
     case "nextPage": {
-      paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins);
+      paginator.updatePageLayout(
+        nextSectionConfig.pageSize,
+        nextSectionConfig.margins,
+      );
       if (nextSectionIndex !== undefined) {
         paginator.startSection({
           sectionIndex: nextSectionIndex,
@@ -289,8 +304,16 @@ export function handleSectionBreak(
         });
       }
       const target = paginator.forcePageBreak({ coalesceBlankPage: true });
-      if (nextSectionIndex !== undefined && sectionStartRepeatsOddEven(paginator, target)) {
-        insertOddEvenFillerPage(paginator, target, nextSectionIndex, nextSectionConfig);
+      if (
+        nextSectionIndex !== undefined &&
+        sectionStartRepeatsOddEven(paginator, target)
+      ) {
+        insertOddEvenFillerPage(
+          paginator,
+          target,
+          nextSectionIndex,
+          nextSectionConfig,
+        );
       }
       break;
     }
@@ -300,7 +323,10 @@ export function handleSectionBreak(
       if (target.page.number % 2 !== 0) {
         paginator.forcePageBreak();
       }
-      paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins);
+      paginator.updatePageLayout(
+        nextSectionConfig.pageSize,
+        nextSectionConfig.margins,
+      );
       if (nextSectionIndex !== undefined) {
         paginator.startSection({
           sectionIndex: nextSectionIndex,
@@ -318,7 +344,10 @@ export function handleSectionBreak(
       if (target.page.number % 2 === 0) {
         paginator.forcePageBreak();
       }
-      paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins);
+      paginator.updatePageLayout(
+        nextSectionConfig.pageSize,
+        nextSectionConfig.margins,
+      );
       if (nextSectionIndex !== undefined) {
         paginator.startSection({
           sectionIndex: nextSectionIndex,
@@ -359,7 +388,11 @@ export function handleSectionBreak(
           placement: SECTION_START_PLACEMENT.CONTINUOUS,
         });
       }
-      paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins, false);
+      paginator.updatePageLayout(
+        nextSectionConfig.pageSize,
+        nextSectionConfig.margins,
+        false,
+      );
       paginator.forceColumnBreak();
       // The section carries on in the region it just advanced into, so it must
       // not be restarted below that region the way `updateColumns` restarts one.

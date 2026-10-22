@@ -14,7 +14,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { parseFeatureCoverage, type FeatureCoverage } from "./feature-coverage.ts";
+
+import {
+  type FeatureCoverage,
+  parseFeatureCoverage,
+} from "./feature-coverage.ts";
 
 export const FLOW_KINDS = ["random", "collisions"] as const;
 export type FlowKind = (typeof FLOW_KINDS)[number];
@@ -80,7 +84,11 @@ export const rebindStepOperations = (
   step: FlowStep,
   operations: FlowStep["operations"],
 ): FlowStep => {
-  const { expectedApplied: _expectedApplied, operations: _operations, ...rest } = step;
+  const {
+    expectedApplied: _expectedApplied,
+    operations: _operations,
+    ...rest
+  } = step;
   return {
     ...rest,
     ...(operations === undefined ? {} : { operations }),
@@ -113,23 +121,37 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const isUint32 = (value: unknown): value is number =>
-  typeof value === "number" && Number.isInteger(value) && value >= 0 && value < 2 ** 32;
+  typeof value === "number" &&
+  Number.isInteger(value) &&
+  value >= 0 &&
+  value < 2 ** 32;
 
 const parseStep = (value: unknown, index: number): FlowStep => {
-  if (!isRecord(value) || typeof value["action"] !== "string" || !ACTIONS.has(value["action"])) {
-    throw new TypeError(`flow step ${index}: unknown action ${JSON.stringify(value)}`);
+  if (
+    !isRecord(value) ||
+    typeof value["action"] !== "string" ||
+    !ACTIONS.has(value["action"])
+  ) {
+    throw new TypeError(
+      `flow step ${index}: unknown action ${JSON.stringify(value)}`,
+    );
   }
   const seed = value["seed"];
   if (!isUint32(seed)) {
-    throw new TypeError(`flow step ${index}: seed must be an unsigned 32-bit integer`);
+    throw new TypeError(
+      `flow step ${index}: seed must be an unsigned 32-bit integer`,
+    );
   }
   const action = value["action"] as Action;
   const atomic = value["atomic"];
   if (
     atomic !== undefined &&
-    (typeof atomic !== "boolean" || (action !== "core batch" && action !== "story batch"))
+    (typeof atomic !== "boolean" ||
+      (action !== "core batch" && action !== "story batch"))
   ) {
-    throw new TypeError(`flow step ${index}: atomic needs a core or story batch and a boolean`);
+    throw new TypeError(
+      `flow step ${index}: atomic needs a core or story batch and a boolean`,
+    );
   }
   const operationTypes = value["operationTypes"];
   if (
@@ -166,11 +188,21 @@ const parseStep = (value: unknown, index: number): FlowStep => {
   if (
     !BATCH_ACTIONS.has(action) ||
     !Array.isArray(operations) ||
-    !operations.every((operation) => isRecord(operation) && typeof operation["type"] === "string")
+    !operations.every(
+      (operation) =>
+        isRecord(operation) && typeof operation["type"] === "string",
+    )
   ) {
-    throw new TypeError(`flow step ${index}: operations need a batch step and a type each`);
+    throw new TypeError(
+      `flow step ${index}: operations need a batch step and a type each`,
+    );
   }
-  return { action, seed, operations: operations as Record<string, unknown>[], ...batchOptions };
+  return {
+    action,
+    seed,
+    operations: operations as Record<string, unknown>[],
+    ...batchOptions,
+  };
 };
 
 /** Read a flow file; throws a TypeError naming what is wrong. */
@@ -178,12 +210,25 @@ export const parseFlowFile = (value: unknown): FlowFile => {
   if (!isRecord(value) || value["version"] !== 1) {
     throw new TypeError("flow file: expected version 1");
   }
-  const { kind, generation, fixture, mode, seed, steps, origin, title, swarm, weights } = value;
+  const {
+    kind,
+    generation,
+    fixture,
+    mode,
+    seed,
+    steps,
+    origin,
+    title,
+    swarm,
+    weights,
+  } = value;
   if (!(FLOW_KINDS as readonly unknown[]).includes(kind)) {
     throw new TypeError(`flow file: unknown kind ${JSON.stringify(kind)}`);
   }
   if (!(GENERATIONS as readonly unknown[]).includes(generation)) {
-    throw new TypeError(`flow file: unknown generation ${JSON.stringify(generation)}`);
+    throw new TypeError(
+      `flow file: unknown generation ${JSON.stringify(generation)}`,
+    );
   }
   if (typeof fixture !== "string" || typeof mode !== "string") {
     throw new TypeError("flow file: fixture and mode must be strings");
@@ -198,10 +243,14 @@ export const parseFlowFile = (value: unknown): FlowFile => {
     swarm !== undefined &&
     (!Array.isArray(swarm) ||
       swarm.length === 0 ||
-      !swarm.every((type): type is string => typeof type === "string" && type.length > 0) ||
+      !swarm.every(
+        (type): type is string => typeof type === "string" && type.length > 0,
+      ) ||
       new Set(swarm).size !== swarm.length)
   ) {
-    throw new TypeError("flow file: swarm must be a nonempty list of distinct operation kinds");
+    throw new TypeError(
+      "flow file: swarm must be a nonempty list of distinct operation kinds",
+    );
   }
   return {
     version: 1,
@@ -212,7 +261,9 @@ export const parseFlowFile = (value: unknown): FlowFile => {
     seed,
     steps: steps.map(parseStep),
     ...(swarm === undefined ? {} : { swarm }),
-    ...(weights === undefined ? {} : { weights: parseFeatureCoverage(weights) }),
+    ...(weights === undefined
+      ? {}
+      : { weights: parseFeatureCoverage(weights) }),
     ...(typeof origin === "string" ? { origin } : {}),
     ...(typeof title === "string" ? { title } : {}),
   };
@@ -246,7 +297,11 @@ export const flowShape = (flow: FlowFile): string =>
     .map((step) =>
       step.operations === undefined || step.operations.length === 0
         ? step.action
-        : [...new Set(step.operations.map((operation) => String(operation["type"])))]
+        : [
+            ...new Set(
+              step.operations.map((operation) => String(operation["type"])),
+            ),
+          ]
             .sort()
             .join("+"),
     )

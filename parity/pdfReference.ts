@@ -11,8 +11,8 @@ import path from "node:path";
 
 import { REFERENCE_CACHE_DIR } from "./config";
 import { normalizeFontEncodedText, parseStextXml } from "./stextParse";
-import { normalizeLineText } from "./textNorm";
 import { firstStrongTextDirection } from "./textDirection";
+import { normalizeLineText } from "./textNorm";
 import type { DocGeom, PageGeom } from "./types";
 
 const PNG_DPI = 96;
@@ -26,11 +26,15 @@ export const sha256OfFile = async (filePath: string): Promise<string> => {
   return hasher.digest("hex");
 };
 
-export const cacheDirFor = (sha256: string): string => path.join(REFERENCE_CACHE_DIR, sha256);
+export const cacheDirFor = (sha256: string): string =>
+  path.join(REFERENCE_CACHE_DIR, sha256);
 
 /** `mutool -v` prints its version to stderr, not stdout. */
 export const getMutoolVersion = async (): Promise<string> => {
-  const proc = Bun.spawn(["mutool", "-v"], { stdout: "ignore", stderr: "pipe" });
+  const proc = Bun.spawn(["mutool", "-v"], {
+    stdout: "ignore",
+    stderr: "pipe",
+  });
   const stderr = await new Response(proc.stderr).text();
   await proc.exited;
   return stderr.trim();
@@ -43,7 +47,10 @@ type ReadCachedGeomOptions = {
 
 /** Refresh facts derived from cached text so detector and normalization changes
  * never inherit stale cache metadata. */
-export const refreshCachedReferenceGeom = (geom: DocGeom, absDocxPath: string): DocGeom =>
+export const refreshCachedReferenceGeom = (
+  geom: DocGeom,
+  absDocxPath: string,
+): DocGeom =>
   Object.assign({}, geom, {
     file: absDocxPath,
     pages: geom.pages.map((page) =>
@@ -79,11 +86,17 @@ export const extractPdfGeometry = async ({
   pdfPath,
   xmlPath,
 }: ExtractPdfGeometryOptions): Promise<PageGeom[]> => {
-  const proc = Bun.spawn(["mutool", "draw", "-F", "stext", "-o", xmlPath, pdfPath], {
-    stdout: "ignore",
-    stderr: "pipe",
-  });
-  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+  const proc = Bun.spawn(
+    ["mutool", "draw", "-F", "stext", "-o", xmlPath, pdfPath],
+    {
+      stdout: "ignore",
+      stderr: "pipe",
+    },
+  );
+  const [exitCode, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stderr).text(),
+  ]);
   if (exitCode !== 0) {
     throw new Error(
       `mutool stext extraction failed for ${pdfPath} (exit ${exitCode}): ${stderr.trim()}`,
@@ -111,7 +124,9 @@ const pageNumberOfPngName = (filename: string): number => {
   return match?.[1] === undefined ? 0 : Number(match[1]);
 };
 
-const readCompletePageCount = async (pagesDir: string): Promise<number | null> => {
+const readCompletePageCount = async (
+  pagesDir: string,
+): Promise<number | null> => {
   const marker = Bun.file(path.join(pagesDir, COMPLETE_PAGE_COUNT_FILENAME));
   if (!(await marker.exists())) return null;
 
@@ -134,11 +149,13 @@ export const canReusePagePngCache = ({
   maxPages,
 }: CanReusePagePngCacheOptions): boolean => {
   const hasSequentialPages = existing.every(
-    (filename, index) => pageNumberOfPngName(path.basename(filename)) === index + 1,
+    (filename, index) =>
+      pageNumberOfPngName(path.basename(filename)) === index + 1,
   );
   if (!hasSequentialPages) return false;
 
-  if (completePageCount !== null && existing.length === completePageCount) return true;
+  if (completePageCount !== null && existing.length === completePageCount)
+    return true;
   return maxPages !== undefined && existing.length >= maxPages;
 };
 
@@ -147,7 +164,8 @@ const renderPagePngs = async (
   pagesDir: string,
   options: { maxPages?: number },
 ): Promise<void> => {
-  const pageRange = options.maxPages === undefined ? [] : [`1-${options.maxPages}`];
+  const pageRange =
+    options.maxPages === undefined ? [] : [`1-${options.maxPages}`];
   const proc = Bun.spawn(
     [
       "mutool",
@@ -161,7 +179,10 @@ const renderPagePngs = async (
     ],
     { stdout: "ignore", stderr: "pipe" },
   );
-  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+  const [exitCode, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stderr).text(),
+  ]);
   if (exitCode !== 0) {
     throw new Error(
       `mutool PNG rendering failed for ${pdfPath} (exit ${exitCode}): ${stderr.trim()}`,
@@ -192,10 +213,17 @@ export const getPdfPagePngs = async ({
     return maxPages === undefined ? existing : existing.slice(0, maxPages);
   }
 
-  await renderPagePngs(pdfPath, pagesDir, maxPages === undefined ? {} : { maxPages });
+  await renderPagePngs(
+    pdfPath,
+    pagesDir,
+    maxPages === undefined ? {} : { maxPages },
+  );
   const rendered = await listPagePngs(pagesDir);
   if (maxPages === undefined) {
-    await Bun.write(path.join(pagesDir, COMPLETE_PAGE_COUNT_FILENAME), `${rendered.length}\n`);
+    await Bun.write(
+      path.join(pagesDir, COMPLETE_PAGE_COUNT_FILENAME),
+      `${rendered.length}\n`,
+    );
   }
   return maxPages === undefined ? rendered : rendered.slice(0, maxPages);
 };

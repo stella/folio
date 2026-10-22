@@ -18,7 +18,9 @@ export const textBoxHostParagraph = (textBox: PMNode): PMNode | undefined => {
     return cached ?? undefined;
   }
   const host = expectTextBoxAttrs(textBox)._docxHostParagraph;
-  const paragraph = host ? textBox.type.schema.nodes["paragraph"]?.create(host) : undefined;
+  const paragraph = host
+    ? textBox.type.schema.nodes["paragraph"]?.create(host)
+    : undefined;
   hostParagraphs.set(textBox, paragraph ?? null);
   return paragraph;
 };

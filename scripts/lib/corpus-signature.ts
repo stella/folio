@@ -146,7 +146,8 @@ export const MODEL_TYPE_DISCRIMINATORS: ReadonlySet<string> = new Set([
   "wholeTable",
 ]);
 
-const GUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/giu;
+const GUID_RE =
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/giu;
 /**
  * An absolute path, and only an absolute path.
  *
@@ -161,7 +162,8 @@ const ABSOLUTE_PATH_RE =
 const HEX_RUN_RE = /\b(?:0x)?[0-9a-f]{8,}\b/giu;
 const DIGIT_RUN_RE = /\d+/gu;
 const WHITESPACE_RE = /\s+/gu;
-const STACK_FRAME_RE = /at (?:(?<fn>[^\s(]+) \()?(?<file>[^\s()]+?):\d+:\d+\)?/u;
+const STACK_FRAME_RE =
+  /at (?:(?<fn>[^\s(]+) \()?(?<file>[^\s()]+?):\d+:\d+\)?/u;
 
 /**
  * A message shortened by dropping the middle of the model path it carries.
@@ -221,7 +223,10 @@ export const normalizeFailureMessage = (raw: string): string => {
   if (normalized.length <= MAX_MESSAGE_LENGTH) {
     return normalized;
   }
-  return withShortenedPath(normalized) ?? `${normalized.slice(0, MAX_MESSAGE_LENGTH)}${ELISION}`;
+  return (
+    withShortenedPath(normalized) ??
+    `${normalized.slice(0, MAX_MESSAGE_LENGTH)}${ELISION}`
+  );
 };
 
 /**
@@ -259,10 +264,15 @@ export const describeError = (cause: unknown): string => {
     return String(cause);
   }
   const name = cause.name.length > 0 ? cause.name : cause.constructor.name;
-  return cause.message.startsWith(`${name}:`) ? cause.message : `${name}: ${cause.message}`;
+  return cause.message.startsWith(`${name}:`)
+    ? cause.message
+    : `${name}: ${cause.message}`;
 };
 
-export const failureFromError = (invariant: CorpusInvariant, cause: unknown): CorpusFailure => ({
+export const failureFromError = (
+  invariant: CorpusInvariant,
+  cause: unknown,
+): CorpusFailure => ({
   invariant,
   message: normalizeFailureMessage(describeError(cause)),
   frame: topFolioFrame(cause instanceof Error ? cause.stack : undefined),
@@ -277,8 +287,11 @@ export const failureFromAssertion = (
   frame: NO_FRAME,
 });
 
-export const failureSignature = ({ invariant, message, frame }: CorpusFailure): string =>
-  `${invariant} | ${message} | ${frame}`;
+export const failureSignature = ({
+  invariant,
+  message,
+  frame,
+}: CorpusFailure): string => `${invariant} | ${message} | ${frame}`;
 
 /**
  * One file's failures, at most one per signature.
@@ -290,7 +303,9 @@ export const failureSignature = ({ invariant, message, frame }: CorpusFailure): 
  * the same field are one row, and a `files` count that reached 2 for one file
  * would ratchet against a defect nobody could shrink.
  */
-export const distinctBySignature = (failures: readonly CorpusFailure[]): CorpusFailure[] => {
+export const distinctBySignature = (
+  failures: readonly CorpusFailure[],
+): CorpusFailure[] => {
   const seen = new Set<string>();
   return failures.filter((failure) => {
     const signature = failureSignature(failure);

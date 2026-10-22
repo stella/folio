@@ -13,12 +13,16 @@ import { describe, expect, test } from "bun:test";
 
 import { calculateFootnoteReservedHeights } from "../layout-bridge/convert/footnoteLayout";
 import { FOOTNOTE_SEPARATOR_HEIGHT as PAGINATOR_FOOTNOTE_SEPARATOR_HEIGHT } from "../layout-engine/paginator";
-import type { Page, ParagraphBlock, ParagraphMeasure } from "../layout-engine/types";
+import type {
+  Page,
+  ParagraphBlock,
+  ParagraphMeasure,
+} from "../layout-engine/types";
 import { FOOTNOTE_SEPARATOR_HEIGHT } from "../layout-engine/types";
 import {
   calculateFootnoteAreaRenderHeight,
-  renderPage,
   type FootnoteRenderItem,
+  renderPage,
 } from "../layout-painter/renderPage";
 
 class FakeElement {
@@ -34,7 +38,9 @@ class FakeElement {
   }
 
   get textContent(): string {
-    return this.ownText + this.children.map((child) => child.textContent).join("");
+    return (
+      this.ownText + this.children.map((child) => child.textContent).join("")
+    );
   }
 
   set textContent(value: string) {
@@ -71,7 +77,10 @@ const fakeDocument = {
   },
 } as unknown as Document;
 
-function findByClass(element: FakeElement, className: string): FakeElement | undefined {
+function findByClass(
+  element: FakeElement,
+  className: string,
+): FakeElement | undefined {
   if (element.className.split(" ").includes(className)) {
     return element;
   }
@@ -127,7 +136,9 @@ const PAINTER_FOOTNOTE_FALLBACK_LINE_HEIGHT = 13;
 
 describe("calculateFootnoteAreaRenderHeight", () => {
   test("returns separator height when no footnote has measured content", () => {
-    expect(calculateFootnoteAreaRenderHeight([])).toBe(FOOTNOTE_SEPARATOR_HEIGHT);
+    expect(calculateFootnoteAreaRenderHeight([])).toBe(
+      FOOTNOTE_SEPARATOR_HEIGHT,
+    );
   });
 
   test("sums each footnote content height plus any wrapper margin and a single separator", () => {
@@ -137,7 +148,11 @@ describe("calculateFootnoteAreaRenderHeight", () => {
       makeParagraphFootnote(15),
     ];
     expect(calculateFootnoteAreaRenderHeight(footnotes)).toBe(
-      FOOTNOTE_SEPARATOR_HEIGHT + 20 + 35 + 15 + 3 * PAINTER_FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+      FOOTNOTE_SEPARATOR_HEIGHT +
+        20 +
+        35 +
+        15 +
+        3 * PAINTER_FOOTNOTE_ENTRY_MARGIN_BOTTOM,
     );
   });
 
@@ -168,7 +183,8 @@ describe("renderFootnoteArea overflow clamp", () => {
     const fnAreaEl = findByClass(pageEl, "layout-footnote-area");
     expect(fnAreaEl).toBeDefined();
     const top = Number.parseFloat(fnAreaEl?.style["top"] ?? "0");
-    const contentAreaBottom = basePage.size.h - basePage.margins.bottom - basePage.margins.top;
+    const contentAreaBottom =
+      basePage.size.h - basePage.margins.bottom - basePage.margins.top;
     expect(top).toBeCloseTo(contentAreaBottom - reserved, 5);
   });
 
@@ -191,7 +207,8 @@ describe("renderFootnoteArea overflow clamp", () => {
     const fnAreaEl = findByClass(pageEl, "layout-footnote-area");
     expect(fnAreaEl).toBeDefined();
     const top = Number.parseFloat(fnAreaEl?.style["top"] ?? "0");
-    const contentAreaBottom = basePage.size.h - basePage.margins.bottom - basePage.margins.top;
+    const contentAreaBottom =
+      basePage.size.h - basePage.margins.bottom - basePage.margins.top;
     const calculated = calculateFootnoteAreaRenderHeight(footnotes);
     expect(calculated).toBeGreaterThan(reservedTooSmall);
     expect(top).toBeCloseTo(contentAreaBottom - calculated, 5);
@@ -201,7 +218,8 @@ describe("renderFootnoteArea overflow clamp", () => {
     // Build a footnote stack taller than the entire content area so the
     // calculated render height exceeds the body. The top is clamped to
     // `-page.margins.top` so the area stays anchored to the page.
-    const contentAreaHeight = basePage.size.h - basePage.margins.top - basePage.margins.bottom;
+    const contentAreaHeight =
+      basePage.size.h - basePage.margins.top - basePage.margins.bottom;
     const oversized = contentAreaHeight + 500;
     const fn = makeParagraphFootnote(oversized);
     const pageEl = renderPage(
@@ -227,8 +245,11 @@ describe("footnote separator height parity", () => {
       const footnotes = heights.map(makeParagraphFootnote);
       const painterHeight = calculateFootnoteAreaRenderHeight(footnotes);
       const paginatorHeight =
-        heights.reduce((sum, height) => sum + height, 0) + PAGINATOR_FOOTNOTE_SEPARATOR_HEIGHT;
-      expect(painterHeight).toBe(paginatorHeight + count * PAINTER_FOOTNOTE_ENTRY_MARGIN_BOTTOM);
+        heights.reduce((sum, height) => sum + height, 0) +
+        PAGINATOR_FOOTNOTE_SEPARATOR_HEIGHT;
+      expect(painterHeight).toBe(
+        paginatorHeight + count * PAINTER_FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+      );
     }
   });
 
@@ -240,13 +261,17 @@ describe("footnote separator height parity", () => {
     for (const count of [1, 3, 10]) {
       const heights = Array.from({ length: count }, (_, index) => 10 + index);
       const footnoteIds = heights.map((_, index) => index + 1);
-      const footnotes: FootnoteRenderItem[] = heights.map(makeParagraphFootnote);
+      const footnotes: FootnoteRenderItem[] = heights.map(
+        makeParagraphFootnote,
+      );
       const pageFootnoteMap = new Map<number, number[]>([[1, footnoteIds]]);
       const contentMap = new Map(
         footnoteIds.map((id, index) => [id, { height: heights[index] ?? 0 }]),
       );
 
-      const reserved = calculateFootnoteReservedHeights(pageFootnoteMap, contentMap).get(1) ?? 0;
+      const reserved =
+        calculateFootnoteReservedHeights(pageFootnoteMap, contentMap).get(1) ??
+        0;
       const painterHeight = calculateFootnoteAreaRenderHeight(footnotes);
       expect(reserved).toBe(painterHeight);
     }
@@ -267,7 +292,12 @@ describe("footnote separator height parity", () => {
 
     const rule = Number.parseFloat(separator?.style["height"] ?? "0");
     const marginTop = Number.parseFloat(separator?.style["marginTop"] ?? "0");
-    const marginBottom = Number.parseFloat(separator?.style["marginBottom"] ?? "0");
-    expect(rule + marginTop + marginBottom).toBeCloseTo(FOOTNOTE_SEPARATOR_HEIGHT, 5);
+    const marginBottom = Number.parseFloat(
+      separator?.style["marginBottom"] ?? "0",
+    );
+    expect(rule + marginTop + marginBottom).toBeCloseTo(
+      FOOTNOTE_SEPARATOR_HEIGHT,
+      5,
+    );
   });
 });

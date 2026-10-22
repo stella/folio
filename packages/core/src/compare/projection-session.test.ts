@@ -1,14 +1,20 @@
 import { expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "../ai-edits/headless";
+import {
+  FolioDocxReviewer,
+  getFolioDocxComparisonAccess,
+} from "../ai-edits/headless";
 import { sourceDocumentOf } from "../ai-edits/snapshot";
 import { createDocx } from "../docx/rezip";
 import type { HeaderFooter, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { applyComparison, parseComparison, planComparison } from "./compare";
 
-const OPTIONS = { author: "compare", timestamp: "2026-09-11T00:00:00.000Z" } as const;
+const OPTIONS = {
+  author: "compare",
+  timestamp: "2026-09-11T00:00:00.000Z",
+} as const;
 const HEADER_RELATIONSHIP_ID = "rId_projection_header";
 const FOOTER_RELATIONSHIP_ID = "rId_projection_footer";
 
@@ -18,7 +24,11 @@ const paragraph = (text: string, paraId: string): Paragraph => ({
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
 
-const headerFooter = (type: "header" | "footer", text: string, paraId: string): HeaderFooter => ({
+const headerFooter = (
+  type: "header" | "footer",
+  text: string,
+  paraId: string,
+): HeaderFooter => ({
   type,
   hdrFtrType: "default",
   content: [paragraph(text, paraId)],
@@ -28,10 +38,16 @@ const storyMatrixDocx = (label: string): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
   document.package.document.content = [paragraph(`main ${label}`, "A1000001")];
   document.package.headers = new Map([
-    [HEADER_RELATIONSHIP_ID, headerFooter("header", `header ${label}`, "A1000002")],
+    [
+      HEADER_RELATIONSHIP_ID,
+      headerFooter("header", `header ${label}`, "A1000002"),
+    ],
   ]);
   document.package.footers = new Map([
-    [FOOTER_RELATIONSHIP_ID, headerFooter("footer", `footer ${label}`, "A1000003")],
+    [
+      FOOTER_RELATIONSHIP_ID,
+      headerFooter("footer", `footer ${label}`, "A1000003"),
+    ],
   ]);
   document.package.document.finalSectionProperties = {
     ...document.package.document.finalSectionProperties,
@@ -57,10 +73,15 @@ const storyMatrixDocx = (label: string): Promise<ArrayBuffer> => {
   return createDocx(document);
 };
 
-const instrumentStoryTraversals = (reviewer: FolioDocxReviewer): (() => number)[] => {
+const instrumentStoryTraversals = (
+  reviewer: FolioDocxReviewer,
+): (() => number)[] => {
   const counters: (() => number)[] = [];
   for (const { handle } of reviewer.listStories()) {
-    const reviewed = reviewer.readReviewedStory({ story: handle, view: "current-markup" });
+    const reviewed = reviewer.readReviewedStory({
+      story: handle,
+      view: "current-markup",
+    });
     if (!reviewed) {
       throw new Error(`missing ${handle.type} story`);
     }
@@ -80,23 +101,33 @@ const instrumentStoryTraversals = (reviewer: FolioDocxReviewer): (() => number)[
 };
 
 test("comparison projection avoids a separate nested-revision scan", async () => {
-  const baseReviewer = await FolioDocxReviewer.fromBuffer(await storyMatrixDocx("before"));
+  const baseReviewer = await FolioDocxReviewer.fromBuffer(
+    await storyMatrixDocx("before"),
+  );
   const baseTraversals = instrumentStoryTraversals(baseReviewer);
-  const baseProjection =
-    getFolioDocxComparisonAccess(baseReviewer).projectStories("with-revision-census");
+  const baseProjection = getFolioDocxComparisonAccess(
+    baseReviewer,
+  ).projectStories("with-revision-census");
 
   expect(baseProjection.stories).toHaveLength(5);
-  expect(baseProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
+  expect(
+    baseProjection.stories.every(({ snapshot }) => snapshot !== null),
+  ).toBe(true);
   expect(baseProjection.revisions).toEqual({ ids: [], present: false });
   expect(baseTraversals.map((read) => read())).toEqual([2, 2, 2, 2, 2]);
 
-  const targetReviewer = await FolioDocxReviewer.fromBuffer(await storyMatrixDocx("after"));
+  const targetReviewer = await FolioDocxReviewer.fromBuffer(
+    await storyMatrixDocx("after"),
+  );
   const targetTraversals = instrumentStoryTraversals(targetReviewer);
-  const targetProjection =
-    getFolioDocxComparisonAccess(targetReviewer).projectStories("without-revision-census");
+  const targetProjection = getFolioDocxComparisonAccess(
+    targetReviewer,
+  ).projectStories("without-revision-census");
 
   expect(targetProjection.stories).toHaveLength(5);
-  expect(targetProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
+  expect(
+    targetProjection.stories.every(({ snapshot }) => snapshot !== null),
+  ).toBe(true);
   expect(targetProjection.revisions).toEqual({ ids: [], present: false });
   expect(targetTraversals.map((read) => read())).toEqual([1, 1, 1, 1, 1]);
 });

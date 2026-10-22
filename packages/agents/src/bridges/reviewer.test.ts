@@ -39,15 +39,25 @@ const buildDocx = async (text: string): Promise<ArrayBuffer> => {
 describe("createReviewerBridge revisionStamp", () => {
   test("stamps revisions, comments and replies from one fixed provenance", async () => {
     const revisionStamp = { date: "2026-01-02T03:04:05Z", idSeed: 7000 };
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx("Pay $50 now."), {
-      author: "Reviewer",
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildDocx("Pay $50 now."),
+      {
+        author: "Reviewer",
+      },
+    );
     const bridge = createReviewerBridge(reviewer, { revisionStamp });
 
     const suggested = executeFolioToolCall(
       FOLIO_AGENT_TOOL_NAMES.suggestChanges,
       {
-        operations: [{ type: "replaceInBlock", blockId: "1A2B3C4D", find: "$50", replace: "$500" }],
+        operations: [
+          {
+            type: "replaceInBlock",
+            blockId: "1A2B3C4D",
+            find: "$50",
+            replace: "$500",
+          },
+        ],
       },
       bridge,
     );
@@ -64,7 +74,11 @@ describe("createReviewerBridge revisionStamp", () => {
       bridge,
     );
 
-    expect([suggested.ok, commented.ok, replied.ok]).toEqual([true, true, true]);
+    expect([suggested.ok, commented.ok, replied.ok]).toEqual([
+      true,
+      true,
+      true,
+    ]);
     const changes = reviewer.getChanges();
     expect(changes.length).toBeGreaterThan(0);
     for (const change of changes) {
@@ -73,6 +87,8 @@ describe("createReviewerBridge revisionStamp", () => {
     }
     const [comment] = reviewer.getComments();
     expect(comment?.date).toBe(revisionStamp.date);
-    expect(comment?.replies.map(({ date }) => date)).toEqual([revisionStamp.date]);
+    expect(comment?.replies.map(({ date }) => date)).toEqual([
+      revisionStamp.date,
+    ]);
   });
 });

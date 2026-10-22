@@ -177,7 +177,9 @@ describe("styleEngine — cache semantics", () => {
     expect(cached.resolveParagraphStyle("Heading1")).toEqual(
       uncached.resolveParagraphStyle("Heading1"),
     );
-    expect(cached.resolveRunStyle("Heading1")).toEqual(uncached.resolveRunStyle("Heading1"));
+    expect(cached.resolveRunStyle("Heading1")).toEqual(
+      uncached.resolveRunStyle("Heading1"),
+    );
   });
 
   test("invalidate clears every cache and resets counters", () => {
@@ -269,7 +271,9 @@ describe("styleEngine — ECMA-376 cascade precedence", () => {
       ],
     };
     const engine = createStyleEngine(defs);
-    expect(engine.resolveParagraphStyle("Heading1").runFormatting?.fontSize).toBe(36);
+    expect(
+      engine.resolveParagraphStyle("Heading1").runFormatting?.fontSize,
+    ).toBe(36);
   });
 
   test("character-style cascade layers docDefaults below own props", () => {

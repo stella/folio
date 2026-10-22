@@ -31,7 +31,10 @@ export type KnownConformanceGap = {
   placements?: readonly SelectionPlacement[];
   /** Strict coverage can apply to a complete pair or one exact selection case. */
   excludedCases?: readonly (
-    | ({ scope: "shapeOperation" } & Pick<ConformanceCaseKey, "shape" | "operation">)
+    | ({ scope: "shapeOperation" } & Pick<
+        ConformanceCaseKey,
+        "shape" | "operation"
+      >)
     | ({ scope: "case" } & ConformanceCaseKey)
   )[];
   modes?: readonly EditorMode[];
@@ -43,8 +46,15 @@ export type KnownConformanceGap = {
   tier?: "full";
 };
 
-const LIST_TOGGLES = ["command:toggleBulletList", "command:toggleNumberedList"] as const;
-const LIST_MARKERS = ["type:bullet-marker", "type:star-marker", "type:number-marker"] as const;
+const LIST_TOGGLES = [
+  "command:toggleBulletList",
+  "command:toggleNumberedList",
+] as const;
+const LIST_MARKERS = [
+  "type:bullet-marker",
+  "type:star-marker",
+  "type:number-marker",
+] as const;
 const LIST_NUMBERING = [
   "command:restartNumbering",
   "command:continueNumbering",
@@ -121,7 +131,11 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     reason:
       "Modified Backspace at the start of a list item joins the next item's text directly, so rejecting its suggestion does not restore the original text",
     operations: ["key:Mod-Backspace", "key:Shift-Backspace"],
-    shapes: ["single-decimal-list", "single-bullet-list", "outline-level-numbered"],
+    shapes: [
+      "single-decimal-list",
+      "single-bullet-list",
+      "outline-level-numbered",
+    ],
     placements: ["caret-start"],
     modes: ["suggesting"],
     kinds: ["reject-mismatch"],
@@ -186,7 +200,11 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     operations: REPLACING_OPERATIONS,
     placements: RANGE_PLACEMENTS,
     excludedCases: [
-      { scope: "shapeOperation", shape: "tracked-changes", operation: "paste:copied-blocks" },
+      {
+        scope: "shapeOperation",
+        shape: "tracked-changes",
+        operation: "paste:copied-blocks",
+      },
     ],
     modes: ["suggesting"],
     kinds: ["reject-mismatch", "accept-mismatch"],
@@ -233,12 +251,16 @@ export const gapCovers = (
   (gap.modes === undefined || gap.modes.includes(mode)) &&
   gap.kinds.includes(kind);
 
-export const gapApplies = (gap: KnownConformanceGap, key: ConformanceCaseKey): boolean =>
+export const gapApplies = (
+  gap: KnownConformanceGap,
+  key: ConformanceCaseKey,
+): boolean =>
   (gap.operations === undefined || gap.operations.includes(key.operation)) &&
   (gap.shapes === undefined || gap.shapes.includes(key.shape)) &&
   (gap.placements === undefined || gap.placements.includes(key.placement)) &&
   !gap.excludedCases?.some((excluded) => {
-    if (excluded.shape !== key.shape || excluded.operation !== key.operation) return false;
+    if (excluded.shape !== key.shape || excluded.operation !== key.operation)
+      return false;
     switch (excluded.scope) {
       case "shapeOperation":
         return true;
@@ -246,7 +268,9 @@ export const gapApplies = (gap: KnownConformanceGap, key: ConformanceCaseKey): b
         return excluded.placement === key.placement;
       default: {
         const impossible: never = excluded;
-        return panic(`Unknown conformance gap exclusion: ${String(impossible)}`);
+        return panic(
+          `Unknown conformance gap exclusion: ${String(impossible)}`,
+        );
       }
     }
   });

@@ -6,7 +6,9 @@ const ALLOWED_URL_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
  * `undefined` so a markdown link degrades to its text instead of carrying an
  * executable target into the document.
  */
-export const sanitizeExternalUrl = (rawUrl: string | undefined): string | undefined => {
+export const sanitizeExternalUrl = (
+  rawUrl: string | undefined,
+): string | undefined => {
   if (!rawUrl) {
     return undefined;
   }

@@ -1,6 +1,9 @@
 import type { Node as PMNode } from "prosemirror-model";
 
-import { type BuiltInStyleIndex, resolveHeadingLevel } from "../docx/builtInStyles";
+import {
+  type BuiltInStyleIndex,
+  resolveHeadingLevel,
+} from "../docx/builtInStyles";
 import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
 
 /**
@@ -60,11 +63,16 @@ const headingText = (paragraph: PMNode): string => {
     }
     capture =
       format === capture.format
-        ? { status: "collecting", format: capture.format, text: capture.text + childText }
+        ? {
+            status: "collecting",
+            format: capture.format,
+            text: capture.text + childText,
+          }
         : { status: "complete", text: capture.text };
   }
 
-  const formattedText = capture.status === "searching" ? "" : capture.text.trim();
+  const formattedText =
+    capture.status === "searching" ? "" : capture.text.trim();
   return (formattedText || text).trim();
 };
 
@@ -77,7 +85,10 @@ const headingText = (paragraph: PMNode): string => {
  * `Nadpis1` or `berschrift1` resolves through its name rather than falling out
  * of the outline.
  */
-export function collectHeadings(doc: PMNode, styles: BuiltInStyleIndex): HeadingInfo[] {
+export function collectHeadings(
+  doc: PMNode,
+  styles: BuiltInStyleIndex,
+): HeadingInfo[] {
   const headings: HeadingInfo[] = [];
 
   doc.descendants((node, pos) => {
@@ -87,7 +98,10 @@ export function collectHeadings(doc: PMNode, styles: BuiltInStyleIndex): Heading
     const level = resolveHeadingLevel(
       {
         outlineLevel: readOutlineLevelAttr(node.attrs["outlineLevel"]),
-        styleId: typeof node.attrs["styleId"] === "string" ? node.attrs["styleId"] : null,
+        styleId:
+          typeof node.attrs["styleId"] === "string"
+            ? node.attrs["styleId"]
+            : null,
       },
       styles,
     );

@@ -1,12 +1,12 @@
-import { expect, test } from "bun:test";
 import { panic } from "better-result";
+import { expect, test } from "bun:test";
 
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { createDocx } from "../docx/rezip";
 import { paragraph, run } from "../docx/server/build";
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
-import { fromMarkdown } from "../markdown/fromMarkdown";
 import { toMarkdown } from "../markdown";
-import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "./headless";
+import { fromMarkdown } from "../markdown/fromMarkdown";
+import { type FolioDocumentStoryHandle, FolioDocxReviewer } from "./headless";
 
 const STORIES = {
   main: { type: "main" },
@@ -14,7 +14,10 @@ const STORIES = {
   footer: { type: "footer", relationshipId: "rIdFooter" },
   footnote: { type: "footnote", noteId: 37 },
   endnote: { type: "endnote", noteId: 37 },
-} as const satisfies Record<FolioDocumentStoryHandle["type"], FolioDocumentStoryHandle>;
+} as const satisfies Record<
+  FolioDocumentStoryHandle["type"],
+  FolioDocumentStoryHandle
+>;
 
 const AUTHORED_RUNS = {
   inherited: {},
@@ -22,7 +25,10 @@ const AUTHORED_RUNS = {
   italic: { italic: true },
 } as const;
 
-const markdownStory = (reviewer: FolioDocxReviewer, story: FolioDocumentStoryHandle) => {
+const markdownStory = (
+  reviewer: FolioDocxReviewer,
+  story: FolioDocumentStoryHandle,
+) => {
   const document = reviewer.toDocument();
   const content = (() => {
     switch (story.type) {
@@ -33,9 +39,11 @@ const markdownStory = (reviewer: FolioDocxReviewer, story: FolioDocumentStoryHan
       case "footer":
         return document.package.footers?.get(story.relationshipId)?.content;
       case "footnote":
-        return document.package.footnotes?.find(({ id }) => id === story.noteId)?.content;
+        return document.package.footnotes?.find(({ id }) => id === story.noteId)
+          ?.content;
       case "endnote":
-        return document.package.endnotes?.find(({ id }) => id === story.noteId)?.content;
+        return document.package.endnotes?.find(({ id }) => id === story.noteId)
+          ?.content;
       default: {
         const unreachable: never = story;
         return unreachable;
@@ -85,19 +93,30 @@ for (const story of Object.values(STORIES)) {
             { type: "footer", hdrFtrType: "default", content: content() },
           ],
         ]);
-        document.package.footnotes = [{ type: "footnote", id: 37, content: content() }];
-        document.package.endnotes = [{ type: "endnote", id: 37, content: content() }];
+        document.package.footnotes = [
+          { type: "footnote", id: 37, content: content() },
+        ];
+        document.package.endnotes = [
+          { type: "endnote", id: 37, content: content() },
+        ];
         document.package.document.finalSectionProperties = {
           ...document.package.document.finalSectionProperties,
-          headerReferences: [{ type: "default", rId: STORIES.header.relationshipId }],
-          footerReferences: [{ type: "default", rId: STORIES.footer.relationshipId }],
+          headerReferences: [
+            { type: "default", rId: STORIES.header.relationshipId },
+          ],
+          footerReferences: [
+            { type: "default", rId: STORIES.footer.relationshipId },
+          ],
         };
-        const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          await createDocx(document),
+        );
         const expected = markdownStory(reviewer, story);
         const fullMarkdown = toMarkdown(reviewer.toDocument());
         const notes = reviewer.getNotesAsText();
         const anchor = reviewer.snapshotStory(story)?.blocks.at(0);
-        if (!anchor) panic("Generated projection story lost its anchor", { story });
+        if (!anchor)
+          panic("Generated projection story lost its anchor", { story });
         const result = reviewer.applyDocumentOperationsToStory({
           story,
           batch: {
@@ -108,7 +127,9 @@ for (const story of Object.values(STORIES)) {
                 id: "style",
                 type: "setBlockParagraphProperties",
                 blockId: anchor.id,
-                properties: { styleId: direction === "add" ? "Heading2" : null },
+                properties: {
+                  styleId: direction === "add" ? "Heading2" : null,
+                },
               },
             ],
           },
@@ -120,7 +141,9 @@ for (const story of Object.values(STORIES)) {
         expect(markdownStory(reviewer, story)).toBe(expected);
         expect(toMarkdown(reviewer.toDocument())).toBe(fullMarkdown);
         expect(reviewer.getNotesAsText()).toBe(notes);
-        const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+        const reopened = await FolioDocxReviewer.fromBuffer(
+          await reviewer.toBuffer(),
+        );
         expect(markdownStory(reopened, story)).toBe(expected);
         expect(toMarkdown(reopened.toDocument())).toBe(fullMarkdown);
         expect(reviewer.exportPendingSuggestions()).toEqual(pending);

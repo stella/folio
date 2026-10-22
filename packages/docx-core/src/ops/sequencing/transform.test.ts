@@ -1,21 +1,42 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { Document, Paragraph } from "../../model/document";
-import { applyDocumentOps } from "../apply";
 import { envelopes } from "../__tests__/wireFixtures";
+import { applyDocumentOps } from "../apply";
 import { equalForStaleness } from "../equality";
-import { DOCUMENT_OP_SCHEMA_VERSION, DOCUMENT_OP_TYPES, type DocumentOp } from "../types";
-import { BATCH_REJECTION_REASONS, type DocumentBatch, type SequencedBatch } from "./envelope";
+import {
+  DOCUMENT_OP_SCHEMA_VERSION,
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+} from "../types";
+import {
+  BATCH_REJECTION_REASONS,
+  type DocumentBatch,
+  type SequencedBatch,
+} from "./envelope";
 import { createSequencer } from "./sequencer";
 import { transformBatch } from "./transform";
 
-const at = (offset: number, blockId = "00000001") => ({ story: "main", blockId, offset }) as const;
+const at = (offset: number, blockId = "00000001") =>
+  ({ story: "main", blockId, offset }) as const;
 const insertion = (offset: number, text: string) =>
-  ({ type: "insertText", at: at(offset), text, runProps: "inherit" }) as const satisfies DocumentOp;
+  ({
+    type: "insertText",
+    at: at(offset),
+    text,
+    runProps: "inherit",
+  }) as const satisfies DocumentOp;
 const deletion = (from: number, to: number) =>
-  ({ type: "deleteRange", from: at(from), to: at(to) }) as const satisfies DocumentOp;
+  ({
+    type: "deleteRange",
+    from: at(from),
+    to: at(to),
+  }) as const satisfies DocumentOp;
 const batch = (...ops: DocumentOp[]): DocumentBatch => ({
   schema: DOCUMENT_OP_SCHEMA_VERSION,
   opId: "incoming",
@@ -50,11 +71,21 @@ const transformed = (
   if (result.isErr()) throw result.error;
   return result.value.ops;
 };
-const converge = (document: Document, first: DocumentBatch, second: DocumentBatch) => {
+const converge = (
+  document: Document,
+  first: DocumentBatch,
+  second: DocumentBatch,
+) => {
   const firstSequenced = { ...first, revision: 1 };
   const secondSequenced = { ...second, revision: 1 };
-  const left = apply(apply(document, first.ops), transformed(second, firstSequenced));
-  const right = apply(apply(document, second.ops), transformed(first, secondSequenced, "before"));
+  const left = apply(
+    apply(document, first.ops),
+    transformed(second, firstSequenced),
+  );
+  const right = apply(
+    apply(document, second.ops),
+    transformed(first, secondSequenced, "before"),
+  );
   expect(equalForStaleness(left, right)).toBe(true);
 };
 
@@ -68,7 +99,11 @@ describe("position transforms", () => {
           fc.integer({ min: 0, max: 6 }),
           fc.constantFrom("X", "😀", "XY"),
           (left, right, text) => {
-            converge(documentOf(), batch(insertion(left, text)), batch(insertion(right, "Z")));
+            converge(
+              documentOf(),
+              batch(insertion(left, text)),
+              batch(insertion(right, "Z")),
+            );
           },
         ),
         propertyConfig({ numRuns: 100 }),
@@ -88,7 +123,11 @@ describe("position transforms", () => {
           (startSeed, widthSeed, point) => {
             const from = startSeed % 6;
             const to = from + 1 + (widthSeed % (6 - from));
-            converge(documentOf(), batch(deletion(from, to)), batch(insertion(point, "X")));
+            converge(
+              documentOf(),
+              batch(deletion(from, to)),
+              batch(insertion(point, "X")),
+            );
           },
         ),
         propertyConfig({ numRuns: 100 }),
@@ -147,10 +186,18 @@ describe("position transforms", () => {
               ...sequenced(join),
               effects: [{ type: "joinBlocks", firstLength: 3 }],
             } as const satisfies SequencedBatch;
-            const inSecond = { ...insertion(secondPoint, "Z"), at: at(secondPoint, "00000002") };
+            const inSecond = {
+              ...insertion(secondPoint, "Z"),
+              at: at(secondPoint, "00000002"),
+            };
             const source: Document = {
               package: {
-                document: { content: [paragraph("00000001", "abc"), paragraph("00000002", "def")] },
+                document: {
+                  content: [
+                    paragraph("00000001", "abc"),
+                    paragraph("00000002", "def"),
+                  ],
+                },
               },
             };
             for (const first of [insertion(firstPoint, text), deletion(0, 1)]) {
@@ -208,7 +255,12 @@ describe("position transforms", () => {
         fc.property(fc.integer({ min: 1, max: 5 }), (split) => {
           converge(
             documentOf(),
-            batch({ type: "splitBlock", at: at(split), newBlockId: "00000002", newHalf: "first" }),
+            batch({
+              type: "splitBlock",
+              at: at(split),
+              newBlockId: "00000002",
+              newHalf: "first",
+            }),
             batch(deletion(0, 6)),
           );
         }),
@@ -243,26 +295,45 @@ describe("position transforms", () => {
             const document = {
               package: {
                 document: {
-                  content: [paragraph("00000001", "abcdef"), paragraph("00000002", "uvwxyz")],
+                  content: [
+                    paragraph("00000001", "abcdef"),
+                    paragraph("00000002", "uvwxyz"),
+                  ],
                 },
               },
             } satisfies Document;
             for (const invalid of invalidRanges) {
               expect(applyDocumentOps(document, [invalid]).isErr()).toBe(true);
               for (const order of ["before", "after"] as const) {
-                for (const tail of [[], [sequenced(split)], [sequenced(insertion(0, "X"))]]) {
-                  const result = transformBatch(batch(invalid), tail, { order });
+                for (const tail of [
+                  [],
+                  [sequenced(split)],
+                  [sequenced(insertion(0, "X"))],
+                ]) {
+                  const result = transformBatch(batch(invalid), tail, {
+                    order,
+                  });
                   expect(result.isErr()).toBe(true);
                   if (result.isErr())
-                    expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.INVALID_OPERATION);
+                    expect(result.error.reason).toBe(
+                      BATCH_REJECTION_REASONS.INVALID_OPERATION,
+                    );
                 }
                 // Journal validation must run even with no incoming operations or an
                 // earlier journal operation that would consume the incoming range.
-                for (const incoming of [batch(), batch(deletion(0, 6)), batch(insertion(0, "X"))]) {
+                for (const incoming of [
+                  batch(),
+                  batch(deletion(0, 6)),
+                  batch(insertion(0, "X")),
+                ]) {
                   expect(
-                    transformBatch(incoming, [sequenced(deletion(0, 6)), sequenced(invalid)], {
-                      order,
-                    }).isErr(),
+                    transformBatch(
+                      incoming,
+                      [sequenced(deletion(0, 6)), sequenced(invalid)],
+                      {
+                        order,
+                      },
+                    ).isErr(),
                   ).toBe(true);
                 }
               }
@@ -289,13 +360,27 @@ describe("position transforms", () => {
     "two explicit splits converge including the same boundary",
     () => {
       fc.assert(
-        fc.property(fc.integer({ min: 0, max: 6 }), fc.integer({ min: 0, max: 6 }), (a, b) => {
-          converge(
-            documentOf(),
-            batch({ type: "splitBlock", at: at(a), newBlockId: "00000002", newHalf: "first" }),
-            batch({ type: "splitBlock", at: at(b), newBlockId: "00000003", newHalf: "first" }),
-          );
-        }),
+        fc.property(
+          fc.integer({ min: 0, max: 6 }),
+          fc.integer({ min: 0, max: 6 }),
+          (a, b) => {
+            converge(
+              documentOf(),
+              batch({
+                type: "splitBlock",
+                at: at(a),
+                newBlockId: "00000002",
+                newHalf: "first",
+              }),
+              batch({
+                type: "splitBlock",
+                at: at(b),
+                newBlockId: "00000003",
+                newHalf: "first",
+              }),
+            );
+          },
+        ),
         propertyConfig({ numRuns: 100 }),
       );
     },
@@ -309,7 +394,12 @@ describe("position transforms", () => {
         fc.property(fc.integer({ min: 0, max: 6 }), (point) => {
           converge(
             documentOf(),
-            batch({ type: "setRunProps", from: at(1), to: at(5), patch: { bold: true } }),
+            batch({
+              type: "setRunProps",
+              from: at(1),
+              to: at(5),
+              patch: { bold: true },
+            }),
             batch(insertion(point, "X")),
           );
         }),
@@ -320,7 +410,10 @@ describe("position transforms", () => {
   );
 
   test("disjoint paragraph edits commute", () => {
-    const op = { ...insertion(1, "X"), at: at(1, "00000002") } satisfies DocumentOp;
+    const op = {
+      ...insertion(1, "X"),
+      at: at(1, "00000002"),
+    } satisfies DocumentOp;
     expect(transformed(batch(op), sequenced(insertion(3, "Y")))).toEqual([op]);
   });
 
@@ -334,7 +427,9 @@ describe("position transforms", () => {
     expect(transformed(batch(insertion(1, "X")), sequenced(split))).toEqual([
       { ...insertion(1, "X"), at: at(1, "00000002") },
     ]);
-    expect(transformed(batch(insertion(5, "X")), sequenced(split))).toEqual([insertion(2, "X")]);
+    expect(transformed(batch(insertion(5, "X")), sequenced(split))).toEqual([
+      insertion(2, "X"),
+    ]);
     const joined = {
       ...sequenced({
         type: "joinBlocks",
@@ -348,7 +443,9 @@ describe("position transforms", () => {
       { ...insertion(2, "X"), at: at(2, "00000002") },
     ]);
     const inSecond = { ...insertion(2, "X"), at: at(2, "00000002") };
-    expect(transformed(batch(inSecond), joined)).toEqual([{ ...inSecond, at: at(5, "00000002") }]);
+    expect(transformed(batch(inSecond), joined)).toEqual([
+      { ...inSecond, at: at(5, "00000002") },
+    ]);
   });
 
   test("tracked deletes keep offsets; structural inverses keep preconditions", () => {
@@ -356,9 +453,15 @@ describe("position transforms", () => {
       ...deletion(1, 4),
       revision: { id: 10, author: "Actor", date: "2026-01-01T00:00:00Z" },
     } satisfies DocumentOp;
-    expect(transformed(batch(insertion(5, "X")), sequenced(tracked))).toEqual([insertion(5, "X")]);
-    expect(transformBatch(batch(insertion(2, "X")), [sequenced(tracked)]).isErr()).toBe(true);
-    expect(transformBatch(batch(tracked), [sequenced(insertion(2, "X"))]).isErr()).toBe(true);
+    expect(transformed(batch(insertion(5, "X")), sequenced(tracked))).toEqual([
+      insertion(5, "X"),
+    ]);
+    expect(
+      transformBatch(batch(insertion(2, "X")), [sequenced(tracked)]).isErr(),
+    ).toBe(true);
+    expect(
+      transformBatch(batch(tracked), [sequenced(insertion(2, "X"))]).isErr(),
+    ).toBe(true);
     const inverse = {
       type: "deleteRange",
       from: at(1),
@@ -369,8 +472,12 @@ describe("position transforms", () => {
         openEnd: 0,
       },
     } satisfies DocumentOp;
-    expect(transformed(batch(inverse), sequenced(insertion(3, "X")))).toEqual([inverse]);
-    expect(transformBatch(batch(inverse), [sequenced(insertion(1, "X"))]).isErr()).toBe(true);
+    expect(transformed(batch(inverse), sequenced(insertion(3, "X")))).toEqual([
+      inverse,
+    ]);
+    expect(
+      transformBatch(batch(inverse), [sequenced(insertion(1, "X"))]).isErr(),
+    ).toBe(true);
   });
 });
 
@@ -379,19 +486,44 @@ describe("property and structural policies", () => {
     for (const type of ["setParagraphProps", "setRunProps"] as const) {
       const first: DocumentOp =
         type === "setParagraphProps"
-          ? { type, story: "main", blockId: "00000001", patch: { spaceAfter: 10 } }
+          ? {
+              type,
+              story: "main",
+              blockId: "00000001",
+              patch: { spaceAfter: 10 },
+            }
           : { type, from: at(0), to: at(6), patch: { bold: true } };
       const second: DocumentOp =
         type === "setParagraphProps"
-          ? { type, story: "main", blockId: "00000001", patch: { spaceAfter: 20 } }
-          : { type, from: at(0), to: at(6), patch: { bold: false, italic: true } };
+          ? {
+              type,
+              story: "main",
+              blockId: "00000001",
+              patch: { spaceAfter: 20 },
+            }
+          : {
+              type,
+              from: at(0),
+              to: at(6),
+              patch: { bold: false, italic: true },
+            };
       converge(documentOf(), batch(first), batch(second));
     }
   });
 
   test("partially overlapping competing run keys require captured boundaries", () => {
-    const left = { type: "setRunProps", from: at(1), to: at(4), patch: { bold: true } } as const;
-    const right = { type: "setRunProps", from: at(2), to: at(5), patch: { bold: false } } as const;
+    const left = {
+      type: "setRunProps",
+      from: at(1),
+      to: at(4),
+      patch: { bold: true },
+    } as const;
+    const right = {
+      type: "setRunProps",
+      from: at(2),
+      to: at(5),
+      patch: { bold: false },
+    } as const;
     expect(transformBatch(batch(left), [sequenced(right)]).isErr()).toBe(true);
     expect(transformBatch(batch(right), [sequenced(left)]).isErr()).toBe(true);
   });
@@ -423,7 +555,9 @@ describe("property and structural policies", () => {
     } as const;
     expect(transformed(batch(resolve), sequenced(resolve))).toEqual([resolve]);
     expect(
-      transformBatch(batch({ ...resolve, decision: "reject" }), [sequenced(resolve)]).isErr(),
+      transformBatch(batch({ ...resolve, decision: "reject" }), [
+        sequenced(resolve),
+      ]).isErr(),
     ).toBe(true);
   });
 
@@ -437,23 +571,45 @@ describe("property and structural policies", () => {
     expect(transformBatch(batch(props), [sequenced(props)]).isErr()).toBe(true);
     expect(
       transformBatch(batch(insertion(1, "X")), [
-        sequenced({ type: "deleteBlocks", story: "main", blockIds: ["00000001"] }),
+        sequenced({
+          type: "deleteBlocks",
+          story: "main",
+          blockIds: ["00000001"],
+        }),
       ]).isErr(),
     ).toBe(true);
     expect(
       transformBatch(
-        batch({ type: "joinBlocks", story: "main", blockId: "00000001", nextBlockId: "00000002" }),
-        [sequenced({ type: "splitBlock", at: at(2), newBlockId: "00000003", newHalf: "second" })],
+        batch({
+          type: "joinBlocks",
+          story: "main",
+          blockId: "00000001",
+          nextBlockId: "00000002",
+        }),
+        [
+          sequenced({
+            type: "splitBlock",
+            at: at(2),
+            newBlockId: "00000003",
+            newHalf: "second",
+          }),
+        ],
       ).isErr(),
     ).toBe(true);
   });
 
   test("captured structural footprints commute only with unaffected targets", () => {
     const removed = {
-      ...sequenced({ type: "deleteBlocks", story: "main", blockIds: ["00000002"] }),
+      ...sequenced({
+        type: "deleteBlocks",
+        story: "main",
+        blockIds: ["00000002"],
+      }),
       effects: [{ type: "touchedBlocks", blockIds: ["00000002", "00000003"] }],
     } as const satisfies SequencedBatch;
-    expect(transformed(batch(insertion(1, "X")), removed)).toEqual([insertion(1, "X")]);
+    expect(transformed(batch(insertion(1, "X")), removed)).toEqual([
+      insertion(1, "X"),
+    ]);
     const affected = { ...insertion(1, "X"), at: at(1, "00000003") };
     expect(transformBatch(batch(affected), [removed]).isErr()).toBe(true);
   });
@@ -478,7 +634,9 @@ test("story lifecycle operation pairs refuse sequencing in both directions", () 
     ]) {
       expect(result.isErr()).toBe(true);
       if (result.isErr())
-        expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR);
+        expect(result.error.reason).toBe(
+          BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
+        );
     }
   }
   expect([...exercised].toSorted()).toEqual([...lifecycle].toSorted());

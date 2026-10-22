@@ -1,27 +1,90 @@
 {
   "//": "Coverage cells the default consumer-scenarios run must apply at least once (scripts/consumer-scenarios.ts fails naming each one with no hits), and the cells the public API cannot reach yet. A cell leaves a dimension out to match any value. Dimensions: op, story (body, tableCell, textbox, header, footer, footnote, endnote), mode (direct, tracked, suggested), feature (support/targets.ts FEATURES, or none), step (fresh, reopened, newReviewer). The required cells are met by the deterministic scenarios, not by seeded flows.",
   "required": [
-    { "cell": { "story": "body", "mode": "direct" }, "why": "every story in every mode" },
-    { "cell": { "story": "body", "mode": "tracked" }, "why": "every story in every mode" },
-    { "cell": { "story": "body", "mode": "suggested" }, "why": "every story in every mode" },
-    { "cell": { "story": "tableCell", "mode": "direct" }, "why": "every story in every mode" },
-    { "cell": { "story": "tableCell", "mode": "tracked" }, "why": "every story in every mode" },
-    { "cell": { "story": "tableCell", "mode": "suggested" }, "why": "every story in every mode" },
-    { "cell": { "story": "textbox", "mode": "direct" }, "why": "every story in every mode" },
-    { "cell": { "story": "textbox", "mode": "tracked" }, "why": "every story in every mode" },
-    { "cell": { "story": "textbox", "mode": "suggested" }, "why": "every story in every mode" },
-    { "cell": { "story": "header", "mode": "direct" }, "why": "every story in every mode" },
-    { "cell": { "story": "header", "mode": "tracked" }, "why": "every story in every mode" },
-    { "cell": { "story": "header", "mode": "suggested" }, "why": "every story in every mode" },
-    { "cell": { "story": "footer", "mode": "direct" }, "why": "every story in every mode" },
-    { "cell": { "story": "footer", "mode": "tracked" }, "why": "every story in every mode" },
-    { "cell": { "story": "footer", "mode": "suggested" }, "why": "every story in every mode" },
-    { "cell": { "story": "footnote", "mode": "direct" }, "why": "every story in every mode" },
-    { "cell": { "story": "footnote", "mode": "tracked" }, "why": "every story in every mode" },
-    { "cell": { "story": "footnote", "mode": "suggested" }, "why": "every story in every mode" },
-    { "cell": { "story": "endnote", "mode": "direct" }, "why": "every story in every mode" },
-    { "cell": { "story": "endnote", "mode": "tracked" }, "why": "every story in every mode" },
-    { "cell": { "story": "endnote", "mode": "suggested" }, "why": "every story in every mode" },
+    {
+      "cell": { "story": "body", "mode": "direct" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "body", "mode": "tracked" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "body", "mode": "suggested" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "tableCell", "mode": "direct" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "tableCell", "mode": "tracked" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "tableCell", "mode": "suggested" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "textbox", "mode": "direct" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "textbox", "mode": "tracked" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "textbox", "mode": "suggested" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "header", "mode": "direct" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "header", "mode": "tracked" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "header", "mode": "suggested" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "footer", "mode": "direct" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "footer", "mode": "tracked" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "footer", "mode": "suggested" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "footnote", "mode": "direct" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "footnote", "mode": "tracked" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "footnote", "mode": "suggested" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "endnote", "mode": "direct" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "endnote", "mode": "tracked" },
+      "why": "every story in every mode"
+    },
+    {
+      "cell": { "story": "endnote", "mode": "suggested" },
+      "why": "every story in every mode"
+    },
     {
       "cell": { "feature": "sectionCarrier", "mode": "direct" },
       "why": "every target feature in every mode"
@@ -174,7 +237,10 @@
       "cell": { "op": "replaceRange", "story": "body" },
       "why": "every operation type in the body"
     },
-    { "cell": { "op": "formatRange", "story": "body" }, "why": "every operation type in the body" },
+    {
+      "cell": { "op": "formatRange", "story": "body" },
+      "why": "every operation type in the body"
+    },
     {
       "cell": { "op": "commentOnRange", "story": "body" },
       "why": "every operation type in the body"
@@ -195,8 +261,14 @@
       "cell": { "op": "replaceBlock", "story": "body" },
       "why": "every operation type in the body"
     },
-    { "cell": { "op": "deleteBlock", "story": "body" }, "why": "every operation type in the body" },
-    { "cell": { "op": "splitBlock", "story": "body" }, "why": "every operation type in the body" },
+    {
+      "cell": { "op": "deleteBlock", "story": "body" },
+      "why": "every operation type in the body"
+    },
+    {
+      "cell": { "op": "splitBlock", "story": "body" },
+      "why": "every operation type in the body"
+    },
     {
       "cell": { "op": "mergeBlockWithNext", "story": "body" },
       "why": "every operation type in the body"
@@ -205,7 +277,10 @@
       "cell": { "op": "setBlockParagraphProperties", "story": "body" },
       "why": "every operation type in the body"
     },
-    { "cell": { "op": "insertTable", "story": "body" }, "why": "every operation type in the body" },
+    {
+      "cell": { "op": "insertTable", "story": "body" },
+      "why": "every operation type in the body"
+    },
     {
       "cell": { "op": "insertTableRow", "story": "tableCell" },
       "why": "every table operation on a cell"
@@ -431,55 +506,129 @@
       "why": "every text operation in every header, footer and note"
     },
     {
-      "cell": { "story": "header", "feature": "pendingRevision", "mode": "tracked" },
+      "cell": {
+        "story": "header",
+        "feature": "pendingRevision",
+        "mode": "tracked"
+      },
       "why": "a pending revision in every secondary story"
     },
     {
-      "cell": { "story": "footer", "feature": "pendingRevision", "mode": "tracked" },
+      "cell": {
+        "story": "footer",
+        "feature": "pendingRevision",
+        "mode": "tracked"
+      },
       "why": "a pending revision in every secondary story"
     },
     {
-      "cell": { "story": "footnote", "feature": "pendingRevision", "mode": "tracked" },
+      "cell": {
+        "story": "footnote",
+        "feature": "pendingRevision",
+        "mode": "tracked"
+      },
       "why": "a pending revision in every secondary story"
     },
     {
-      "cell": { "story": "endnote", "feature": "pendingRevision", "mode": "tracked" },
+      "cell": {
+        "story": "endnote",
+        "feature": "pendingRevision",
+        "mode": "tracked"
+      },
       "why": "a pending revision in every secondary story"
     },
-    { "cell": { "story": "footer", "feature": "field" }, "why": "a field in a footer" },
-    { "cell": { "step": "fresh", "mode": "direct" }, "why": "every session in every mode" },
-    { "cell": { "step": "fresh", "mode": "tracked" }, "why": "every session in every mode" },
-    { "cell": { "step": "fresh", "mode": "suggested" }, "why": "every session in every mode" },
-    { "cell": { "step": "fresh", "story": "header" }, "why": "every session in a header" },
-    { "cell": { "step": "reopened", "mode": "direct" }, "why": "every session in every mode" },
-    { "cell": { "step": "reopened", "mode": "tracked" }, "why": "every session in every mode" },
-    { "cell": { "step": "reopened", "mode": "suggested" }, "why": "every session in every mode" },
-    { "cell": { "step": "reopened", "story": "header" }, "why": "every session in a header" },
-    { "cell": { "step": "newReviewer", "mode": "direct" }, "why": "every session in every mode" },
-    { "cell": { "step": "newReviewer", "mode": "tracked" }, "why": "every session in every mode" },
+    {
+      "cell": { "story": "footer", "feature": "field" },
+      "why": "a field in a footer"
+    },
+    {
+      "cell": { "step": "fresh", "mode": "direct" },
+      "why": "every session in every mode"
+    },
+    {
+      "cell": { "step": "fresh", "mode": "tracked" },
+      "why": "every session in every mode"
+    },
+    {
+      "cell": { "step": "fresh", "mode": "suggested" },
+      "why": "every session in every mode"
+    },
+    {
+      "cell": { "step": "fresh", "story": "header" },
+      "why": "every session in a header"
+    },
+    {
+      "cell": { "step": "reopened", "mode": "direct" },
+      "why": "every session in every mode"
+    },
+    {
+      "cell": { "step": "reopened", "mode": "tracked" },
+      "why": "every session in every mode"
+    },
+    {
+      "cell": { "step": "reopened", "mode": "suggested" },
+      "why": "every session in every mode"
+    },
+    {
+      "cell": { "step": "reopened", "story": "header" },
+      "why": "every session in a header"
+    },
+    {
+      "cell": { "step": "newReviewer", "mode": "direct" },
+      "why": "every session in every mode"
+    },
+    {
+      "cell": { "step": "newReviewer", "mode": "tracked" },
+      "why": "every session in every mode"
+    },
     {
       "cell": { "step": "newReviewer", "mode": "suggested" },
       "why": "every session in every mode"
     },
-    { "cell": { "step": "newReviewer", "story": "header" }, "why": "every session in a header" },
-    { "cell": { "op": "mergeTableCells" }, "why": "the deterministic merge scenario" },
-    { "cell": { "op": "splitTableCell" }, "why": "the deterministic split scenario" }
+    {
+      "cell": { "step": "newReviewer", "story": "header" },
+      "why": "every session in a header"
+    },
+    {
+      "cell": { "op": "mergeTableCells" },
+      "why": "the deterministic merge scenario"
+    },
+    {
+      "cell": { "op": "splitTableCell" },
+      "why": "the deterministic split scenario"
+    }
   ],
   "unreachable": [
     {
-      "cell": { "story": "header", "feature": "pendingRevision", "mode": "suggested" },
+      "cell": {
+        "story": "header",
+        "feature": "pendingRevision",
+        "mode": "suggested"
+      },
       "reason": "getChanges() lists body changes only and toDocument() carries no pending suggestion, so no public reader shows a header, footer or note block with a suggestion pending"
     },
     {
-      "cell": { "story": "footer", "feature": "pendingRevision", "mode": "suggested" },
+      "cell": {
+        "story": "footer",
+        "feature": "pendingRevision",
+        "mode": "suggested"
+      },
       "reason": "getChanges() lists body changes only and toDocument() carries no pending suggestion, so no public reader shows a header, footer or note block with a suggestion pending"
     },
     {
-      "cell": { "story": "footnote", "feature": "pendingRevision", "mode": "suggested" },
+      "cell": {
+        "story": "footnote",
+        "feature": "pendingRevision",
+        "mode": "suggested"
+      },
       "reason": "getChanges() lists body changes only and toDocument() carries no pending suggestion, so no public reader shows a header, footer or note block with a suggestion pending"
     },
     {
-      "cell": { "story": "endnote", "feature": "pendingRevision", "mode": "suggested" },
+      "cell": {
+        "story": "endnote",
+        "feature": "pendingRevision",
+        "mode": "suggested"
+      },
       "reason": "getChanges() lists body changes only and toDocument() carries no pending suggestion, so no public reader shows a header, footer or note block with a suggestion pending"
     },
     {

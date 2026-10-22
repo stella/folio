@@ -1,26 +1,45 @@
+import { panic } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
-import { inlineLeafSpans, paragraphLogicalText } from "@stll/docx-core/ops";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import type { Document, Paragraph, ParagraphContent, RunContent } from "../types/document";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { schema, singletonManager } from "../prosemirror/schema";
 import { EditorState } from "prosemirror-state";
+
+import { inlineLeafSpans, paragraphLogicalText } from "@stll/docx-core/ops";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { documentShape, shapeArrayBuffer } from "../__tests__/documentShapes";
 import { parseShapeDocument, placeSelection } from "../__tests__/editorHarness";
 import { createDocx } from "../docx/rezip";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
-import { prepareCanonicalCommands } from "./canonicalStructure";
-import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { schema, singletonManager } from "../prosemirror/schema";
+import type {
+  Document,
+  Paragraph,
+  ParagraphContent,
+  RunContent,
+} from "../types/document";
 import { projectCanonicalInline } from "./canonicalInlineProjection";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "./canonicalSession";
+import { prepareCanonicalCommands } from "./canonicalStructure";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
 const UNIT_COUNT = 6;
 const interval = fc
-  .tuple(fc.integer({ min: 0, max: UNIT_COUNT }), fc.integer({ min: 0, max: UNIT_COUNT }))
-  .map(([left, right]) => ({ from: Math.min(left, right), to: Math.max(left, right) }));
+  .tuple(
+    fc.integer({ min: 0, max: UNIT_COUNT }),
+    fc.integer({ min: 0, max: UNIT_COUNT }),
+  )
+  .map(([left, right]) => ({
+    from: Math.min(left, right),
+    to: Math.max(left, right),
+  }));
 const UNIT_KINDS = ["text", "tab", "image"] as const;
 const REVISIONS = ["live", "insertion", "deletion"] as const;
 const unit = fc.record({
@@ -28,9 +47,15 @@ const unit = fc.record({
   revision: fc.constantFrom(...REVISIONS),
 });
 type Interval = { from: number; to: number };
-type Unit = { kind: (typeof UNIT_KINDS)[number]; revision: (typeof REVISIONS)[number] };
+type Unit = {
+  kind: (typeof UNIT_KINDS)[number];
+  revision: (typeof REVISIONS)[number];
+};
 
-const sourceUnit = ({ kind, revision }: Unit, index: number): ParagraphContent => {
+const sourceUnit = (
+  { kind, revision }: Unit,
+  index: number,
+): ParagraphContent => {
   let content: RunContent;
   switch (kind) {
     case "text":
@@ -42,7 +67,11 @@ const sourceUnit = ({ kind, revision }: Unit, index: number): ParagraphContent =
     case "image":
       content = {
         type: "drawing",
-        image: { type: "image", size: { width: 914400, height: 914400 }, wrap: { type: "inline" } },
+        image: {
+          type: "image",
+          size: { width: 914400, height: 914400 },
+          wrap: { type: "inline" },
+        },
       };
       break;
     default:
@@ -53,7 +82,11 @@ const sourceUnit = ({ kind, revision }: Unit, index: number): ParagraphContent =
     ? run
     : {
         type: revision,
-        info: { id: 100 + index, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+        info: {
+          id: 100 + index,
+          author: "Reviewer",
+          date: "2026-01-01T00:00:00Z",
+        },
         content: [run],
       };
 };
@@ -72,7 +105,12 @@ const documentFor = (source: Paragraph): Document => ({
                   {
                     type: "paragraph",
                     paraId: (0x20000000 + node.id).toString(16),
-                    content: [{ type: "run", content: [{ type: "text", text: "Comment" }] }],
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "Comment" }],
+                      },
+                    ],
                   },
                 ],
               },
@@ -120,7 +158,11 @@ const checkGeometry = (ranges: readonly Interval[], units: readonly Unit[]) => {
       position += 1; // Text code units, tabs and inline images each occupy one PM unit.
     }
   }
-  const source = { type: "paragraph", paraId: "12345678", content } satisfies Paragraph;
+  const source = {
+    type: "paragraph",
+    paraId: "12345678",
+    content,
+  } satisfies Paragraph;
   const document = documentFor(source);
   const unchanged = structuredClone(document);
   const paragraph = toProseDoc(document).child(0);
@@ -128,7 +170,9 @@ const checkGeometry = (ranges: readonly Interval[], units: readonly Unit[]) => {
   // own child-content mark policy is empty.
   paragraph.forEach((node, nativePosition) => {
     if (node.type.name === "rangeAnchor") return;
-    const offset = expected.findIndex((gaps) => gaps.at(-1)?.position === nativePosition);
+    const offset = expected.findIndex(
+      (gaps) => gaps.at(-1)?.position === nativePosition,
+    );
     expect(offset).toBeGreaterThanOrEqual(0);
     expect(
       node.marks
@@ -218,9 +262,15 @@ test("missing or unattributed comment mark transitions refuse without changing s
   const unchanged = structuredClone(source);
   const native = toProseDoc(documentFor(source)).child(0);
   for (const marks of [[], [schema.mark("comment", { commentId: 2 })]]) {
-    const paragraph = native.type.create(native.attrs, [schema.text("x", marks)]);
+    const paragraph = native.type.create(native.attrs, [
+      schema.text("x", marks),
+    ]);
     expect(
-      projectCanonicalInline({ source, paragraph, pairedBookmarkIds: new Set() }).isErr(),
+      projectCanonicalInline({
+        source,
+        paragraph,
+        pairedBookmarkIds: new Set(),
+      }).isErr(),
     ).toBe(true);
     expect(source).toEqual(unchanged);
   }
@@ -238,7 +288,9 @@ test("comment ranges retain their context across paragraph boundaries", () => {
               {
                 type: "paragraph",
                 paraId: "20000001",
-                content: [{ type: "run", content: [{ type: "text", text: "Comment" }] }],
+                content: [
+                  { type: "run", content: [{ type: "text", text: "Comment" }] },
+                ],
               },
             ],
           },
@@ -276,14 +328,27 @@ const commentGeometry = (document: Document) =>
           node.type === "commentRangeStart" ||
           node.type === "commentRangeEnd" ||
           node.type === "commentReference"
-            ? [{ paragraph: paragraph.paraId, type: node.type, id: node.id, before, after }]
+            ? [
+                {
+                  paragraph: paragraph.paraId,
+                  type: node.type,
+                  id: node.id,
+                  before,
+                  after,
+                },
+              ]
             : [],
         ),
   );
 
 test("parsed comments fixture executes canonical formatting and saves its exact comment geometry", async () => {
-  const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer("comments")));
-  for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Reviewer" }] as const) {
+  const source = await parseShapeDocument(
+    new Uint8Array(await shapeArrayBuffer("comments")),
+  );
+  for (const mode of [
+    { type: "editing" },
+    { type: "suggesting", author: "Reviewer" },
+  ] as const) {
     const session = createCanonicalSession(source).unwrap();
     session.setMode(mode);
     const state = placeSelection(
@@ -295,12 +360,17 @@ test("parsed comments fixture executes canonical formatting and saves its exact 
     if (!state) throw new TypeError("Comments fixture lost its word selection");
     const command = singletonManager.requireCommand("toggleBold")();
     const intents = getCanonicalCommandIntents(command, state);
-    if (!intents) throw new TypeError("Bold command lost its canonical descriptor");
+    if (!intents)
+      throw new TypeError("Bold command lost its canonical descriptor");
     const baseline = commentGeometry(session.document);
     const commit = prepareCanonicalCommands(session, state, intents).unwrap();
-    expect(publishCanonicalProjection({ session, state, commit }).isOk()).toBe(true);
+    expect(publishCanonicalProjection({ session, state, commit }).isOk()).toBe(
+      true,
+    );
     expect(commentGeometry(session.document)).toEqual(baseline);
-    const reopened = await parseShapeDocument(new Uint8Array(await createDocx(session.document)));
+    const reopened = await parseShapeDocument(
+      new Uint8Array(await createDocx(session.document)),
+    );
     expect(commentGeometry(reopened)).toEqual(baseline);
     expect(createCanonicalSession(reopened).isOk()).toBe(true);
   }

@@ -6,22 +6,28 @@ import path from "node:path";
 
 import { unzipDocx } from "@stll/folio-core/docx/unzip";
 
-import { openReviewer, toArrayBuffer } from "./consumer-scenarios/support/documents.ts";
 import {
-  assertRequestedOutcome,
-  capture,
-  resolvedState,
-  rowsOf,
-  type Pre,
-} from "./consumer-scenarios/support/oracle.ts";
+  openReviewer,
+  toArrayBuffer,
+} from "./consumer-scenarios/support/documents.ts";
 import {
   coreBatch,
   type Operation,
   randomOperation,
 } from "./consumer-scenarios/support/operations.ts";
+import {
+  assertRequestedOutcome,
+  capture,
+  type Pre,
+  resolvedState,
+  rowsOf,
+} from "./consumer-scenarios/support/oracle.ts";
 import { createRandom } from "./consumer-scenarios/support/random.ts";
-
-import type { EditFailure, EditStep, EditWorkerResult } from "./corpus-edit-fuzz-contract.ts";
+import type {
+  EditFailure,
+  EditStep,
+  EditWorkerResult,
+} from "./corpus-edit-fuzz-contract.ts";
 
 const TYPES = [
   "replaceInBlock",
@@ -66,7 +72,9 @@ const sdkErrors = (bytes: Uint8Array): string[] => {
     ) {
       throw new Error("Open XML SDK validator returned an invalid report");
     }
-    return report.errors.filter((error): error is string => typeof error === "string");
+    return report.errors.filter(
+      (error): error is string => typeof error === "string",
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -78,13 +86,17 @@ const partsOf = async (bytes: Uint8Array): Promise<Map<string, Uint8Array>> => {
     await Promise.all(
       Object.entries(raw.originalZip.files)
         .filter(([, file]) => !file.dir)
-        .map(async ([name, file]) => [name, await file.async("uint8array")] as const),
+        .map(
+          async ([name, file]) =>
+            [name, await file.async("uint8array")] as const,
+        ),
     ),
   );
 };
 
 const sameBytes = (left: Uint8Array, right: Uint8Array): boolean =>
-  left.length === right.length && left.every((byte, index) => byte === right[index]);
+  left.length === right.length &&
+  left.every((byte, index) => byte === right[index]);
 
 const allowedParts = (operation: Operation): ReadonlySet<string> => {
   const common = ["word/document.xml", "docProps/core.xml"];
@@ -100,7 +112,11 @@ const allowedParts = (operation: Operation): ReadonlySet<string> => {
       return new Set([
         ...common,
         ...(operation["numbering"]
-          ? ["word/numbering.xml", "word/_rels/document.xml.rels", "[Content_Types].xml"]
+          ? [
+              "word/numbering.xml",
+              "word/_rels/document.xml.rels",
+              "[Content_Types].xml",
+            ]
           : []),
       ]);
   }
@@ -124,7 +140,10 @@ const localityProblems = async (
   return changed.sort();
 };
 
-const compareSdk = (original: readonly string[], saved: readonly string[]): string[] => {
+const compareSdk = (
+  original: readonly string[],
+  saved: readonly string[],
+): string[] => {
   const known = new Map<string, number>();
   for (const error of original) known.set(error, (known.get(error) ?? 0) + 1);
   return saved.filter((error) => {
@@ -137,8 +156,13 @@ const compareSdk = (original: readonly string[], saved: readonly string[]): stri
 
 const saveAndReopen = async (
   reviewer: Awaited<ReturnType<typeof openReviewer>>,
-): Promise<{ saved: Uint8Array; reopened: Awaited<ReturnType<typeof openReviewer>> }> => {
-  const before = reviewer.getContent().map(({ text, kind }) => ({ text, kind }));
+): Promise<{
+  saved: Uint8Array;
+  reopened: Awaited<ReturnType<typeof openReviewer>>;
+}> => {
+  const before = reviewer
+    .getContent()
+    .map(({ text, kind }) => ({ text, kind }));
   const saved = new Uint8Array(await reviewer.toBuffer());
   const reopened = await openReviewer(saved);
   const after = reopened.getContent().map(({ text, kind }) => ({ text, kind }));
@@ -164,7 +188,12 @@ export const assertSavedOutcome = ({
   applied,
   context,
 }: SavedOutcomeArgs): Promise<string[]> =>
-  assertRequestedOutcome(reopened, pre, { applied: applied ? [operation] : [] }, context);
+  assertRequestedOutcome(
+    reopened,
+    pre,
+    { applied: applied ? [operation] : [] },
+    context,
+  );
 
 const runSteps = async (
   original: Uint8Array,
@@ -248,8 +277,9 @@ const runSteps = async (
         const rejected = await resolvedState(saved, "reject");
         const before = await resolvedState(original, "reject");
         if (
-          JSON.stringify(rowsOf(await openReviewer(rejected.bytes)).map(({ text }) => text)) !==
-          JSON.stringify(before.rows.map(({ text }) => text))
+          JSON.stringify(
+            rowsOf(await openReviewer(rejected.bytes)).map(({ text }) => text),
+          ) !== JSON.stringify(before.rows.map(({ text }) => text))
         ) {
           return failure(
             "reject",
@@ -316,13 +346,18 @@ const shrink = async (
   originalSdk: readonly string[] | null,
 ): Promise<EditFailure> => {
   const count = found.operations.length;
-  const masks = Array.from({ length: (1 << count) - 2 }, (_, index) => index + 1).sort(
+  const masks = Array.from(
+    { length: (1 << count) - 2 },
+    (_, index) => index + 1,
+  ).sort(
     (left, right) =>
-      left.toString(2).replaceAll("0", "").length - right.toString(2).replaceAll("0", "").length ||
-      left - right,
+      left.toString(2).replaceAll("0", "").length -
+        right.toString(2).replaceAll("0", "").length || left - right,
   );
   for (const mask of masks) {
-    const candidate = found.operations.filter((_, index) => (mask & (1 << index)) !== 0);
+    const candidate = found.operations.filter(
+      (_, index) => (mask & (1 << index)) !== 0,
+    );
     try {
       // oxlint-disable-next-line no-await-in-loop -- try shorter subsequences first, preserving request order
       const replay = await runSteps(original, candidate, originalSdk);
@@ -364,18 +399,25 @@ export const runEditWorker = async (
   }
   let attempts = 0;
   for (const mode of ["direct", "tracked-changes"] as const) {
-    const random = createRandom(seed ^ (mode === "direct" ? 0x1234abcd : 0x5678ef01));
+    const random = createRandom(
+      seed ^ (mode === "direct" ? 0x1234abcd : 0x5678ef01),
+    );
     const reviewer = await openReviewer(original);
     const steps: EditStep[] = [];
     for (let index = 0; index < 3; index += 1) {
-      const operation = randomOperation(reviewer.getContent(), mode, random, { types: TYPES });
+      const operation = randomOperation(reviewer.getContent(), mode, random, {
+        types: TYPES,
+      });
       if (!operation) break;
       steps.push({ mode, operation });
       attempts += 1;
       try {
-        reviewer.applyDocumentOperations(coreBatch([operation], mode) as never, {
-          undefinedReferences: "refuse",
-        });
+        reviewer.applyDocumentOperations(
+          coreBatch([operation], mode) as never,
+          {
+            undefinedReferences: "refuse",
+          },
+        );
       } catch {
         break;
       }
@@ -416,12 +458,18 @@ if (import.meta.main) {
   if (!document) throw new Error("edit worker requires a document path");
   if (command === "worker") {
     const seed = Number(process.argv[4]);
-    if (!Number.isSafeInteger(seed)) throw new Error("edit worker requires a numeric seed");
-    const result = await runEditWorker(document, seed, process.argv.includes("--skip-sdk"));
+    if (!Number.isSafeInteger(seed))
+      throw new Error("edit worker requires a numeric seed");
+    const result = await runEditWorker(
+      document,
+      seed,
+      process.argv.includes("--skip-sdk"),
+    );
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } else if (command === "replay") {
     const operations = process.argv[4];
-    if (!operations) throw new Error("edit worker replay requires operations JSON");
+    if (!operations)
+      throw new Error("edit worker replay requires operations JSON");
     const result = await replayEditCase(
       document,
       JSON.parse(operations) as EditStep[],

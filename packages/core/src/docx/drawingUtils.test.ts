@@ -52,8 +52,14 @@ describe("drawingUtils position parsing", () => {
       />
     `);
 
-    expect(parsePositionH(positionH)).toEqual({ relativeTo: "character", posOffset: 0 });
-    expect(parsePositionV(positionV)).toEqual({ relativeTo: "page", posOffset: 0 });
+    expect(parsePositionH(positionH)).toEqual({
+      relativeTo: "character",
+      posOffset: 0,
+    });
+    expect(parsePositionV(positionV)).toEqual({
+      relativeTo: "page",
+      posOffset: 0,
+    });
   });
 
   test("keeps valid alignments instead of materializing an offset", () => {
@@ -220,7 +226,9 @@ describe("drawingUtils.parseOutline", () => {
       headEnd: { type: "triangle", width: "lg", length: "sm" },
       tailEnd: { type: "oval" },
     });
-    expect(outline?.rawXml).toContain('<a:ln w="12700" cap="rnd" cmpd="dbl" algn="in">');
+    expect(outline?.rawXml).toContain(
+      '<a:ln w="12700" cap="rnd" cmpd="dbl" algn="in">',
+    );
     expect(outline?.rawXml).toContain('<a:satMod val="80000"/>');
     expect(outline?.rawXml).toContain('<a:miter lim="800000"/>');
     if (!outline?.rawXml) {

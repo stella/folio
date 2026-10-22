@@ -16,8 +16,8 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { MediaFile, PreviewDescriptor } from "../types/document";
 import { paintPreview } from "../display-list/build/previewPrimitives";
+import type { MediaFile, PreviewDescriptor } from "../types/document";
 import { parseDiagramPreview } from "./diagramPreview";
 import { parseRelationships } from "./relsParser";
 import { parseXmlDocument } from "./xmlParser";
@@ -121,7 +121,10 @@ const MAX_RETAINED_BYTES_PER_DIAGRAM = 16_384;
 const descriptorBytes = (descriptor: PreviewDescriptor): number =>
   JSON.stringify(descriptor).length;
 
-const parsePreview = (extent: number, media: Map<string, MediaFile>): PreviewDescriptor => {
+const parsePreview = (
+  extent: number,
+  media: Map<string, MediaFile>,
+): PreviewDescriptor => {
   const preview = parseDiagramPreview(
     diagramDrawing(extent),
     DIAGRAM_RELATIONSHIPS,
@@ -168,10 +171,9 @@ describe("SmartArt preview scaling", () => {
     const single = descriptorBytes(parsePreview(800, media));
 
     for (const diagrams of [1, 2, 4, 8, 64]) {
-      const total = Array.from({ length: diagrams }, () => parsePreview(800, media)).reduce(
-        (bytes, preview) => bytes + descriptorBytes(preview),
-        0,
-      );
+      const total = Array.from({ length: diagrams }, () =>
+        parsePreview(800, media),
+      ).reduce((bytes, preview) => bytes + descriptorBytes(preview), 0);
       expect(total).toBe(single * diagrams);
       expect(total).toBeLessThan(MAX_RETAINED_BYTES_PER_DIAGRAM * diagrams);
     }

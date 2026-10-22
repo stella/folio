@@ -8,9 +8,9 @@ import { reportAliasedFontFaces } from "../folioExtract";
 import { planFontAliases } from "../fontAliases";
 import {
   findFamilyFacesForPostscriptName,
+  type FontFaceRecord,
   indexFontDirectories,
   parseFontFace,
-  type FontFaceRecord,
 } from "../fontFaces";
 import type { PageGeom } from "../types";
 
@@ -23,7 +23,10 @@ type SyntheticFace = {
 };
 
 const utf16be = (text: string): number[] =>
-  [...text].flatMap((char) => [char.charCodeAt(0) >> 8, char.charCodeAt(0) & 0xff]);
+  [...text].flatMap((char) => [
+    char.charCodeAt(0) >> 8,
+    char.charCodeAt(0) & 0xff,
+  ]);
 
 /** Smallest sfnt the indexer reads: a table directory, a Windows `name`
  * table, and an `OS/2` table carrying the weight class and fsSelection. */
@@ -38,7 +41,14 @@ const buildSfnt = (face: SyntheticFace): Uint8Array => {
   const strings = names.map(([, value]) => utf16be(value));
   const recordsLength = names.length * 12;
   const storageOffset = 6 + recordsLength;
-  const name: number[] = [0, 0, 0, names.length, storageOffset >> 8, storageOffset & 0xff];
+  const name: number[] = [
+    0,
+    0,
+    0,
+    names.length,
+    storageOffset >> 8,
+    storageOffset & 0xff,
+  ];
   let stringOffset = 0;
   names.forEach(([nameId], index) => {
     const length = strings[index]?.length ?? 0;
@@ -64,7 +74,12 @@ const buildSfnt = (face: SyntheticFace): Uint8Array => {
   for (const [tag, data] of tables) {
     directory.push(...[...tag].map((char) => char.charCodeAt(0)));
     directory.push(0, 0, 0, 0);
-    directory.push(offset >>> 24, (offset >> 16) & 0xff, (offset >> 8) & 0xff, offset & 0xff);
+    directory.push(
+      offset >>> 24,
+      (offset >> 16) & 0xff,
+      (offset >> 8) & 0xff,
+      offset & 0xff,
+    );
     directory.push(0, 0, data.length >> 8, data.length & 0xff);
     body.push(...data);
     offset += data.length;
@@ -97,7 +112,11 @@ const LOCAL_FACES = [
   face("ArialMT", "Arial", 400),
 ];
 
-const pair = (referenceFont: string, folioFont: string, folioRequestedFont: string): FontPair => ({
+const pair = (
+  referenceFont: string,
+  folioFont: string,
+  folioRequestedFont: string,
+): FontPair => ({
   referenceFont,
   folioFont,
   folioRequestedFont,
@@ -115,26 +134,34 @@ describe("parseFontFace", () => {
       italic: true,
     });
 
-    expect(await parseFontFace("/fonts/example.ttf", readerFor(bytes))).toEqual({
-      filePath: "/fonts/example.ttf",
-      postscriptName: "Example-LightItalic",
-      family: "Example",
-      weight: 300,
-      style: "italic",
-    });
+    expect(await parseFontFace("/fonts/example.ttf", readerFor(bytes))).toEqual(
+      {
+        filePath: "/fonts/example.ttf",
+        postscriptName: "Example-LightItalic",
+        family: "Example",
+        weight: 300,
+        style: "italic",
+      },
+    );
   });
 
   test("rejects files that are not single sfnt faces", async () => {
-    const collection = new Uint8Array([0x74, 0x74, 0x63, 0x66, 0, 1, 0, 0, 0, 0, 0, 1]);
+    const collection = new Uint8Array([
+      0x74, 0x74, 0x63, 0x66, 0, 1, 0, 0, 0, 0, 0, 1,
+    ]);
 
-    expect(await parseFontFace("/fonts/example.ttc", readerFor(collection))).toBeUndefined();
+    expect(
+      await parseFontFace("/fonts/example.ttc", readerFor(collection)),
+    ).toBeUndefined();
   });
 });
 
 describe("indexFontDirectories", () => {
   const directories: string[] = [];
   afterAll(async () => {
-    await Promise.all(directories.map((dir) => rm(dir, { recursive: true, force: true })));
+    await Promise.all(
+      directories.map((dir) => rm(dir, { recursive: true, force: true })),
+    );
   });
 
   test("indexes font files and groups a PostScript name's family", async () => {
@@ -146,7 +173,11 @@ describe("indexFontDirectories", () => {
     );
     await writeFile(
       path.join(dir, "example-bold.ttf"),
-      buildSfnt({ family: "Example", postscriptName: "Example-Bold", weight: 700 }),
+      buildSfnt({
+        family: "Example",
+        postscriptName: "Example-Bold",
+        weight: 700,
+      }),
     );
     await writeFile(path.join(dir, "notes.txt"), "not a font");
 
@@ -175,7 +206,9 @@ describe("planFontAliases", () => {
       LOCAL_FACES,
     );
 
-    expect(plan.aliases).toEqual([{ requestedFamily: "Missing Sans", faceFamily: "Calibri" }]);
+    expect(plan.aliases).toEqual([
+      { requestedFamily: "Missing Sans", faceFamily: "Calibri" },
+    ]);
     expect(plan.fonts).toEqual([
       {
         family: "Missing Sans",
@@ -265,9 +298,16 @@ describe("reportAliasedFontFaces", () => {
     ];
 
     const reported = reportAliasedFontFaces(pages, [
-      { family: "Missing Sans", filePath: "/fonts/Calibri.ttf", reportedFamily: "Calibri" },
+      {
+        family: "Missing Sans",
+        filePath: "/fonts/Calibri.ttf",
+        reportedFamily: "Calibri",
+      },
     ]);
 
-    expect(reported[0]?.lines.map(({ fontName }) => fontName)).toEqual(["Calibri", "Arial"]);
+    expect(reported[0]?.lines.map(({ fontName }) => fontName)).toEqual([
+      "Calibri",
+      "Arial",
+    ]);
   });
 });

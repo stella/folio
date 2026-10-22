@@ -23,11 +23,18 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { BlockContent, BlockSdt, Document, SdtProperties } from "../types/document";
+import type {
+  BlockContent,
+  BlockSdt,
+  Document,
+  SdtProperties,
+} from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
@@ -61,7 +68,10 @@ type SdtCase = {
   selection: Selection;
 };
 
-const selectionValue = (selection: Selection, picked: string): string | undefined => {
+const selectionValue = (
+  selection: Selection,
+  picked: string,
+): string | undefined => {
   switch (selection) {
     case "absent":
       return undefined;
@@ -94,7 +104,9 @@ const propertiesFor = ({ kind, selection }: SdtCase): SdtProperties => {
       return {
         sdtType: "date",
         dateFormat: "d MMMM yyyy",
-        ...(selection === "value" ? { dateValueISO: "2026-06-02T00:00:00Z" } : {}),
+        ...(selection === "value"
+          ? { dateValueISO: "2026-06-02T00:00:00Z" }
+          : {}),
       };
     case "checkbox":
       return { sdtType: "checkbox", checked: selection === "value" };
@@ -120,7 +132,9 @@ const sdtBlock = (properties: SdtProperties): BlockSdt => ({
   content: [
     {
       type: "paragraph",
-      content: [{ type: "run", content: [{ type: "text", text: "Drop down1" }] }],
+      content: [
+        { type: "run", content: [{ type: "text", text: "Drop down1" }] },
+      ],
     },
   ],
 });
@@ -189,10 +203,14 @@ describe("content control selection state survives a rebuild", () => {
           const properties = propertiesFor(sdt);
           const expected = selectionOf(properties);
 
-          const opened = await parse(await save(withSdt(template, sdtBlock(properties))));
+          const opened = await parse(
+            await save(withSdt(template, sdtBlock(properties))),
+          );
           expect(readSelection(opened)).toEqual(expected);
 
-          const rebuilt = await parse(await save(withoutCapturedProperties(opened)));
+          const rebuilt = await parse(
+            await save(withoutCapturedProperties(opened)),
+          );
           expect(readSelection(rebuilt)).toEqual(expected);
 
           const edited = fromProseDoc(toProseDoc(opened), opened, {

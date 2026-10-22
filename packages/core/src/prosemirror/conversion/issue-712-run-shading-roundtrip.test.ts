@@ -10,12 +10,17 @@
 import { describe, expect, test } from "bun:test";
 
 import { parseDocumentBody } from "../../docx/documentParser";
+import { parseDocx } from "../../docx/parser";
+import { createDocx } from "../../docx/rezip";
 import { serializeDocument } from "../../docx/serializer/documentSerializer";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import type { FlowBlock, TextRun } from "../../layout-engine/types";
-import type { Document, Paragraph, Run, ShadingProperties } from "../../types/document";
-import { parseDocx } from "../../docx/parser";
-import { createDocx } from "../../docx/rezip";
+import type {
+  Document,
+  Paragraph,
+  Run,
+  ShadingProperties,
+} from "../../types/document";
 import { schema } from "../schema";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
@@ -26,7 +31,9 @@ const wrap = (formatting: Run["formatting"]): Document => ({
       content: [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "x" }], formatting }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "x" }], formatting },
+          ],
         },
       ],
     },
@@ -51,14 +58,18 @@ const firstRunFormatting = (document: Document): Run["formatting"] => {
 };
 
 // The runShading mark color, as it would round-trip out to the model on save.
-const roundTripShading = (formatting: Run["formatting"]): ShadingProperties | undefined =>
+const roundTripShading = (
+  formatting: Run["formatting"],
+): ShadingProperties | undefined =>
   firstRunFormatting(
     fromProseDoc(toProseDoc(wrap(formatting)), wrap(formatting), {
       stylesheetSource: { type: "package" },
     }),
   )?.shading;
 
-const saveAndReopenShading = (formatting: Run["formatting"]): ShadingProperties | undefined => {
+const saveAndReopenShading = (
+  formatting: Run["formatting"],
+): ShadingProperties | undefined => {
   const saved = fromProseDoc(toProseDoc(wrap(formatting)), wrap(formatting), {
     stylesheetSource: { type: "package" },
   });
@@ -71,7 +82,9 @@ const saveAndReopenShading = (formatting: Run["formatting"]): ShadingProperties 
 };
 
 // The resolved CSS background the painter receives for the run.
-const renderedBackground = (formatting: Run["formatting"]): string | undefined => {
+const renderedBackground = (
+  formatting: Run["formatting"],
+): string | undefined => {
   const blocks: FlowBlock[] = toFlowBlocks(toProseDoc(wrap(formatting)));
   const paragraph = blocks.find((b) => b.kind === "paragraph");
   if (paragraph?.kind !== "paragraph") {
@@ -182,7 +195,9 @@ describe("Issue #712 — run shading round-trips and renders", () => {
   });
 
   test("an `auto` fill produces no shading background", () => {
-    expect(renderedBackground({ shading: { fill: { auto: true } } })).toBe(undefined);
+    expect(renderedBackground({ shading: { fill: { auto: true } } })).toBe(
+      undefined,
+    );
     expect(roundTripShading({ shading: { fill: { auto: true } } })).toEqual({
       fill: { auto: true },
     });
@@ -229,7 +244,9 @@ describe("Issue #712 — run shading round-trips and renders", () => {
     async ({ authored, serialized }) => {
       const input = wrap({ shading: authored });
       const firstBuffer = await createDocx(
-        fromProseDoc(toProseDoc(input), input, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(toProseDoc(input), input, {
+          stylesheetSource: { type: "package" },
+        }),
       );
       const firstReopen = await parseDocx(firstBuffer, {
         detectVariables: false,

@@ -7,15 +7,15 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { EditorState } from "prosemirror-state";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import type { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
 import { getAutocompleteSuggestion } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import { createRenderedDomContext } from "@stll/folio-core/render-dom/RenderedDomContext";
 
-import AutocompleteCaretOverlay from "./AutocompleteCaretOverlay.vue";
 import type { AutocompleteCaretRect } from "./AutocompleteCaretOverlay.types";
+import AutocompleteCaretOverlay from "./AutocompleteCaretOverlay.vue";
 
 const MIN_GHOST_WIDTH = 48;
 
@@ -52,7 +52,9 @@ const resolveMaxWidth = ({
 }: ResolveMaxWidthOptions): number | undefined => {
   const safeZoom = zoom > 0 ? zoom : 1;
   const containerRect = pagesContainer.getBoundingClientRect();
-  for (const page of pagesContainer.querySelectorAll<HTMLElement>(".layout-page")) {
+  for (const page of pagesContainer.querySelectorAll<HTMLElement>(
+    ".layout-page",
+  )) {
     const pageRect = page.getBoundingClientRect();
     const pageTop = (pageRect.top - containerRect.top) / safeZoom;
     const pageBottom = (pageRect.bottom - containerRect.top) / safeZoom;

@@ -37,7 +37,10 @@ export const clearRunColor = (): Command => (state, dispatch) => {
     });
   };
   if (empty) {
-    const node = state.schema.text(" ", state.storedMarks ?? state.selection.$from.marks());
+    const node = state.schema.text(
+      " ",
+      state.storedMarks ?? state.selection.$from.marks(),
+    );
     tr.setStoredMarks(clearedMarks(node, from));
   } else {
     for (const representation of selectRunFormattingCarrierRepresentations({

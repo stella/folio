@@ -9,7 +9,10 @@
 
 import type { FontPair } from "./features";
 import type { AliasedFontDefinition } from "./folioExtract";
-import { findFamilyFacesForPostscriptName, type FontFaceRecord } from "./fontFaces";
+import {
+  findFamilyFacesForPostscriptName,
+  type FontFaceRecord,
+} from "./fontFaces";
 import { fontFamiliesMatch } from "./fontNames";
 import type { FontAlias } from "./types";
 
@@ -22,7 +25,8 @@ export type FontAliasPlan = {
   fonts: AliasedFontDefinition[];
 };
 
-const faceKey = ({ weight, style }: FontFaceRecord): string => `${weight}:${style}`;
+const faceKey = ({ weight, style }: FontFaceRecord): string =>
+  `${weight}:${style}`;
 
 /** Plan aliases from text-paired lines of a first comparison run. Only
  * families Chromium could not resolve are aliased, and only to a face family
@@ -31,10 +35,14 @@ export const planFontAliases = (
   pairs: readonly FontPair[],
   faces: readonly FontFaceRecord[],
 ): FontAliasPlan => {
-  const pairsByRequested = new Map<string, { requested: string; pairs: FontPair[] }>();
+  const pairsByRequested = new Map<
+    string,
+    { requested: string; pairs: FontPair[] }
+  >();
   for (const pair of pairs) {
     const requested = pair.folioRequestedFont;
-    if (requested === undefined || fontFamiliesMatch(requested, pair.folioFont)) continue;
+    if (requested === undefined || fontFamiliesMatch(requested, pair.folioFont))
+      continue;
     const key = requested.toLowerCase();
     const group = pairsByRequested.get(key);
     if (group) {
@@ -46,7 +54,10 @@ export const planFontAliases = (
 
   const aliases: FontAlias[] = [];
   const fonts: AliasedFontDefinition[] = [];
-  for (const { requested, pairs: requestedPairs } of pairsByRequested.values()) {
+  for (const {
+    requested,
+    pairs: requestedPairs,
+  } of pairsByRequested.values()) {
     if (
       requestedPairs.every(({ referenceFont, folioFont }) =>
         fontFamiliesMatch(referenceFont, folioFont),
@@ -54,9 +65,15 @@ export const planFontAliases = (
     ) {
       continue;
     }
-    const facesByFamily = new Map<string, { count: number; faces: FontFaceRecord[] }>();
+    const facesByFamily = new Map<
+      string,
+      { count: number; faces: FontFaceRecord[] }
+    >();
     for (const { referenceFont } of requestedPairs) {
-      const familyFaces = findFamilyFacesForPostscriptName(faces, referenceFont);
+      const familyFaces = findFamilyFacesForPostscriptName(
+        faces,
+        referenceFont,
+      );
       const family = familyFaces[0]?.family.toLowerCase();
       if (family === undefined) continue;
       const entry = facesByFamily.get(family);
@@ -66,8 +83,13 @@ export const planFontAliases = (
         facesByFamily.set(family, { count: 1, faces: familyFaces });
       }
     }
-    const dominant = [...facesByFamily.values()].toSorted((a, b) => b.count - a.count).at(0);
-    if (dominant === undefined || dominant.count / requestedPairs.length < MIN_FONT_ALIAS_SHARE) {
+    const dominant = [...facesByFamily.values()]
+      .toSorted((a, b) => b.count - a.count)
+      .at(0);
+    if (
+      dominant === undefined ||
+      dominant.count / requestedPairs.length < MIN_FONT_ALIAS_SHARE
+    ) {
       continue;
     }
 

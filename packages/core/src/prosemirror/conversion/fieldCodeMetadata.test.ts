@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
-
-import { DOMParser, DOMSerializer, Fragment, Slice, type Node as PMNode } from "prosemirror-model";
+import {
+  DOMParser,
+  DOMSerializer,
+  Fragment,
+  type Node as PMNode,
+  Slice,
+} from "prosemirror-model";
 
 import type { ComplexField, Document } from "../../types/document";
-import { schema } from "../schema";
 import { readFieldAttrs } from "../attrs";
+import { schema } from "../schema";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -44,7 +49,10 @@ const documentWithField = (): Document => ({
                           fieldType: "REF",
                           fieldCode,
                           fieldResult: [
-                            { type: "run", content: [{ type: "text", text: "Target" }] },
+                            {
+                              type: "run",
+                              content: [{ type: "text", text: "Target" }],
+                            },
                           ],
                         },
                       ],
@@ -65,7 +73,8 @@ const findComplexField = (document: Document) => {
   if (table?.type !== "table") throw new Error("Expected table");
   const cell = table.rows.at(0)?.cells.at(0);
   const paragraph = cell?.content.at(0);
-  if (paragraph?.type !== "paragraph") throw new Error("Expected cell paragraph");
+  if (paragraph?.type !== "paragraph")
+    throw new Error("Expected cell paragraph");
   const field = paragraph.content.at(0);
   if (field?.type !== "complexField") throw new Error("Expected complex field");
   return field;
@@ -83,7 +92,9 @@ describe("complex field code metadata", () => {
     const result = readFieldAttrs(field);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.issues.map(({ path }) => path)).toContain("field.attrs._docxFieldCode");
+      expect(result.issues.map(({ path }) => path)).toContain(
+        "field.attrs._docxFieldCode",
+      );
     }
   });
 
@@ -106,9 +117,12 @@ describe("complex field code metadata", () => {
     if (!field) throw new Error("Expected ProseMirror field");
     const window = new Window();
     const document = window.document as unknown as globalThis.Document;
-    const fragment = DOMSerializer.fromSchema(schema).serializeFragment(Fragment.from(field), {
-      document,
-    });
+    const fragment = DOMSerializer.fromSchema(schema).serializeFragment(
+      Fragment.from(field),
+      {
+        document,
+      },
+    );
     const host = document.createElement("div");
     host.append(fragment);
     const span = host.querySelector("span.docx-field");
@@ -123,9 +137,11 @@ describe("complex field code metadata", () => {
     const paragraph = fromProseDoc(parsed, undefined, {
       stylesheetSource: { type: "package" },
     }).package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new Error("Expected parsed paragraph");
+    if (paragraph?.type !== "paragraph")
+      throw new Error("Expected parsed paragraph");
     const restored = paragraph.content.at(0);
-    if (restored?.type !== "complexField") throw new Error("Expected parsed complex field");
+    if (restored?.type !== "complexField")
+      throw new Error("Expected parsed complex field");
     expect(restored.fieldCode).toEqual(fieldCode);
   });
 
@@ -141,7 +157,8 @@ describe("complex field code metadata", () => {
       }
       return true;
     });
-    if (fieldPosition === undefined || !fieldNode) throw new Error("Expected ProseMirror field");
+    if (fieldPosition === undefined || !fieldNode)
+      throw new Error("Expected ProseMirror field");
 
     const editedField = schema.nodes.field.create(
       { ...fieldNode.attrs, instruction: " REF other \\h" },

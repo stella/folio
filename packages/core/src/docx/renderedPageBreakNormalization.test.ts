@@ -18,7 +18,10 @@ describe("rendered page-break normalization", () => {
           content: [
             {
               type: "run",
-              content: [{ type: "renderedPageBreak" }, { type: "text", text: "retained" }],
+              content: [
+                { type: "renderedPageBreak" },
+                { type: "text", text: "retained" },
+              ],
             },
           ],
         },
@@ -28,7 +31,10 @@ describe("rendered page-break normalization", () => {
           content: [
             {
               type: "run",
-              content: [{ type: "text", text: "before" }, { type: "renderedPageBreak" }],
+              content: [
+                { type: "text", text: "before" },
+                { type: "renderedPageBreak" },
+              ],
             },
           ],
         },
@@ -38,7 +44,9 @@ describe("rendered page-break normalization", () => {
     normalizeRenderedPageBreakHints({ documentBody });
 
     expect(
-      documentBody.content.map(({ renderedPageBreakBefore }) => renderedPageBreakBefore),
+      documentBody.content.map(
+        ({ renderedPageBreakBefore }) => renderedPageBreakBefore,
+      ),
     ).toEqual([undefined, true, undefined]);
   });
 });

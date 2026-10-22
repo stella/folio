@@ -30,14 +30,18 @@ export const readCommentReferenceAttrs = (
   return { ok: true, value: { commentId } };
 };
 
-export const expectCommentReferenceAttrs = (node: PMNode): CommentReferenceAttrs => {
+export const expectCommentReferenceAttrs = (
+  node: PMNode,
+): CommentReferenceAttrs => {
   const cached = attrsCache.get(node);
   if (cached) {
     return cached;
   }
   const result = readCommentReferenceAttrs(node);
   if (!result.ok) {
-    const details = result.issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n");
+    const details = result.issues
+      .map((issue) => `${issue.path}: ${issue.message}`)
+      .join("\n");
     panic(`Invalid ProseMirror comment reference attrs:\n${details}`);
   }
   attrsCache.set(node, result.value);

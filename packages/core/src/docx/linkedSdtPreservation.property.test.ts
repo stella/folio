@@ -1,18 +1,22 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { EditorState } from "prosemirror-state";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Document, ParagraphContent } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
+import { UnrepresentableLinkedSdtRevisionError } from "./linkedSdtPreservation";
 import { parseParagraph } from "./paragraphParser";
-import { parseXmlDocument, WORDPROCESSINGML_NAMESPACE_URIS } from "./xmlParser";
 import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
-import { EditorState } from "prosemirror-state";
-import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
-import { UnrepresentableLinkedSdtRevisionError } from "./linkedSdtPreservation";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
-import type { Document, ParagraphContent } from "../types/document";
+import { parseXmlDocument, WORDPROCESSINGML_NAMESPACE_URIS } from "./xmlParser";
 
 const sourceDocument = ({
   form,
@@ -42,11 +46,15 @@ const sourceDocument = ({
 
 const sourceSpan = (source: Document) => {
   const paragraph = source.package.document.content.at(0);
-  if (paragraph?.type !== "paragraph") throw new TypeError("Source field paragraph disappeared.");
+  if (paragraph?.type !== "paragraph")
+    throw new TypeError("Source field paragraph disappeared.");
   const spans: string[] = [];
   const collect = (content: readonly ParagraphContent[]) => {
     for (const item of content) {
-      if (item.type === "preservedInline" && item.xml.includes("source-control"))
+      if (
+        item.type === "preservedInline" &&
+        item.xml.includes("source-control")
+      )
         spans.push(item.xml);
       else if (item.type === "hyperlink") collect(item.children);
       else if (
@@ -74,7 +82,12 @@ const assertTwoSaves = async (source: Document) => {
   const initial = toProseDoc(source);
   let revisions = 0;
   initial.descendants((node) => {
-    if (node.marks.some((mark) => mark.type.name === "insertion" || mark.type.name === "deletion"))
+    if (
+      node.marks.some(
+        (mark) =>
+          mark.type.name === "insertion" || mark.type.name === "deletion",
+      )
+    )
       revisions++;
   });
   expect(revisions).toBeGreaterThan(0);
@@ -82,13 +95,17 @@ const assertTwoSaves = async (source: Document) => {
     stylesheetSource: { type: "package" },
   });
   expect(sourceSpan(projected)).toBe(original);
-  const opened = await parseDocx(await createDocx(projected), { preloadFonts: false });
+  const opened = await parseDocx(await createDocx(projected), {
+    preloadFonts: false,
+  });
   expect(sourceSpan(opened)).toBe(original);
   const projectedAgain = fromProseDoc(toProseDoc(opened), opened, {
     stylesheetSource: { type: "package" },
   });
   expect(sourceSpan(projectedAgain)).toBe(original);
-  const reopened = await parseDocx(await createDocx(projectedAgain), { preloadFonts: false });
+  const reopened = await parseDocx(await createDocx(projectedAgain), {
+    preloadFonts: false,
+  });
   expect(sourceSpan(reopened)).toBe(original);
   for (const mode of ["accept", "reject"] as const) {
     const resolved = resolveAllChangesInHeadlessState(
@@ -102,10 +119,15 @@ const assertTwoSaves = async (source: Document) => {
       preloadFonts: false,
     });
     const paragraph = savedResolved.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new TypeError("Resolved paragraph disappeared.");
+    if (paragraph?.type !== "paragraph")
+      throw new TypeError("Resolved paragraph disappeared.");
     // A clean review result contains no pending wrapper in its serialized source.
-    expect(serializeParagraph(paragraph)).not.toMatch(/<w:(ins|del|moveFrom|moveTo)\b/u);
-    expect(serializeParagraph(paragraph)).not.toMatch(/<(?:w|q|source):delText\b/u);
+    expect(serializeParagraph(paragraph)).not.toMatch(
+      /<w:(ins|del|moveFrom|moveTo)\b/u,
+    );
+    expect(serializeParagraph(paragraph)).not.toMatch(
+      /<(?:w|q|source):delText\b/u,
+    );
   }
 };
 
@@ -117,7 +139,8 @@ for (const type of ["ins", "del"] as const) {
           form,
           type,
           prefix: "w",
-          namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+          namespace:
+            "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
         }),
       );
     }
@@ -134,7 +157,9 @@ test(
         fc.constantFrom("w", "q", "source"),
         fc.constantFrom(...WORDPROCESSINGML_NAMESPACE_URIS),
         async (form, type, prefix, namespace) => {
-          await assertTwoSaves(sourceDocument({ form, type, prefix, namespace }));
+          await assertTwoSaves(
+            sourceDocument({ form, type, prefix, namespace }),
+          );
         },
       ),
       {
@@ -177,7 +202,12 @@ for (const type of ["insertion", "deletion"] as const) {
                   {
                     type: "hyperlink",
                     anchor: "target",
-                    children: [{ type: "run", content: [{ type: "text", text: "linked" }] }],
+                    children: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "linked" }],
+                      },
+                    ],
                   },
                 ],
               },
@@ -187,22 +217,30 @@ for (const type of ["insertion", "deletion"] as const) {
       },
     ];
     const paragraph = source.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new TypeError("Fixture paragraph missing.");
+    if (paragraph?.type !== "paragraph")
+      throw new TypeError("Fixture paragraph missing.");
     const xml = serializeParagraph(paragraph);
     const tag = type === "insertion" ? "ins" : "del";
-    expect(xml).toMatch(new RegExp(`<w:${tag}[^>]*>.*<w:sdt>.*<w:sdtContent><w:hyperlink`, "u"));
+    expect(xml).toMatch(
+      new RegExp(`<w:${tag}[^>]*>.*<w:sdt>.*<w:sdtContent><w:hyperlink`, "u"),
+    );
     expect(xml.match(/folio:resolutionJoins=/gu)).toHaveLength(1);
     const reopened = await parseDocx(
       await createDocx(
-        fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(toProseDoc(source), source, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
       {
         preloadFonts: false,
       },
     );
     const reopenedParagraph = reopened.package.document.content.at(0);
-    if (reopenedParagraph?.type !== "paragraph") throw new TypeError("Saved paragraph missing.");
-    expect(serializeParagraph(reopenedParagraph)).toContain('<w:hyperlink w:anchor="target">');
+    if (reopenedParagraph?.type !== "paragraph")
+      throw new TypeError("Saved paragraph missing.");
+    expect(serializeParagraph(reopenedParagraph)).toContain(
+      '<w:hyperlink w:anchor="target">',
+    );
     for (const mode of ["accept", "reject"] as const) {
       const resolved = resolveAllChangesInHeadlessState(
         EditorState.create({ doc: toProseDoc(reopened) }),
@@ -210,13 +248,16 @@ for (const type of ["insertion", "deletion"] as const) {
       );
       const final = await parseDocx(
         await createDocx(
-          fromProseDoc(resolved.doc, reopened, { stylesheetSource: { type: "package" } }),
+          fromProseDoc(resolved.doc, reopened, {
+            stylesheetSource: { type: "package" },
+          }),
         ),
         {
           preloadFonts: false,
         },
       );
-      const expected = (mode === "accept") === (type === "insertion") ? "linked" : "";
+      const expected =
+        (mode === "accept") === (type === "insertion") ? "linked" : "";
       expect(toProseDoc(final).textContent).toBe(expected);
     }
   });

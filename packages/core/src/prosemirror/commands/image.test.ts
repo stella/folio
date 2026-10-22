@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { computeImageTransform, constrainImageSize, resolveImageWrap } from "./image";
+import {
+  computeImageTransform,
+  constrainImageSize,
+  resolveImageWrap,
+} from "./image";
 
 describe("resolveImageWrap", () => {
   test("inline keeps the image in the text flow", () => {
@@ -49,18 +53,28 @@ describe("resolveImageWrap", () => {
 
 describe("computeImageTransform", () => {
   test("rotate wraps within 0..359 degrees", () => {
-    expect(computeImageTransform({ rotation: 180 }, "rotateCW")).toEqual({ rotation: 270 });
-    expect(computeImageTransform(undefined, "rotateCCW")).toEqual({ rotation: 270 });
+    expect(computeImageTransform({ rotation: 180 }, "rotateCW")).toEqual({
+      rotation: 270,
+    });
+    expect(computeImageTransform(undefined, "rotateCCW")).toEqual({
+      rotation: 270,
+    });
   });
 
   test("rotating back to 0 degrees states the zero", () => {
-    expect(computeImageTransform({ rotation: 270 }, "rotateCW")).toEqual({ rotation: 0 });
+    expect(computeImageTransform({ rotation: 270 }, "rotateCW")).toEqual({
+      rotation: 0,
+    });
   });
 
   test("flips toggle and combine with rotation", () => {
     expect(computeImageTransform(undefined, "flipH")).toEqual({ flipH: true });
-    expect(computeImageTransform({ flipH: true }, "flipH")).toEqual({ flipH: false });
-    expect(computeImageTransform({ rotation: 90, flipH: true }, "flipV")).toEqual({
+    expect(computeImageTransform({ flipH: true }, "flipH")).toEqual({
+      flipH: false,
+    });
+    expect(
+      computeImageTransform({ rotation: 90, flipH: true }, "flipV"),
+    ).toEqual({
       rotation: 90,
       flipH: true,
       flipV: true,

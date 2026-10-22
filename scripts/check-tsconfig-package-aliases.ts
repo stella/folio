@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const ROOT = path.join(import.meta.dirname, "..");
@@ -13,11 +13,16 @@ type WorkspacePackage = { directory: string; name: string };
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-const parseJson = (filePath: string): unknown => JSON.parse(readFileSync(filePath, "utf8"));
+const parseJson = (filePath: string): unknown =>
+  JSON.parse(readFileSync(filePath, "utf8"));
 
 const readWorkspacePackages = (): WorkspacePackage[] =>
   readdirSync(PACKAGES_DIRECTORY, { withFileTypes: true }).flatMap((entry) => {
-    const manifestPath = path.join(PACKAGES_DIRECTORY, entry.name, "package.json");
+    const manifestPath = path.join(
+      PACKAGES_DIRECTORY,
+      entry.name,
+      "package.json",
+    );
     if (!entry.isDirectory() || !existsSync(manifestPath)) return [];
     const manifest = parseJson(manifestPath);
     if (!isRecord(manifest) || typeof manifest["name"] !== "string") return [];
@@ -61,7 +66,9 @@ export const validateTSConfigPackageAliases = (
       "tsconfig.depcruise.json must declare workspace package aliases; alias validation scanned none",
     ];
   }
-  const directoryByPackageName = new Map(packages.map(({ directory, name }) => [name, directory]));
+  const directoryByPackageName = new Map(
+    packages.map(({ directory, name }) => [name, directory]),
+  );
   const issues: string[] = [];
 
   for (const [key, targets] of Object.entries(paths)) {
@@ -95,7 +102,10 @@ export const validateTSConfigPackageAliases = (
 };
 
 const main = () => {
-  const issues = validateTSConfigPackageAliases(readWorkspacePackages(), readTSConfigPaths());
+  const issues = validateTSConfigPackageAliases(
+    readWorkspacePackages(),
+    readTSConfigPaths(),
+  );
   if (issues.length === 0) {
     process.stdout.write(
       "tsconfig.depcruise.json path aliases are exactly workspace package names.\n",

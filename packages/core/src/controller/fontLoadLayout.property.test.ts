@@ -18,12 +18,22 @@
  * (`waitForInitialLayoutFonts`, `runLayoutPipeline`, `watchLayoutFontLoads`).
  */
 
-import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { clearAllCaches } from "../layout-engine/measure/cache";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import { buildFontString } from "../layout-engine/measure/measureHelpers";
@@ -31,18 +41,22 @@ import { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
 import { schema } from "../prosemirror/schema";
 import {
   HOST_UI_FAMILY,
-  SCRIPT_TEXT,
-  SCRIPTS,
   type Script,
-  ScriptedFontSet,
+  SCRIPT_TEXT,
   scriptedDocument,
+  ScriptedFontSet,
+  SCRIPTS,
 } from "./__tests__/scriptedFontSet";
 import {
   readFontSetSignature,
   waitForInitialLayoutFonts,
   watchLayoutFontLoads,
 } from "./fontReadiness";
-import { type LayoutOutcome, type LayoutPipelineDeps, runLayoutPipeline } from "./layoutPipeline";
+import {
+  type LayoutOutcome,
+  type LayoutPipelineDeps,
+  runLayoutPipeline,
+} from "./layoutPipeline";
 import { LAYOUT_MEASURE, type LayoutRunOptions } from "./layoutRunOptions";
 import { createLayoutSession, type LayoutSession } from "./layoutSession";
 
@@ -59,7 +73,10 @@ const paragraphSpec: fc.Arbitrary<ParagraphSpec> = fc.record({
   font: fc.constantFrom(...DOCUMENT_FONTS),
   bold: fc.boolean(),
   // Two or more scripts make a mixed-script line.
-  scripts: fc.array(fc.constantFrom(...SCRIPTS), { minLength: 1, maxLength: 3 }),
+  scripts: fc.array(fc.constantFrom(...SCRIPTS), {
+    minLength: 1,
+    maxLength: 3,
+  }),
 });
 
 type Step =
@@ -89,7 +106,9 @@ const FONT_SIZE_PT = 11;
 
 const paragraphNode = ({ font, bold, scripts }: ParagraphSpec): PMNode => {
   const marks = [
-    ...(font === null ? [] : [schema.mark("fontFamily", { ascii: font, hAnsi: font })]),
+    ...(font === null
+      ? []
+      : [schema.mark("fontFamily", { ascii: font, hAnsi: font })]),
     ...(bold ? [schema.mark("bold")] : []),
   ];
   return schema.node("paragraph", null, [
@@ -104,7 +123,8 @@ const paintedRuns = (doc: PMNode): { font: string; text: string }[] => {
     if (!node.isText) {
       return true;
     }
-    const family = node.marks.find((mark) => mark.type.name === "fontFamily")?.attrs["ascii"];
+    const family = node.marks.find((mark) => mark.type.name === "fontFamily")
+      ?.attrs["ascii"];
     const bold = node.marks.some((mark) => mark.type.name === "bold");
     runs.push({
       font: buildFontString({
@@ -120,7 +140,14 @@ const paintedRuns = (doc: PMNode): { font: string; text: string }[] => {
 };
 
 const PAGE_SIZE = { w: 816, h: 1056 };
-const MARGINS = { top: 72, right: 72, bottom: 72, left: 72, header: 36, footer: 36 };
+const MARGINS = {
+  top: 72,
+  right: 72,
+  bottom: 72,
+  left: 72,
+  header: 36,
+  footer: 36,
+};
 
 const pipelineDeps = (
   session: LayoutSession,
@@ -185,9 +212,13 @@ const referenceLayout = (state: EditorState): string => {
   useDocument(fontSet);
   // From scratch: nothing the editor under test cached may reach the oracle.
   clearAllCaches();
-  const outcome = runLayoutPipeline(pipelineDeps(createLayoutSession(), fontSet, null), state, {
-    reason: "initial",
-  });
+  const outcome = runLayoutPipeline(
+    pipelineDeps(createLayoutSession(), fontSet, null),
+    state,
+    {
+      reason: "initial",
+    },
+  );
   return layoutProjection(outcome);
 };
 
@@ -215,7 +246,9 @@ const runEditor = async (
   const fontSet = new ScriptedFontSet();
   useDocument(fontSet);
   const session = createLayoutSession();
-  let state = EditorState.create({ doc: schema.node("doc", null, paragraphs.map(paragraphNode)) });
+  let state = EditorState.create({
+    doc: schema.node("doc", null, paragraphs.map(paragraphNode)),
+  });
   let committed: LayoutOutcome = {};
   let pendingInitial = true;
   let fontReadyPasses = 0;
@@ -285,7 +318,9 @@ const runEditor = async (
         }
         break;
       case "host-ui": {
-        const hostFaces = fontSet.faces.filter((face) => face.family === HOST_UI_FAMILY);
+        const hostFaces = fontSet.faces.filter(
+          (face) => face.family === HOST_UI_FAMILY,
+        );
         const face = hostFaces.at(next.pick % hostFaces.length);
         if (face) {
           void fontSet.request(face);
@@ -300,8 +335,11 @@ const runEditor = async (
         for (let index = 0; index < target; index += 1) {
           paragraphStart += state.doc.child(index).nodeSize;
         }
-        const paragraphEnd = paragraphStart + state.doc.child(target).nodeSize - 1;
-        state = state.apply(state.tr.insertText(` ${SCRIPT_TEXT[next.script]}`, paragraphEnd));
+        const paragraphEnd =
+          paragraphStart + state.doc.child(target).nodeSize - 1;
+        state = state.apply(
+          state.tr.insertText(` ${SCRIPT_TEXT[next.script]}`, paragraphEnd),
+        );
         layout({ reason: "transaction", measure: LAYOUT_MEASURE.incremental });
         break;
       }
@@ -333,7 +371,10 @@ const runEditor = async (
   };
 };
 
-const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+const originalDocument = Object.getOwnPropertyDescriptor(
+  globalThis,
+  "document",
+);
 
 describe("font oracle: layout after the subsets settle equals the preloaded layout", () => {
   beforeEach(() => {

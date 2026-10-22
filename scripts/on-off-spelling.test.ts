@@ -1,5 +1,4 @@
-import { scanTestTimeout } from "../test/scan-timeout";
-
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 /**
  * One spelling of an `ST_OnOff` value per polarity, across every serializer.
  *
@@ -14,9 +13,9 @@ import { scanTestTimeout } from "../test/scan-timeout";
  * The scan is over the emitted markup rather than over the readers, so a
  * parser's documentation of the lexical space is not a violation of it.
  */
-
-import { setDefaultTimeout, describe, expect, test } from "bun:test";
 import path from "node:path";
+
+import { scanTestTimeout } from "../test/scan-timeout";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -28,7 +27,8 @@ const PACKAGES_DIR = path.resolve(import.meta.dir, "..", "packages");
  * Anchored on the element so that a reader's prose about `w:val="off"` does
  * not match; only markup a serializer hands to a consumer does.
  */
-const NON_CANONICAL_ON_OFF = /<w:[A-Za-z]+[^>]*\sw:val="(?:on|off|true|false)"/u;
+const NON_CANONICAL_ON_OFF =
+  /<w:[A-Za-z]+[^>]*\sw:val="(?:on|off|true|false)"/u;
 
 /**
  * Nothing is exempt. An entry here would be a second spelling in the tree,
@@ -68,11 +68,19 @@ describe("ST_OnOff spelling", () => {
     // above for the wrong reason, and so would one that stopped reaching the
     // tree. Both polarities, both a bare element and one with neighbours.
     expect(NON_CANONICAL_ON_OFF.test('<w:hideMark w:val="off"/>')).toBe(true);
-    expect(NON_CANONICAL_ON_OFF.test('<w:updateFields w:val="true"/>')).toBe(true);
-    expect(NON_CANONICAL_ON_OFF.test('<w:top w:sz="4" w:val="on"/>')).toBe(true);
+    expect(NON_CANONICAL_ON_OFF.test('<w:updateFields w:val="true"/>')).toBe(
+      true,
+    );
+    expect(NON_CANONICAL_ON_OFF.test('<w:top w:sz="4" w:val="on"/>')).toBe(
+      true,
+    );
     expect(NON_CANONICAL_ON_OFF.test('<w:hidden w:val="0"/>')).toBe(false);
     expect(NON_CANONICAL_ON_OFF.test("<w:hidden/>")).toBe(false);
     // A reader's prose about the lexical space is not markup.
-    expect(NON_CANONICAL_ON_OFF.test(' * - w:val="false", w:val="0", or w:val="off"')).toBe(false);
+    expect(
+      NON_CANONICAL_ON_OFF.test(
+        ' * - w:val="false", w:val="0", or w:val="off"',
+      ),
+    ).toBe(false);
   });
 });

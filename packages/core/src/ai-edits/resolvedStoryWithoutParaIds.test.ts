@@ -29,25 +29,47 @@ const reviewedParagraph = (paraId?: string): BlockContent => ({
   ...(paraId === undefined ? {} : { paraId, textId: paraId }),
   content: [
     run("kept "),
-    { type: "deletion", info: { id: 1, author: "Alice" }, content: [run("deleted ")] },
-    { type: "insertion", info: { id: 2, author: "Alice" }, content: [run("inserted ")] },
-    { type: "moveFrom", info: { id: 3, author: "Alice" }, content: [run("old-position ")] },
-    { type: "moveTo", info: { id: 3, author: "Alice" }, content: [run("new-position")] },
+    {
+      type: "deletion",
+      info: { id: 1, author: "Alice" },
+      content: [run("deleted ")],
+    },
+    {
+      type: "insertion",
+      info: { id: 2, author: "Alice" },
+      content: [run("inserted ")],
+    },
+    {
+      type: "moveFrom",
+      info: { id: 3, author: "Alice" },
+      content: [run("old-position ")],
+    },
+    {
+      type: "moveTo",
+      info: { id: 3, author: "Alice" },
+      content: [run("new-position")],
+    },
   ],
 });
 
 const FINAL_TEXT = "kept inserted new-position";
 
-const buildDocx = async (compose: (document: Document) => BlockContent[]): Promise<ArrayBuffer> => {
+const buildDocx = async (
+  compose: (document: Document) => BlockContent[],
+): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
   document.package.document.content = compose(document);
   return await createDocx(document);
 };
 
-const resolveEveryStoryToFinal = async (source: ArrayBuffer): Promise<ArrayBuffer> => {
+const resolveEveryStoryToFinal = async (
+  source: ArrayBuffer,
+): Promise<ArrayBuffer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(source);
   for (const { handle } of reviewer.listStories()) {
-    expect(reviewer.resolveReviewedStory({ story: handle, view: "final" })).toBe(true);
+    expect(
+      reviewer.resolveReviewedStory({ story: handle, view: "final" }),
+    ).toBe(true);
   }
   return await reviewer.toBuffer();
 };
@@ -55,7 +77,9 @@ const resolveEveryStoryToFinal = async (source: ArrayBuffer): Promise<ArrayBuffe
 describe("a resolved story in a package with no authored paragraph ids", () => {
   test("persists without asking the save to write an id it will not write", async () => {
     const source = await buildDocx(() => [reviewedParagraph()]);
-    expect(await partText(source, "word/document.xml")).not.toContain("w14:paraId");
+    expect(await partText(source, "word/document.xml")).not.toContain(
+      "w14:paraId",
+    );
 
     const saved = await resolveEveryStoryToFinal(source);
 
@@ -69,24 +93,36 @@ describe("a resolved story in a package with no authored paragraph ids", () => {
     expect(xml).not.toContain("w14:paraId");
 
     const reopened = await FolioDocxReviewer.fromBuffer(saved);
-    expect(reopened.readReviewedStory({ view: "current-markup" })?.changes).toEqual([]);
+    expect(
+      reopened.readReviewedStory({ view: "current-markup" })?.changes,
+    ).toEqual([]);
     expect(reopened.readStory({ type: "main" })?.text).toEndWith(FINAL_TEXT);
   });
 
   test("persists a secondary story the same way", async () => {
     const source = await buildDocx((document) => [
-      { type: "paragraph", content: [run("Body"), endnote(document, [reviewedParagraph()])] },
+      {
+        type: "paragraph",
+        content: [run("Body"), endnote(document, [reviewedParagraph()])],
+      },
     ]);
-    expect(await partText(source, "word/endnotes.xml")).not.toContain("w14:paraId");
+    expect(await partText(source, "word/endnotes.xml")).not.toContain(
+      "w14:paraId",
+    );
 
     const saved = await resolveEveryStoryToFinal(source);
 
     const reopened = await FolioDocxReviewer.fromBuffer(saved);
-    const note = reopened.listStories().find(({ handle }) => handle.type === "endnote");
+    const note = reopened
+      .listStories()
+      .find(({ handle }) => handle.type === "endnote");
     expect(note).toMatchObject({ text: FINAL_TEXT });
     expect(
       note
-        ? reopened.readReviewedStory({ story: note.handle, view: "current-markup" })?.changes
+        ? reopened.readReviewedStory({
+            story: note.handle,
+            view: "current-markup",
+          })?.changes
         : null,
     ).toEqual([]);
   });
@@ -94,7 +130,10 @@ describe("a resolved story in a package with no authored paragraph ids", () => {
   test("still compares an authored id, which the save does write", async () => {
     const source = await buildDocx(() => [reviewedParagraph("1A2B3C4D")]);
 
-    const xml = await partText(await resolveEveryStoryToFinal(source), "word/document.xml");
+    const xml = await partText(
+      await resolveEveryStoryToFinal(source),
+      "word/document.xml",
+    );
 
     expect(xml).toContain(FINAL_TEXT);
     expect(xml).toContain('w14:paraId="1A2B3C4D"');

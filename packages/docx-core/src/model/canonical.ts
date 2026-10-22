@@ -2,7 +2,10 @@ import type { Comment, DocumentBody } from "./content";
 import type { ParagraphFormatting } from "./formatting";
 
 /** Set modeled comments while keeping an empty comments part out of the document model. */
-export const setDocumentBodyComments = (body: DocumentBody, comments: Comment[]): void => {
+export const setDocumentBodyComments = (
+  body: DocumentBody,
+  comments: Comment[],
+): void => {
   if (comments.length === 0) {
     Reflect.set(body, "comments", undefined);
     return;
@@ -20,11 +23,14 @@ export const setDocumentBodyComments = (body: DocumentBody, comments: Comment[])
 export const finalizeParagraphFormatting = (
   formatting: ParagraphFormatting | undefined,
 ): ParagraphFormatting | undefined => {
-  return isCanonicallyEmptyParagraphFormatting(formatting) ? undefined : formatting;
+  return isCanonicallyEmptyParagraphFormatting(formatting)
+    ? undefined
+    : formatting;
 };
 
 /** Whether paragraph formatting states no modeled properties. */
 export const isCanonicallyEmptyParagraphFormatting = (
   formatting: ParagraphFormatting | undefined,
 ): boolean =>
-  formatting === undefined || Object.keys(formatting).every((key) => key === "sourceXml");
+  formatting === undefined ||
+  Object.keys(formatting).every((key) => key === "sourceXml");

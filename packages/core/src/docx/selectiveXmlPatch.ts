@@ -6,10 +6,24 @@
  * with proper tag depth counting (not regex) to handle nested elements.
  */
 
+import { patchBreaksCommentRangeBalance } from "./commentRangeIntegrity";
+import { resolveParagraphIdentities } from "./paraIdAttribute";
+import { readRootNamespaceBindings } from "./serializer/partNamespaces";
+import { scanStreamingXmlElements } from "./streamingXmlParser";
+import { captureVerbatimXml } from "./verbatimCapture";
+import {
+  hasCanonicalWordprocessingPrefixes,
+  matchCloseTag,
+  matchOpenTag,
+  PARAGRAPH_SCAN_NAMES,
+  resolveSelectiveScanPrefixes,
+  splicesAsCanonical,
+} from "./wordprocessingPrefixes";
+import { resolveNamespaceUri } from "./xmlNamespaceContext";
 import {
   cloneElement,
-  getAttributeByNamespaceUri,
   findAttributeByNamespaceUri,
+  getAttributeByNamespaceUri,
   getChildElements,
   getLocalName,
   getNamespacePrefix,
@@ -19,20 +33,6 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
-import { readRootNamespaceBindings } from "./serializer/partNamespaces";
-import { resolveNamespaceUri } from "./xmlNamespaceContext";
-import { patchBreaksCommentRangeBalance } from "./commentRangeIntegrity";
-import { resolveParagraphIdentities } from "./paraIdAttribute";
-import { captureVerbatimXml } from "./verbatimCapture";
-import { scanStreamingXmlElements } from "./streamingXmlParser";
-import {
-  hasCanonicalWordprocessingPrefixes,
-  matchCloseTag,
-  matchOpenTag,
-  PARAGRAPH_SCAN_NAMES,
-  resolveSelectiveScanPrefixes,
-  splicesAsCanonical,
-} from "./wordprocessingPrefixes";
 
 /**
  * Whether `char` ends an element's tag name in XML — a whitespace separator
@@ -44,7 +44,12 @@ import {
  */
 export function isXmlNameBoundary(char: string | undefined): boolean {
   return (
-    char === " " || char === "\t" || char === "\n" || char === "\r" || char === ">" || char === "/"
+    char === " " ||
+    char === "\t" ||
+    char === "\n" ||
+    char === "\r" ||
+    char === ">" ||
+    char === "/"
   );
 }
 
@@ -65,7 +70,10 @@ export function findParagraphOffsets(
   // Pattern matches <w:p followed by whitespace or >, then any attrs, then the paraId.
   // This covers all attribute orderings since [^>]* matches any attributes before paraId.
   const escaped = escapeRegExp(paraId);
-  const pattern = new RegExp(`<w:p[\\s][^>]*w14:paraId\\s*=\\s*(["'])${escaped}\\1`, "gu");
+  const pattern = new RegExp(
+    `<w:p[\\s][^>]*w14:paraId\\s*=\\s*(["'])${escaped}\\1`,
+    "gu",
+  );
 
   const matches: number[] = [];
   let match: RegExpExecArray | null;
@@ -140,7 +148,10 @@ export function findParagraphOffsets(
  * Extract the serialized XML for a specific paragraph by paraId
  * from a fully serialized document.xml string.
  */
-export function extractParagraphXml(serializedXml: string, paraId: string): string | null {
+export function extractParagraphXml(
+  serializedXml: string,
+  paraId: string,
+): string | null {
   const offsets = findParagraphOffsets(serializedXml, paraId);
   if (!offsets) {
     return null;
@@ -166,7 +177,9 @@ export type ParagraphOffsets = { start: number; end: number };
  * omitted from the index, so a lookup misses exactly where the per-id
  * function would return null.
  */
-export function buildParagraphOffsetIndex(xml: string): Map<string, ParagraphOffsets> {
+export function buildParagraphOffsetIndex(
+  xml: string,
+): Map<string, ParagraphOffsets> {
   const seenCount = new Map<string, number>();
   const ranges = new Map<string, ParagraphOffsets>();
   for (const { start, end, paraId } of scanParagraphs(xml)) {
@@ -220,7 +233,8 @@ export type ScannedParagraph = ParagraphOffsets & {
   container: ParagraphContainer;
 };
 
-type TrackedContainerKey = "fallback" | "alternateContent" | "textBox" | "tableCell";
+type TrackedContainerKey =
+  "fallback" | "alternateContent" | "textBox" | "tableCell";
 
 /**
  * Every `<w:p>` element of `xml`, in the document order of its opening tags,
@@ -237,7 +251,8 @@ type TrackedContainerKey = "fallback" | "alternateContent" | "textBox" | "tableC
  */
 export function scanParagraphs(xml: string): ScannedParagraph[] {
   const resolution = resolveSelectiveScanPrefixes(xml);
-  const mcPrefixes = resolution.type === "resolved" ? resolution.prefixes.mc : ["mc"];
+  const mcPrefixes =
+    resolution.type === "resolved" ? resolution.prefixes.mc : ["mc"];
   const paragraphs: ScannedParagraph[] = [];
   const open: number[] = [];
   const depth: Record<TrackedContainerKey, number> = {
@@ -291,7 +306,10 @@ export function scanParagraphs(xml: string): ScannedParagraph[] {
       }
     }
 
-    if (!xml.startsWith("<w:p", tagStart) || !isXmlNameBoundary(xml[tagStart + 4])) {
+    if (
+      !xml.startsWith("<w:p", tagStart) ||
+      !isXmlNameBoundary(xml[tagStart + 4])
+    ) {
       pos = tagStart + 1;
       continue;
     }
@@ -301,8 +319,9 @@ export function scanParagraphs(xml: string): ScannedParagraph[] {
       break;
     }
     const openTag = xml.slice(tagStart, tagEnd + 1);
-    const paraId = /\bw14:paraId\s*=\s*(?<quote>["'])(?<id>[^"']+)\k<quote>/u.exec(openTag)
-      ?.groups?.["id"];
+    const paraId =
+      /\bw14:paraId\s*=\s*(?<quote>["'])(?<id>[^"']+)\k<quote>/u.exec(openTag)
+        ?.groups?.["id"];
     const container: ParagraphContainer = {
       inFallback: depth.fallback > 0,
       inAlternateContent: depth.alternateContent > 0,
@@ -379,7 +398,10 @@ const MINTED_PARA_ID_ATTRIBUTE = /\sw14:(paraId|textId)="[^"]*"/gu;
  * runs when a host asks for it. An id the source *does* carry (a `w14:textId`
  * beside no paraId) is the author's and stays.
  */
-const withoutMintedIds = (paragraphXml: string, sourceOpenTag: string): string => {
+const withoutMintedIds = (
+  paragraphXml: string,
+  sourceOpenTag: string,
+): string => {
   const tagEnd = paragraphXml.indexOf(">");
   if (tagEnd === -1) {
     return paragraphXml;
@@ -387,14 +409,18 @@ const withoutMintedIds = (paragraphXml: string, sourceOpenTag: string): string =
   const openTag = paragraphXml
     .slice(0, tagEnd + 1)
     .replace(MINTED_PARA_ID_ATTRIBUTE, (attribute, name: string) => {
-      const sourceAttribute = new RegExp(`\\bw14:${name}\\s*=\\s*(["'])[^"']*\\1`, "u");
+      const sourceAttribute = new RegExp(
+        `\\bw14:${name}\\s*=\\s*(["'])[^"']*\\1`,
+        "u",
+      );
       return sourceAttribute.test(sourceOpenTag) ? attribute : "";
     });
   return openTag + paragraphXml.slice(tagEnd + 1);
 };
 
 /** Where each changed paragraph's re-serialized XML goes, or why it cannot. */
-type ParagraphRouting = { type: "routed"; xml: string } | { type: "refused"; reason: string };
+type ParagraphRouting =
+  { type: "routed"; xml: string } | { type: "refused"; reason: string };
 
 /** An ordinal space of one part; see {@link ParagraphContainer}. */
 type Story = "main" | "text-box";
@@ -441,7 +467,9 @@ const addressableParagraphs = (xml: string): AddressableParagraphs => {
 const fallbackParaIds = (xml: string): ReadonlySet<string> =>
   new Set(
     scanParagraphs(xml)
-      .filter(({ container, paraId }) => container.inFallback && paraId !== undefined)
+      .filter(
+        ({ container, paraId }) => container.inFallback && paraId !== undefined,
+      )
       .map(({ paraId }) => paraId as string),
   );
 
@@ -534,8 +562,12 @@ const routeChangedParagraphs = (
     let aligned = storyAlignment.get(story);
     if (aligned === undefined) {
       aligned = resolveParagraphIdentities({
-        sourceParaIds: (original.stories.get(story) ?? []).map(({ paraId }) => paraId),
-        serializedParaIds: (serialized.stories.get(story) ?? []).map(({ paraId }) => paraId),
+        sourceParaIds: (original.stories.get(story) ?? []).map(
+          ({ paraId }) => paraId,
+        ),
+        serializedParaIds: (serialized.stories.get(story) ?? []).map(
+          ({ paraId }) => paraId,
+        ),
       }).ordinalsAligned;
       storyAlignment.set(story, aligned);
     }
@@ -550,13 +582,19 @@ const routeChangedParagraphs = (
       return { type: "refused", reason: `duplicate-paraId-in-original: ${id}` };
     }
     if (inOriginal.length === 1 && inSerialized.length === 0) {
-      return { type: "refused", reason: `paraId-not-found-in-serialized: ${id}` };
+      return {
+        type: "refused",
+        reason: `paraId-not-found-in-serialized: ${id}`,
+      };
     }
     if (inSerialized.length === 0) {
       return { type: "refused", reason: `paraId-not-found-in-original: ${id}` };
     }
     if (inSerialized.length > 1) {
-      return { type: "refused", reason: `duplicate-paraId-in-serialized: ${id}` };
+      return {
+        type: "refused",
+        reason: `duplicate-paraId-in-serialized: ${id}`,
+      };
     }
     // SAFETY: inSerialized.length === 1 verified above
     const replacement = inSerialized[0]!;
@@ -577,11 +615,20 @@ const routeChangedParagraphs = (
       // The model minted this id: the paragraph is its ordinal in its story.
       const story = storyOf(replacement.container);
       if (!storyAligned(story)) {
-        return { type: "refused", reason: `unaligned-paragraph-ordinals: ${id}` };
+        return {
+          type: "refused",
+          reason: `unaligned-paragraph-ordinals: ${id}`,
+        };
       }
-      const positional = original.stories.get(story)?.[serialized.ordinals.get(replacement) ?? -1];
+      const positional =
+        original.stories.get(story)?.[
+          serialized.ordinals.get(replacement) ?? -1
+        ];
       if (!positional) {
-        return { type: "refused", reason: `paraId-not-found-in-original: ${id}` };
+        return {
+          type: "refused",
+          reason: `paraId-not-found-in-original: ${id}`,
+        };
       }
       source = positional;
     }
@@ -590,7 +637,10 @@ const routeChangedParagraphs = (
       return { type: "refused", reason: `unterminated-paragraph: ${id}` };
     }
     if (source.container.inAlternateContent) {
-      return { type: "refused", reason: `paragraph-in-alternate-content: ${id}` };
+      return {
+        type: "refused",
+        reason: `paragraph-in-alternate-content: ${id}`,
+      };
     }
     if (!sameContainer(source.container, replacement.container)) {
       return { type: "refused", reason: `container-changed: ${id}` };
@@ -652,8 +702,14 @@ export function validatePatchSafety(
     return { safe: true };
   }
 
-  const routing = routeChangedParagraphs(originalXml, serializedXml, changedIds);
-  return routing.type === "refused" ? { safe: false, reason: routing.reason } : { safe: true };
+  const routing = routeChangedParagraphs(
+    originalXml,
+    serializedXml,
+    changedIds,
+  );
+  return routing.type === "refused"
+    ? { safe: false, reason: routing.reason }
+    : { safe: true };
 }
 
 /**
@@ -674,7 +730,11 @@ export function buildPatchedDocumentXml(
   if (changedIds.size === 0) {
     return originalXml;
   }
-  const routing = routeChangedParagraphs(originalXml, serializedXml, changedIds);
+  const routing = routeChangedParagraphs(
+    originalXml,
+    serializedXml,
+    changedIds,
+  );
   return routing.type === "refused" ? null : routing.xml;
 }
 
@@ -718,10 +778,15 @@ export type XmlSplice = { start: number; end: number; newXml: string };
  * regions are refused too: replacing an inner region moves the outer region's
  * end, so its original offsets cannot be applied to the resulting string.
  */
-export const spliceXml = (xml: string, splices: readonly XmlSplice[]): string | null => {
+export const spliceXml = (
+  xml: string,
+  splices: readonly XmlSplice[],
+): string | null => {
   let result = xml;
   let unpatchedEnd = xml.length;
-  for (const { start, end, newXml } of [...splices].toSorted((a, b) => b.start - a.start)) {
+  for (const { start, end, newXml } of [...splices].toSorted(
+    (a, b) => b.start - a.start,
+  )) {
     if (end > unpatchedEnd) return null;
     result = result.slice(0, start) + newXml + result.slice(end);
     unpatchedEnd = start;
@@ -759,7 +824,9 @@ export const spliceSupportsRootNamespaces = ({
   const mcNamespace = new Set([NAMESPACES.mc]);
   const ignorableUris = (root: XmlElement): ReadonlySet<string> => {
     const uris = new Set<string>();
-    for (const prefix of (getAttributeByNamespaceUri(root, mcNamespace, "Ignorable") ?? "")
+    for (const prefix of (
+      getAttributeByNamespaceUri(root, mcNamespace, "Ignorable") ?? ""
+    )
       .split(/\s+/u)
       .filter(Boolean)) {
       const uri = resolveNamespaceUri(root.namespaceScope, prefix);
@@ -776,7 +843,9 @@ export const spliceSupportsRootNamespaces = ({
     for (const attribute of Object.keys(element.attributes ?? {})) {
       if (attribute === "xmlns" || attribute.startsWith("xmlns:")) continue;
       const prefix = getNamespacePrefix(attribute);
-      const attributeUri = prefix ? resolveNamespaceUri(element.namespaceScope, prefix) : undefined;
+      const attributeUri = prefix
+        ? resolveNamespaceUri(element.namespaceScope, prefix)
+        : undefined;
       if (attributeUri) originalNamespaceUses.add(attributeUri);
     }
     for (const child of element.elements ?? []) collectSourceNamespaces(child);
@@ -785,7 +854,10 @@ export const spliceSupportsRootNamespaces = ({
   const originalIgnorable = ignorableUris(original);
   const serializedIgnorable = ignorableUris(serialized);
   const inheritedPrefixes = new Set<string>();
-  const visit = (element: XmlElement, ancestorIgnorableUris: ReadonlySet<string>): boolean => {
+  const visit = (
+    element: XmlElement,
+    ancestorIgnorableUris: ReadonlySet<string>,
+  ): boolean => {
     const localIgnorableUris = new Set(ancestorIgnorableUris);
     for (const uri of ignorableUris(element)) localIgnorableUris.add(uri);
     const requirePrefix = (prefix: string): boolean => {
@@ -801,11 +873,13 @@ export const spliceSupportsRootNamespaces = ({
       );
     };
     const namePrefix = element.name?.split(":").at(0);
-    if (namePrefix && namePrefix !== element.name && !requirePrefix(namePrefix)) return false;
+    if (namePrefix && namePrefix !== element.name && !requirePrefix(namePrefix))
+      return false;
     for (const attribute of Object.keys(element.attributes ?? {})) {
       if (attribute === "xmlns" || attribute.startsWith("xmlns:")) continue;
       const prefix = attribute.split(":").at(0);
-      if (prefix && prefix !== attribute && !requirePrefix(prefix)) return false;
+      if (prefix && prefix !== attribute && !requirePrefix(prefix))
+        return false;
     }
     for (const child of element.elements ?? []) {
       if (!visit(child, localIgnorableUris)) return false;
@@ -821,7 +895,11 @@ export const spliceSupportsRootNamespaces = ({
 
   for (const prefix of inheritedPrefixes) {
     const serializedUri = serializedBindings.get(prefix);
-    if (serializedUri === undefined || originalBindings.get(prefix) !== serializedUri) return false;
+    if (
+      serializedUri === undefined ||
+      originalBindings.get(prefix) !== serializedUri
+    )
+      return false;
   }
   return true;
 };
@@ -959,12 +1037,20 @@ const collectNoteElementSyntax = (
     ) {
       return;
     }
-    const idAttribute = findAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "id");
+    const idAttribute = findAttributeByNamespaceUri(
+      element,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      "id",
+    );
     if (!element.name || !idAttribute) {
       return;
     }
     const spelling = idAttribute.value.trim();
-    if (!/^[+-]?\d+$/u.test(spelling) || !Number.isSafeInteger(Number(spelling))) return;
+    if (
+      !/^[+-]?\d+$/u.test(spelling) ||
+      !Number.isSafeInteger(Number(spelling))
+    )
+      return;
     const id = String(Number(spelling));
     const offsets = scanElementRange(
       xml,
@@ -1030,10 +1116,15 @@ const rewriteWordprocessingPrefixes = (
     }
 
     const previous = xml[index - 1];
-    const isElementName = previous === "<" || (previous === "/" && xml[index - 2] === "<");
-    const sourcePrefix = isElementName ? source.elementPrefix : source.attributePrefix;
+    const isElementName =
+      previous === "<" || (previous === "/" && xml[index - 2] === "<");
+    const sourcePrefix = isElementName
+      ? source.elementPrefix
+      : source.attributePrefix;
     if (sourcePrefix.length > 0 && xml.startsWith(`${sourcePrefix}:`, index)) {
-      const targetPrefix = isElementName ? target.elementPrefix : target.attributePrefix;
+      const targetPrefix = isElementName
+        ? target.elementPrefix
+        : target.attributePrefix;
       rewritten += targetPrefix.length === 0 ? "" : `${targetPrefix}:`;
       index += sourcePrefix.length;
       continue;
@@ -1043,7 +1134,10 @@ const rewriteWordprocessingPrefixes = (
   return withXmlnsDeclarations(rewritten, sourceXmlnsDeclarations);
 };
 
-const paragraphRanges = (xml: string, wordPrefix: string): ParagraphOffsets[] => {
+const paragraphRanges = (
+  xml: string,
+  wordPrefix: string,
+): ParagraphOffsets[] => {
   const ranges: ParagraphOffsets[] = [];
   const paragraphName = qualifiedName(wordPrefix, "p");
   const openLiteral = `<${paragraphName}`;
@@ -1074,7 +1168,10 @@ const openingParaId = (paragraph: string): string | undefined =>
   OPENING_PARA_ID.exec(paragraph)?.groups?.["id"];
 
 /** A note's XML outside its paragraphs, one entry per gap between them. */
-const noteGaps = (note: string, ranges: readonly ParagraphOffsets[]): string[] => {
+const noteGaps = (
+  note: string,
+  ranges: readonly ParagraphOffsets[],
+): string[] => {
   const gaps: string[] = [];
   let cursor = 0;
   for (const range of ranges) {
@@ -1104,21 +1201,31 @@ const noteShapeChanged = (
     return true;
   }
   const currentGaps = noteGaps(current.note, currentRanges);
-  if (noteGaps(baseline.note, baselineRanges).some((gap, index) => gap !== currentGaps[index])) {
+  if (
+    noteGaps(baseline.note, baselineRanges).some(
+      (gap, index) => gap !== currentGaps[index],
+    )
+  ) {
     return true;
   }
   return baselineRanges.some((range, index) => {
-    const baselineId = openingParaId(baseline.note.slice(range.start, range.end));
+    const baselineId = openingParaId(
+      baseline.note.slice(range.start, range.end),
+    );
     // SAFETY: both range lists have the same length, checked above.
     const currentRange = currentRanges[index]!;
     return (
       baselineId !== undefined &&
-      baselineId !== openingParaId(current.note.slice(currentRange.start, currentRange.end))
+      baselineId !==
+        openingParaId(current.note.slice(currentRange.start, currentRange.end))
     );
   });
 };
 
-export const collectChangedNoteParaIds = (baselineXml: string, currentXml: string): Set<string> => {
+export const collectChangedNoteParaIds = (
+  baselineXml: string,
+  currentXml: string,
+): Set<string> => {
   const changed = new Set<string>();
   const baselineIds = collectParaIds(baselineXml);
   const baselineOffsets = buildParagraphOffsetIndex(baselineXml);
@@ -1132,7 +1239,8 @@ export const collectChangedNoteParaIds = (baselineXml: string, currentXml: strin
     if (
       before &&
       after &&
-      baselineXml.slice(before.start, before.end) !== currentXml.slice(after.start, after.end)
+      baselineXml.slice(before.start, before.end) !==
+        currentXml.slice(after.start, after.end)
     ) {
       changed.add(id);
     }
@@ -1196,8 +1304,12 @@ export function buildPatchedNotePartXml({
   const currentElements = collectNoteElementSyntax(serializedXml, elementName);
   const baselineElements = collectNoteElementSyntax(baselineXml, elementName);
   const originalElements = collectNoteElementSyntax(originalXml, elementName);
-  const replacementElements = collectNoteElementSyntax(replacementXml, elementName);
-  const replacementXmlnsDeclarations = collectXmlnsFromOpeningTag(replacementXml);
+  const replacementElements = collectNoteElementSyntax(
+    replacementXml,
+    elementName,
+  );
+  const replacementXmlnsDeclarations =
+    collectXmlnsFromOpeningTag(replacementXml);
   const paragraphSplices: XmlSplice[] = [];
   /** The same edits at note granularity, should the paragraph splices be refused. */
   const noteSplices: XmlSplice[] = [];
@@ -1205,7 +1317,9 @@ export function buildPatchedNotePartXml({
   const effectiveChangedParaIds =
     changedParaIds ?? collectChangedNoteParaIds(baselineXml, serializedXml);
   const unroutedChangedParaIds = new Set(
-    [...effectiveChangedParaIds].filter((paraId) => serializedParaIds.has(paraId)),
+    [...effectiveChangedParaIds].filter((paraId) =>
+      serializedParaIds.has(paraId),
+    ),
   );
   /** Notes the model has and the part does not: new notes, appended to the part. */
   const addedNotes: { note: string; syntax: NoteElementSyntax }[] = [];
@@ -1215,7 +1329,8 @@ export function buildPatchedNotePartXml({
     const replacementSyntaxEntries = replacementElements.get(id);
     if (originalSyntaxEntries === undefined) {
       const replacementSyntax =
-        currentSyntaxEntries.length === 1 && replacementSyntaxEntries?.length === 1
+        currentSyntaxEntries.length === 1 &&
+        replacementSyntaxEntries?.length === 1
           ? replacementSyntaxEntries[0]
           : undefined;
       const replacementNote = replacementSyntax
@@ -1245,21 +1360,40 @@ export function buildPatchedNotePartXml({
     }
     const currentNote = extractNoteElement(serializedXml, currentSyntax);
     const originalOffsets = originalSyntax.offsets;
-    const replacementNote = extractNoteElement(replacementXml, replacementSyntax);
-    const originalNote = originalXml.slice(originalOffsets.start, originalOffsets.end);
-    const currentParagraphs = paragraphRanges(currentNote, currentSyntax.elementPrefix);
-    const originalParagraphs = paragraphRanges(originalNote, originalSyntax.elementPrefix);
-    const replacementParagraphs = paragraphRanges(replacementNote, replacementSyntax.elementPrefix);
-    const noteChangedParaIds = [...collectParaIds(currentNote).keys()].filter((paraId) =>
-      unroutedChangedParaIds.has(paraId),
+    const replacementNote = extractNoteElement(
+      replacementXml,
+      replacementSyntax,
+    );
+    const originalNote = originalXml.slice(
+      originalOffsets.start,
+      originalOffsets.end,
+    );
+    const currentParagraphs = paragraphRanges(
+      currentNote,
+      currentSyntax.elementPrefix,
+    );
+    const originalParagraphs = paragraphRanges(
+      originalNote,
+      originalSyntax.elementPrefix,
+    );
+    const replacementParagraphs = paragraphRanges(
+      replacementNote,
+      replacementSyntax.elementPrefix,
+    );
+    const noteChangedParaIds = [...collectParaIds(currentNote).keys()].filter(
+      (paraId) => unroutedChangedParaIds.has(paraId),
     );
     // A deleted paragraph, row or table leaves no changed paragraph behind to
     // route, and a row-level revision sits outside every paragraph: the note's
     // shape is the only record that it was edited.
     const baselineSyntaxEntries = baselineElements.get(id);
     const baselineSyntax =
-      baselineSyntaxEntries?.length === 1 ? baselineSyntaxEntries[0] : undefined;
-    const baselineNote = baselineSyntax ? extractNoteElement(baselineXml, baselineSyntax) : null;
+      baselineSyntaxEntries?.length === 1
+        ? baselineSyntaxEntries[0]
+        : undefined;
+    const baselineNote = baselineSyntax
+      ? extractNoteElement(baselineXml, baselineSyntax)
+      : null;
     const reshaped =
       baselineSyntax !== undefined &&
       baselineNote !== null &&
@@ -1300,9 +1434,12 @@ export function buildPatchedNotePartXml({
       if (!currentRange || !originalRange || !replacementRange) {
         return { type: "refused", reason: "unroutable-paragraph" };
       }
-      const currentParagraph = currentNote.slice(currentRange.start, currentRange.end);
-      const routedIds = [...collectParaIds(currentParagraph).keys()].filter((paraId) =>
-        unroutedChangedParaIds.has(paraId),
+      const currentParagraph = currentNote.slice(
+        currentRange.start,
+        currentRange.end,
+      );
+      const routedIds = [...collectParaIds(currentParagraph).keys()].filter(
+        (paraId) => unroutedChangedParaIds.has(paraId),
       );
       if (routedIds.length === 0) {
         continue;
@@ -1401,7 +1538,11 @@ const appendNotesSplice = ({
     end: last.end,
     newXml: addedNotes
       .map(({ note, syntax }) =>
-        rewriteWordprocessingPrefixes(note, { source: syntax, target, sourceXmlnsDeclarations }),
+        rewriteWordprocessingPrefixes(note, {
+          source: syntax,
+          target,
+          sourceXmlnsDeclarations,
+        }),
       )
       .join(""),
   };
@@ -1435,7 +1576,11 @@ function findFirstElement(
  * counts so duplicates can be rejected. The `[\s]` after the literal restricts
  * matches to the exact element (excluding `<w:numFmt` when scanning `<w:num`).
  */
-function collectElementIds(xml: string, openLiteral: string, idAttr: string): Map<string, number> {
+function collectElementIds(
+  xml: string,
+  openLiteral: string,
+  idAttr: string,
+): Map<string, number> {
   const ids = new Map<string, number>();
   const pattern = new RegExp(
     `${escapeRegExp(openLiteral)}[\\s][^>]*?${escapeRegExp(idAttr)}="(?<id>[^"]+)"`,
@@ -1520,7 +1665,15 @@ function buildNumberingElementOffsetIndex(
       index.set(id, null);
       continue;
     }
-    index.set(id, scanElementRange(xml, match.index, openLiteral, NUMBERING_CLOSE_TAG[kind]));
+    index.set(
+      id,
+      scanElementRange(
+        xml,
+        match.index,
+        openLiteral,
+        NUMBERING_CLOSE_TAG[kind],
+      ),
+    );
   }
   return index;
 }
@@ -1529,7 +1682,8 @@ function buildNumberingElementOffsetIndex(
 // the model used to mint a synthetic `decimalZero{3,4,5}` here, which was not —
 // but it is the flattening of whatever the source wrote, so `restoreLevelNumFmts`
 // puts the source's own element back when the format has not changed.
-const CUSTOM_NUM_FMT_PATTERN = /<w:numFmt w:val="custom"(?: w:format="(?<format>[^"]*)")?\/>/u;
+const CUSTOM_NUM_FMT_PATTERN =
+  /<w:numFmt w:val="custom"(?: w:format="(?<format>[^"]*)")?\/>/u;
 
 export type ChangedNumberingDefs = {
   abstractNums: Set<string>;
@@ -1564,7 +1718,10 @@ export function collectChangedNumberingDefs(
     }
     return changed;
   };
-  return { abstractNums: changedForKind("abstractNum"), nums: changedForKind("num") };
+  return {
+    abstractNums: changedForKind("abstractNum"),
+    nums: changedForKind("num"),
+  };
 }
 
 /**
@@ -1573,7 +1730,11 @@ export function collectChangedNumberingDefs(
  * self-closing `<w:numFmt …/>` (covers `<w:numFmt w:val="custom" w:format=…/>`).
  */
 function extractLevelNumFmtElement(levelXml: string): string | null {
-  const alt = findFirstElement(levelXml, "<mc:AlternateContent", "</mc:AlternateContent>");
+  const alt = findFirstElement(
+    levelXml,
+    "<mc:AlternateContent",
+    "</mc:AlternateContent>",
+  );
   if (alt) {
     return levelXml.slice(alt.start, alt.end);
   }
@@ -1592,7 +1753,9 @@ function originalCustomNumFmtFormat(numFmtElement: string): string | null {
     if (!/\bw:val="custom"/u.test(tag)) {
       continue;
     }
-    return /\bw:format="(?<format>[^"]*)"/u.exec(tag)?.groups?.["format"] ?? null;
+    return (
+      /\bw:format="(?<format>[^"]*)"/u.exec(tag)?.groups?.["format"] ?? null
+    );
   }
   return null;
 }
@@ -1601,12 +1764,15 @@ function originalCustomNumFmtFormat(numFmtElement: string): string | null {
  * Collect the `xmlns` / `xmlns:*` declarations from an element's opening tag
  * (the substring up to its first `>`).
  */
-function collectXmlnsFromOpeningTag(elementXml: string): Record<string, string> {
+function collectXmlnsFromOpeningTag(
+  elementXml: string,
+): Record<string, string> {
   const out: Record<string, string> = {};
   let tagStart = elementXml.indexOf("<");
   while (
     tagStart !== -1 &&
-    (elementXml.startsWith("<?", tagStart) || elementXml.startsWith("<!--", tagStart))
+    (elementXml.startsWith("<?", tagStart) ||
+      elementXml.startsWith("<!--", tagStart))
   ) {
     const comment = elementXml.startsWith("<!--", tagStart);
     const endMarker = comment ? "-->" : "?>";
@@ -1649,7 +1815,10 @@ function collectXmlnsFromOpeningTag(elementXml: string): Record<string, string> 
  * `cloneWithXmlnsDeclarations` self-contained-clone behaviour, in the string
  * domain the byte-exact splice needs).
  */
-function withXmlnsDeclarations(fragmentXml: string, xmlnsDecls: Record<string, string>): string {
+function withXmlnsDeclarations(
+  fragmentXml: string,
+  xmlnsDecls: Record<string, string>,
+): string {
   const own = collectXmlnsFromOpeningTag(fragmentXml);
   const additions = Object.entries(xmlnsDecls)
     .filter(([name]) => !(name in own))
@@ -1658,10 +1827,17 @@ function withXmlnsDeclarations(fragmentXml: string, xmlnsDecls: Record<string, s
     return fragmentXml;
   }
   let nameEnd = 1; // skip the opening "<"
-  while (nameEnd < fragmentXml.length && !isXmlNameBoundary(fragmentXml[nameEnd])) {
+  while (
+    nameEnd < fragmentXml.length &&
+    !isXmlNameBoundary(fragmentXml[nameEnd])
+  ) {
     nameEnd += 1;
   }
-  return fragmentXml.slice(0, nameEnd) + additions.join("") + fragmentXml.slice(nameEnd);
+  return (
+    fragmentXml.slice(0, nameEnd) +
+    additions.join("") +
+    fragmentXml.slice(nameEnd)
+  );
 }
 
 /**
@@ -1679,9 +1855,16 @@ function withXmlnsDeclarations(fragmentXml: string, xmlnsDecls: Record<string, s
  * the original's; a level whose format was actually edited keeps the model's
  * own element, which is the edit.
  */
-function restoreLevelNumFmts(originalDefXml: string, currentDefXml: string): string {
+function restoreLevelNumFmts(
+  originalDefXml: string,
+  currentDefXml: string,
+): string {
   const replacements: XmlSplice[] = [];
-  for (const [ilvl, count] of collectElementIds(currentDefXml, LEVEL_OPEN_LITERAL, LEVEL_ID_ATTR)) {
+  for (const [ilvl, count] of collectElementIds(
+    currentDefXml,
+    LEVEL_OPEN_LITERAL,
+    LEVEL_ID_ATTR,
+  )) {
     if (count !== 1) {
       continue;
     }
@@ -1709,7 +1892,11 @@ function restoreLevelNumFmts(originalDefXml: string, currentDefXml: string): str
     );
     const currentFormat = custom.groups?.["format"] ?? null;
     const original = origLevel ? extractLevelNumFmtElement(origLevel) : null;
-    if (!original || !origLevel || originalCustomNumFmtFormat(original) !== currentFormat) {
+    if (
+      !original ||
+      !origLevel ||
+      originalCustomNumFmtFormat(original) !== currentFormat
+    ) {
       // The format was edited, or the original cannot be resolved: the model's
       // own element already says `custom` with the current format, which is
       // valid OOXML and is the edit.
@@ -1733,7 +1920,11 @@ function restoreLevelNumFmts(originalDefXml: string, currentDefXml: string): str
     if (restoredLevel === null) {
       continue;
     }
-    replacements.push({ start: curOffsets.start, end: curOffsets.end, newXml: restoredLevel });
+    replacements.push({
+      start: curOffsets.start,
+      end: curOffsets.end,
+      newXml: restoredLevel,
+    });
   }
 
   // A refused restore leaves the model's own serialization of the definition,
@@ -1770,14 +1961,24 @@ export function buildPatchedNumberingXml(
       }
       // Restore any custom/mc:AlternateContent numFmt the model flattened to a
       // synthetic value, so editing an unrelated field never corrupts the format.
-      const originalDefXml = originalXml.slice(origOffsets.start, origOffsets.end);
+      const originalDefXml = originalXml.slice(
+        origOffsets.start,
+        origOffsets.end,
+      );
       const newXml = restoreLevelNumFmts(originalDefXml, reserialized);
-      replacements.push({ start: origOffsets.start, end: origOffsets.end, newXml });
+      replacements.push({
+        start: origOffsets.start,
+        end: origOffsets.end,
+        newXml,
+      });
     }
     return true;
   };
 
-  if (!collect("abstractNum", changed.abstractNums) || !collect("num", changed.nums)) {
+  if (
+    !collect("abstractNum", changed.abstractNums) ||
+    !collect("num", changed.nums)
+  ) {
     return null;
   }
 
@@ -1807,7 +2008,10 @@ export function collectAddedNumberingDefs(
     }
     return added;
   };
-  return { abstractNums: addedForKind("abstractNum"), nums: addedForKind("num") };
+  return {
+    abstractNums: addedForKind("abstractNum"),
+    nums: addedForKind("num"),
+  };
 }
 
 const NUMBERING_CLOSE_ROOT = "</w:numbering>";
@@ -1821,7 +2025,8 @@ type PatchNumberingDefinitionsOptions = {
 const numberingDefinitionIdentity = (
   element: XmlElement,
 ): { kind: NumberingElementKind; id: string } | null => {
-  if (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")) return null;
+  if (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? ""))
+    return null;
   const kind = getLocalName(element.name);
   if (kind !== "abstractNum" && kind !== "num") return null;
   const id = getAttributeByNamespaceUri(
@@ -1858,7 +2063,9 @@ const patchNumberingByNamespace = ({
     if (!identity) continue;
     const detached = parseXmlDocument(
       captureVerbatimXml(
-        cloneElement(child, { attributes: { ...namespaceDeclarations, ...child.attributes } }),
+        cloneElement(child, {
+          attributes: { ...namespaceDeclarations, ...child.attributes },
+        }),
       ),
     );
     if (!detached) return null;
@@ -1867,7 +2074,12 @@ const patchNumberingByNamespace = ({
   const elements: XmlElement[] = [];
   for (const child of original.elements ?? []) {
     const identity = numberingDefinitionIdentity(child);
-    if (!identity || !changed[identity.kind === "num" ? "nums" : "abstractNums"].has(identity.id)) {
+    if (
+      !identity ||
+      !changed[identity.kind === "num" ? "nums" : "abstractNums"].has(
+        identity.id,
+      )
+    ) {
       elements.push(child);
       continue;
     }
@@ -1884,9 +2096,15 @@ const patchNumberingByNamespace = ({
       if (!replacement) return null;
       const firstNum =
         kind === "abstractNum"
-          ? elements.findIndex((child) => numberingDefinitionIdentity(child)?.kind === "num")
+          ? elements.findIndex(
+              (child) => numberingDefinitionIdentity(child)?.kind === "num",
+            )
           : -1;
-      elements.splice(firstNum < 0 ? elements.length : firstNum, 0, replacement);
+      elements.splice(
+        firstNum < 0 ? elements.length : firstNum,
+        0,
+        replacement,
+      );
     }
   }
   return captureVerbatimXml(cloneElement(original, { elements }));
@@ -1924,7 +2142,9 @@ export const patchNumberingDefinitions = ({
     return patchNumberingByNamespace({ original, currentXml, changed, added });
   }
   const spliced = buildPatchedNumberingXml(originalXml, currentXml, changed);
-  return spliced === null ? null : appendNumberingDefs(spliced, currentXml, added);
+  return spliced === null
+    ? null
+    : appendNumberingDefs(spliced, currentXml, added);
 };
 
 /**
@@ -1966,7 +2186,11 @@ export function appendNumberingDefs(
     numXmls.push(def);
   }
 
-  const firstNum = findFirstElement(xml, NUMBERING_OPEN_LITERAL.num, NUMBERING_CLOSE_TAG.num);
+  const firstNum = findFirstElement(
+    xml,
+    NUMBERING_OPEN_LITERAL.num,
+    NUMBERING_CLOSE_TAG.num,
+  );
   const abstractInsertAt = firstNum ? firstNum.start : rootClose;
   const head = xml.slice(0, abstractInsertAt);
   const middle = xml.slice(abstractInsertAt, rootClose);
@@ -1999,7 +2223,11 @@ function restoreClonedLevelNumFmts(
     if (candidate === null || stripAbstractNumId(candidate, id) !== addedBody) {
       continue;
     }
-    const originalDef = extractNumberingElementXml(originalXml, "abstractNum", id);
+    const originalDef = extractNumberingElementXml(
+      originalXml,
+      "abstractNum",
+      id,
+    );
     if (originalDef !== null) {
       return restoreLevelNumFmts(originalDef, addedDefXml);
     }

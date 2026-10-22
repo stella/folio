@@ -1,18 +1,29 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Document, Insertion, Paragraph, Run } from "../../model/document";
-import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
+import {
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  applyDocumentOps,
+} from "../apply";
 import { replaceParagraphs, storyParagraphs } from "../blocks";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, type DocumentOp, OP_STORIES } from "../types";
 
-const run = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+const run = (text: string): Run => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
 
 const trackedRun = (text: string, id: number): Run => ({
   type: "run",
   content: [{ type: "text", text }],
   propertyChanges: [
-    { type: "runPropertyChange", info: { id, author: "A" }, previousFormatting: {} },
+    {
+      type: "runPropertyChange",
+      info: { id, author: "A" },
+      previousFormatting: {},
+    },
   ],
 });
 
@@ -22,9 +33,15 @@ const insertion = (id: number, content: Run[]): Insertion => ({
   content,
 });
 
-const documentOf = (...content: Paragraph[]): Document => ({ package: { document: { content } } });
+const documentOf = (...content: Paragraph[]): Document => ({
+  package: { document: { content } },
+});
 
-const at = (blockId: string, offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
+const at = (blockId: string, offset: number) => ({
+  story: OP_STORIES.MAIN,
+  blockId,
+  offset,
+});
 
 const applied = (document: Document, op: DocumentOp): AppliedDocumentOp => {
   const result = applyDocumentOp(document, op);
@@ -32,7 +49,10 @@ const applied = (document: Document, op: DocumentOp): AppliedDocumentOp => {
   return result.value;
 };
 
-const reasonOf = (document: Document, ops: readonly DocumentOp[]): string | undefined => {
+const reasonOf = (
+  document: Document,
+  ops: readonly DocumentOp[],
+): string | undefined => {
   const result = applyDocumentOps(document, ops);
   return result.isErr() ? result.error.reason : undefined;
 };
@@ -42,7 +62,11 @@ const paragraphs = (document: Document): Paragraph[] =>
 
 describe("an undo that no longer applies", () => {
   test("a formatting undo after a later change to the same property is stale", () => {
-    const document = documentOf({ type: "paragraph", paraId: "00000001", content: [run("a")] });
+    const document = documentOf({
+      type: "paragraph",
+      paraId: "00000001",
+      content: [run("a")],
+    });
     const center = applied(document, {
       type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
       story: OP_STORIES.MAIN,
@@ -55,11 +79,17 @@ describe("an undo that no longer applies", () => {
       blockId: "00000001",
       patch: { alignment: "end" },
     });
-    expect(reasonOf(end.document, center.inverse)).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
+    expect(reasonOf(end.document, center.inverse)).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
   });
 
   test("a run formatting undo after a later change to the same property is stale", () => {
-    const document = documentOf({ type: "paragraph", paraId: "00000001", content: [run("abc")] });
+    const document = documentOf({
+      type: "paragraph",
+      paraId: "00000001",
+      content: [run("abc")],
+    });
     const bold = applied(document, {
       type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
       from: at("00000001", 0),
@@ -72,11 +102,17 @@ describe("an undo that no longer applies", () => {
       to: at("00000001", 2),
       patch: { bold: false },
     });
-    expect(reasonOf(unbold.document, bold.inverse)).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
+    expect(reasonOf(unbold.document, bold.inverse)).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
   });
 
   test("undoing a split after the new paragraph's properties changed is stale", () => {
-    const document = documentOf({ type: "paragraph", paraId: "00000001", content: [run("ab")] });
+    const document = documentOf({
+      type: "paragraph",
+      paraId: "00000001",
+      content: [run("ab")],
+    });
     const split = applied(document, {
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       at: at("00000001", 1),
@@ -88,11 +124,17 @@ describe("an undo that no longer applies", () => {
       blockId: "0000000A",
       patch: { styleId: "Heading1" },
     });
-    expect(reasonOf(restyled.document, split.inverse)).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
+    expect(reasonOf(restyled.document, split.inverse)).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
   });
 
   test("renumbering or pagination recomputed since does not make an undo stale", () => {
-    const document = documentOf({ type: "paragraph", paraId: "00000001", content: [run("ab")] });
+    const document = documentOf({
+      type: "paragraph",
+      paraId: "00000001",
+      content: [run("ab")],
+    });
     const split = applied(document, {
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       at: at("00000001", 1),
@@ -139,13 +181,19 @@ describe("records carrying ids", () => {
     ]);
     expect(reasonOf(split.document, split.inverse)).toBeUndefined();
     const undone = applyDocumentOps(split.document, split.inverse);
-    expect(undone.isOk() ? undone.value.document : undefined).toEqual(trackedDocument);
+    expect(undone.isOk() ? undone.value.document : undefined).toEqual(
+      trackedDocument,
+    );
   });
 
   test("a split inside a tracked insertion without new ids is refused", () => {
     expect(
       reasonOf(trackedDocument, [
-        { type: DOCUMENT_OP_TYPES.SPLIT_BLOCK, at: at("00000001", 2), newBlockId: "0000000A" },
+        {
+          type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+          at: at("00000001", 2),
+          newBlockId: "0000000A",
+        },
       ]),
     ).toBe(DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS);
   });

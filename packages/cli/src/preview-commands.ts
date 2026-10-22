@@ -1,12 +1,12 @@
-import { encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
+import { Result } from "better-result";
 /**
  * `folio render` and `folio serve`: the document as its pages, from folio's
  * own layout and painters. Neither changes the document.
  */
-
-import { Result } from "better-result";
 import path from "node:path";
 import { parseArgs } from "node:util";
+
+import { encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
 
 import type { FolioCliIo } from "./cli";
 import { checkExpectedVersion, readDocumentFile } from "./document";
@@ -21,9 +21,9 @@ import {
   failureEnvelope,
   isOutputFormat,
   OUTPUT_FORMATS,
+  type OutputFormat,
   renderEnvelope,
   successEnvelope,
-  type OutputFormat,
 } from "./output";
 import { writeOutputFile } from "./output-file";
 import { resolveTransactionDate } from "./provenance";
@@ -31,9 +31,9 @@ import {
   buildDisplayList,
   checkPages,
   displayListHtml,
+  type RenderFormat,
   renderPdf,
   renderPng,
-  type RenderFormat,
 } from "./render";
 import { startPreviewServer } from "./serve";
 
@@ -45,18 +45,25 @@ const emit = (
   format: OutputFormat,
   result: Result<unknown, FolioCliError>,
 ): number => {
-  const envelope = result.isOk() ? successEnvelope(result.value) : failureEnvelope(result.error);
+  const envelope = result.isOk()
+    ? successEnvelope(result.value)
+    : failureEnvelope(result.error);
   const rendered = renderEnvelope({ envelope, format, tool: "render" });
   if (rendered.stdout !== "") io.stdout(rendered.stdout);
   if (rendered.stderr !== "") io.stderr(rendered.stderr);
   return result.isOk() ? EXIT_CODES.ok : exitCodeForError(result.error.code);
 };
 
-const formatFrom = (value: unknown, io: FolioCliIo): Result<OutputFormat, FolioCliError> => {
+const formatFrom = (
+  value: unknown,
+  io: FolioCliIo,
+): Result<OutputFormat, FolioCliError> => {
   if (value === undefined) return Result.ok(io.isTTY ? "text" : "json");
   return isOutputFormat(value)
     ? Result.ok(value)
-    : Result.err(usageError(`--output must be ${OUTPUT_FORMATS.join(" or ")}.`));
+    : Result.err(
+        usageError(`--output must be ${OUTPUT_FORMATS.join(" or ")}.`),
+      );
 };
 
 /** The output format an extension names, or `null` for any other. */
@@ -113,10 +120,18 @@ const renderOptions = {
   help: { type: "boolean", short: "h" },
 } as const;
 
-export const runRender = async (rest: readonly string[], io: FolioCliIo): Promise<number> => {
+export const runRender = async (
+  rest: readonly string[],
+  io: FolioCliIo,
+): Promise<number> => {
   const parsed = Result.try({
     try: () =>
-      parseArgs({ args: [...rest], options: renderOptions, allowPositionals: true, strict: true }),
+      parseArgs({
+        args: [...rest],
+        options: renderOptions,
+        allowPositionals: true,
+        strict: true,
+      }),
     catch: (error) =>
       usageError(
         error instanceof Error ? error.message : String(error),
@@ -153,10 +168,14 @@ const render = async ({
 }: RenderArguments): Promise<Result<unknown, FolioCliError>> => {
   const [input, ...extra] = positionals;
   if (input === undefined || extra.length > 0) {
-    return Result.err(usageError("Usage: folio render <file> -o <out.pdf|out.png|out.html>."));
+    return Result.err(
+      usageError("Usage: folio render <file> -o <out.pdf|out.png|out.html>."),
+    );
   }
   if (values.out === undefined) {
-    return Result.err(usageError("folio render needs -o <out.pdf|out.png|out.html>."));
+    return Result.err(
+      usageError("folio render needs -o <out.pdf|out.png|out.html>."),
+    );
   }
   const kind = renderFormatOf(values.out);
   if (kind === null) {
@@ -178,7 +197,11 @@ const render = async ({
   let output: Result<{ bytes: Uint8Array; pageCount: number }, FolioCliError>;
   switch (kind) {
     case "pdf":
-      output = await renderPdf({ file: file.value, pages, timestamp: date.value });
+      output = await renderPdf({
+        file: file.value,
+        pages,
+        timestamp: date.value,
+      });
       break;
     case "png":
       output = await renderPng({
@@ -192,7 +215,9 @@ const render = async ({
       const selected = list.isOk() ? checkPages(list.value, pages) : list;
       output = selected.isOk()
         ? Result.ok({
-            bytes: encodeUtf8(displayListHtml(selected.value, path.basename(file.value.path))),
+            bytes: encodeUtf8(
+              displayListHtml(selected.value, path.basename(file.value.path)),
+            ),
             pageCount: selected.value.pages.length,
           })
         : Result.err(selected.error);
@@ -234,7 +259,10 @@ export const SERVE_HELP = [
   "",
 ].join("\n");
 
-export const runServe = async (rest: readonly string[], io: FolioCliIo): Promise<number> => {
+export const runServe = async (
+  rest: readonly string[],
+  io: FolioCliIo,
+): Promise<number> => {
   const parsed = Result.try({
     try: () =>
       parseArgs({
@@ -248,7 +276,10 @@ export const runServe = async (rest: readonly string[], io: FolioCliIo): Promise
         strict: true,
       }),
     catch: (error) =>
-      usageError(error instanceof Error ? error.message : String(error), "Run folio serve --help."),
+      usageError(
+        error instanceof Error ? error.message : String(error),
+        "Run folio serve --help.",
+      ),
   });
   if (parsed.isErr()) return emit(io, io.isTTY ? "text" : "json", parsed);
   const { values, positionals } = parsed.value;
@@ -268,7 +299,11 @@ export const runServe = async (rest: readonly string[], io: FolioCliIo): Promise
   }
   const port = values.port === undefined ? 0 : Number(values.port);
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
-    return emit(io, format.value, Result.err(usageError("--port expects a port number.")));
+    return emit(
+      io,
+      format.value,
+      Result.err(usageError("--port expects a port number.")),
+    );
   }
   if (io.untilInterrupted === undefined) {
     return emit(

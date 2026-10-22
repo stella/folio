@@ -4,17 +4,26 @@ type RuleContext = {
   report: (descriptor: { node: unknown; messageId: "navigationOwner" }) => void;
 };
 const isNode = (value: unknown): value is AstNode =>
-  typeof value === "object" && value !== null && "type" in value && typeof value.type === "string";
+  typeof value === "object" &&
+  value !== null &&
+  "type" in value &&
+  typeof value.type === "string";
 const SKIP_KEYS = new Set(["parent", "loc", "range", "start", "end"]);
-const WRAPPERS = new Set(["ChainExpression", "TSAsExpression", "TSNonNullExpression"]);
+const WRAPPERS = new Set([
+  "ChainExpression",
+  "TSAsExpression",
+  "TSNonNullExpression",
+]);
 const unwrap = (value: unknown): AstNode | null => {
   if (!isNode(value)) return null;
   return WRAPPERS.has(value.type) ? unwrap(value.expression) : value;
 };
 const name = (value: unknown): string | null => {
   const node = unwrap(value);
-  if (node?.type === "Identifier" && typeof node.name === "string") return node.name;
-  if (node?.type === "Literal" && typeof node.value === "string") return node.value;
+  if (node?.type === "Identifier" && typeof node.name === "string")
+    return node.name;
+  if (node?.type === "Literal" && typeof node.value === "string")
+    return node.value;
   return null;
 };
 const member = (value: unknown): string | null => {
@@ -69,7 +78,8 @@ const check = (program: AstNode, context: RuleContext): void => {
         name(specifier.imported) === "createFindMatchView"
       )
         factories.add(local);
-      if (name(specifier.imported) === "scrollToMatch") pageFallbacks.add(local);
+      if (name(specifier.imported) === "scrollToMatch")
+        pageFallbacks.add(local);
     }
   }
   if (factories.size === 0 && namespaces.size === 0) return;
@@ -91,11 +101,14 @@ const check = (program: AstNode, context: RuleContext): void => {
     if (node === null) return false;
     if (node.type === "CallExpression") {
       if (isFactory(node.callee)) return true;
-      return producesView(node.typeArguments) || producesView(node.typeParameters);
+      return (
+        producesView(node.typeArguments) || producesView(node.typeParameters)
+      );
     }
     if (node.type === "TSTypeQuery" && isFactory(node.exprName)) return true;
     if (node.type === "Identifier") return views.has(name(node) ?? "");
-    if (node.type === "MemberExpression") return views.has(rootName(node) ?? "");
+    if (node.type === "MemberExpression")
+      return views.has(rootName(node) ?? "");
     if (
       [
         "ConditionalExpression",
@@ -117,7 +130,8 @@ const check = (program: AstNode, context: RuleContext): void => {
     for (const node of nodes) {
       if (
         node.type === "VariableDeclarator" &&
-        (producesView(node.init) || (isNode(node.id) && producesView(node.id.typeAnnotation)))
+        (producesView(node.init) ||
+          (isNode(node.id) && producesView(node.id.typeAnnotation)))
       ) {
         const binding = name(node.id);
         if (binding !== null) views.add(binding);
@@ -133,8 +147,13 @@ const check = (program: AstNode, context: RuleContext): void => {
     if (node === null) return false;
     if (node.type === "Literal" && typeof node.value === "string")
       return /\[data-page-(?:number|index)/u.test(node.value);
-    if (node.type === "TemplateLiteral") return children(node).some(selectsPage);
-    if (node.type !== "TemplateElement" || typeof node.value !== "object" || node.value === null)
+    if (node.type === "TemplateLiteral")
+      return children(node).some(selectsPage);
+    if (
+      node.type !== "TemplateElement" ||
+      typeof node.value !== "object" ||
+      node.value === null
+    )
       return false;
     return (
       "raw" in node.value &&
@@ -143,18 +162,28 @@ const check = (program: AstNode, context: RuleContext): void => {
     );
   };
   for (const node of nodes) {
-    if (node.type === "MemberExpression" && member(node) === "reveal" && producesView(node.object))
-      context.report({ node, messageId: "navigationOwner" });
-    if (node.type === "CallExpression" && pageFallbacks.has(name(node.callee) ?? ""))
+    if (
+      node.type === "MemberExpression" &&
+      member(node) === "reveal" &&
+      producesView(node.object)
+    )
       context.report({ node, messageId: "navigationOwner" });
     if (
       node.type === "CallExpression" &&
-      ["querySelector", "querySelectorAll"].includes(member(node.callee) ?? "") &&
+      pageFallbacks.has(name(node.callee) ?? "")
+    )
+      context.report({ node, messageId: "navigationOwner" });
+    if (
+      node.type === "CallExpression" &&
+      ["querySelector", "querySelectorAll"].includes(
+        member(node.callee) ?? "",
+      ) &&
       Array.isArray(node.arguments) &&
       node.arguments.some(selectsPage)
     )
       context.report({ node, messageId: "navigationOwner" });
-    if (node.type !== "VariableDeclarator" || !producesView(node.init)) continue;
+    if (node.type !== "VariableDeclarator" || !producesView(node.init))
+      continue;
     const pattern = unwrap(node.id);
     if (pattern?.type !== "ObjectPattern") continue;
     for (const property of children(pattern))

@@ -86,7 +86,8 @@ export const compareGeoms = (
       : resolveOps(alignFull(wordFlat, folioFlat), wordFlat, folioFlat);
 
   const matches = resolved.filter(
-    (item): item is Extract<ResolvedItem, { kind: "match" }> => item.kind === "match",
+    (item): item is Extract<ResolvedItem, { kind: "match" }> =>
+      item.kind === "match",
   );
   const equivalentRows = resolved.flatMap((item) => {
     if (item.kind !== "line-break") return [];
@@ -99,9 +100,15 @@ export const compareGeoms = (
     equivalentRows,
   });
   const medianYOffsetPt = median([...medianYOffsetsByPageRegion.values()]);
-  const yResidualsByMatch = segmentedYResiduals(matches, wordFlat, folioFlat, tolerances);
+  const yResidualsByMatch = segmentedYResiduals(
+    matches,
+    wordFlat,
+    folioFlat,
+    tolerances,
+  );
 
-  const excludeFontMismatchedLines = options.excludeFontMismatchedLines ?? false;
+  const excludeFontMismatchedLines =
+    options.excludeFontMismatchedLines ?? false;
   const {
     orderedDivergences,
     fontExcludedDivergences,
@@ -135,7 +142,9 @@ export const compareGeoms = (
     matchedLines: matchedLineCount,
     medianYOffsetPt,
     divergences,
-    ...(excludeFontMismatchedLines ? { fontExcludedLines, fontExcludedDivergences } : {}),
+    ...(excludeFontMismatchedLines
+      ? { fontExcludedLines, fontExcludedDivergences }
+      : {}),
   };
 };
 
@@ -152,7 +161,8 @@ const stripSpaces = (text: string): string => text.replaceAll(" ", "");
  * stable cap-height edge, so their top coordinates cannot establish or verify
  * a baseline offset. Horizontal geometry remains comparable.
  */
-const hasStableVerticalInk = (line: LineBox): boolean => /[\p{L}\p{N}]/u.test(line.normText);
+const hasStableVerticalInk = (line: LineBox): boolean =>
+  /[\p{L}\p{N}]/u.test(line.normText);
 
 /** Minimum vertical-overlap ratio (of the shorter box) for two boxes to count
  * as the same visual row. */
@@ -178,7 +188,9 @@ const MARKER_ROW_MERGE_GAP_PT = 36;
  * can't create asymmetry. */
 export const mergeVisualRows = (lines: LineBox[]): LineBox[] => {
   const rows: LineBox[][] = [];
-  for (const line of [...lines].sort((a, b) => a.yPt - b.yPt || a.xPt - b.xPt)) {
+  for (const line of [...lines].sort(
+    (a, b) => a.yPt - b.yPt || a.xPt - b.xPt,
+  )) {
     const row = rows.at(-1);
     if (row && row.some((member) => isSameVisualRow(member, line))) {
       row.push(line);
@@ -211,7 +223,9 @@ export const mergeVisualRows = (lines: LineBox[]): LineBox[] => {
 
 const mergeConnectedComponent = (component: LineBox[]): LineBox[] => {
   const direction = resolveDirection(component);
-  component.sort((a, b) => (direction === "rtl" ? b.xPt - a.xPt : a.xPt - b.xPt));
+  component.sort((a, b) =>
+    direction === "rtl" ? b.xPt - a.xPt : a.xPt - b.xPt,
+  );
   const first = component[0];
   if (!first) return [];
   const merged: LineBox[] = [];
@@ -233,7 +247,8 @@ const mergeConnectedComponent = (component: LineBox[]): LineBox[] => {
 
 const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
   if (
-    (current.region !== next.region && !isHeaderLineNumberBodyPair(current, next)) ||
+    (current.region !== next.region &&
+      !isHeaderLineNumberBodyPair(current, next)) ||
     resolveDirection([current, next]) === null
   ) {
     return false;
@@ -258,19 +273,24 @@ const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
  * shape; ordinary header/body content must remain separate. */
 const isHeaderLineNumberBodyPair = (a: LineBox, b: LineBox): boolean => {
   const isHeaderLineNumber = (line: LineBox): boolean =>
-    line.region === "header" && /^\p{Decimal_Number}+$/u.test(normalizeLineText(line.text));
+    line.region === "header" &&
+    /^\p{Decimal_Number}+$/u.test(normalizeLineText(line.text));
   return (
-    (isHeaderLineNumber(a) && b.region === "body") || (isHeaderLineNumber(b) && a.region === "body")
+    (isHeaderLineNumber(a) && b.region === "body") ||
+    (isHeaderLineNumber(b) && a.region === "body")
   );
 };
 
 const isStandaloneListMarker = (text: string): boolean => {
   const normalized = normalizeLineText(text);
-  return /^((\([A-Za-z0-9ivxlcdm]+\))|([A-Za-z0-9ivxlcdm]+[.)])|[•·])$/iu.test(normalized);
+  return /^((\([A-Za-z0-9ivxlcdm]+\))|([A-Za-z0-9ivxlcdm]+[.)])|[•·])$/iu.test(
+    normalized,
+  );
 };
 
 const isSameVisualRow = (a: LineBox, b: LineBox): boolean => {
-  const overlap = Math.min(a.yPt + a.heightPt, b.yPt + b.heightPt) - Math.max(a.yPt, b.yPt);
+  const overlap =
+    Math.min(a.yPt + a.heightPt, b.yPt + b.heightPt) - Math.max(a.yPt, b.yPt);
   const minHeight = Math.min(a.heightPt, b.heightPt);
   if (minHeight <= 0) return false;
   return overlap / minHeight >= ROW_OVERLAP_RATIO;
@@ -279,10 +299,15 @@ const isSameVisualRow = (a: LineBox, b: LineBox): boolean => {
 const horizontalGap = (a: LineBox, b: LineBox): number => {
   // Sorted by (y, x) the gap is usually b.left - a.right, but keep it
   // symmetric for overlapping boxes (gap <= 0 merges).
-  return Math.max(a.xPt, b.xPt) - Math.min(a.xPt + a.widthPt, b.xPt + b.widthPt);
+  return (
+    Math.max(a.xPt, b.xPt) - Math.min(a.xPt + a.widthPt, b.xPt + b.widthPt)
+  );
 };
 
-const mergeBaselines = (a: number | undefined, b: number | undefined): number | undefined => {
+const mergeBaselines = (
+  a: number | undefined,
+  b: number | undefined,
+): number | undefined => {
   if (a === undefined) return b;
   if (b === undefined) return a;
   return (a + b) / 2;
@@ -313,7 +338,8 @@ const mergeBoxes = (a: LineBox, b: LineBox): LineBox | null => {
   const fontName = a.fontName ?? b.fontName;
   const fontSizePt = a.fontSizePt ?? b.fontSizePt;
   const logicalLineGroup =
-    a.logicalLineGroup !== undefined && a.logicalLineGroup === b.logicalLineGroup
+    a.logicalLineGroup !== undefined &&
+    a.logicalLineGroup === b.logicalLineGroup
       ? a.logicalLineGroup
       : undefined;
   const baselinePt = mergeBaselines(a.baselinePt, b.baselinePt);
@@ -379,7 +405,9 @@ const alignFull = (wordFlat: FlatLine[], folioFlat: FlatLine[]): AlignOp[] => {
       const folioText = folioFlat[j - 1]?.line.normText ?? "";
       const sim = textSimilarity(wordText, folioText);
       const diagScore =
-        sim >= MATCH_THRESHOLD ? (score[(i - 1) * cols + (j - 1)] ?? 0) + sim : -Infinity;
+        sim >= MATCH_THRESHOLD
+          ? (score[(i - 1) * cols + (j - 1)] ?? 0) + sim
+          : -Infinity;
       const upScore = (score[(i - 1) * cols + j] ?? 0) + GAP_PENALTY;
       const leftScore = (score[i * cols + (j - 1)] ?? 0) + GAP_PENALTY;
 
@@ -474,7 +502,11 @@ const alignWindowed = ({
     const localFolio = candidateIdxs
       .map((idx) => folioFlat[idx])
       .filter((fl): fl is FlatLine => fl !== undefined);
-    const localResolved = resolveOps(alignFull(localWord, localFolio), localWord, localFolio);
+    const localResolved = resolveOps(
+      alignFull(localWord, localFolio),
+      localWord,
+      localFolio,
+    );
 
     for (const item of localResolved) {
       if (item.kind === "match") {
@@ -491,7 +523,11 @@ const alignWindowed = ({
           .map((idx) => wordIdxs[idx])
           .filter((idx): idx is number => idx !== undefined);
         for (const idx of globalFolioIdxs) consumed[idx] = true;
-        resolved.push({ kind: "line-break", wordIdxs: globalWordIdxs, folioIdxs: globalFolioIdxs });
+        resolved.push({
+          kind: "line-break",
+          wordIdxs: globalWordIdxs,
+          folioIdxs: globalFolioIdxs,
+        });
       } else if (item.kind === "missing") {
         const wordIdx = wordIdxs[item.wordIdx];
         if (wordIdx !== undefined) resolved.push({ kind: "missing", wordIdx });
@@ -541,7 +577,12 @@ const resolveOps = (
   const flushGap = () => {
     if (gapWordIdxs.length === 0 && gapFolioIdxs.length === 0) return;
     resolved.push(
-      ...reconcileGap({ wordIdxs: gapWordIdxs, folioIdxs: gapFolioIdxs, wordFlat, folioFlat }),
+      ...reconcileGap({
+        wordIdxs: gapWordIdxs,
+        folioIdxs: gapFolioIdxs,
+        wordFlat,
+        folioFlat,
+      }),
     );
     gapWordIdxs = [];
     gapFolioIdxs = [];
@@ -550,7 +591,11 @@ const resolveOps = (
   for (const op of ops) {
     if (op.kind === "match") {
       flushGap();
-      resolved.push({ kind: "match", wordIdx: op.wordIdx, folioIdx: op.folioIdx });
+      resolved.push({
+        kind: "match",
+        wordIdx: op.wordIdx,
+        folioIdx: op.folioIdx,
+      });
     } else if (op.kind === "word-gap") {
       gapWordIdxs.push(op.wordIdx);
     } else {
@@ -582,7 +627,8 @@ const reconcileMatchedRowSegments = (
     }
 
     const next = resolved[index + 1];
-    const trailingKind = next?.kind === "missing" || next?.kind === "extra" ? next.kind : null;
+    const trailingKind =
+      next?.kind === "missing" || next?.kind === "extra" ? next.kind : null;
     if (!trailingKind) {
       trailingReconciled.push(item);
       continue;
@@ -591,7 +637,9 @@ const reconcileMatchedRowSegments = (
     const referenceIdxs = [item.wordIdx];
     const candidateIdxs = [item.folioIdx];
     const anchor =
-      trailingKind === "missing" ? referenceFlat[item.wordIdx] : candidateFlat[item.folioIdx];
+      trailingKind === "missing"
+        ? referenceFlat[item.wordIdx]
+        : candidateFlat[item.folioIdx];
     if (!anchor) {
       trailingReconciled.push(item);
       continue;
@@ -618,7 +666,14 @@ const reconcileMatchedRowSegments = (
       cursor += 1;
     }
 
-    if (!equivalentSegmentedRows(referenceIdxs, candidateIdxs, referenceFlat, candidateFlat)) {
+    if (
+      !equivalentSegmentedRows(
+        referenceIdxs,
+        candidateIdxs,
+        referenceFlat,
+        candidateFlat,
+      )
+    ) {
       trailingReconciled.push(item);
       continue;
     }
@@ -640,14 +695,18 @@ const reconcileMatchedRowSegments = (
 
     const previous = reconciled.at(-1);
     const leadingKind =
-      previous?.kind === "missing" || previous?.kind === "extra" ? previous.kind : null;
+      previous?.kind === "missing" || previous?.kind === "extra"
+        ? previous.kind
+        : null;
     if (!leadingKind) {
       reconciled.push(item);
       continue;
     }
 
     const anchor =
-      leadingKind === "missing" ? referenceFlat[item.wordIdx] : candidateFlat[item.folioIdx];
+      leadingKind === "missing"
+        ? referenceFlat[item.wordIdx]
+        : candidateFlat[item.folioIdx];
     if (!anchor) {
       reconciled.push(item);
       continue;
@@ -685,13 +744,24 @@ const reconcileMatchedRowSegments = (
     const referenceIdxs = [...leadingReferenceIdxs, item.wordIdx];
     const candidateIdxs = [...leadingCandidateIdxs, item.folioIdx];
 
-    if (!equivalentSegmentedRows(referenceIdxs, candidateIdxs, referenceFlat, candidateFlat)) {
+    if (
+      !equivalentSegmentedRows(
+        referenceIdxs,
+        candidateIdxs,
+        referenceFlat,
+        candidateFlat,
+      )
+    ) {
       reconciled.push(item);
       continue;
     }
 
     reconciled.splice(leadingStart);
-    reconciled.push({ kind: "line-break", wordIdxs: referenceIdxs, folioIdxs: candidateIdxs });
+    reconciled.push({
+      kind: "line-break",
+      wordIdxs: referenceIdxs,
+      folioIdxs: candidateIdxs,
+    });
   }
 
   return reconciled;
@@ -743,7 +813,12 @@ const reconcileGap = ({
       return [{ kind: "line-break", wordIdxs, folioIdxs }];
     }
 
-    const visualRows = reconcileGapByVisualRow({ wordIdxs, folioIdxs, wordFlat, folioFlat });
+    const visualRows = reconcileGapByVisualRow({
+      wordIdxs,
+      folioIdxs,
+      wordFlat,
+      folioFlat,
+    });
     if (visualRows) return visualRows;
   }
   return [
@@ -777,7 +852,11 @@ const reconcileGapByVisualRow = ({
     if (!wordRow || !folioRow) break;
 
     if (equivalentSegmentedRows(wordRow, folioRow, wordFlat, folioFlat)) {
-      resolved.push({ kind: "line-break", wordIdxs: wordRow, folioIdxs: folioRow });
+      resolved.push({
+        kind: "line-break",
+        wordIdxs: wordRow,
+        folioIdxs: folioRow,
+      });
       reconciled = true;
       wordPosition++;
       folioPosition++;
@@ -785,15 +864,31 @@ const reconcileGapByVisualRow = ({
     }
 
     const nextWordRow = wordRows[wordPosition + 1];
-    if (nextWordRow && equivalentSegmentedRows(nextWordRow, folioRow, wordFlat, folioFlat)) {
-      resolved.push(...wordRow.map((wordIdx): ResolvedItem => ({ kind: "missing", wordIdx })));
+    if (
+      nextWordRow &&
+      equivalentSegmentedRows(nextWordRow, folioRow, wordFlat, folioFlat)
+    ) {
+      resolved.push(
+        ...wordRow.map((wordIdx): ResolvedItem => ({
+          kind: "missing",
+          wordIdx,
+        })),
+      );
       wordPosition++;
       continue;
     }
 
     const nextFolioRow = folioRows[folioPosition + 1];
-    if (nextFolioRow && equivalentSegmentedRows(wordRow, nextFolioRow, wordFlat, folioFlat)) {
-      resolved.push(...folioRow.map((folioIdx): ResolvedItem => ({ kind: "extra", folioIdx })));
+    if (
+      nextFolioRow &&
+      equivalentSegmentedRows(wordRow, nextFolioRow, wordFlat, folioFlat)
+    ) {
+      resolved.push(
+        ...folioRow.map((folioIdx): ResolvedItem => ({
+          kind: "extra",
+          folioIdx,
+        })),
+      );
       folioPosition++;
       continue;
     }
@@ -803,11 +898,15 @@ const reconcileGapByVisualRow = ({
   if (!reconciled) return null;
   for (; wordPosition < wordRows.length; wordPosition++) {
     const row = wordRows[wordPosition] ?? [];
-    resolved.push(...row.map((wordIdx): ResolvedItem => ({ kind: "missing", wordIdx })));
+    resolved.push(
+      ...row.map((wordIdx): ResolvedItem => ({ kind: "missing", wordIdx })),
+    );
   }
   for (; folioPosition < folioRows.length; folioPosition++) {
     const row = folioRows[folioPosition] ?? [];
-    resolved.push(...row.map((folioIdx): ResolvedItem => ({ kind: "extra", folioIdx })));
+    resolved.push(
+      ...row.map((folioIdx): ResolvedItem => ({ kind: "extra", folioIdx })),
+    );
   }
   return resolved;
 };
@@ -825,7 +924,8 @@ const equivalentSegmentedRows = (
     reference !== null &&
     candidate !== null &&
     reference.page === candidate.page &&
-    textSimilarity(reference.line.normText, candidate.line.normText) >= CONCAT_THRESHOLD
+    textSimilarity(reference.line.normText, candidate.line.normText) >=
+      CONCAT_THRESHOLD
   );
 };
 
@@ -840,8 +940,14 @@ type VerticalOffsetOptions = {
   candidate: LineBox;
 };
 
-const verticalOffsetPt = ({ reference, candidate }: VerticalOffsetOptions): number => {
-  if (reference.baselinePt !== undefined && candidate.baselinePt !== undefined) {
+const verticalOffsetPt = ({
+  reference,
+  candidate,
+}: VerticalOffsetOptions): number => {
+  if (
+    reference.baselinePt !== undefined &&
+    candidate.baselinePt !== undefined
+  ) {
     return candidate.baselinePt - reference.baselinePt;
   }
   return candidate.yPt - reference.yPt;
@@ -879,26 +985,40 @@ const pageRegionMedianYOffsets = ({
     deltasByPageRegion.set(key, deltas);
   }
   for (const { reference, candidate } of equivalentRows) {
-    if (!hasStableVerticalInk(reference.line) || !hasStableVerticalInk(candidate.line)) {
+    if (
+      !hasStableVerticalInk(reference.line) ||
+      !hasStableVerticalInk(candidate.line)
+    ) {
       continue;
     }
     const key = matchedPageRegionKey(reference, candidate);
     const deltas = deltasByPageRegion.get(key) ?? [];
-    deltas.push(verticalOffsetPt({ reference: reference.line, candidate: candidate.line }));
+    deltas.push(
+      verticalOffsetPt({
+        reference: reference.line,
+        candidate: candidate.line,
+      }),
+    );
     deltasByPageRegion.set(key, deltas);
   }
-  return new Map([...deltasByPageRegion].map(([key, deltas]) => [key, median(deltas)]));
+  return new Map(
+    [...deltasByPageRegion].map(([key, deltas]) => [key, median(deltas)]),
+  );
 };
 
 const median = (values: number[]): number => {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 0) return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+  if (sorted.length % 2 === 0)
+    return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
   return sorted[mid] ?? 0;
 };
 
-const matchKey = ({ wordIdx, folioIdx }: Extract<ResolvedItem, { kind: "match" }>): string =>
+const matchKey = ({
+  wordIdx,
+  folioIdx,
+}: Extract<ResolvedItem, { kind: "match" }>): string =>
   `${wordIdx}:${folioIdx}`;
 
 type StableYMatch = {
@@ -937,7 +1057,10 @@ const segmentedYResiduals = (
     const stableMatches = matchesByPageRegion.get(key) ?? [];
     stableMatches.push({
       match,
-      offsetPt: verticalOffsetPt({ reference: reference.line, candidate: candidate.line }),
+      offsetPt: verticalOffsetPt({
+        reference: reference.line,
+        candidate: candidate.line,
+      }),
     });
     matchesByPageRegion.set(key, stableMatches);
   }
@@ -969,7 +1092,8 @@ const segmentedYResiduals = (
       residuals.set(matchKey(current.match), residualPt);
       const next = stableMatches[index + 1];
       const returnsToBaseline =
-        next !== undefined && Math.abs(next.offsetPt - baselinePt) <= tolerances.yResidualPt;
+        next !== undefined &&
+        Math.abs(next.offsetPt - baselinePt) <= tolerances.yResidualPt;
       if (!returnsToBaseline) baselinePt = current.offsetPt;
     }
   }
@@ -999,7 +1123,10 @@ type DiffMatchesOptions = {
 };
 
 /** Both extractors know the line's font, and the families differ. */
-const linesUseDifferentFonts = (reference: LineBox, candidate: LineBox): boolean =>
+const linesUseDifferentFonts = (
+  reference: LineBox,
+  candidate: LineBox,
+): boolean =>
   reference.fontName !== undefined &&
   candidate.fontName !== undefined &&
   !fontFamiliesMatch(reference.fontName, candidate.fontName);
@@ -1026,7 +1153,8 @@ const diffMatches = ({
       if (!w || !f) continue;
       matchedLineCount++;
       const samePage = w.page === f.page;
-      const excluded = excludeFontMismatchedLines && linesUseDifferentFonts(w.line, f.line);
+      const excluded =
+        excludeFontMismatchedLines && linesUseDifferentFonts(w.line, f.line);
       const sink = excluded ? fontExcludedDivergences : orderedDivergences;
 
       // Space-insensitive: visual-row merging joins reference marker
@@ -1069,7 +1197,11 @@ const diffMatches = ({
       }
 
       let yDelta: number | null = null;
-      if (samePage && hasStableVerticalInk(w.line) && hasStableVerticalInk(f.line)) {
+      if (
+        samePage &&
+        hasStableVerticalInk(w.line) &&
+        hasStableVerticalInk(f.line)
+      ) {
         yDelta = yResidualsByMatch.get(matchKey(item)) ?? null;
         if (yDelta !== null) {
           sink.push({
@@ -1083,18 +1215,32 @@ const diffMatches = ({
 
       if (excluded) {
         fontExcludedLines++;
-      } else if (samePage && xDelta === null && widthDelta === null && yDelta === null) {
+      } else if (
+        samePage &&
+        xDelta === null &&
+        widthDelta === null &&
+        yDelta === null
+      ) {
         matchedGeomPass++;
       }
     } else if (item.kind === "line-break") {
       const equivalentRows = equivalentVisualRows(item, wordFlat, folioFlat);
       if (equivalentRows) {
-        for (const { reference, candidate, referenceLineCount } of equivalentRows) {
+        for (const {
+          reference,
+          candidate,
+          referenceLineCount,
+        } of equivalentRows) {
           matchedLineCount += referenceLineCount;
           const excluded =
-            excludeFontMismatchedLines && linesUseDifferentFonts(reference.line, candidate.line);
+            excludeFontMismatchedLines &&
+            linesUseDifferentFonts(reference.line, candidate.line);
           const sink = excluded ? fontExcludedDivergences : orderedDivergences;
-          const xDelta = checkXDrift(reference.line, candidate.line, tolerances);
+          const xDelta = checkXDrift(
+            reference.line,
+            candidate.line,
+            tolerances,
+          );
           if (xDelta !== null) {
             sink.push({
               kind: "x-drift",
@@ -1103,7 +1249,11 @@ const diffMatches = ({
               deltaPt: xDelta,
             });
           }
-          const widthDelta = checkWidthDrift(reference.line, candidate.line, tolerances);
+          const widthDelta = checkWidthDrift(
+            reference.line,
+            candidate.line,
+            tolerances,
+          );
           if (widthDelta !== null) {
             sink.push({
               kind: "width-drift",
@@ -1114,14 +1264,19 @@ const diffMatches = ({
           }
 
           let yDelta: number | null = null;
-          if (hasStableVerticalInk(reference.line) && hasStableVerticalInk(candidate.line)) {
+          if (
+            hasStableVerticalInk(reference.line) &&
+            hasStableVerticalInk(candidate.line)
+          ) {
             const medianOffset =
               medianYOffsetsByPageRegion.get(
                 pageRegionKey(reference.page, candidate.line.region),
               ) ?? 0;
             const residual =
-              verticalOffsetPt({ reference: reference.line, candidate: candidate.line }) -
-              medianOffset;
+              verticalOffsetPt({
+                reference: reference.line,
+                candidate: candidate.line,
+              }) - medianOffset;
             if (Math.abs(residual) > tolerances.yResidualPt) {
               yDelta = residual;
               sink.push({
@@ -1135,7 +1290,11 @@ const diffMatches = ({
 
           if (excluded) {
             fontExcludedLines += referenceLineCount;
-          } else if (xDelta === null && widthDelta === null && yDelta === null) {
+          } else if (
+            xDelta === null &&
+            widthDelta === null &&
+            yDelta === null
+          ) {
             matchedGeomPass += referenceLineCount;
           }
         }
@@ -1144,8 +1303,10 @@ const diffMatches = ({
 
       const firstWordIdx = item.wordIdxs[0];
       const firstFolioIdx = item.folioIdxs[0];
-      const firstReference = firstWordIdx === undefined ? undefined : wordFlat[firstWordIdx];
-      const firstFolio = firstFolioIdx === undefined ? undefined : folioFlat[firstFolioIdx];
+      const firstReference =
+        firstWordIdx === undefined ? undefined : wordFlat[firstWordIdx];
+      const firstFolio =
+        firstFolioIdx === undefined ? undefined : folioFlat[firstFolioIdx];
       const excluded =
         excludeFontMismatchedLines &&
         firstReference !== undefined &&
@@ -1158,16 +1319,30 @@ const diffMatches = ({
         sink.push({
           kind: "line-break",
           page,
-          referenceTexts: item.wordIdxs.map((idx) => wordFlat[idx]?.line.normText ?? ""),
-          folioTexts: item.folioIdxs.map((idx) => folioFlat[idx]?.line.normText ?? ""),
+          referenceTexts: item.wordIdxs.map(
+            (idx) => wordFlat[idx]?.line.normText ?? "",
+          ),
+          folioTexts: item.folioIdxs.map(
+            (idx) => folioFlat[idx]?.line.normText ?? "",
+          ),
         });
       }
     } else if (item.kind === "missing") {
       const w = wordFlat[item.wordIdx];
-      if (w) orderedDivergences.push({ kind: "missing-line", page: w.page, text: w.line.normText });
+      if (w)
+        orderedDivergences.push({
+          kind: "missing-line",
+          page: w.page,
+          text: w.line.normText,
+        });
     } else {
       const f = folioFlat[item.folioIdx];
-      if (f) orderedDivergences.push({ kind: "extra-line", page: f.page, text: f.line.normText });
+      if (f)
+        orderedDivergences.push({
+          kind: "extra-line",
+          page: f.page,
+          text: f.line.normText,
+        });
     }
   }
 
@@ -1194,7 +1369,10 @@ const equivalentVisualRows = (
   if (item.wordIdxs.length === item.folioIdxs.length) return null;
   const referenceRows = groupGapLinesByVisualRow(item.wordIdxs, referenceFlat);
   const candidateRows = groupGapLinesByVisualRow(item.folioIdxs, candidateFlat);
-  if (referenceRows.length === 0 || referenceRows.length !== candidateRows.length) {
+  if (
+    referenceRows.length === 0 ||
+    referenceRows.length !== candidateRows.length
+  ) {
     return null;
   }
 
@@ -1208,16 +1386,24 @@ const equivalentVisualRows = (
     if (!reference || !candidate) return null;
     if (
       reference.page !== candidate.page ||
-      textSimilarity(reference.line.normText, candidate.line.normText) < CONCAT_THRESHOLD
+      textSimilarity(reference.line.normText, candidate.line.normText) <
+        CONCAT_THRESHOLD
     ) {
       return null;
     }
-    equivalentRows.push({ reference, candidate, referenceLineCount: referenceIdxs.length });
+    equivalentRows.push({
+      reference,
+      candidate,
+      referenceLineCount: referenceIdxs.length,
+    });
   }
   return equivalentRows;
 };
 
-const groupGapLinesByVisualRow = (idxs: number[], flat: FlatLine[]): number[][] => {
+const groupGapLinesByVisualRow = (
+  idxs: number[],
+  flat: FlatLine[],
+): number[][] => {
   const rows: number[][] = [];
   for (const idx of idxs) {
     const current = flat[idx];
@@ -1248,7 +1434,9 @@ const mergeFlatLines = (idxs: number[], flat: FlatLine[]): FlatLine | null => {
   const direction = resolveDirection(members.map((member) => member.line));
   if (direction === null) return null;
   members.sort((left, right) =>
-    direction === "rtl" ? right.line.xPt - left.line.xPt : left.line.xPt - right.line.xPt,
+    direction === "rtl"
+      ? right.line.xPt - left.line.xPt
+      : left.line.xPt - right.line.xPt,
   );
   const first = members[0];
   if (!first || members.length !== idxs.length) return null;
@@ -1285,6 +1473,7 @@ const checkWidthDrift = (
 ): number | null => {
   const delta = folioLine.widthPt - wordLine.widthPt;
   const withinAbsolute = Math.abs(delta) <= tolerances.widthPt;
-  const withinRelative = Math.abs(delta) <= tolerances.widthRelative * wordLine.widthPt;
+  const withinRelative =
+    Math.abs(delta) <= tolerances.widthRelative * wordLine.widthPt;
   return withinAbsolute || withinRelative ? null : delta;
 };

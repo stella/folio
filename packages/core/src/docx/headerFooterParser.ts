@@ -29,21 +29,21 @@
  */
 
 import type {
+  FooterReference,
   HeaderFooter,
   HeaderFooterType,
   HeaderReference,
-  FooterReference,
-  Theme,
-  RelationshipMap,
   MediaFile,
+  RelationshipMap,
+  Theme,
 } from "../types/document";
 import { parseBlockContent } from "./blockContentParser";
 import { assignHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
 import type { NumberingMap } from "./numberingParser";
-import type { StyleMap } from "./styleParser";
-import { parseWatermark } from "./watermarkParser";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
+import type { StyleMap } from "./styleParser";
+import { parseWatermark } from "./watermarkParser";
 import { collectXmlnsDeclarations, getLocalName, parseXml } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -117,7 +117,8 @@ export function parseHeader(
 
   // Find the root header element (w:hdr)
   const rootElement = doc.elements?.find(
-    (el: XmlElement) => el.type === "element" && getLocalName(el.name ?? "") === "hdr",
+    (el: XmlElement) =>
+      el.type === "element" && getLocalName(el.name ?? "") === "hdr",
   );
 
   if (!rootElement) {
@@ -137,11 +138,19 @@ export function parseHeader(
     // anchored to a stable, package-absolute path by parseHeadersAndFooters,
     // which knows this header part's own path.
   }
-  result.content = parseBlockContent(rootElement, styles, theme, numbering, rels, media, {
-    inHeaderFooter: true,
-    rootXmlns: collectXmlnsDeclarations(rootElement),
-    previews,
-  });
+  result.content = parseBlockContent(
+    rootElement,
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    {
+      inHeaderFooter: true,
+      rootXmlns: collectXmlnsDeclarations(rootElement),
+      previews,
+    },
+  );
   if (watermarkResult) {
     const host = result.content.at(watermarkResult.blockIndex);
     if (host?.type === "paragraph") {
@@ -149,9 +158,10 @@ export function parseHeader(
       // The modeled watermark paints the detached VML / DrawingML. Retain only
       // the host paragraph's formatting here so header flow keeps its line box
       // without painting the same artwork a second time.
-      result.content[watermarkResult.blockIndex] = cloneParagraphWithPropertySource(host, {
-        content: [],
-      });
+      result.content[watermarkResult.blockIndex] =
+        cloneParagraphWithPropertySource(host, {
+          content: [],
+        });
     }
   }
 
@@ -198,18 +208,27 @@ export function parseFooter(
 
   // Find the root footer element (w:ftr)
   const rootElement = doc.elements?.find(
-    (el: XmlElement) => el.type === "element" && getLocalName(el.name ?? "") === "ftr",
+    (el: XmlElement) =>
+      el.type === "element" && getLocalName(el.name ?? "") === "ftr",
   );
 
   if (!rootElement) {
     return result;
   }
 
-  result.content = parseBlockContent(rootElement, styles, theme, numbering, rels, media, {
-    inHeaderFooter: true,
-    rootXmlns: collectXmlnsDeclarations(rootElement),
-    previews,
-  });
+  result.content = parseBlockContent(
+    rootElement,
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    {
+      inHeaderFooter: true,
+      rootXmlns: collectXmlnsDeclarations(rootElement),
+      previews,
+    },
+  );
 
   assignHeaderFooterVerbatimXml(result, footerXml);
 
@@ -252,7 +271,9 @@ export function parseHeaderFooter(
 /**
  * Create a HeaderFooterMap from parsed headers/footers
  */
-function createHeaderFooterMap(byId: Map<string, HeaderFooter>): HeaderFooterMap {
+function createHeaderFooterMap(
+  byId: Map<string, HeaderFooter>,
+): HeaderFooterMap {
   return {
     byId,
 
@@ -314,7 +335,16 @@ export function buildHeaderFooterMap(
   for (const ref of references) {
     const xml = xmlContents.get(ref.rId);
     if (xml) {
-      const hf = parseHeaderFooter(xml, isHeader, ref.type, styles, theme, numbering, rels, media);
+      const hf = parseHeaderFooter(
+        xml,
+        isHeader,
+        ref.type,
+        styles,
+        theme,
+        numbering,
+        rels,
+        media,
+      );
       byId.set(ref.rId, hf);
     }
   }

@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
+import { Result, TaggedError } from "better-result";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { Result, TaggedError } from "better-result";
 
 import { keyDifferences, validateExactObjectKeys } from "./lib/exact-object";
 
@@ -11,20 +11,51 @@ const BASELINE_PATH = path.join(import.meta.dir, "typecheck-budget.json");
 const BASELINE_RELATIVE_PATH = "scripts/typecheck-budget.json";
 // Compiler-work counters remain a separate metric: Bun check does not expose
 // Types/Instantiations. Preserve this counter baseline independently of correctness checks.
-const NATIVE_TSC = path.join(REPO_ROOT, "node_modules/@typescript/native/bin/tsc");
+const NATIVE_TSC = path.join(
+  REPO_ROOT,
+  "node_modules/@typescript/native/bin/tsc",
+);
 const CLASSIC_TSC = path.join(REPO_ROOT, "node_modules/typescript/bin/tsc");
 
 const PROJECTS = [
-  { id: "docx-core", config: "packages/docx-core/tsconfig.build.json", compiler: "native" },
-  { id: "core", config: "packages/core/tsconfig.build.json", compiler: "native" },
-  { id: "react", config: "packages/react/tsconfig.build.json", compiler: "native" },
-  { id: "agents", config: "packages/agents/tsconfig.build.json", compiler: "native" },
+  {
+    id: "docx-core",
+    config: "packages/docx-core/tsconfig.build.json",
+    compiler: "native",
+  },
+  {
+    id: "core",
+    config: "packages/core/tsconfig.build.json",
+    compiler: "native",
+  },
+  {
+    id: "react",
+    config: "packages/react/tsconfig.build.json",
+    compiler: "native",
+  },
+  {
+    id: "agents",
+    config: "packages/agents/tsconfig.build.json",
+    compiler: "native",
+  },
   { id: "cli", config: "packages/cli/tsconfig.build.json", compiler: "native" },
-  { id: "editor-web", config: "packages/editor-web/tsconfig.build.json", compiler: "native" },
+  {
+    id: "editor-web",
+    config: "packages/editor-web/tsconfig.build.json",
+    compiler: "native",
+  },
   { id: "vue", config: "packages/vue/tsconfig.build.json", compiler: "vue" },
   { id: "nuxt", config: "packages/nuxt/tsconfig.json", compiler: "classic" },
-  { id: "playground", config: "packages/playground/tsconfig.json", compiler: "native" },
-  { id: "playground-vue", config: "packages/playground-vue/tsconfig.json", compiler: "vue" },
+  {
+    id: "playground",
+    config: "packages/playground/tsconfig.json",
+    compiler: "native",
+  },
+  {
+    id: "playground-vue",
+    config: "packages/playground-vue/tsconfig.json",
+    compiler: "vue",
+  },
   { id: "parity", config: "parity/tsconfig.check.json", compiler: "classic" },
   {
     id: "reserved-values",
@@ -59,7 +90,9 @@ type Measurement = {
 
 const readDiagnostic = (output: string, label: string): number | null => {
   const prefix = `${label}:`;
-  const line = output.split("\n").find((candidate) => candidate.startsWith(prefix));
+  const line = output
+    .split("\n")
+    .find((candidate) => candidate.startsWith(prefix));
   if (line === undefined) {
     return null;
   }
@@ -79,14 +112,19 @@ class TypecheckBudgetError extends TaggedError("TypecheckBudgetError")<{
   cause?: unknown;
 }> {}
 
-const rejectsExactKeys = (value: unknown, expected: readonly string[]): boolean =>
+const rejectsExactKeys = (
+  value: unknown,
+  expected: readonly string[],
+): boolean =>
   validateExactObjectKeys(value, expected, "self-test baseline").isErr();
 
 const parseCounters = (output: string, project: string): Counters => {
   const types = readDiagnostic(output, "Types");
   const instantiations = readDiagnostic(output, "Instantiations");
   if (types === null || instantiations === null) {
-    throw new Error(`Missing Types/Instantiations in diagnostics for ${project}:\n${output}`);
+    throw new Error(
+      `Missing Types/Instantiations in diagnostics for ${project}:\n${output}`,
+    );
   }
   return { types, instantiations };
 };
@@ -99,12 +137,20 @@ const compilerExecutable = (
     return NATIVE_TSC;
   }
   if (compiler === "vue") {
-    return path.join(REPO_ROOT, path.dirname(config), "node_modules/vue-tsc/bin/vue-tsc.js");
+    return path.join(
+      REPO_ROOT,
+      path.dirname(config),
+      "node_modules/vue-tsc/bin/vue-tsc.js",
+    );
   }
   return CLASSIC_TSC;
 };
 
-const measureProject = ({ id, config, compiler }: (typeof PROJECTS)[number]): Measurement => {
+const measureProject = ({
+  id,
+  config,
+  compiler,
+}: (typeof PROJECTS)[number]): Measurement => {
   const executable = compilerExecutable(compiler, config);
   const flags = ["-p", config, "--noEmit", "--extendedDiagnostics"];
   if (compiler === "native") {
@@ -114,7 +160,9 @@ const measureProject = ({ id, config, compiler }: (typeof PROJECTS)[number]): Me
   // vue-tsc installs a Node launcher that patches TypeScript's module loading;
   // invoking that launcher through Bun skips its Vue SFC integration.
   const command =
-    compiler === "vue" ? [executable, ...flags] : [process.execPath, executable, ...flags];
+    compiler === "vue"
+      ? [executable, ...flags]
+      : [process.execPath, executable, ...flags];
   const spawned = Bun.spawnSync(command, {
     cwd: REPO_ROOT,
     stdout: "pipe",
@@ -129,7 +177,8 @@ const measureProject = ({ id, config, compiler }: (typeof PROJECTS)[number]): Me
   const files = readDiagnostic(output, "Files");
   const checkTime = readDiagnostic(output, "Check time");
   const memoryKiB = readDiagnostic(output, "Memory used");
-  const memory = memoryKiB === null ? "?" : `${Math.round(memoryKiB / 1024)} MiB`;
+  const memory =
+    memoryKiB === null ? "?" : `${Math.round(memoryKiB / 1024)} MiB`;
   return {
     id,
     counters: parseCounters(output, config),
@@ -145,7 +194,11 @@ const measureAll = (): Measurement[] =>
 
 const readBaselineEntry = (parsed: Record<string, unknown>, id: ProjectId) => {
   const value = parsed[id];
-  const exactEntry = validateExactObjectKeys(value, GATED_FIELDS, `${id} typecheck budget`);
+  const exactEntry = validateExactObjectKeys(
+    value,
+    GATED_FIELDS,
+    `${id} typecheck budget`,
+  );
   if (exactEntry.isErr()) {
     return exactEntry;
   }
@@ -162,7 +215,8 @@ const readBaselineEntry = (parsed: Record<string, unknown>, id: ProjectId) => {
 };
 
 const readBaseline = () => {
-  const parseJson = (): unknown => JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
+  const parseJson = (): unknown =>
+    JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
   const parsed = Result.try({
     try: parseJson,
     catch: (cause) =>
@@ -191,10 +245,19 @@ const readBaseline = () => {
   const vue = readBaselineEntry(exactBaseline.value, "vue");
   const nuxt = readBaselineEntry(exactBaseline.value, "nuxt");
   const playground = readBaselineEntry(exactBaseline.value, "playground");
-  const playgroundVue = readBaselineEntry(exactBaseline.value, "playground-vue");
+  const playgroundVue = readBaselineEntry(
+    exactBaseline.value,
+    "playground-vue",
+  );
   const parity = readBaselineEntry(exactBaseline.value, "parity");
-  const reservedValues = readBaselineEntry(exactBaseline.value, "reserved-values");
-  const containerContract = readBaselineEntry(exactBaseline.value, "container-contract");
+  const reservedValues = readBaselineEntry(
+    exactBaseline.value,
+    "reserved-values",
+  );
+  const containerContract = readBaselineEntry(
+    exactBaseline.value,
+    "container-contract",
+  );
   if (docxCore.isErr()) return docxCore;
   if (core.isErr()) return core;
   if (react.isErr()) return react;
@@ -228,8 +291,11 @@ const readBaseline = () => {
 const allowedMaximum = (field: GatedField, baseline: number): number =>
   Math.max(baseline * HEADROOM, baseline + HEADROOM_FLOOR[field]);
 
-const exceedsMaximum = (field: GatedField, current: number, baseline: number): boolean =>
-  current > allowedMaximum(field, baseline);
+const exceedsMaximum = (
+  field: GatedField,
+  current: number,
+  baseline: number,
+): boolean => current > allowedMaximum(field, baseline);
 
 const ratchetAvailable = (current: number, baseline: number): boolean =>
   current < baseline * RATCHET_THRESHOLD;
@@ -290,10 +356,14 @@ const check = (measurements: readonly Measurement[]): number => {
     }
   }
   for (const improvement of improvements) {
-    console.log(`typecheck-budget: ratchet available for ${improvement}; run ${WRITE_COMMAND}`);
+    console.log(
+      `typecheck-budget: ratchet available for ${improvement}; run ${WRITE_COMMAND}`,
+    );
   }
   if (failures.length === 0) {
-    console.log("typecheck-budget: all compiler-work budgets are within limits");
+    console.log(
+      "typecheck-budget: all compiler-work budgets are within limits",
+    );
     return 0;
   }
   console.error("typecheck-budget: compiler workload exceeded its maximum:");
@@ -349,8 +419,14 @@ const selfTest = (): number => {
       continue;
     }
     const packageJsonPath = path.join(packagesRoot, entry.name, "package.json");
-    const packageJson: unknown = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-    if (typeof packageJson !== "object" || packageJson === null || !("scripts" in packageJson)) {
+    const packageJson: unknown = JSON.parse(
+      readFileSync(packageJsonPath, "utf8"),
+    );
+    if (
+      typeof packageJson !== "object" ||
+      packageJson === null ||
+      !("scripts" in packageJson)
+    ) {
       continue;
     }
     const { scripts } = packageJson;
@@ -363,7 +439,10 @@ const selfTest = (): number => {
       actualWorkspaceProjects.push(entry.name);
     }
   }
-  const workspaceDiff = keyDifferences(actualWorkspaceProjects, expectedWorkspaceProjects);
+  const workspaceDiff = keyDifferences(
+    actualWorkspaceProjects,
+    expectedWorkspaceProjects,
+  );
   if (workspaceDiff.missing.length > 0 || workspaceDiff.extra.length > 0) {
     console.error(
       "typecheck-budget: workspace coverage self-test failed; " +
@@ -378,14 +457,18 @@ const selfTest = (): number => {
 
 const mode = process.argv.at(2) ?? "--report";
 if (process.argv.length > 3) {
-  console.error("Usage: typecheck-budget.ts [--check|--report|--self-test|--write]");
+  console.error(
+    "Usage: typecheck-budget.ts [--check|--report|--self-test|--write]",
+  );
   process.exit(2);
 }
 if (mode === "--self-test") {
   process.exit(selfTest());
 }
 if (!["--check", "--report", "--write"].includes(mode)) {
-  console.error("Usage: typecheck-budget.ts [--check|--report|--self-test|--write]");
+  console.error(
+    "Usage: typecheck-budget.ts [--check|--report|--self-test|--write]",
+  );
   process.exit(2);
 }
 

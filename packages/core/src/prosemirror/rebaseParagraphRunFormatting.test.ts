@@ -37,7 +37,11 @@ const runOverLink = async (operationId: string) => {
   }
   const shape = documentShape("fields-links-bookmarks");
   const base = await parseShapeDocument(await shape.build());
-  const state = placeSelection(createHarnessState(base, "editing"), shape.focus, "paragraph");
+  const state = placeSelection(
+    createHarnessState(base, "editing"),
+    shape.focus,
+    "paragraph",
+  );
   if (!state) {
     throw new Error("No selection");
   }
@@ -45,18 +49,26 @@ const runOverLink = async (operationId: string) => {
   const view = new HeadlessEditorView(state);
   expect(operation.run({ view, base, focus: shape.focus })).not.toBe(false);
   const { bytes } = await saveHarnessState(view.state, base);
-  return { before, after: view.state, reopened: (await readBack(bytes)).summary };
+  return {
+    before,
+    after: view.state,
+    reopened: (await readBack(bytes)).summary,
+  };
 };
 
 describe("style formatting survives a reset of direct formatting", () => {
   test("clearing the text color keeps a hyperlink's style color", async () => {
-    const { before, after, reopened } = await runOverLink("command:clearTextColor");
+    const { before, after, reopened } = await runOverLink(
+      "command:clearTextColor",
+    );
     expect(linkRunMarks(after)).toEqual(before);
     expect(summarizeState(after)).toEqual(reopened);
   });
 
   test("applying a paragraph style keeps a hyperlink's character style formatting", async () => {
-    const { after, reopened } = await runOverLink("command:applyStyle(Heading1)");
+    const { after, reopened } = await runOverLink(
+      "command:applyStyle(Heading1)",
+    );
     expect(linkRunMarks(after)).toContain("textColor");
     expect(linkRunMarks(after)).toContain("underline");
     expect(summarizeState(after)).toEqual(reopened);

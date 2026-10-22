@@ -14,7 +14,8 @@ import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { toFlowBlocks } from "./toFlowBlocks";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const GRADIENT_FILL = `<a:gradFill rotWithShape="0">
   <a:gsLst>
@@ -70,7 +71,10 @@ const buildDocx = async (fill: string): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const textBoxBlocks = (pmDoc: ReturnType<typeof toProseDoc>, theme: unknown): TextBoxBlock[] =>
+const textBoxBlocks = (
+  pmDoc: ReturnType<typeof toProseDoc>,
+  theme: unknown,
+): TextBoxBlock[] =>
   toFlowBlocks(pmDoc, { theme: theme as never }).filter(
     (block): block is TextBoxBlock => block.kind === "textBox",
   );
@@ -84,19 +88,25 @@ describe("text box gradient fill", () => {
     expect(box?.fillColor).toBeUndefined();
     expect(box?.fillGradient?.angle).toBe(315);
     expect(box?.fillGradient?.scaled).toBe(true);
-    expect(box?.fillGradient?.stops.map(({ offset }) => offset)).toEqual([0, 0.4, 1]);
-    expect(box?.fillGradient?.stops.slice(0, 2).map(({ color }) => color)).toEqual([
-      "#102030",
-      "#405060",
+    expect(box?.fillGradient?.stops.map(({ offset }) => offset)).toEqual([
+      0, 0.4, 1,
     ]);
+    expect(
+      box?.fillGradient?.stops.slice(0, 2).map(({ color }) => color),
+    ).toEqual(["#102030", "#405060"]);
     // The scheme color resolves through the theme rather than painting black.
     expect(box?.fillGradient?.stops[2]?.color).toMatch(/^#[0-9A-F]{6}$/iu);
     expect(box?.fillGradient?.stops[2]?.color).not.toBe("#000000");
   });
 
   test("an unstated a:lin@scaled paints the angle as stated", async () => {
-    const document = await parseDocx(await buildDocx(GRADIENT_FILL.replace(' scaled="1"', "")));
-    const [box] = textBoxBlocks(toProseDoc(document), document.package.theme ?? null);
+    const document = await parseDocx(
+      await buildDocx(GRADIENT_FILL.replace(' scaled="1"', "")),
+    );
+    const [box] = textBoxBlocks(
+      toProseDoc(document),
+      document.package.theme ?? null,
+    );
 
     expect(box?.fillGradient?.scaled).toBe(false);
   });
@@ -110,7 +120,10 @@ describe("text box gradient fill", () => {
         ),
       ),
     );
-    const [box] = textBoxBlocks(toProseDoc(document), document.package.theme ?? null);
+    const [box] = textBoxBlocks(
+      toProseDoc(document),
+      document.package.theme ?? null,
+    );
 
     expect(box).toBeDefined();
     expect(box?.fillGradient).toBeUndefined();
@@ -122,7 +135,11 @@ describe("text box gradient fill", () => {
       stylesheetSource: { type: "package" },
     });
     const saved = await repackDocx(edited, { updateModifiedDate: false });
-    const xml = await (await JSZip.loadAsync(saved)).file("word/document.xml")!.async("text");
+    const xml = await (
+      await JSZip.loadAsync(saved)
+    )
+      .file("word/document.xml")!
+      .async("text");
 
     expect(xml).toContain("<a:gradFill");
     expect(xml).toContain('<a:lin ang="18900000" scaled="1"/>');

@@ -15,20 +15,17 @@
  * Internal links use w:anchor to reference a bookmark in the same document
  */
 
-import { preserveLinkedSdt } from "./linkedSdtPreservation";
-
 import type {
+  BookmarkEnd,
+  BookmarkStart,
   Hyperlink,
   InlineWrapper,
-  ParagraphContent,
-  Run,
-  BookmarkStart,
-  BookmarkEnd,
-  Theme,
-  RelationshipMap,
   MediaFile,
+  ParagraphContent,
+  RelationshipMap,
+  Run,
+  Theme,
 } from "../types/document";
-
 import { sanitizeExternalUrl } from "../utils/urlSecurity";
 import {
   CAPTURE,
@@ -40,7 +37,11 @@ import {
 } from "./containerChildren";
 import { inlineWrapperOf } from "./inlineWrapperParser";
 import type { InlineWrapperElement } from "./inlineWrapperParser";
-import { preservedInlineCapture, preserveInlineChild } from "./preservedRunContent";
+import { preserveLinkedSdt } from "./linkedSdtPreservation";
+import {
+  preservedInlineCapture,
+  preserveInlineChild,
+} from "./preservedRunContent";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { parseRun } from "./runParser";
@@ -148,7 +149,11 @@ export function parseHyperlink(
       inScopeXmlns,
     },
   });
-  hyperlink.children = withPreservedChildren(children, preserved, preservedInlineCapture);
+  hyperlink.children = withPreservedChildren(
+    children,
+    preserved,
+    preservedInlineCapture,
+  );
 
   return hyperlink;
 }
@@ -159,7 +164,10 @@ export function parseHyperlink(
  * The paragraph parser's revision-segmenting walk reads the children itself,
  * so it takes the shell rather than a link whose children it would discard.
  */
-export function parseHyperlinkShell(node: XmlElement, rels: RelationshipMap | null): Hyperlink {
+export function parseHyperlinkShell(
+  node: XmlElement,
+  rels: RelationshipMap | null,
+): Hyperlink {
   const hyperlink: Hyperlink = {
     type: "hyperlink",
     children: [],
@@ -176,7 +184,11 @@ export function parseHyperlinkShell(node: XmlElement, rels: RelationshipMap | nu
     // broken link into a link to a package part. An id that resolves to
     // nothing is still written back, and the parse reports those counts once
     // it has the whole body (`countDanglingRelationshipReferences`).
-    const resolved = resolveRelationshipIdOfType(rels, rId, RELATIONSHIP_TYPES.hyperlink);
+    const resolved = resolveRelationshipIdOfType(
+      rels,
+      rId,
+      RELATIONSHIP_TYPES.hyperlink,
+    );
     if (resolved.status === "resolved") {
       // External hyperlinks have TargetMode="External" and target is the URL
       // Both external and internal links use the same target
@@ -273,7 +285,15 @@ const linkedInlineWrapper =
  */
 export const HYPERLINK_CHILD_HANDLERS = {
   r: (child, { push, styles, theme, rels, media, previews, inScopeXmlns }) => {
-    const run = parseRun(child, styles, theme, rels, media, inScopeXmlns, previews);
+    const run = parseRun(
+      child,
+      styles,
+      theme,
+      rels,
+      media,
+      inScopeXmlns,
+      previews,
+    );
     if (runHoldsPayload(run)) {
       push(run);
     }
@@ -509,7 +529,11 @@ export function resolveHyperlinkUrl(
   hyperlink: Hyperlink,
   rels: RelationshipMap,
 ): string | undefined {
-  const resolved = resolveRelationshipIdOfType(rels, hyperlink.rId, RELATIONSHIP_TYPES.hyperlink);
+  const resolved = resolveRelationshipIdOfType(
+    rels,
+    hyperlink.rId,
+    RELATIONSHIP_TYPES.hyperlink,
+  );
   if (resolved.status === "resolved") {
     const safeHref = sanitizeExternalUrl(resolved.relationship.target);
     if (safeHref) {

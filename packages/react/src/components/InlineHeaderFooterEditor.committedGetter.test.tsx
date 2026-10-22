@@ -2,14 +2,20 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, mock, test } from "bun:test";
 import { act, startTransition, Suspense } from "react";
 import { createRoot } from "react-dom/client";
+
+import { afterAll, expect, mock, test } from "bun:test";
 import { IntlProvider } from "use-intl";
+
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+
 import { InlineHeaderFooterEditor } from "./InlineHeaderFooterEditor";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);

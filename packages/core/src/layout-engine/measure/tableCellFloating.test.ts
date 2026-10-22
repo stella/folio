@@ -7,16 +7,24 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
+import type {
+  ImageRun,
+  ParagraphBlock,
+  ParagraphMeasure,
+  TableBlock,
+} from "../types";
 import { clearAllCaches } from "./cache";
 import { measureTableBlock } from "./measureBlocks";
-import { installCanvasMeasureProvider, resetCanvasContext } from "./measureContainer";
+import {
+  installCanvasMeasureProvider,
+  resetCanvasContext,
+} from "./measureContainer";
 import { measureParagraph } from "./measureParagraph";
 import {
   buildTableCellFloatingZones,
   getTableCellContentWidth,
   getTableCellFloatingImages,
 } from "./tableCellFloating";
-import type { ImageRun, ParagraphBlock, ParagraphMeasure, TableBlock } from "../types";
 
 const CELL_WIDTH = 200;
 const PICTURE_HEIGHT = 80;
@@ -113,18 +121,24 @@ function laidOutCell(run: ImageRun) {
     contentWidth,
   );
   const paragraph = cell.blocks[0] as ParagraphBlock;
-  const wrapped = measureParagraph(paragraph, contentWidth, { floatingZones: zones });
+  const wrapped = measureParagraph(paragraph, contentWidth, {
+    floatingZones: zones,
+  });
   return { measure, cellMeasure, zones, wrapped };
 }
 
 /** Y of the first text line, below any float skip. */
-const firstLineTop = (measure: ParagraphMeasure): number => measure.lines[0]?.floatSkipBefore ?? 0;
+const firstLineTop = (measure: ParagraphMeasure): number =>
+  measure.lines[0]?.floatSkipBefore ?? 0;
 
 describe("table cell floating picture exclusions", () => {
   test.each<[string, Partial<ImageRun>]>([
     ["square, exactly the cell width", {}],
     ["square, wider than the cell", { width: CELL_WIDTH + 40 }],
-    ["square, its wrap distance reaching the cell edge", { width: CELL_WIDTH - 6, distRight: 12 }],
+    [
+      "square, its wrap distance reaching the cell edge",
+      { width: CELL_WIDTH - 6, distRight: 12 },
+    ],
     ["topAndBottom", { wrapType: "topAndBottom" }],
   ])("%s pushes the cell text below the picture", (_label, overrides) => {
     const { zones, wrapped } = laidOutCell(picture(overrides));
@@ -143,9 +157,13 @@ describe("table cell floating picture exclusions", () => {
   });
 
   test("a narrower square picture keeps side wrapping", () => {
-    const { zones, wrapped } = laidOutCell(picture({ width: 100, distRight: 12 }));
+    const { zones, wrapped } = laidOutCell(
+      picture({ width: 100, distRight: 12 }),
+    );
 
-    expect(zones).toEqual([{ leftMargin: 112, rightMargin: 0, topY: 0, bottomY: PICTURE_HEIGHT }]);
+    expect(zones).toEqual([
+      { leftMargin: 112, rightMargin: 0, topY: 0, bottomY: PICTURE_HEIGHT },
+    ]);
     expect(firstLineTop(wrapped)).toBe(0);
   });
 

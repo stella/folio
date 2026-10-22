@@ -1,9 +1,13 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import { setDocumentBodyComments } from "@stll/docx-core/model";
-import type { BlockContent } from "@stll/docx-core/model";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { setDocumentBodyComments } from "@stll/docx-core/model";
+import type { BlockContent } from "@stll/docx-core/model";
+
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Document } from "../types/document";
 import { validateFolioDocumentModel } from "./modelValidation";
 
@@ -19,7 +23,9 @@ const malformedDocumentWith = (body: unknown): Document =>
 
 describe("canonical Folio document model validation", () => {
   test("rejects an empty comments array", () => {
-    const result = validateFolioDocumentModel(documentWith({ content: [], comments: [] }));
+    const result = validateFolioDocumentModel(
+      documentWith({ content: [], comments: [] }),
+    );
 
     expect(result.valid).toBe(false);
     expect(result.issues).toContainEqual({
@@ -31,7 +37,9 @@ describe("canonical Folio document model validation", () => {
 
   test("rejects empty paragraph formatting", () => {
     const result = validateFolioDocumentModel(
-      documentWith({ content: [{ type: "paragraph", content: [], formatting: {} }] }),
+      documentWith({
+        content: [{ type: "paragraph", content: [], formatting: {} }],
+      }),
     );
 
     expect(result.valid).toBe(false);
@@ -45,7 +53,13 @@ describe("canonical Folio document model validation", () => {
   test("rejects paragraph formatting that contains only source replay metadata", () => {
     const result = validateFolioDocumentModel(
       documentWith({
-        content: [{ type: "paragraph", content: [], formatting: { sourceXml: "<w:pPr/>" } }],
+        content: [
+          {
+            type: "paragraph",
+            content: [],
+            formatting: { sourceXml: "<w:pPr/>" },
+          },
+        ],
       }),
     );
 
@@ -123,13 +137,16 @@ describe("canonical Folio document model validation", () => {
         }),
       path: "package.document.content[0].content[0].formatting",
     },
-  ])("rejects empty paragraph formatting in a $name story", ({ build, path }) => {
-    expect(validateFolioDocumentModel(build()).issues).toContainEqual({
-      path,
-      message: "Empty paragraph formatting must be absent.",
-      severity: "error",
-    });
-  });
+  ])(
+    "rejects empty paragraph formatting in a $name story",
+    ({ build, path }) => {
+      expect(validateFolioDocumentModel(build()).issues).toContainEqual({
+        path,
+        message: "Empty paragraph formatting must be absent.",
+        severity: "error",
+      });
+    },
+  );
 
   test("visits every recursive block container kind", () => {
     const traversal = {
@@ -152,7 +169,11 @@ describe("canonical Folio document model validation", () => {
         type: "table",
         rows: [{ cells: [{ content: [emptyFormattingParagraph] }] }],
       },
-      blockSdt: { type: "blockSdt", properties: {}, content: [emptyFormattingParagraph] },
+      blockSdt: {
+        type: "blockSdt",
+        properties: {},
+        content: [emptyFormattingParagraph],
+      },
       blockCustomXml: {
         type: "blockCustomXml",
         openingXml: "<w:customXml>",
@@ -166,7 +187,9 @@ describe("canonical Folio document model validation", () => {
 
     for (const block of Object.values(blocks)) {
       if (traversal[block.type] === "leaf") continue;
-      expect(validateFolioDocumentModel(documentWith({ content: [block] })).valid).toBe(false);
+      expect(
+        validateFolioDocumentModel(documentWith({ content: [block] })).valid,
+      ).toBe(false);
     }
   });
 
@@ -176,7 +199,9 @@ describe("canonical Folio document model validation", () => {
     });
 
     expect(() => validateFolioDocumentModel(document)).not.toThrow();
-    expect(validateFolioDocumentModel(document)).toMatchObject({ valid: false });
+    expect(validateFolioDocumentModel(document)).toMatchObject({
+      valid: false,
+    });
   });
 
   test.each([
@@ -195,60 +220,84 @@ describe("canonical Folio document model validation", () => {
       rows: [{ cells: [null] }],
       path: "package.document.content[0].rows[0].cells[0]",
     },
-  ])("rejects malformed tables with $name without throwing", ({ rows, path }) => {
-    const document = malformedDocumentWith({ content: [{ type: "table", rows }] });
+  ])(
+    "rejects malformed tables with $name without throwing",
+    ({ rows, path }) => {
+      const document = malformedDocumentWith({
+        content: [{ type: "table", rows }],
+      });
 
-    expect(() => validateFolioDocumentModel(document)).not.toThrow();
-    expect(validateFolioDocumentModel(document).issues).toContainEqual({
-      path,
-      message: expect.any(String),
-      severity: "error",
-    });
-  });
+      expect(() => validateFolioDocumentModel(document)).not.toThrow();
+      expect(validateFolioDocumentModel(document).issues).toContainEqual({
+        path,
+        message: expect.any(String),
+        severity: "error",
+      });
+    },
+  );
 
   test("never throws when arbitrary JSON replaces a document position", () => {
     fc.assert(
-      fc.property(fc.integer({ min: 0, max: 6 }), fc.jsonValue(), (position, replacement) => {
-        const document = documentWith({
-          content: [
-            {
-              type: "table",
-              rows: [
-                { cells: [{ content: [{ type: "paragraph", content: [], formatting: {} }] }] },
-              ],
-            },
-          ],
-        });
-        const table = document.package.document.content[0];
-        if (table?.type !== "table") throw new Error("Invalid test fixture");
+      fc.property(
+        fc.integer({ min: 0, max: 6 }),
+        fc.jsonValue(),
+        (position, replacement) => {
+          const document = documentWith({
+            content: [
+              {
+                type: "table",
+                rows: [
+                  {
+                    cells: [
+                      {
+                        content: [
+                          { type: "paragraph", content: [], formatting: {} },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          });
+          const table = document.package.document.content[0];
+          if (table?.type !== "table") throw new Error("Invalid test fixture");
 
-        switch (position) {
-          case 0:
-            Object.assign(document, { package: replacement });
-            break;
-          case 1:
-            Object.assign(document.package, { document: replacement });
-            break;
-          case 2:
-            Object.assign(document.package.document, { content: replacement });
-            break;
-          case 3:
-            Object.assign(table, { rows: replacement });
-            break;
-          case 4:
-            Object.assign(table.rows.at(0) ?? {}, { cells: replacement });
-            break;
-          case 5:
-            Object.assign(table.rows.at(0)?.cells.at(0) ?? {}, { content: replacement });
-            break;
-          case 6:
-            Object.assign(table.rows.at(0)?.cells.at(0)?.content.at(0) ?? {}, {
-              formatting: replacement,
-            });
-        }
+          switch (position) {
+            case 0:
+              Object.assign(document, { package: replacement });
+              break;
+            case 1:
+              Object.assign(document.package, { document: replacement });
+              break;
+            case 2:
+              Object.assign(document.package.document, {
+                content: replacement,
+              });
+              break;
+            case 3:
+              Object.assign(table, { rows: replacement });
+              break;
+            case 4:
+              Object.assign(table.rows.at(0) ?? {}, { cells: replacement });
+              break;
+            case 5:
+              Object.assign(table.rows.at(0)?.cells.at(0) ?? {}, {
+                content: replacement,
+              });
+              break;
+            case 6:
+              Object.assign(
+                table.rows.at(0)?.cells.at(0)?.content.at(0) ?? {},
+                {
+                  formatting: replacement,
+                },
+              );
+          }
 
-        expect(() => validateFolioDocumentModel(document)).not.toThrow();
-      }),
+          expect(() => validateFolioDocumentModel(document)).not.toThrow();
+        },
+      ),
       propertyConfig(),
     );
   });

@@ -26,6 +26,7 @@
  * restated.
  */
 
+import { Result } from "better-result";
 import JSZip from "jszip";
 
 import { parseDocx } from "@stll/folio-core/docx/parser";
@@ -35,14 +36,13 @@ import { transitionalSlotEncoding } from "@stll/folio-core/docx/transitionalSpel
 import { universalMeasureAs } from "@stll/folio-core/docx/universalMeasure";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import type { Document } from "@stll/folio-core/types/document";
-import { Result } from "better-result";
 
-import { loadSchemaGraph, validateOoxmlPart } from "../corpus-schema-validator";
 import { withoutSerializerCaptures } from "../corpus-invariants/reserialize";
+import { loadSchemaGraph, validateOoxmlPart } from "../corpus-schema-validator";
 import { type CanonicalForms, canonicalFormsOf } from "./canonicalSpellings";
 import {
-  type BuiltFixture,
   buildFixture,
+  type BuiltFixture,
   escapeAttribute,
   IMAGE_RELATIONSHIP_ID,
   modelledCompanionFor,
@@ -57,8 +57,8 @@ import {
   containerKey,
   type ContainerSpace,
   qualify,
-  type RebuiltPart,
   REBUILT_PARTS,
+  type RebuiltPart,
   WML_NAMESPACE,
 } from "./schemaSpace";
 import { unrepresentableReservedValue } from "./values";
@@ -108,7 +108,8 @@ export const LOSS_MECHANISMS = {
   containerLost: "the-container-itself-is-lost",
 } as const;
 
-export type LossMechanism = (typeof LOSS_MECHANISMS)[keyof typeof LOSS_MECHANISMS];
+export type LossMechanism =
+  (typeof LOSS_MECHANISMS)[keyof typeof LOSS_MECHANISMS];
 
 export type PairKind = "child" | "attribute";
 
@@ -167,7 +168,11 @@ const transitionalSpelling = (
   if (element === undefined) {
     return undefined;
   }
-  const encoding = transitionalSlotEncoding(element.namespace, element.name, attributeLocalName);
+  const encoding = transitionalSlotEncoding(
+    element.namespace,
+    element.name,
+    attributeLocalName,
+  );
   if (encoding === undefined) {
     return undefined;
   }
@@ -183,7 +188,11 @@ const transitionalSpelling = (
     return undefined;
   }
   // SAFETY: the capture group is present whenever the pattern matched.
-  return String(Math.round(Number(percentage[1] as string) * (NUMBERS_PER_PERCENT[unit] ?? 1)));
+  return String(
+    Math.round(
+      Number(percentage[1] as string) * (NUMBERS_PER_PERCENT[unit] ?? 1),
+    ),
+  );
 };
 
 type SubjectSlot = { namespace: string; name: string };
@@ -209,11 +218,19 @@ type ValueComparison = {
  *   save by `revisionIdNormalization.ts` so that ids stay unique across a
  *   package. The set of elements that carries one is imported from there.
  */
-const sameValue = ({ written, read, element, attributeLocalName }: ValueComparison): boolean => {
+const sameValue = ({
+  written,
+  read,
+  element,
+  attributeLocalName,
+}: ValueComparison): boolean => {
   if (written === read) {
     return true;
   }
-  if ((ON.has(written) && ON.has(read)) || (OFF.has(written) && OFF.has(read))) {
+  if (
+    (ON.has(written) && ON.has(read)) ||
+    (OFF.has(written) && OFF.has(read))
+  ) {
     return true;
   }
   if (
@@ -230,7 +247,9 @@ const sameValue = ({ written, read, element, attributeLocalName }: ValueComparis
   const writtenNumber = Number(written);
   const readNumber = Number(read);
   return (
-    Number.isFinite(writtenNumber) && Number.isFinite(readNumber) && writtenNumber === readNumber
+    Number.isFinite(writtenNumber) &&
+    Number.isFinite(readNumber) &&
+    writtenNumber === readNumber
   );
 };
 
@@ -269,7 +288,10 @@ const closesItself = (attributes: string): boolean =>
  * legitimately wrap what it writes; the parent and the order are what say the
  * element came back where it was written.
  */
-const underPath = (stack: readonly string[], path: readonly string[]): boolean => {
+const underPath = (
+  stack: readonly string[],
+  path: readonly string[],
+): boolean => {
   const parent = path.at(-2);
   if (parent === undefined) {
     return stack.length === 1;
@@ -316,7 +338,9 @@ const occurrencesUnder = (
     const empty = closesItself(attributes);
     stack.push(name);
     if ((name === subject || name === alsoNamed) && underPath(stack, path)) {
-      found.push(empty ? attributes.slice(0, attributes.lastIndexOf("/")) : attributes);
+      found.push(
+        empty ? attributes.slice(0, attributes.lastIndexOf("/")) : attributes,
+      );
     }
     if (empty) {
       stack.pop();
@@ -325,7 +349,10 @@ const occurrencesUnder = (
   return found;
 };
 
-const attributeIn = (attributes: string, spelling: string): string | undefined => {
+const attributeIn = (
+  attributes: string,
+  spelling: string,
+): string | undefined => {
   const pattern = new RegExp(`\\s${spelling}="([^"]*)"`, "u");
   return pattern.exec(attributes)?.[1];
 };
@@ -369,7 +396,14 @@ export type Probe = {
  */
 const countUnder = (
   xml: string,
-  { path, element, attributeSpelling, attributeLocalName, value, canonical }: ProbeTarget,
+  {
+    path,
+    element,
+    attributeSpelling,
+    attributeLocalName,
+    value,
+    canonical,
+  }: ProbeTarget,
 ): { carrying: number; equal: number } => {
   const occurrences = occurrencesUnder(xml, path, canonical.element);
   if (attributeSpelling === undefined || value === undefined) {
@@ -396,7 +430,9 @@ const countUnder = (
       continue;
     }
     carrying += 1;
-    if (sameValue({ written: value, read: carried, element, attributeLocalName })) {
+    if (
+      sameValue({ written: value, read: carried, element, attributeLocalName })
+    ) {
       equal += 1;
     }
   }
@@ -431,8 +467,15 @@ const presenceIn = (xml: string, probe: SubjectProbe): Probe => {
 };
 
 /** How a count shortfall reads in a report, and nothing when there is none. */
-const shortfall = ({ presence, found, expected, location }: Probe): string | null =>
-  presence === "truncated" ? `found ${found} of ${expected} under ${location}` : null;
+const shortfall = ({
+  presence,
+  found,
+  expected,
+  location,
+}: Probe): string | null =>
+  presence === "truncated"
+    ? `found ${found} of ${expected} under ${location}`
+    : null;
 
 /**
  * The chain the fixture built the subject's package with, spelled.
@@ -440,14 +483,19 @@ const shortfall = ({ presence, found, expected, location }: Probe): string | nul
  * Read from the container space `fixture.ts` reads, so where the law looks and
  * where the fixture wrote are one derivation rather than two that can drift.
  */
-const pathTo = (space: ContainerSpace, subject: Subject): string[] | undefined => {
+const pathTo = (
+  space: ContainerSpace,
+  subject: Subject,
+): string[] | undefined => {
   const container = space.containers.get(containerKey(subject.slot.container));
   if (container === undefined) {
     return undefined;
   }
   const elements = container.path.map(({ element }) => element);
   const chain: string[] = [];
-  for (const element of subject.kind === "child" ? [...elements, subject.slot.child] : elements) {
+  for (const element of subject.kind === "child"
+    ? [...elements, subject.slot.child]
+    : elements) {
     const spelled = spell(element);
     if (spelled === undefined) {
       return undefined;
@@ -469,22 +517,43 @@ const pathTo = (space: ContainerSpace, subject: Subject): string[] | undefined =
  */
 const admittedInstances = (space: ContainerSpace, subject: Subject): number => {
   const declared =
-    subject.kind === "child" ? subject.slot.maxOccurs : declaringMaxOccurs(space, subject);
+    subject.kind === "child"
+      ? subject.slot.maxOccurs
+      : declaringMaxOccurs(space, subject);
   const admitted = Number.parseInt(declared, 10);
   return Number.isInteger(admitted) ? admitted : Number.POSITIVE_INFINITY;
 };
 
 /** The `maxOccurs` of the element an attribute sits on, read where its parent declares it. */
-const declaringMaxOccurs = (space: ContainerSpace, subject: Subject): string => {
+const declaringMaxOccurs = (
+  space: ContainerSpace,
+  subject: Subject,
+): string => {
   const element = qualify(subject.slot.container.element);
-  const parentId = space.containers.get(containerKey(subject.slot.container))?.path.at(-2);
-  const parent = parentId === undefined ? undefined : space.containers.get(containerKey(parentId));
-  return parent?.children.find((slot) => qualify(slot.child) === element)?.maxOccurs ?? "unbounded";
+  const parentId = space.containers
+    .get(containerKey(subject.slot.container))
+    ?.path.at(-2);
+  const parent =
+    parentId === undefined
+      ? undefined
+      : space.containers.get(containerKey(parentId));
+  return (
+    parent?.children.find((slot) => qualify(slot.child) === element)
+      ?.maxOccurs ?? "unbounded"
+  );
 };
 
-type ProbeOptions = { space: ContainerSpace; subject: Subject; fixture: BuiltFixture };
+type ProbeOptions = {
+  space: ContainerSpace;
+  subject: Subject;
+  fixture: BuiltFixture;
+};
 
-const probeFor = ({ space, subject, fixture }: ProbeOptions): SubjectProbe | undefined => {
+const probeFor = ({
+  space,
+  subject,
+  fixture,
+}: ProbeOptions): SubjectProbe | undefined => {
   const path = pathTo(space, subject);
   if (path === undefined) {
     return undefined;
@@ -498,8 +567,11 @@ const probeFor = ({ space, subject, fixture }: ProbeOptions): SubjectProbe | und
     canonical: canonicalFormsOf({
       element: fixture.subjectElement,
       type:
-        subject.kind === "child" ? subject.slot.childTypeQName : subject.slot.container.typeQName,
-      attribute: subject.kind === "attribute" ? subject.slot.attribute : undefined,
+        subject.kind === "child"
+          ? subject.slot.childTypeQName
+          : subject.slot.container.typeQName,
+      attribute:
+        subject.kind === "attribute" ? subject.slot.attribute : undefined,
       value: subject.kind === "attribute" ? subject.value : undefined,
     }),
   };
@@ -508,11 +580,16 @@ const probeFor = ({ space, subject, fixture }: ProbeOptions): SubjectProbe | und
   // a repeated particle, a seed and a partner marker all land in it by
   // themselves — and it is then bounded by what the schema admits.
   const written = countUnder(fixture.documentXml, target).equal;
-  return { ...target, expected: Math.min(written, admittedInstances(space, subject)) };
+  return {
+    ...target,
+    expected: Math.min(written, admittedInstances(space, subject)),
+  };
 };
 
 /** Where the law looked for a pair and what it found there, for the census's `explain`. */
-export const probeOf = (options: ProbeOptions & { xml: string }): Probe | undefined => {
+export const probeOf = (
+  options: ProbeOptions & { xml: string },
+): Probe | undefined => {
   const probe = probeFor(options);
   return probe === undefined ? undefined : presenceIn(options.xml, probe);
 };
@@ -550,7 +627,11 @@ const CAPTURE_SLOT_NAMES = new Set([
  * "model" for every one of them and the contract records `modelled` for
  * markup the editor cannot touch.
  */
-const CAPTURE_MEMBER_TYPES = new Set(["preservedBlock", "preservedInline", "preservedXml"]);
+const CAPTURE_MEMBER_TYPES = new Set([
+  "preservedBlock",
+  "preservedInline",
+  "preservedXml",
+]);
 
 /**
  * The sink itself, and the attribute remainder beside it.
@@ -576,7 +657,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const isCaptureMember = (value: unknown): value is Record<string, unknown> =>
-  isRecord(value) && typeof value["type"] === "string" && CAPTURE_MEMBER_TYPES.has(value["type"]);
+  isRecord(value) &&
+  typeof value["type"] === "string" &&
+  CAPTURE_MEMBER_TYPES.has(value["type"]);
 
 const clearCapturesInPlace = (value: unknown, seen: WeakSet<object>): void => {
   if (Array.isArray(value)) {
@@ -617,7 +700,11 @@ const withoutAnyVerbatimMarkup = (document: Document): Document => {
 };
 
 /** Every string the model holds in a verbatim-capture slot, concatenated. */
-const captureText = (value: unknown, seen: WeakSet<object>, into: string[]): void => {
+const captureText = (
+  value: unknown,
+  seen: WeakSet<object>,
+  into: string[],
+): void => {
   if (Array.isArray(value)) {
     for (const item of value) {
       captureText(item, seen, into);
@@ -668,11 +755,14 @@ const traceSubject = (parsed: Document, localName: string): ModelTrace => {
   });
   return {
     inModel: stripped.isOk() && stripped.value.includes(localName),
-    inCapture: capturedXml.includes(`:${localName}`) || capturedXml.includes(`<${localName}`),
+    inCapture:
+      capturedXml.includes(`:${localName}`) ||
+      capturedXml.includes(`<${localName}`),
   };
 };
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /**
  * A numbering definition the fixtures can point at.
@@ -739,8 +829,10 @@ const SIDE_PARTS: readonly SidePart[] = [
   {
     path: "word/numbering.xml",
     xml: NUMBERING_PART,
-    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
-    relationship: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
+    contentType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+    relationship:
+      "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
     relationshipId: "rIdContainerSurvivalNumbering",
   },
   {
@@ -748,8 +840,10 @@ const SIDE_PARTS: readonly SidePart[] = [
     xml:
       `${XML_DECLARATION}<w:footnotes xmlns:w="${WML_NAMESPACE}">${SEPARATORS}` +
       `${note(1, "<w:p><w:r><w:t>note</w:t></w:r></w:p>")}</w:footnotes>`,
-    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
-    relationship: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
+    contentType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+    relationship:
+      "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
     relationshipId: "rIdContainerSurvivalFootnotes",
   },
   {
@@ -759,15 +853,19 @@ const SIDE_PARTS: readonly SidePart[] = [
       `${SEPARATORS.replaceAll("footnote", "endnote")}` +
       `${note(1, "<w:p><w:r><w:t>note</w:t></w:r></w:p>").replaceAll("footnote", "endnote")}` +
       "</w:endnotes>",
-    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
-    relationship: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes",
+    contentType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
+    relationship:
+      "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes",
     relationshipId: "rIdContainerSurvivalEndnotes",
   },
   {
     path: "word/comments.xml",
     xml: commentsPartXml,
-    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
-    relationship: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
+    contentType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
+    relationship:
+      "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
     relationshipId: "rIdContainerSurvivalComments",
   },
 ];
@@ -807,7 +905,10 @@ const withMediaPart = async (zip: JSZip, partPath: string): Promise<void> => {
   if (!types.includes('Extension="png"')) {
     zip.file(
       "[Content_Types].xml",
-      types.replace("</Types>", '<Default Extension="png" ContentType="image/png"/></Types>'),
+      types.replace(
+        "</Types>",
+        '<Default Extension="png" ContentType="image/png"/></Types>',
+      ),
     );
   }
 
@@ -827,12 +928,18 @@ const withMediaPart = async (zip: JSZip, partPath: string): Promise<void> => {
   if (existing.includes(IMAGE_RELATIONSHIP_ID)) {
     return;
   }
-  zip.file(relsPath, existing.replace("</Relationships>", `${relationship}</Relationships>`));
+  zip.file(
+    relsPath,
+    existing.replace("</Relationships>", `${relationship}</Relationships>`),
+  );
 };
 
 let basePackage: Promise<ArrayBuffer> | undefined;
 
-const withSideParts = async (zip: JSZip, fixture: BuiltFixture): Promise<void> => {
+const withSideParts = async (
+  zip: JSZip,
+  fixture: BuiltFixture,
+): Promise<void> => {
   const types = await zip.file("[Content_Types].xml")?.async("text");
   const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
   if (types === undefined || rels === undefined) {
@@ -844,14 +951,20 @@ const withSideParts = async (zip: JSZip, fixture: BuiltFixture): Promise<void> =
     if (zip.file(part.path) !== null) {
       continue;
     }
-    zip.file(part.path, typeof part.xml === "string" ? part.xml : part.xml(fixture));
+    zip.file(
+      part.path,
+      typeof part.xml === "string" ? part.xml : part.xml(fixture),
+    );
     overrides += `<Override PartName="/${part.path}" ContentType="${part.contentType}"/>`;
     relationships += `<Relationship Id="${part.relationshipId}" Type="${part.relationship}" Target="${part.path.slice("word/".length)}"/>`;
   }
   if (overrides === "") {
     return;
   }
-  zip.file("[Content_Types].xml", types.replace("</Types>", `${overrides}</Types>`));
+  zip.file(
+    "[Content_Types].xml",
+    types.replace("</Types>", `${overrides}</Types>`),
+  );
   zip.file(
     "word/_rels/document.xml.rels",
     rels.replace("</Relationships>", `${relationships}</Relationships>`),
@@ -908,13 +1021,19 @@ const SECTION_REFERENCES: Partial<Record<string, string>> = {
   "word/footer1.xml": `<w:footerReference r:id="${SUBJECT_RELATIONSHIP_ID}" w:type="default"/>`,
 };
 
-const withSectionReference = async (zip: JSZip, partPath: string): Promise<void> => {
+const withSectionReference = async (
+  zip: JSZip,
+  partPath: string,
+): Promise<void> => {
   const reference = SECTION_REFERENCES[partPath];
   const documentXml = await zip.file("word/document.xml")?.async("text");
   if (reference === undefined || documentXml === undefined) {
     return;
   }
-  zip.file("word/document.xml", documentXml.replace("<w:sectPr>", `<w:sectPr>${reference}`));
+  zip.file(
+    "word/document.xml",
+    documentXml.replace("<w:sectPr>", `<w:sectPr>${reference}`),
+  );
 };
 
 /**
@@ -929,7 +1048,9 @@ const withSectionReference = async (zip: JSZip, partPath: string): Promise<void>
  * It is added only for the fixture that names it: two side parts cannot share
  * one relationship id, and every reference fixture writes the same one.
  */
-const REFERENCED_PARTS: Readonly<Record<string, { part: RebuiltPart; xml: string }>> = {
+const REFERENCED_PARTS: Readonly<
+  Record<string, { part: RebuiltPart; xml: string }>
+> = {
   "w:headerReference": {
     part: REBUILT_PARTS.hdr,
     xml:
@@ -944,12 +1065,20 @@ const REFERENCED_PARTS: Readonly<Record<string, { part: RebuiltPart; xml: string
   },
 };
 
-const withReferencedPart = async (zip: JSZip, fixture: BuiltFixture): Promise<void> => {
+const withReferencedPart = async (
+  zip: JSZip,
+  fixture: BuiltFixture,
+): Promise<void> => {
   const referenced = REFERENCED_PARTS[fixture.subjectSpelling];
-  const relationshipId = new RegExp(`<${fixture.subjectSpelling}[^>]*\\sr:id="([^"]*)"`, "u").exec(
-    fixture.documentXml,
-  )?.[1];
-  if (referenced === undefined || relationshipId === undefined || zip.file(referenced.part.path)) {
+  const relationshipId = new RegExp(
+    `<${fixture.subjectSpelling}[^>]*\\sr:id="([^"]*)"`,
+    "u",
+  ).exec(fixture.documentXml)?.[1];
+  if (
+    referenced === undefined ||
+    relationshipId === undefined ||
+    zip.file(referenced.part.path)
+  ) {
     return;
   }
   zip.file(referenced.part.path, referenced.xml);
@@ -968,7 +1097,10 @@ const packageFor = async (fixture: BuiltFixture): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const partOf = async (buffer: ArrayBuffer, partPath: string): Promise<string> => {
+const partOf = async (
+  buffer: ArrayBuffer,
+  partPath: string,
+): Promise<string> => {
   const zip = await JSZip.loadAsync(buffer);
   return (await zip.file(partPath)?.async("text")) ?? "";
 };
@@ -995,7 +1127,10 @@ type ForcedPart =
   | { kind: "part-serializer"; xml: string }
   | { kind: "copied-with-no-rebuilder"; reason: string };
 
-const forcePart = async (fixture: BuiltFixture, document: Document): Promise<ForcedPart> => {
+const forcePart = async (
+  fixture: BuiltFixture,
+  document: Document,
+): Promise<ForcedPart> => {
   const repacked = await partOf(await save(document), fixture.part.path);
   if (repacked !== fixture.documentXml) {
     return { kind: "repacked", xml: repacked };
@@ -1027,9 +1162,16 @@ const forcedXmlOf = (forced: ForcedPart): string | undefined => {
 };
 
 /** The fixture's own part as a forced save writes it, for the census's `explain`. */
-export const forcedSavePart = async (fixture: BuiltFixture): Promise<string> => {
-  const parsed = await parseDocx(await packageFor(fixture), { preloadFonts: false });
-  return forcedXmlOf(await forcePart(fixture, withoutSerializerCaptures(parsed))) ?? "";
+export const forcedSavePart = async (
+  fixture: BuiltFixture,
+): Promise<string> => {
+  const parsed = await parseDocx(await packageFor(fixture), {
+    preloadFonts: false,
+  });
+  return (
+    forcedXmlOf(await forcePart(fixture, withoutSerializerCaptures(parsed))) ??
+    ""
+  );
 };
 
 /**
@@ -1040,10 +1182,18 @@ export const forcedSavePart = async (fixture: BuiltFixture): Promise<string> => 
  * print both or the reader is left comparing the input against a part that
  * still has what it is looking for.
  */
-export const editorSavePart = async (fixture: BuiltFixture): Promise<string> => {
-  const parsed = await parseDocx(await packageFor(fixture), { preloadFonts: false });
+export const editorSavePart = async (
+  fixture: BuiltFixture,
+): Promise<string> => {
+  const parsed = await parseDocx(await packageFor(fixture), {
+    preloadFonts: false,
+  });
   const projected = projectWithoutReuse(toProseDoc(parsed), parsed);
-  return forcedXmlOf(await forcePart(fixture, withoutSerializerCaptures(projected))) ?? "";
+  return (
+    forcedXmlOf(
+      await forcePart(fixture, withoutSerializerCaptures(projected)),
+    ) ?? ""
+  );
 };
 
 /**
@@ -1052,7 +1202,9 @@ export const editorSavePart = async (fixture: BuiltFixture): Promise<string> => 
  * A thrown projection is `absent` — the markup did not come back — and a leg
  * the law skipped is neither present nor absent.
  */
-const editorPresenceOf = (probe: Result<Probe, unknown> | undefined): Presence | null => {
+const editorPresenceOf = (
+  probe: Result<Probe, unknown> | undefined,
+): Presence | null => {
   if (probe === undefined) {
     return null;
   }
@@ -1063,13 +1215,18 @@ const editorPresenceOf = (probe: Result<Probe, unknown> | undefined): Presence |
  * The body of a part, so a printed comparison is about the pair and not the
  * boilerplate. A part with no `w:body` is already all subject.
  */
-export const bodyOf = (xml: string): string => /<w:body>.*<\/w:body>/su.exec(xml)?.[0] ?? xml;
+export const bodyOf = (xml: string): string =>
+  /<w:body>.*<\/w:body>/su.exec(xml)?.[0] ?? xml;
 
 export const subjectKey = (subject: Subject): string =>
-  subject.kind === "child" ? childSlotKey(subject.slot) : attributeSlotKey(subject.slot);
+  subject.kind === "child"
+    ? childSlotKey(subject.slot)
+    : attributeSlotKey(subject.slot);
 
 const subjectName = (subject: Subject): string =>
-  qualify(subject.kind === "child" ? subject.slot.child : subject.slot.attribute);
+  qualify(
+    subject.kind === "child" ? subject.slot.child : subject.slot.attribute,
+  );
 
 const outcomeShell = (subject: Subject): PairOutcome => ({
   key: subjectKey(subject),
@@ -1099,7 +1256,11 @@ export const runSurvivalLaws = async (
   subject: Subject,
 ): Promise<PairOutcome> => {
   const alone = await runLawsOnce(space, subject);
-  if (subject.kind !== "attribute" || alone.unrepresentable !== null || alone.mechanism !== null) {
+  if (
+    subject.kind !== "attribute" ||
+    alone.unrepresentable !== null ||
+    alone.mechanism !== null
+  ) {
     return alone;
   }
   const companion = modelledCompanionFor(space, subject.slot);
@@ -1124,7 +1285,10 @@ export const runSurvivalLaws = async (
   return beside;
 };
 
-const runLawsOnce = async (space: ContainerSpace, subject: Subject): Promise<PairOutcome> => {
+const runLawsOnce = async (
+  space: ContainerSpace,
+  subject: Subject,
+): Promise<PairOutcome> => {
   const outcome = outcomeShell(subject);
 
   if (subject.kind === "attribute") {
@@ -1143,7 +1307,10 @@ const runLawsOnce = async (space: ContainerSpace, subject: Subject): Promise<Pai
   const { fixture } = built;
 
   const graph = await loadSchemaGraph();
-  const fixtureViolations = validateOoxmlPart({ graph, xml: fixture.documentXml });
+  const fixtureViolations = validateOoxmlPart({
+    graph,
+    xml: fixture.documentXml,
+  });
   if (fixtureViolations.length > 0) {
     const first = fixtureViolations[0];
     outcome.unrepresentable = `the generated fixture is not schema-valid: ${first?.kind} at ${first?.path} (${first?.name})`;
@@ -1152,14 +1319,16 @@ const runLawsOnce = async (space: ContainerSpace, subject: Subject): Promise<Pai
 
   const probe = probeFor({ space, subject, fixture });
   if (probe === undefined) {
-    outcome.unrepresentable = "no prefix is bound for an ancestor of the subject";
+    outcome.unrepresentable =
+      "no prefix is bound for an ancestor of the subject";
     return outcome;
   }
   if (probe.expected === 0) {
     // The law would then be vacuous: nothing to find, so everything survives.
     // Counting it as unmeasured says so, where passing it would hide a
     // generator that wrote the subject somewhere other than its own chain.
-    outcome.unrepresentable = "the generated fixture writes no subject under its own chain";
+    outcome.unrepresentable =
+      "the generated fixture writes no subject under its own chain";
     outcome.detail = `no ${fixture.subjectSpelling} under ${probe.path.join("/")}`;
     return outcome;
   }
@@ -1211,7 +1380,8 @@ const runLawsOnce = async (space: ContainerSpace, subject: Subject): Promise<Pai
 
   const forcedProbe = presenceIn(forcedXml, probe);
   outcome.laws[SURVIVAL_LAWS.serialize] = forcedProbe.presence === "equal";
-  outcome.laws[SURVIVAL_LAWS.schema] = validateOoxmlPart({ graph, xml: forcedXml }).length === 0;
+  outcome.laws[SURVIVAL_LAWS.schema] =
+    validateOoxmlPart({ graph, xml: forcedXml }).length === 0;
 
   // L3 asks what the ProseMirror projection carries, and a declaration part is
   // not in it: the editor holds a document, and `word/fontTable.xml` reaches a
@@ -1222,39 +1392,54 @@ const runLawsOnce = async (space: ContainerSpace, subject: Subject): Promise<Pai
     ? undefined
     : await Result.tryPromise({
         try: async () => {
-          const projected = projectWithoutReuse(toProseDoc(parsed.value), parsed.value);
+          const projected = projectWithoutReuse(
+            toProseDoc(parsed.value),
+            parsed.value,
+          );
           return presenceIn(
-            forcedXmlOf(await forcePart(fixture, withoutSerializerCaptures(projected))) ?? "",
+            forcedXmlOf(
+              await forcePart(fixture, withoutSerializerCaptures(projected)),
+            ) ?? "",
             probe,
           );
         },
         catch: (cause: unknown) => cause,
       });
   outcome.laws[SURVIVAL_LAWS.editor] =
-    editorProbe === undefined ? null : editorProbe.isOk() && editorProbe.value.presence === "equal";
+    editorProbe === undefined
+      ? null
+      : editorProbe.isOk() && editorProbe.value.presence === "equal";
   if (editorProbe?.isErr()) {
     outcome.detail = String(editorProbe.error).slice(0, 200);
   }
   if (outcome.detail === null) {
     outcome.detail =
-      shortfall(forcedProbe) ?? (editorProbe?.isOk() ? shortfall(editorProbe.value) : null);
+      shortfall(forcedProbe) ??
+      (editorProbe?.isOk() ? shortfall(editorProbe.value) : null);
   }
 
   // A child's container is the element that declares it; an attribute's is the
   // element it sits on, which is the chain's last step.
-  const containerPath = subject.kind === "child" ? probe.path.slice(0, -1) : probe.path;
+  const containerPath =
+    subject.kind === "child" ? probe.path.slice(0, -1) : probe.path;
   // A canonical element spelling belongs to the chain's last step, so it is the
   // container's own spelling only when the subject is an attribute sitting on
   // it. For a child subject the last step is the child, and the container above
   // it is spelled one way.
-  const containerSpelling = subject.kind === "child" ? undefined : probe.canonical.element;
+  const containerSpelling =
+    subject.kind === "child" ? undefined : probe.canonical.element;
   const localName =
-    subject.kind === "child" ? subject.slot.child.name : subject.slot.attribute.name;
+    subject.kind === "child"
+      ? subject.slot.child.name
+      : subject.slot.attribute.name;
   const trace = () => traceSubject(parsed.value, localName);
   outcome.mechanism = classify({
     forcedPresence: forcedProbe.presence,
-    containerPresent: occurrencesUnder(forcedXml, containerPath, containerSpelling).length > 0,
-    replayedPresence: replayed.isOk() ? presenceIn(replayed.value, probe).presence : "absent",
+    containerPresent:
+      occurrencesUnder(forcedXml, containerPath, containerSpelling).length > 0,
+    replayedPresence: replayed.isOk()
+      ? presenceIn(replayed.value, probe).presence
+      : "absent",
     editorPresence: editorPresenceOf(editorProbe),
     trace,
   });
@@ -1268,7 +1453,9 @@ const runLawsOnce = async (space: ContainerSpace, subject: Subject): Promise<Pai
     const modelOnly = await Result.tryPromise({
       try: async () =>
         presenceIn(
-          forcedXmlOf(await forcePart(fixture, withoutAnyVerbatimMarkup(parsed.value))) ?? "",
+          forcedXmlOf(
+            await forcePart(fixture, withoutAnyVerbatimMarkup(parsed.value)),
+          ) ?? "",
           probe,
         ),
       catch: (cause: unknown) => cause,
@@ -1276,7 +1463,8 @@ const runLawsOnce = async (space: ContainerSpace, subject: Subject): Promise<Pai
     if (modelOnly.isErr()) {
       outcome.carrier = "unknown";
     } else {
-      outcome.carrier = modelOnly.value.presence === "equal" ? "model" : "capture";
+      outcome.carrier =
+        modelOnly.value.presence === "equal" ? "model" : "capture";
     }
   }
   return outcome;
@@ -1323,5 +1511,7 @@ const classify = ({
   if (inCapture && !inModel) {
     return LOSS_MECHANISMS.replayRejected;
   }
-  return inModel ? LOSS_MECHANISMS.parsedNotSerialized : LOSS_MECHANISMS.neverParsed;
+  return inModel
+    ? LOSS_MECHANISMS.parsedNotSerialized
+    : LOSS_MECHANISMS.neverParsed;
 };

@@ -12,33 +12,36 @@
  */
 
 import type {
-  DocumentBody,
-  DocumentBackground,
   BlockContent,
-  Section,
-  Paragraph,
-  Table,
-  SectionProperties,
-  Theme,
-  RelationshipMap,
+  DocumentBackground,
+  DocumentBody,
   MediaFile,
+  Paragraph,
+  RelationshipMap,
+  Section,
+  SectionProperties,
+  Table,
+  Theme,
 } from "../types/document";
 import { parseBlockContent } from "./blockContentParser";
 import type { NumberingMap } from "./numberingParser";
+import { getParagraphText } from "./paragraphParser";
 import type { ParseContext } from "./parseContext";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
-import { getParagraphText } from "./paragraphParser";
-import { parseSectionProperties, getDefaultSectionProperties } from "./sectionParser";
+import {
+  getDefaultSectionProperties,
+  parseSectionProperties,
+} from "./sectionParser";
+import type { StyleMap } from "./styleParser";
 import { parseThemeColorAttribute } from "./themeColorAttribute";
 import { captureVerbatimXml } from "./verbatimCapture";
-import type { StyleMap } from "./styleParser";
 import {
-  parseXml,
+  collectXmlnsDeclarations,
   findChild,
   findChildByNamespaceUri,
   getAttributeByNamespaceUri,
-  collectXmlnsDeclarations,
   getLocalName,
+  parseXml,
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -138,7 +141,10 @@ function extractTableVariables(table: Table): string[] {
               variables.push(v);
             }
           }
-        } else if (cellContent.type === "blockSdt" || cellContent.type === "blockCustomXml") {
+        } else if (
+          cellContent.type === "blockSdt" ||
+          cellContent.type === "blockCustomXml"
+        ) {
           for (const v of extractAllTemplateVariables(cellContent.content)) {
             if (!variables.includes(v)) {
               variables.push(v);
@@ -215,7 +221,9 @@ function canonicalizeLeadingBodySectionProperties(
   bodyElement: XmlElement,
   body: DocumentBody,
 ): void {
-  const firstBodyChild = bodyElement.elements?.find(({ type }) => type === "element");
+  const firstBodyChild = bodyElement.elements?.find(
+    ({ type }) => type === "element",
+  );
   if (
     getLocalName(firstBodyChild?.name) !== "sectPr" ||
     body.finalSectionProperties === undefined
@@ -258,7 +266,11 @@ function parseDocumentBackground(
   }
 
   const background: DocumentBackground = {};
-  const color = getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "color");
+  const color = getAttributeByNamespaceUri(
+    element,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "color",
+  );
   if (color === "auto") {
     background.color = { auto: true };
   } else if (color !== null) {
@@ -266,7 +278,11 @@ function parseDocumentBackground(
   }
 
   const themeColor = parseThemeColorAttribute({
-    raw: getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "themeColor"),
+    raw: getAttributeByNamespaceUri(
+      element,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      "themeColor",
+    ),
     element: element.name ?? "w:background",
     context,
   });
@@ -291,7 +307,11 @@ function parseDocumentBackground(
     background.themeShade = themeShade;
   }
 
-  const drawing = findChildByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "drawing");
+  const drawing = findChildByNamespaceUri(
+    element,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "drawing",
+  );
   if (drawing) {
     background.drawing = { rawXml: captureVerbatimXml(drawing) };
   }
@@ -366,7 +386,8 @@ export const parseDocumentBodyTree = ({
   // Find root document element (w:document), under whatever prefix — or
   // default namespace — the part binds WordprocessingML to.
   const documentEl = (doc.elements ?? []).find(
-    (el: XmlElement) => el.type === "element" && getLocalName(el.name ?? "") === "document",
+    (el: XmlElement) =>
+      el.type === "element" && getLocalName(el.name ?? "") === "document",
   );
   if (!documentEl) {
     return result;
@@ -386,22 +407,36 @@ export const parseDocumentBodyTree = ({
   // Parse all block content (paragraphs, tables). The root `xmlns:*`
   // declarations travel with it so a captured VML `w:pict` replay stays
   // self-contained under non-canonical namespace prefixes.
-  result.content = parseBlockContent(bodyEl, styles, theme, numbering, rels, media, {
-    rootXmlns: collectXmlnsDeclarations(documentEl),
-    context,
-    previews,
-  });
+  result.content = parseBlockContent(
+    bodyEl,
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    {
+      rootXmlns: collectXmlnsDeclarations(documentEl),
+      context,
+      previews,
+    },
+  );
 
   // Parse final section properties (w:body/w:sectPr)
   const finalSectPr = findChild(bodyEl, "w", "sectPr");
   if (finalSectPr) {
-    result.finalSectionProperties = parseSectionProperties(finalSectPr, context);
+    result.finalSectionProperties = parseSectionProperties(
+      finalSectPr,
+      context,
+    );
   }
 
   canonicalizeLeadingBodySectionProperties(bodyEl, result);
 
   // Build sections from content
-  result.sections = buildSections(result.content, result.finalSectionProperties);
+  result.sections = buildSections(
+    result.content,
+    result.finalSectionProperties,
+  );
 
   return result;
 };
@@ -430,7 +465,9 @@ export function getAllParagraphs(body: DocumentBody): Paragraph[] {
   return paragraphs;
 }
 
-const getParagraphsFromBlocks = (blocks: readonly BlockContent[]): Paragraph[] => {
+const getParagraphsFromBlocks = (
+  blocks: readonly BlockContent[],
+): Paragraph[] => {
   const paragraphs: Paragraph[] = [];
   for (const block of blocks) {
     if (block.type === "paragraph") {
@@ -457,7 +494,10 @@ function getTableParagraphs(table: Table): Paragraph[] {
           paragraphs.push(content);
         } else if (content.type === "table") {
           paragraphs.push(...getTableParagraphs(content));
-        } else if (content.type === "blockSdt" || content.type === "blockCustomXml") {
+        } else if (
+          content.type === "blockSdt" ||
+          content.type === "blockCustomXml"
+        ) {
           paragraphs.push(...getParagraphsFromBlocks(content.content));
         }
       }
@@ -510,7 +550,10 @@ function getNestedTables(table: Table): Table[] {
         if (content.type === "table") {
           tables.push(content);
           tables.push(...getNestedTables(content));
-        } else if (content.type === "blockSdt" || content.type === "blockCustomXml") {
+        } else if (
+          content.type === "blockSdt" ||
+          content.type === "blockCustomXml"
+        ) {
           tables.push(...getTablesFromBlocks(content.content));
         }
       }

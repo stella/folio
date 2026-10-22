@@ -1,5 +1,5 @@
-import { FolioDocxReviewer } from "@stll/folio-core/server";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
+import { FolioDocxReviewer } from "@stll/folio-core/server";
 import { canonicalJson } from "@stll/folio-core/utils/canonicalJson";
 
 /**
@@ -27,14 +27,20 @@ export const equivalentNumberingAliases = async (
   let remapped = false;
   for (const [storyIndex, { handle }] of originalStories.entries()) {
     const counterpart = resolvedStories[storyIndex];
-    if (!counterpart || JSON.stringify(handle) !== JSON.stringify(counterpart.handle)) return false;
+    if (
+      !counterpart ||
+      JSON.stringify(handle) !== JSON.stringify(counterpart.handle)
+    )
+      return false;
     const before = original.snapshotStory(handle)?.blocks;
     const after = resolved.snapshotStory(handle)?.blocks;
     if (!before || !after || before.length !== after.length) return false;
     for (const [index, block] of before.entries()) {
       const other = after[index];
-      if (!other || block.kind !== other.kind || block.text !== other.text) return false;
-      if (block.kind === "diagnostic" || other.kind === "diagnostic") return false;
+      if (!other || block.kind !== other.kind || block.text !== other.text)
+        return false;
+      if (block.kind === "diagnostic" || other.kind === "diagnostic")
+        return false;
       const source = block.listReference;
       const target = other.listReference;
       if (!source && !target) continue;

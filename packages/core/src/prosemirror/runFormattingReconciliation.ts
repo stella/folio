@@ -2,18 +2,21 @@ import { Mark, type Node as PMNode } from "prosemirror-model";
 
 import type { TextFormatting } from "../types/document";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
-import { marksToTextFormatting } from "./runFormattingFromMarks";
+import {
+  expectCharacterStyleMarkAttrs,
+  expectRunIdentityMarkAttrs,
+} from "./attrs";
 import { textFormattingToMarks } from "./extensions/marks/markUtils";
-import { expectCharacterStyleMarkAttrs, expectRunIdentityMarkAttrs } from "./attrs";
-import { RUN_IDENTITY_MARK_NAME } from "./runIdentity";
+import { marksToTextFormatting } from "./runFormattingFromMarks";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
+import { RUN_IDENTITY_MARK_NAME } from "./runIdentity";
 import {
   getParagraphMarkSuppressionOverrides,
   hasDirectRunFormatting,
   isParagraphMarkSuppressionEligible,
   paragraphFormattingForRun,
-  resolveEffectiveRunStyleFormatting,
   type ParagraphRunStyleContext,
+  resolveEffectiveRunStyleFormatting,
   type RunStyleResolver,
 } from "./runStyleFormatting";
 
@@ -43,8 +46,12 @@ export const readAuthoredRunPropertySnapshot = (
 ): TextFormatting | undefined => {
   const formatting = readAuthoredRunFormatting(options);
   if (Object.keys(formatting).length > 0) return formatting;
-  const identity = options.marks.find(({ type }) => type.name === RUN_IDENTITY_MARK_NAME);
-  return identity && expectRunIdentityMarkAttrs(identity).emptyFormatting ? formatting : undefined;
+  const identity = options.marks.find(
+    ({ type }) => type.name === RUN_IDENTITY_MARK_NAME,
+  );
+  return identity && expectRunIdentityMarkAttrs(identity).emptyFormatting
+    ? formatting
+    : undefined;
 };
 
 type ReconcileRunFormattingMarksOptions = {
@@ -66,7 +73,9 @@ export const reconcileRunFormattingMarks = ({
   styleResolver,
 }: ReconcileRunFormattingMarksOptions): readonly Mark[] => {
   const { marks } = node;
-  const currentCharacterStyle = marks.find(({ type }) => type.name === "characterStyle");
+  const currentCharacterStyle = marks.find(
+    ({ type }) => type.name === "characterStyle",
+  );
   const currentCharacterStyleAttrs = currentCharacterStyle
     ? expectCharacterStyleMarkAttrs(currentCharacterStyle)
     : undefined;
@@ -96,20 +105,32 @@ export const reconcileRunFormattingMarks = ({
     paragraphFormatting,
     ...(styleResolver !== undefined ? { styleResolver } : {}),
   });
-  const effectiveFormatting = mergeTextFormatting(inheritedFormatting, authoredFormatting);
-  const paragraphMarkOverrides = isParagraphMarkSuppressionEligible(authoredFormatting)
+  const effectiveFormatting = mergeTextFormatting(
+    inheritedFormatting,
+    authoredFormatting,
+  );
+  const paragraphMarkOverrides = isParagraphMarkSuppressionEligible(
+    authoredFormatting,
+  )
     ? getParagraphMarkSuppressionOverrides({
         directFormatting: authoredFormatting,
         paragraphMarkFormatting: context.paragraphMarkFormatting,
         suppressedFormatting: paragraphFormatting,
       })
     : undefined;
-  const overrideFormatting = mergeTextFormatting(paragraphMarkOverrides, authoredFormatting);
-  const formattingMarks = textFormattingToMarks(effectiveFormatting, node.type.schema, {
-    overrideFormatting,
-    directFormatting: authoredFormatting,
-    authoredCarrier: "preserve",
-  });
+  const overrideFormatting = mergeTextFormatting(
+    paragraphMarkOverrides,
+    authoredFormatting,
+  );
+  const formattingMarks = textFormattingToMarks(
+    effectiveFormatting,
+    node.type.schema,
+    {
+      overrideFormatting,
+      directFormatting: authoredFormatting,
+      authoredCarrier: "preserve",
+    },
+  );
 
   return Mark.setFrom([
     ...marks.filter(({ type }) => !RUN_FORMATTING_MARK_NAMES.has(type.name)),

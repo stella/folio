@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  FONT_KERNING_MODE,
   countCompressibleSpaces,
+  FONT_KERNING_MODE,
   getFontKerningMode,
   getRunFontKerningMode,
   toPaintedText,
@@ -10,7 +10,9 @@ import {
 
 describe("text measurement policy", () => {
   test("keeps pair kerning disabled without an authored threshold", () => {
-    expect(getRunFontKerningMode({ fontSize: 11 }, 12)).toBe(FONT_KERNING_MODE.disabled);
+    expect(getRunFontKerningMode({ fontSize: 11 }, 12)).toBe(
+      FONT_KERNING_MODE.disabled,
+    );
   });
 
   test("enables pair kerning at the authored threshold", () => {
@@ -26,13 +28,21 @@ describe("text measurement policy", () => {
   });
 
   test("uses the fallback size when the run omits its size", () => {
-    expect(getRunFontKerningMode({ kerningMinPt: 12 }, 12)).toBe(FONT_KERNING_MODE.enabled);
-    expect(getRunFontKerningMode({ kerningMinPt: 12 }, 11)).toBe(FONT_KERNING_MODE.disabled);
+    expect(getRunFontKerningMode({ kerningMinPt: 12 }, 12)).toBe(
+      FONT_KERNING_MODE.enabled,
+    );
+    expect(getRunFontKerningMode({ kerningMinPt: 12 }, 11)).toBe(
+      FONT_KERNING_MODE.disabled,
+    );
   });
 
   test("maps normalized style to the same canvas and CSS modes", () => {
-    expect(getFontKerningMode({ kerning: true })).toBe(FONT_KERNING_MODE.enabled);
-    expect(getFontKerningMode({ kerning: false })).toBe(FONT_KERNING_MODE.disabled);
+    expect(getFontKerningMode({ kerning: true })).toBe(
+      FONT_KERNING_MODE.enabled,
+    );
+    expect(getFontKerningMode({ kerning: false })).toBe(
+      FONT_KERNING_MODE.disabled,
+    );
     expect(getFontKerningMode({})).toBe(FONT_KERNING_MODE.disabled);
   });
 
@@ -42,6 +52,8 @@ describe("text measurement policy", () => {
   });
 
   test("paints no-break hyphens with the ordinary hyphen glyph", () => {
-    expect(toPaintedText("non\u2011breaking hyphen")).toBe("non-breaking hyphen");
+    expect(toPaintedText("non\u2011breaking hyphen")).toBe(
+      "non-breaking hyphen",
+    );
   });
 });

@@ -16,11 +16,22 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import { CAPTURE, dispatchChildren, serializeWithPreservedChildren } from "./containerChildren";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import {
+  CAPTURE,
+  dispatchChildren,
+  serializeWithPreservedChildren,
+} from "./containerChildren";
 import { CONTAINER_CHILDREN } from "./containerChildren.gen";
-import { getChildElements, getLocalName, parseXml, type XmlElement } from "./xmlParser";
+import {
+  getChildElements,
+  getLocalName,
+  parseXml,
+  type XmlElement,
+} from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -46,9 +57,11 @@ const undeclaredChild = fc.constantFrom(
 );
 
 const generatedChild: fc.Arbitrary<GeneratedChild> = fc.oneof(
-  fc
-    .constantFrom(...DECLARED)
-    .map((name): GeneratedChild => ({ declared: true, name, xml: `<w:${name}/>` })),
+  fc.constantFrom(...DECLARED).map((name): GeneratedChild => ({
+    declared: true,
+    name,
+    xml: `<w:${name}/>`,
+  })),
   undeclaredChild.map((xml): GeneratedChild => ({ declared: false, xml })),
 );
 
@@ -60,10 +73,9 @@ const generatedChild: fc.Arbitrary<GeneratedChild> = fc.oneof(
 // SAFETY: the entries come from `DECLARED` itself, so the record is total
 // over its element type; `Object.fromEntries` only widens the key back to
 // `string`.
-const handlers = Object.fromEntries(DECLARED.map((name) => [name, CAPTURE] as const)) as Record<
-  (typeof DECLARED)[number],
-  typeof CAPTURE
->;
+const handlers = Object.fromEntries(
+  DECLARED.map((name) => [name, CAPTURE] as const),
+) as Record<(typeof DECLARED)[number], typeof CAPTURE>;
 
 const roundTrip = (
   children: readonly GeneratedChild[],
@@ -81,7 +93,8 @@ const roundTrip = (
     capturePosition: () => modelled.length,
     handlers: {
       ...handlers,
-      p: (child: XmlElement) => modelled.push(`<w:${getLocalName(child.name)}/>`),
+      p: (child: XmlElement) =>
+        modelled.push(`<w:${getLocalName(child.name)}/>`),
     },
   });
 
@@ -93,15 +106,21 @@ const roundTrip = (
 
 /** The top element of a fragment, by local name. */
 const fragmentName = (xml: string): string => {
-  const root = parseXml(`<root xmlns:w="${W}" xmlns:x="${VENDOR}">${xml}</root>`);
+  const root = parseXml(
+    `<root xmlns:w="${W}" xmlns:x="${VENDOR}">${xml}</root>`,
+  );
   const fragment = getChildElements(getChildElements(root).at(0) ?? root).at(0);
   return getLocalName(fragment?.name);
 };
 
 /** The container's children, by local name, in document order. */
 const childNames = (xml: string): string[] => {
-  const root = parseXml(`<root xmlns:w="${W}" xmlns:x="${VENDOR}">${xml}</root>`);
-  const container = getChildElements(getChildElements(root).at(0) ?? root).at(0);
+  const root = parseXml(
+    `<root xmlns:w="${W}" xmlns:x="${VENDOR}">${xml}</root>`,
+  );
+  const container = getChildElements(getChildElements(root).at(0) ?? root).at(
+    0,
+  );
   return getChildElements(container).map((child) => getLocalName(child.name));
 };
 
@@ -114,12 +133,16 @@ describe("the shared child dispatcher", () => {
         // Position: the container's child sequence is the source's, by local
         // name, whether folio modelled a child or only kept it.
         expect(childNames(xml)).toEqual(
-          children.map((child) => (child.declared ? child.name : fragmentName(child.xml))),
+          children.map((child) =>
+            child.declared ? child.name : fragmentName(child.xml),
+          ),
         );
 
         // Modelled: only `w:p` reaches the model; nothing else pretends to.
         expect(modelledNames).toEqual(
-          children.filter((child) => child.declared && child.name === "p").map(() => "<w:p/>"),
+          children
+            .filter((child) => child.declared && child.name === "p")
+            .map(() => "<w:p/>"),
         );
 
         // Byte-equal: every undeclared child's markup survives verbatim.
@@ -154,12 +177,16 @@ describe("the shared child dispatcher", () => {
     // read a foreign element as a paragraph and write back whatever folio's
     // paragraph serializer makes of it, which is the source's markup gone.
     expect(modelled).toEqual(["<w:p/>"]);
-    expect(serializeWithPreservedChildren(modelled, preserved)).toContain('x:kind="aside"');
+    expect(serializeWithPreservedChildren(modelled, preserved)).toContain(
+      'x:kind="aside"',
+    );
   });
 
   test("a container with nothing unmodelled carries no sink at all", () => {
     const element = getChildElements(
-      parseXml(`<root xmlns:w="${W}"><w:comment><w:p/><w:p/></w:comment></root>`),
+      parseXml(
+        `<root xmlns:w="${W}"><w:comment><w:p/><w:p/></w:comment></root>`,
+      ),
     )
       .at(0)
       ?.elements?.find((node): node is XmlElement => node.type === "element");

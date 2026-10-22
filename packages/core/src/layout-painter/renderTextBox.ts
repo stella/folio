@@ -10,19 +10,19 @@
 
 import { panic } from "better-result";
 
+import { layoutTextBoxContent } from "../layout-engine/measure/textBoxParagraphLayout";
 import { DEFAULT_TEXTBOX_MARGINS } from "../layout-engine/types";
 import type {
   TableBlock,
   TableMeasure,
-  TextBoxFragment,
   TextBoxBlock,
+  TextBoxFragment,
   TextBoxGradientFill,
   TextBoxMeasure,
 } from "../layout-engine/types";
 import { presetDashForOutlineAttr } from "../types/documentEnumValues";
 import { cssBorderStyleForDash } from "../utils/borderCss";
 import { setAuthoredBackgroundColor } from "./documentColors";
-import { layoutTextBoxContent } from "../layout-engine/measure/textBoxParagraphLayout";
 import { renderParagraphFragment } from "./renderParagraph";
 import type { RenderContext } from "./renderUtils";
 
@@ -70,7 +70,8 @@ export function cssLinearGradientAngle(
   return ((degrees % 360) + 360) % 360;
 }
 
-const formatCssNumber = (value: number): string => String(Math.round(value * 1000) / 1000);
+const formatCssNumber = (value: number): string =>
+  String(Math.round(value * 1000) / 1000);
 
 function paintGradientFill(
   style: CSSStyleDeclaration,
@@ -119,7 +120,12 @@ export function renderTextBoxFragment(
   if (block.fillColor) {
     setAuthoredBackgroundColor(containerEl.style, block.fillColor);
   } else if (block.fillGradient) {
-    paintGradientFill(containerEl.style, block.fillGradient, fragment.width, fragment.height);
+    paintGradientFill(
+      containerEl.style,
+      block.fillGradient,
+      fragment.width,
+      fragment.height,
+    );
   }
 
   // Border/outline. The node's `outlineStyle` is a DrawingML dash, not a CSS
@@ -140,7 +146,8 @@ export function renderTextBoxFragment(
   if (block.verticalAlign === "middle" || block.verticalAlign === "bottom") {
     containerEl.style.display = "flex";
     containerEl.style.flexDirection = "column";
-    containerEl.style.justifyContent = block.verticalAlign === "middle" ? "center" : "flex-end";
+    containerEl.style.justifyContent =
+      block.verticalAlign === "middle" ? "center" : "flex-end";
   }
 
   // Store metadata
@@ -154,7 +161,10 @@ export function renderTextBoxFragment(
 
   // Render inner content using pre-measured data
   const innerWidth = fragment.width - margins.left - margins.right;
-  const contentLayout = layoutTextBoxContent(block.content, measure.innerMeasures);
+  const contentLayout = layoutTextBoxContent(
+    block.content,
+    measure.innerMeasures,
+  );
 
   for (let i = 0; i < block.content.length; i++) {
     const contentBlock = block.content[i];
@@ -166,15 +176,26 @@ export function renderTextBoxFragment(
 
     if (contentBlock.kind === "table" && contentMeasure.kind === "table") {
       if (!options.renderTable) {
-        panic("renderTextBoxFragment: a nested table renderer is required for table content");
+        panic(
+          "renderTextBoxFragment: a nested table renderer is required for table content",
+        );
       }
-      const tableEl = options.renderTable(contentBlock, contentMeasure, context, doc, innerWidth);
+      const tableEl = options.renderTable(
+        contentBlock,
+        contentMeasure,
+        context,
+        doc,
+        innerWidth,
+      );
       tableEl.style.marginTop = `${placement.leadingSpacing}px`;
       containerEl.append(tableEl);
       continue;
     }
 
-    if (contentBlock.kind !== "paragraph" || contentMeasure.kind !== "paragraph") {
+    if (
+      contentBlock.kind !== "paragraph" ||
+      contentMeasure.kind !== "paragraph"
+    ) {
       continue;
     }
 
@@ -185,8 +206,12 @@ export function renderTextBoxFragment(
       y: 0,
       width: innerWidth,
       height: placement.contentHeight,
-      ...(contentBlock.pmStart !== undefined ? { pmStart: contentBlock.pmStart } : {}),
-      ...(contentBlock.pmEnd !== undefined ? { pmEnd: contentBlock.pmEnd } : {}),
+      ...(contentBlock.pmStart !== undefined
+        ? { pmStart: contentBlock.pmStart }
+        : {}),
+      ...(contentBlock.pmEnd !== undefined
+        ? { pmEnd: contentBlock.pmEnd }
+        : {}),
       fromLine: 0,
       toLine: contentMeasure.lines.length,
     };
@@ -194,13 +219,22 @@ export function renderTextBoxFragment(
     const previousBlock = block.content[i - 1];
     const nextBlock = block.content[i + 1];
     const prevBorders =
-      previousBlock?.kind === "paragraph" ? previousBlock.attrs?.borders : undefined;
-    const nextBorders = nextBlock?.kind === "paragraph" ? nextBlock.attrs?.borders : undefined;
-    const paraEl = renderParagraphFragment(paraFragment, contentBlock, contentMeasure, context, {
-      document: doc,
-      ...(prevBorders !== undefined ? { prevBorders } : {}),
-      ...(nextBorders !== undefined ? { nextBorders } : {}),
-    });
+      previousBlock?.kind === "paragraph"
+        ? previousBlock.attrs?.borders
+        : undefined;
+    const nextBorders =
+      nextBlock?.kind === "paragraph" ? nextBlock.attrs?.borders : undefined;
+    const paraEl = renderParagraphFragment(
+      paraFragment,
+      contentBlock,
+      contentMeasure,
+      context,
+      {
+        document: doc,
+        ...(prevBorders !== undefined ? { prevBorders } : {}),
+        ...(nextBorders !== undefined ? { nextBorders } : {}),
+      },
+    );
 
     // Override absolute positioning to use relative flow within the text box
     paraEl.style.position = "relative";

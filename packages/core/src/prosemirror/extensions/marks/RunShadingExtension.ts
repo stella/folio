@@ -13,7 +13,10 @@
 import { ensureHexPrefix } from "../../../utils/colorResolver";
 import { expectRunShadingMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
-import { normalizeCssColorKey, parseDOMHighlightColor } from "./HighlightExtension";
+import {
+  normalizeCssColorKey,
+  parseDOMHighlightColor,
+} from "./HighlightExtension";
 
 export const RunShadingExtension = createMarkExtension({
   name: "runShading",
@@ -37,9 +40,9 @@ export const RunShadingExtension = createMarkExtension({
           if (parseDOMHighlightColor(value)) {
             return false;
           }
-          const hex = /^#(?<hex>[0-9a-fA-F]{6})$/u.exec(normalizeCssColorKey(value))?.groups?.[
-            "hex"
-          ];
+          const hex = /^#(?<hex>[0-9a-fA-F]{6})$/u.exec(
+            normalizeCssColorKey(value),
+          )?.groups?.["hex"];
           return hex ? { rgb: hex.toUpperCase() } : false;
         },
       },
@@ -52,7 +55,11 @@ export const RunShadingExtension = createMarkExtension({
       // fills carry no rgb and are left to the paged painter, which has the
       // real theme. (#722)
       const background = rgb ? ensureHexPrefix(rgb) : "";
-      return ["span", background ? { style: `background-color: ${background}` } : {}, 0];
+      return [
+        "span",
+        background ? { style: `background-color: ${background}` } : {},
+        0,
+      ];
     },
   },
 });

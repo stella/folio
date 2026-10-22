@@ -1,35 +1,33 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 import { paragraphNumberingReference } from "@stll/docx-core/model";
-import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   hashFolioAIBlockText,
   normalizeFolioAIBlockText,
 } from "@stll/folio-core/ai-edits/snapshot";
+import type { FolioAIBlockParagraphProperties } from "@stll/folio-core/ai-edits/types";
+import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
+import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   createDocx,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   paragraph,
   parseDocx,
 } from "@stll/folio-core/server";
-import type { FolioAIBlockParagraphProperties } from "@stll/folio-core/ai-edits/types";
-
-import { runFlow } from "../support/fuzz.ts";
-import { modelPendingTextEffect } from "../support/pending-text-oracle.ts";
 
 import {
   decimalLevel,
   directNumberedDocument,
+  emojiDocument,
   openReviewer,
   packDocument,
   storiesDocument,
-  emojiDocument,
-  toArrayBuffer,
   styleNumberedDocument,
   tableDocument,
+  toArrayBuffer,
 } from "../support/documents.ts";
+import { runFlow } from "../support/fuzz.ts";
 import {
   applyChecked,
   capture,
@@ -37,11 +35,13 @@ import {
   expectOperation,
   modelOf,
   numberingFactsOf,
-  rowsOf,
   type Row,
+  rowsOf,
 } from "../support/oracle.ts";
+import { modelPendingTextEffect } from "../support/pending-text-oracle.ts";
 
-const slowTest = (name: string, fn: () => Promise<void>) => test(name, { timeout: 30_000 }, fn);
+const slowTest = (name: string, fn: () => Promise<void>) =>
+  test(name, { timeout: 30_000 }, fn);
 const MARKER_VISIBILITY_TEST =
   "numbering kind follows marker visibility, independently of the retained reference";
 const HIDDEN_LEVELS_TEST =
@@ -68,7 +68,8 @@ test("style numbering comes from definitions, preserves direct overrides, and ca
         inheritFormatting === false
           ? facts.styles.get("Heading2")
           : (facts.direct.get(anchor.id) ?? facts.styles.get("Heading2"));
-      const expectedLevel = level?.kind === "reference" ? (level.ilvl ?? 0) : undefined;
+      const expectedLevel =
+        level?.kind === "reference" ? (level.ilvl ?? 0) : undefined;
       const inserted: Row = {
         ...anchor,
         id: "inserted",
@@ -92,7 +93,8 @@ test("style numbering comes from definitions, preserves direct overrides, and ca
           result.map((row) =>
             row.id === "inserted"
               ? Object.assign({}, row, {
-                  listLevel: expectedLevel === undefined ? 0 : expectedLevel + 1,
+                  listLevel:
+                    expectedLevel === undefined ? 0 : expectedLevel + 1,
                 })
               : row,
           ),
@@ -104,7 +106,9 @@ test("style numbering comes from definitions, preserves direct overrides, and ca
           compareWithModel(
             model,
             result.map((row) =>
-              row.id === "inserted" ? Object.assign({}, row, { listReference: undefined }) : row,
+              row.id === "inserted"
+                ? Object.assign({}, row, { listReference: undefined })
+                : row,
             ),
           ).join("\n"),
           /numbering/u,
@@ -121,7 +125,9 @@ test("a paragraph pending deletion has no numbering provenance and none is expec
   assert.ok(pending);
   // The accepted pre-state no longer holds the paragraph; the reviewer lists it blank.
   const accepted = live.filter((row) => row !== pending);
-  const listed = live.map((row) => (row === pending ? Object.assign({}, row, { text: "" }) : row));
+  const listed = live.map((row) =>
+    row === pending ? Object.assign({}, row, { text: "" }) : row,
+  );
   const facts = await numberingFactsOf(bytes);
   facts.direct.delete(pending.id);
 
@@ -142,13 +148,20 @@ test("a paragraph pending deletion has no numbering provenance and none is expec
   assert.ok(kept);
   const lacking = await numberingFactsOf(bytes);
   lacking.direct.delete(kept.id);
-  const restyleKept = { type: "setBlockParagraphProperties", blockId: kept.id } as const;
+  const restyleKept = {
+    type: "setBlockParagraphProperties",
+    blockId: kept.id,
+  } as const;
   for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
     const model = modelOf(accepted, listed);
     model.numberingFacts = lacking;
     model.mode = mode;
     assert.throws(
-      () => expectOperation(model, { ...restyleKept, properties: { styleId: null } }),
+      () =>
+        expectOperation(model, {
+          ...restyleKept,
+          properties: { styleId: null },
+        }),
       /Numbering provenance missing/u,
     );
   }
@@ -160,7 +173,11 @@ test("style inheritance folds independent numbering slots and cancellation", asy
     abstractNums: [
       {
         abstractNumId: 5,
-        levels: [decimalLevel(0, "%1."), decimalLevel(1, "%1.%2."), decimalLevel(2, "%1.%2.%3.")],
+        levels: [
+          decimalLevel(0, "%1."),
+          decimalLevel(1, "%1.%2."),
+          decimalLevel(2, "%1.%2.%3."),
+        ],
       },
     ],
     nums: [{ numId: 5, abstractNumId: 5 }],
@@ -194,7 +211,10 @@ test("style inheritance folds independent numbering slots and cancellation", asy
 });
 
 slowTest("markerless numbering regression seed 1339716102", async () => {
-  await runFlow(1339716102, 20, "collisions", { generation: "targeted", swarm: "enabled" });
+  await runFlow(1339716102, 20, "collisions", {
+    generation: "targeted",
+    swarm: "enabled",
+  });
 });
 
 test("a pending new list does not make a same-text markerless paragraph visible", async () => {
@@ -247,8 +267,12 @@ test("a pending new list does not make a same-text markerless paragraph visible"
 
   const captured = await capture(reviewer, "suggested");
   assert.equal(captured.numberingSource.type, "live");
-  if (captured.numberingSource.type !== "live") throw new Error("Expected live provenance");
-  assert.equal(captured.numberingSource.facts.markerLevels.get(5)?.has(0), false);
+  if (captured.numberingSource.type !== "live")
+    throw new Error("Expected live provenance");
+  assert.equal(
+    captured.numberingSource.facts.markerLevels.get(5)?.has(0),
+    false,
+  );
   assert.equal(
     captured.numberingSource.facts.markerLevels
       .get(inserted.listReference.numId)
@@ -283,12 +307,16 @@ slowTest(MARKER_VISIBILITY_TEST, async () => {
             {
               ...decimalLevel(
                 0,
-                marker === "none" || marker === "noneLegal" || marker === "emptyDecimal"
+                marker === "none" ||
+                  marker === "noneLegal" ||
+                  marker === "emptyDecimal"
                   ? ""
                   : "%1.",
               ),
               ...(marker === "none" ? { numFmt: "none" } : {}),
-              ...(marker === "noneLegal" ? { numFmt: "none", isLgl: true } : {}),
+              ...(marker === "noneLegal"
+                ? { numFmt: "none", isLgl: true }
+                : {}),
               ...(marker === "hidden" || marker === "visibleOverride"
                 ? { rPr: { hidden: true } }
                 : {}),
@@ -333,8 +361,15 @@ slowTest(MARKER_VISIBILITY_TEST, async () => {
         { kind: "inherit" },
         { kind: "levelOnly", ilvl: level },
       ] as const) {
-        for (const type of ["insertAfterBlock", "setBlockParagraphProperties"] as const) {
-          for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
+        for (const type of [
+          "insertAfterBlock",
+          "setBlockParagraphProperties",
+        ] as const) {
+          for (const mode of [
+            "direct",
+            "tracked-changes",
+            "suggested",
+          ] as const) {
             const reviewer = await openReviewer(bytes);
             const preRows = rowsOf(reviewer);
             const anchor = preRows.find(({ text }) => text === anchorText);
@@ -348,17 +383,28 @@ slowTest(MARKER_VISIBILITY_TEST, async () => {
             model.mode = mode;
             model.numberingFacts = await numberingFactsOf(bytes);
             expectOperation(model, operation);
-            const result = await applyChecked(reviewer, [operation], mode, context);
+            const result = await applyChecked(
+              reviewer,
+              [operation],
+              mode,
+              context,
+            );
             assert.equal(result.applied.length, 1, context);
             assert.deepEqual(result.issues, [], context);
             const rows = rowsOf(reviewer);
-            const targetText = type === "insertAfterBlock" ? "Inserted" : anchorText;
+            const targetText =
+              type === "insertAfterBlock" ? "Inserted" : anchorText;
             const target = rows.find(({ text }) => text === targetText);
             assert.ok(target, context);
             const bodyKind = visible ? "listItem" : "paragraph";
-            const expectedKind = anchorText === "Heading" ? "heading" : bodyKind;
+            const expectedKind =
+              anchorText === "Heading" ? "heading" : bodyKind;
             assert.equal(target.kind, expectedKind, context);
-            assert.deepEqual(target.listReference, { numId: 5, level }, context);
+            assert.deepEqual(
+              target.listReference,
+              { numId: 5, level },
+              context,
+            );
             assert.equal(target.listLevel, level, context);
             assert.deepEqual(compareWithModel(model, rows), [], context);
             assert.match(
@@ -367,7 +413,10 @@ slowTest(MARKER_VISIBILITY_TEST, async () => {
                 rows.map((row) =>
                   row === target
                     ? Object.assign({}, row, {
-                        kind: expectedKind === "paragraph" ? "listItem" : "paragraph",
+                        kind:
+                          expectedKind === "paragraph"
+                            ? "listItem"
+                            : "paragraph",
                       })
                     : row,
                 ),
@@ -391,7 +440,9 @@ test(
     });
     document.package.numbering ??= { abstractNums: [], nums: [] };
     for (const numId of [900, 901]) {
-      assert.ok(!document.package.numbering.nums.some((entry) => entry.numId === numId));
+      assert.ok(
+        !document.package.numbering.nums.some((entry) => entry.numId === numId),
+      );
       document.package.numbering.abstractNums.push({
         abstractNumId: numId,
         levels: [decimalLevel(0, "%1."), decimalLevel(1, "%1.%2.")],
@@ -419,15 +470,21 @@ test(
     );
     const cases = [
       {
-        properties: { numbering: paragraphNumberingReference({ numId: 901, ilvl: 0 }) },
+        properties: {
+          numbering: paragraphNumberingReference({ numId: 901, ilvl: 0 }),
+        },
         direct: paragraphNumberingFromSlots({ numId: 901, ilvl: 0 }),
       },
       {
-        properties: { numbering: paragraphNumberingReference({ numId: 900, ilvl: 1 }) },
+        properties: {
+          numbering: paragraphNumberingReference({ numId: 900, ilvl: 1 }),
+        },
         direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 1 }),
       },
       {
-        properties: { numbering: paragraphNumberingReference({ numId: 900, ilvl: 0 }) },
+        properties: {
+          numbering: paragraphNumberingReference({ numId: 900, ilvl: 0 }),
+        },
         direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 0 }),
       },
       {
@@ -445,7 +502,9 @@ test(
       for (const { properties, direct } of cases) {
         for (const inheritFormatting of [true, false]) {
           const reviewer = await openReviewer(bytes);
-          const anchor = rowsOf(reviewer, story).find((row) => row.text.length > 0);
+          const anchor = rowsOf(reviewer, story).find(
+            (row) => row.text.length > 0,
+          );
           assert.ok(anchor);
           const initial = reviewer.applyDocumentOperationsToStory({
             undefinedReferences: "refuse",
@@ -483,14 +542,21 @@ test(
           assert.equal(pending.applied.length, 1);
           const pre = await capture(reviewer, "suggested", { story });
           assert.equal(pre.numberingSource.type, "live");
-          if (pre.numberingSource.type !== "live") throw new Error("Expected live provenance");
+          if (pre.numberingSource.type !== "live")
+            throw new Error("Expected live provenance");
           const facts = pre.numberingSource.facts;
-          assert.equal(facts.styles.get("Heading2"), undefined, "Requested heading is unnumbered");
+          assert.equal(
+            facts.styles.get("Heading2"),
+            undefined,
+            "Requested heading is unnumbered",
+          );
           assert.deepEqual(
             facts.styles.get("OracleList"),
             paragraphNumberingFromSlots({ numId: 900, ilvl: 0 }),
           );
-          for (const row of pre.rows.filter((candidate) => candidate.kind !== "diagnostic"))
+          for (const row of pre.rows.filter(
+            (candidate) => candidate.kind !== "diagnostic",
+          ))
             assert.ok(facts.direct.has(row.id));
           assert.deepEqual(facts.direct.get(anchor.id), direct);
           const model = modelOf(pre.rows);
@@ -533,7 +599,9 @@ test(
               compareWithModel(
                 model,
                 actual.map((row) =>
-                  row.id === inserted.id ? Object.assign({}, row, corrupted) : row,
+                  row.id === inserted.id
+                    ? Object.assign({}, row, corrupted)
+                    : row,
                 ),
               ).join("\n"),
               /listLevel|numbering/u,
@@ -564,8 +632,13 @@ test(
           });
           assert.equal(restyled.applied.length, 1);
           assert.deepEqual(restyled.issues, []);
-          assert.deepEqual(compareWithModel(styleModel, rowsOf(reviewer, story)), []);
-          const changed = rowsOf(reviewer, story).find((row) => row.id === anchor.id);
+          assert.deepEqual(
+            compareWithModel(styleModel, rowsOf(reviewer, story)),
+            [],
+          );
+          const changed = rowsOf(reviewer, story).find(
+            (row) => row.id === anchor.id,
+          );
           assert.ok(changed);
           assert.deepEqual(
             changed.listReference,
@@ -682,7 +755,9 @@ test("a reference resolves a list created by an earlier suggested insertion", as
     "reference a pending list",
   );
   assert.equal(referenced.applied.length, 1);
-  const result = rowsOf(reviewer).find((row) => row.text === "Referenced bullet.");
+  const result = rowsOf(reviewer).find(
+    (row) => row.text === "Referenced bullet.",
+  );
   assert.ok(result);
   assert.equal(result.kind, "listItem");
   assert.equal(result.displayLabel, "•");
@@ -709,7 +784,9 @@ test("a reference resolves a pending list inserted beside a table cell", async (
     "suggested",
     "create a pending list beside a table cell",
   );
-  const bullet = rowsOf(reviewer).find((row) => row.text === "Created beside a table.");
+  const bullet = rowsOf(reviewer).find(
+    (row) => row.text === "Created beside a table.",
+  );
   assert.ok(bullet);
   assert.deepEqual(bullet.listReference, { numId: 1, level: 0 });
 
@@ -726,7 +803,9 @@ test("a reference resolves a pending list inserted beside a table cell", async (
     "suggested",
     "reference a pending list created beside a table cell",
   );
-  const referenced = rowsOf(reviewer).find((row) => row.text === "Reference the pending list.");
+  const referenced = rowsOf(reviewer).find(
+    (row) => row.text === "Reference the pending list.",
+  );
   assert.ok(referenced);
   assert.equal(referenced.kind, "listItem");
   assert.equal(referenced.displayLabel, "•");
@@ -745,8 +824,15 @@ const expectedPendingLoads = (
   return records.map(({ suggestionId, anchor, operation }) => {
     const text = textByBlock.get(anchor.blockId);
     if (text === undefined)
-      return { status: "stale", suggestionId, reason: "missingAnchor" } as const;
-    if (hashFolioAIBlockText(normalizeFolioAIBlockText(text)) !== anchor.originalTextHash)
+      return {
+        status: "stale",
+        suggestionId,
+        reason: "missingAnchor",
+      } as const;
+    if (
+      hashFolioAIBlockText(normalizeFolioAIBlockText(text)) !==
+      anchor.originalTextHash
+    )
       return { status: "stale", suggestionId, reason: "textChanged" } as const;
     if (
       anchor.startOffset !== undefined &&
@@ -776,13 +862,16 @@ test(
             checked = true;
             const text = "Delivery payment clause.";
             const expected = { numId: 2, level: 0 };
-            const inserted = rowsOf(flow.reviewer).find((row) => row.text === text);
+            const inserted = rowsOf(flow.reviewer).find(
+              (row) => row.text === text,
+            );
             assert.ok(inserted);
             assert.deepEqual(inserted.listReference, expected);
             const records = flow.reviewer.exportPendingSuggestions();
             const proposal = records.find(
               ({ operation }) =>
-                (operation.type === "insertAfterBlock" || operation.type === "insertBeforeBlock") &&
+                (operation.type === "insertAfterBlock" ||
+                  operation.type === "insertBeforeBlock") &&
                 operation.text === text,
             );
             assert.ok(proposal);
@@ -794,7 +883,9 @@ test(
               reopened.snapshot().blocks.map((block) => [block.id, block.text]),
             );
             const expectedLoads = expectedPendingLoads(records, savedText);
-            const loaded = reopened.loadPendingSuggestions(JSON.parse(JSON.stringify(records)));
+            const loaded = reopened.loadPendingSuggestions(
+              JSON.parse(JSON.stringify(records)),
+            );
             assert.deepEqual(loaded, expectedLoads);
             // Each anchor's load state comes from the text oracle, including op-1
             // when its saved text is unchanged. The changed-text control below pins
@@ -807,12 +898,20 @@ test(
             const { operation } = proposal;
             assert.ok(operation.type === "insertAfterBlock");
             const savedRows = rowsOf(await openReviewer(bytes));
-            const liveAnchorAt = savedRows.findIndex((row) => row.id === operation.blockId);
-            assert.ok(liveAnchorAt >= 0, "The live anchor exists in the saved baseline");
+            const liveAnchorAt = savedRows.findIndex(
+              (row) => row.id === operation.blockId,
+            );
+            assert.ok(
+              liveAnchorAt >= 0,
+              "The live anchor exists in the saved baseline",
+            );
             const numberedAnchor = savedRows
               .slice(0, liveAnchorAt + 1)
               .findLast((row) => row.listReference !== undefined);
-            assert.ok(numberedAnchor, "The saved baseline keeps a numbered anchor");
+            assert.ok(
+              numberedAnchor,
+              "The saved baseline keeps a numbered anchor",
+            );
             assert.deepEqual(numberedAnchor.listReference, expected);
             const staging = await openReviewer(bytes);
             const staged = await applyChecked(
@@ -837,44 +936,78 @@ test(
             assert.equal(freshRecords.length, 1);
             const freshProposal = freshRecords.at(0);
             assert.ok(freshProposal);
-            const expectedFreshLoads = expectedPendingLoads(freshRecords, savedText);
+            const expectedFreshLoads = expectedPendingLoads(
+              freshRecords,
+              savedText,
+            );
             assert.deepEqual(expectedFreshLoads, [
               { status: "restaged", suggestionId: freshProposal.suggestionId },
             ]);
             // Positive control: change the saved paragraph itself, not a load result.
-            const changedDocument = await parseDocx(toArrayBuffer(bytes), { preloadFonts: false });
-            const changedParagraph = changedDocument.package.document.content.find(
-              (block) => block.type === "paragraph" && block.paraId === freshProposal.anchor.paraId,
-            );
+            const changedDocument = await parseDocx(toArrayBuffer(bytes), {
+              preloadFonts: false,
+            });
+            const changedParagraph =
+              changedDocument.package.document.content.find(
+                (block) =>
+                  block.type === "paragraph" &&
+                  block.paraId === freshProposal.anchor.paraId,
+              );
             assert.ok(changedParagraph?.type === "paragraph");
             changedParagraph.content = [
-              { type: "run", content: [{ type: "text", text: "Changed saved anchor." }] },
+              {
+                type: "run",
+                content: [{ type: "text", text: "Changed saved anchor." }],
+              },
             ];
-            const changed = await openReviewer(await packDocument(changedDocument));
+            const changed = await openReviewer(
+              await packDocument(changedDocument),
+            );
             const changedText = new Map(
               changed.snapshot().blocks.map((block) => [block.id, block.text]),
             );
-            const staleControl = expectedPendingLoads(freshRecords, changedText);
+            const staleControl = expectedPendingLoads(
+              freshRecords,
+              changedText,
+            );
             assert.deepEqual(staleControl, [
-              { status: "stale", suggestionId: freshProposal.suggestionId, reason: "textChanged" },
+              {
+                status: "stale",
+                suggestionId: freshProposal.suggestionId,
+                reason: "textChanged",
+              },
             ]);
-            assert.deepEqual(changed.loadPendingSuggestions(freshRecords), staleControl);
+            assert.deepEqual(
+              changed.loadPendingSuggestions(freshRecords),
+              staleControl,
+            );
             const restaged = await openReviewer(bytes);
             assert.deepEqual(
-              restaged.loadPendingSuggestions(JSON.parse(JSON.stringify(freshRecords))),
+              restaged.loadPendingSuggestions(
+                JSON.parse(JSON.stringify(freshRecords)),
+              ),
               expectedFreshLoads,
             );
             const restored = rowsOf(restaged).find((row) => row.text === text);
             assert.ok(restored);
             assert.deepEqual(restored.listReference, expected);
-            assert.equal(restaged.acceptSuggestion(freshProposal.suggestionId), true);
-            const tracked = await openReviewer(new Uint8Array(await restaged.toBuffer()));
+            assert.equal(
+              restaged.acceptSuggestion(freshProposal.suggestionId),
+              true,
+            );
+            const tracked = await openReviewer(
+              new Uint8Array(await restaged.toBuffer()),
+            );
             const persisted = rowsOf(tracked).find((row) => row.text === text);
             assert.ok(persisted);
             assert.deepEqual(persisted.listReference, expected);
-            assert.ok(tracked.getChanges().some((change) => change.text.includes(text)));
+            assert.ok(
+              tracked.getChanges().some((change) => change.text.includes(text)),
+            );
             tracked.acceptAll();
-            const accepted = await openReviewer(new Uint8Array(await tracked.toBuffer()));
+            const accepted = await openReviewer(
+              new Uint8Array(await tracked.toBuffer()),
+            );
             const authored = rowsOf(accepted).find((row) => row.text === text);
             assert.ok(authored);
             assert.deepEqual(authored.listReference, expected);
@@ -882,13 +1015,19 @@ test(
         },
       ],
     });
-    assert.equal(checked, true, "The generated seed must reach its reported insertion");
+    assert.equal(
+      checked,
+      true,
+      "The generated seed must reach its reported insertion",
+    );
   },
 );
 
 test("a pending inserted anchor has complete live numbering provenance", async () => {
   const reviewer = await openReviewer(await directNumberedDocument());
-  const anchor = rowsOf(reviewer).find((row) => row.text === "Unnumbered body text.");
+  const anchor = rowsOf(reviewer).find(
+    (row) => row.text === "Unnumbered body text.",
+  );
   assert.ok(anchor);
   const staged = await applyChecked(
     reviewer,
@@ -904,11 +1043,14 @@ test("a pending inserted anchor has complete live numbering provenance", async (
     "stage new numbered paragraph",
   );
   assert.equal(staged.applied.length, 1);
-  const pending = rowsOf(reviewer).find((row) => row.text === "Pending numbered anchor");
+  const pending = rowsOf(reviewer).find(
+    (row) => row.text === "Pending numbered anchor",
+  );
   assert.ok(pending);
   const pre = await capture(reviewer, "suggested");
   assert.equal(pre.numberingSource.type, "live");
-  if (pre.numberingSource.type !== "live") throw new Error("Expected live provenance");
+  if (pre.numberingSource.type !== "live")
+    throw new Error("Expected live provenance");
   assert.deepEqual(
     pre.numberingSource.facts.direct.get(pending.id),
     paragraphNumberingFromSlots({ numId: 7, ilvl: 0 }),
@@ -945,12 +1087,16 @@ test("package numbering provenance covers allocated paragraph identities in ever
     const removeIds = (value: unknown): void => {
       if (typeof value !== "object" || value === null) return;
       if ("paraId" in value) {
-        if (identity === "positional" || (identity === "mixed" && ordinal % 2 === 0))
+        if (
+          identity === "positional" ||
+          (identity === "mixed" && ordinal % 2 === 0)
+        )
           delete value.paraId;
         ordinal++;
       }
       for (const child of Object.values(value)) removeIds(child);
-      if (value instanceof Map) for (const child of value.values()) removeIds(child);
+      if (value instanceof Map)
+        for (const child of value.values()) removeIds(child);
     };
     removeIds(document.package);
     const bytes = new Uint8Array(await createDocx(document));
@@ -962,7 +1108,9 @@ test("package numbering provenance covers allocated paragraph identities in ever
       new Set(["main", "header", "footer", "footnote", "endnote"]),
     );
     for (const { handle } of stories) {
-      const rows = rowsOf(reviewer, handle).filter((row) => row.kind !== "diagnostic");
+      const rows = rowsOf(reviewer, handle).filter(
+        (row) => row.kind !== "diagnostic",
+      );
       const authoredRows = rowsOf(authoredReviewer, handle).filter(
         (row) => row.kind !== "diagnostic",
       );
@@ -975,7 +1123,10 @@ test("package numbering provenance covers allocated paragraph identities in ever
         authoredRows.map(({ id }) => authoredFacts.direct.get(id)),
       );
       for (const row of rows) {
-        assert.ok(facts.direct.has(row.id), `${identity} ${handle.type}: ${row.id}`);
+        assert.ok(
+          facts.direct.has(row.id),
+          `${identity} ${handle.type}: ${row.id}`,
+        );
         const model = modelOf(rows);
         model.numberingFacts = facts;
         expectOperation(model, {
@@ -985,16 +1136,24 @@ test("package numbering provenance covers allocated paragraph identities in ever
         });
       }
     }
-    const repeated = rowsOf(reviewer).filter(({ text }) => text === "Repeated paragraph");
+    const repeated = rowsOf(reviewer).filter(
+      ({ text }) => text === "Repeated paragraph",
+    );
     assert.equal(repeated.length, 2);
     assert.equal(new Set(repeated.map(({ id }) => id)).size, 2);
   }
 });
 
 slowTest(HIDDEN_LEVELS_TEST, async () => {
-  for (const definitionSource of ["abstract", "override", "styleLink"] as const) {
+  for (const definitionSource of [
+    "abstract",
+    "override",
+    "styleLink",
+  ] as const) {
     const document = fromMarkdown(
-      Array.from({ length: 9 }, (_, level) => `Anchor level ${level}.`).join("\n\n"),
+      Array.from({ length: 9 }, (_, level) => `Anchor level ${level}.`).join(
+        "\n\n",
+      ),
     );
     // Exercise every legal level with visible, hidden and absent definitions.
     const levels = Array.from({ length: 9 }, (_, level) => level)
@@ -1016,7 +1175,9 @@ slowTest(HIDDEN_LEVELS_TEST, async () => {
         {
           abstractNumId: 7,
           levels: baseLevels,
-          ...(definitionSource === "styleLink" ? { numStyleLink: "LinkedNumbering" } : {}),
+          ...(definitionSource === "styleLink"
+            ? { numStyleLink: "LinkedNumbering" }
+            : {}),
         },
         ...(definitionSource === "styleLink"
           ? [{ abstractNumId: 8, styleLink: "LinkedNumbering", levels }]
@@ -1042,11 +1203,20 @@ slowTest(HIDDEN_LEVELS_TEST, async () => {
     const bytes = await packDocument(document);
     const facts = await numberingFactsOf(bytes);
     for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
-      for (const request of ["reference", "levelOnly", "inherit", "insert"] as const) {
+      for (const request of [
+        "reference",
+        "levelOnly",
+        "inherit",
+        "insert",
+      ] as const) {
         const reviewer = await openReviewer(bytes);
         const anchors = rowsOf(reviewer);
         const operations = anchors.map((anchor, level) => {
-          const reference = { kind: "reference", numId: 7, ilvl: level } as const;
+          const reference = {
+            kind: "reference",
+            numId: 7,
+            ilvl: level,
+          } as const;
           switch (request) {
             case "insert":
               return {
@@ -1074,7 +1244,10 @@ slowTest(HIDDEN_LEVELS_TEST, async () => {
               return {
                 type: "setBlockParagraphProperties",
                 blockId: anchor.id,
-                properties: { styleId: `Level${level}`, numbering: { kind: "inherit" } },
+                properties: {
+                  styleId: `Level${level}`,
+                  numbering: { kind: "inherit" },
+                },
               };
           }
         });
@@ -1099,7 +1272,9 @@ slowTest(HIDDEN_LEVELS_TEST, async () => {
           const operation = operations.at(level);
           assert.ok(operation);
           expectOperation(model, operation);
-          const expectedRows = anchors.map((anchor) => (anchor.id === row.id ? row : anchor));
+          const expectedRows = anchors.map((anchor) =>
+            anchor.id === row.id ? row : anchor,
+          );
           if (request === "insert") expectedRows.splice(level + 1, 0, row);
           assert.deepEqual(compareWithModel(model, expectedRows), []);
           assert.match(
@@ -1123,6 +1298,9 @@ slowTest(HIDDEN_LEVELS_TEST, async () => {
 
 for (const seed of [1339716047, 1339716277]) {
   test(`missing numbering level regression seed ${seed} (#1819)`, async () => {
-    await runFlow(seed, 20, "random", { generation: "targeted", swarm: "enabled" });
+    await runFlow(seed, 20, "random", {
+      generation: "targeted",
+      swarm: "enabled",
+    });
   });
 }

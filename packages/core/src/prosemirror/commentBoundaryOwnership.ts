@@ -17,5 +17,6 @@ export const trackedCommentBoundaryOwner = ({
   commentId,
   fallback,
 }: TrackedCommentBoundaryOwnerOptions): TrackedCommentBoundary["owner"] =>
-  boundaries?.find((boundary) => boundary.type === type && boundary.commentId === commentId)
-    ?.owner ?? fallback;
+  boundaries?.find(
+    (boundary) => boundary.type === type && boundary.commentId === commentId,
+  )?.owner ?? fallback;

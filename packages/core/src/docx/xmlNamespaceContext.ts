@@ -43,11 +43,15 @@ export const attachXmlNamespaceContext = (
   let localBindings: Map<string, string> | null = null;
   if (element.attributes) {
     for (const [attribute, value] of Object.entries(element.attributes)) {
-      if (typeof value !== "string" || (attribute !== "xmlns" && !attribute.startsWith("xmlns:"))) {
+      if (
+        typeof value !== "string" ||
+        (attribute !== "xmlns" && !attribute.startsWith("xmlns:"))
+      ) {
         continue;
       }
       localBindings ??= new Map();
-      const prefix = attribute === "xmlns" ? "" : attribute.slice("xmlns:".length);
+      const prefix =
+        attribute === "xmlns" ? "" : attribute.slice("xmlns:".length);
       localBindings.set(prefix, value);
     }
   }

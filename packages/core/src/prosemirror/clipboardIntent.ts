@@ -2,7 +2,10 @@ import type { Slice } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
 /** Async clipboard reads resolve against the current owning session and selection. */
-const handlers = new WeakMap<EditorView, (slice: Slice, plain: boolean) => boolean>();
+const handlers = new WeakMap<
+  EditorView,
+  (slice: Slice, plain: boolean) => boolean
+>();
 
 export const registerClipboardIntentHandler = (
   view: EditorView,
@@ -11,5 +14,7 @@ export const registerClipboardIntentHandler = (
   handlers.set(view, handler);
 };
 
-export const dispatchClipboardIntent = (view: EditorView, slice: Slice): boolean | undefined =>
-  handlers.get(view)?.(slice, true);
+export const dispatchClipboardIntent = (
+  view: EditorView,
+  slice: Slice,
+): boolean | undefined => handlers.get(view)?.(slice, true);

@@ -95,7 +95,8 @@ export const IMPORTED_ID_COLLISION_KINDS = {
 export type ImportedIdCollisionKind =
   (typeof IMPORTED_ID_COLLISION_KINDS)[keyof typeof IMPORTED_ID_COLLISION_KINDS];
 
-export type ParseWarningCode = (typeof PARSE_WARNING_CODES)[keyof typeof PARSE_WARNING_CODES];
+export type ParseWarningCode =
+  (typeof PARSE_WARNING_CODES)[keyof typeof PARSE_WARNING_CODES];
 
 /** Where a warning happened, as precisely as the part can say. */
 export type ParseWarningLocation = {

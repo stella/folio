@@ -11,13 +11,16 @@
  * the plain text an untracked removal leaves.
  */
 
+import { TaggedError } from "better-result";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import { TaggedError } from "better-result";
 
 import { BUILT_IN_STYLE_NAME } from "../docx/builtInStyles";
 import type { RunPropertyChange, TextFormatting } from "../types/document";
-import { getDocumentBuiltInStyles, getDocumentStyleResolver } from "./plugins/documentStyles";
+import {
+  getDocumentBuiltInStyles,
+  getDocumentStyleResolver,
+} from "./plugins/documentStyles";
 import {
   isSuggestionModeActive,
   makeRevisionInfo,
@@ -32,7 +35,9 @@ import { paragraphRunStyleContextAt } from "./runStyleFormatting";
 type LinkedPiece = { from: number; to: number; node: PMNode };
 type LinkedRange = { from: number; to: number; pieces: LinkedPiece[] };
 
-export class HyperlinkRemovalRefusal extends TaggedError("HyperlinkRemovalRefusal")<{
+export class HyperlinkRemovalRefusal extends TaggedError(
+  "HyperlinkRemovalRefusal",
+)<{
   message: string;
 }> {}
 
@@ -53,7 +58,10 @@ export const assertHyperlinkRemovalRange = ({
     const resolved = doc.resolve(position);
     for (let depth = 1; depth <= resolved.depth; depth += 1) {
       const node = resolved.node(depth);
-      if (node.isInline && node.marks.some(({ type }) => type.name === "hyperlink"))
+      if (
+        node.isInline &&
+        node.marks.some(({ type }) => type.name === "hyperlink")
+      )
         throw partialInlineRefusal();
     }
   }
@@ -75,7 +83,10 @@ const linkedRanges = (doc: PMNode, from: number, to: number): LinkedRange[] => {
     if (start >= end) {
       return true;
     }
-    if (!node.isText && (start !== position || end !== position + node.nodeSize))
+    if (
+      !node.isText &&
+      (start !== position || end !== position + node.nodeSize)
+    )
       throw partialInlineRefusal();
     // Non-text cut offsets address content, not the atom's outer node size.
     const piece = {
@@ -104,10 +115,18 @@ type Unlinked = {
 };
 
 /** A piece's marks once the Hyperlink character style is taken off it. */
-const withoutHyperlinkStyle = (state: EditorState, doc: PMNode, piece: LinkedPiece): Unlinked => {
+const withoutHyperlinkStyle = (
+  state: EditorState,
+  doc: PMNode,
+  piece: LinkedPiece,
+): Unlinked => {
   const styleResolver = getDocumentStyleResolver(state);
   const builtInStyles = getDocumentBuiltInStyles(state);
-  const context = paragraphRunStyleContextAt({ doc, pos: piece.from, styleResolver });
+  const context = paragraphRunStyleContextAt({
+    doc,
+    pos: piece.from,
+    styleResolver,
+  });
   const previousFormatting = readAuthoredRunFormatting({
     context,
     marks: piece.node.marks,
@@ -179,7 +198,9 @@ export const removeHyperlinkInRange = (
     propertyChangeType !== undefined;
   const revisionAttrs = () => {
     const revision = makeRevisionInfo(state);
-    return revision ? { id: revision.id, author: revision.author, date: revision.date } : null;
+    return revision
+      ? { id: revision.id, author: revision.author, date: revision.date }
+      : null;
   };
   const insertionInfo = tracked ? revisionAttrs() : null;
   const insertion =
@@ -195,7 +216,11 @@ export const removeHyperlinkInRange = (
     if (!propertyChangeType || !info) {
       return null;
     }
-    const change: RunPropertyChange = { type: "runPropertyChange", info, previousFormatting };
+    const change: RunPropertyChange = {
+      type: "runPropertyChange",
+      info,
+      previousFormatting,
+    };
     return propertyChangeType.create({ changes: [change] });
   };
   const hasPendingPropertyChange = (marks: readonly Mark[]): boolean =>
@@ -225,9 +250,14 @@ export const removeHyperlinkInRange = (
           ? propertyChange(previousFormatting)
           : null;
       const kept = marks.filter(
-        ({ type }) => type !== hyperlinkType && type !== insertionType && type !== deletionType,
+        ({ type }) =>
+          type !== hyperlinkType &&
+          type !== insertionType &&
+          type !== deletionType,
       );
-      return piece.node.mark(insertion.addToSet(change ? change.addToSet(kept) : kept));
+      return piece.node.mark(
+        insertion.addToSet(change ? change.addToSet(kept) : kept),
+      );
     });
     tr.insert(range.to, plain);
     for (const { piece, marks, previousFormatting } of unlinked.toReversed()) {

@@ -10,7 +10,12 @@ import {
   expandSlot,
 } from "./check-reserved-value-coverage";
 import { expandSimpleType } from "./lib/narrowed-enum-schema-types";
-import { buildIndex, type SchemaGraph, slotKey, WML_NAMESPACE } from "./lib/ooxml-schema-graph";
+import {
+  buildIndex,
+  type SchemaGraph,
+  slotKey,
+  WML_NAMESPACE,
+} from "./lib/ooxml-schema-graph";
 
 const qualified = (name: string): string => `{${WML_NAMESPACE}}${name}`;
 const complexType = (name: string): string => `complexType:${qualified(name)}`;
@@ -37,8 +42,18 @@ const graph = (): SchemaGraph => ({
       name: "CT_Document",
       namespace: WML_NAMESPACE,
     },
-    { id: complexType("CT_Body"), kind: "complexType", name: "CT_Body", namespace: WML_NAMESPACE },
-    { id: complexType("CT_Shd"), kind: "complexType", name: "CT_Shd", namespace: WML_NAMESPACE },
+    {
+      id: complexType("CT_Body"),
+      kind: "complexType",
+      name: "CT_Body",
+      namespace: WML_NAMESPACE,
+    },
+    {
+      id: complexType("CT_Shd"),
+      kind: "complexType",
+      name: "CT_Shd",
+      namespace: WML_NAMESPACE,
+    },
     {
       id: complexType("CT_DecimalNumber"),
       kind: "complexType",
@@ -149,7 +164,9 @@ const graph = (): SchemaGraph => ({
 
 describe("candidate derivation", () => {
   const candidates = collectCandidates(graph(), buildIndex(graph()));
-  const bySlot = new Map(candidates.map((candidate) => [candidate.slot, candidate]));
+  const bySlot = new Map(
+    candidates.map((candidate) => [candidate.slot, candidate]),
+  );
 
   test("an enumeration carrying a reserved token is a candidate", () => {
     expect(bySlot.get(slotKey(WML_NAMESPACE, "shd", "val"))).toMatchObject({
@@ -194,7 +211,9 @@ describe("enumTokensOf", () => {
 
 describe("expandSlot", () => {
   test("resolves the registry's prefix to a namespace URI", () => {
-    expect(expandSlot("w:tcW@type")).toBe(slotKey(WML_NAMESPACE, "tcW", "type"));
+    expect(expandSlot("w:tcW@type")).toBe(
+      slotKey(WML_NAMESPACE, "tcW", "type"),
+    );
   });
 
   test("rejects a prefix the registry does not declare", () => {
@@ -204,8 +223,12 @@ describe("expandSlot", () => {
 
 describe("excludedSlots", () => {
   test("maps every slot in a group to that group's reason", () => {
-    const excluded = excludedSlots([{ reason: "Preserved verbatim.", slots: ["w:a@x", "w:b@y"] }]);
-    expect(excluded.get(slotKey(WML_NAMESPACE, "a", "x"))).toBe("Preserved verbatim.");
+    const excluded = excludedSlots([
+      { reason: "Preserved verbatim.", slots: ["w:a@x", "w:b@y"] },
+    ]);
+    expect(excluded.get(slotKey(WML_NAMESPACE, "a", "x"))).toBe(
+      "Preserved verbatim.",
+    );
     expect(excluded.size).toBe(2);
   });
 
@@ -252,7 +275,12 @@ describe("enumeration bindings", () => {
   test("a bound enumeration that matches the schema reports nothing", () => {
     expect(
       enumerationMismatches(
-        new Map([[themeColor, { slots: new Set(["w:color@themeColor"]), tokens: schemaTokens }]]),
+        new Map([
+          [
+            themeColor,
+            { slots: new Set(["w:color@themeColor"]), tokens: schemaTokens },
+          ],
+        ]),
       ),
     ).toEqual([]);
   });
@@ -261,10 +289,14 @@ describe("enumeration bindings", () => {
     const unbound = expandSimpleType("w:ST_Invented");
     expect(
       enumerationMismatches(
-        new Map([[unbound, { slots: new Set(["w:invented@val"]), tokens: ["a", "b"] }]]),
+        new Map([
+          [unbound, { slots: new Set(["w:invented@val"]), tokens: ["a", "b"] }],
+        ]),
       ),
     ).toEqual([
-      expect.stringContaining("ST_Invented (w:invented@val): no model enumeration is bound to it."),
+      expect.stringContaining(
+        "ST_Invented (w:invented@val): no model enumeration is bound to it.",
+      ),
     ]);
   });
 
@@ -275,7 +307,10 @@ describe("enumeration bindings", () => {
       new Map([
         [
           themeColor,
-          { slots: new Set(["w:color@themeColor"]), tokens: [...schemaTokens, "accent7"] },
+          {
+            slots: new Set(["w:color@themeColor"]),
+            tokens: [...schemaTokens, "accent7"],
+          },
         ],
       ]),
     );

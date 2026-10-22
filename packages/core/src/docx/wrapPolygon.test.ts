@@ -13,7 +13,13 @@ const AUTHORED = {
 
 describe("the wrap polygon a wrap of each kind states", () => {
   test("only a tight or through wrap has one", () => {
-    for (const type of ["inline", "square", "topAndBottom", "behind", "inFront"] as const) {
+    for (const type of [
+      "inline",
+      "square",
+      "topAndBottom",
+      "behind",
+      "inFront",
+    ] as const) {
       expect(wrapPolygonFor(type, undefined)).toBeUndefined();
       // An outline the drawing already carries is not written on a wrap whose
       // type declares none, and not thrown away either: the caller keeps it.

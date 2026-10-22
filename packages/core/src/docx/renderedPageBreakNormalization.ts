@@ -28,17 +28,22 @@ export const normalizeRenderedPageBreakHints = ({
   footnotes,
   endnotes,
 }: NormalizeRenderedPageBreakHintsInput): void => {
-  visitDocxParagraphs({ documentBody, headers, footers, footnotes, endnotes }, (paragraph) => {
-    if (
-      paragraph.renderedPageBreakBefore === true &&
-      !retainsLeadingRenderedPageBreak(paragraph.content)
-    ) {
-      delete paragraph.renderedPageBreakBefore;
-    }
-  });
+  visitDocxParagraphs(
+    { documentBody, headers, footers, footnotes, endnotes },
+    (paragraph) => {
+      if (
+        paragraph.renderedPageBreakBefore === true &&
+        !retainsLeadingRenderedPageBreak(paragraph.content)
+      ) {
+        delete paragraph.renderedPageBreakBefore;
+      }
+    },
+  );
 };
 
-const retainsLeadingRenderedPageBreak = (content: readonly ParagraphContent[]): boolean => {
+const retainsLeadingRenderedPageBreak = (
+  content: readonly ParagraphContent[],
+): boolean => {
   const scan = { sawRenderedPageBreak: false };
   for (const item of content) {
     const result = scanParagraphContent(item, scan);
@@ -53,7 +58,10 @@ type RenderedPageBreakScan = {
   sawRenderedPageBreak: boolean;
 };
 
-const scanRun = (run: Run, scan: RenderedPageBreakScan): boolean | undefined => {
+const scanRun = (
+  run: Run,
+  scan: RenderedPageBreakScan,
+): boolean | undefined => {
   for (const content of run.content) {
     if (content.type === "renderedPageBreak") {
       scan.sawRenderedPageBreak = true;
@@ -64,14 +72,20 @@ const scanRun = (run: Run, scan: RenderedPageBreakScan): boolean | undefined => 
   return undefined;
 };
 
-const scanHyperlink = (hyperlink: Hyperlink, scan: RenderedPageBreakScan): boolean | undefined => {
+const scanHyperlink = (
+  hyperlink: Hyperlink,
+  scan: RenderedPageBreakScan,
+): boolean | undefined => {
   for (const child of hyperlink.children) {
     // A transparent wrapper is transparent to the detector here too: the first
     // run under one is still the first run of the link.
     if (child.type !== "run" && child.type !== "inlineWrapper") {
       continue;
     }
-    const result = child.type === "run" ? scanRun(child, scan) : scanParagraphContent(child, scan);
+    const result =
+      child.type === "run"
+        ? scanRun(child, scan)
+        : scanParagraphContent(child, scan);
     if (result !== undefined) {
       return result;
     }

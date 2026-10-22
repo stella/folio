@@ -3,14 +3,22 @@
 // deliberate product defect. The baseline tarballs are built once; each run
 // receives its own repacked copy of folio-core, outside the checkout.
 
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
   ORACLE_MUTATIONS,
-  relationForOracle,
   type OracleMutation,
+  relationForOracle,
 } from "../test/consumer-scenarios/support/oracle-mutations";
 import { repoRoot } from "./packaged-consumer-lib";
 
@@ -58,7 +66,8 @@ const MUTATIONS: Mutation[] = [
     id: "input-batch-order",
     bug: "Position-changing batch operations execute in input order.",
     file: "ai-edits/apply.js",
-    before: "const executionOrder = executableResolved.toSorted((left, right) => {",
+    before:
+      "const executionOrder = executableResolved.toSorted((left, right) => {",
     after:
       "const executionOrder = executableResolved;\n\tconst unusedSortedOrder = executableResolved.toSorted((left, right) => {",
     check: "collision batch scenarios and fixed collision fuzz",
@@ -71,7 +80,8 @@ const MUTATIONS: Mutation[] = [
     bug: "Saving an insertion omits its nested deletion mark.",
     file: "docx/serializer/paragraphSerializer.js",
     before: /case "insertion":\s*case "deletion":\s*case "moveFrom":/gu,
-    after: 'case "deletion": break;\n\t\t\tcase "insertion":\n\t\t\tcase "moveFrom":',
+    after:
+      'case "deletion": break;\n\t\t\tcase "insertion":\n\t\t\tcase "moveFrom":',
     check: "saved tracked-change follow-up scenarios",
     scenarios: ["requested-outcome.test.ts", "operations.test.ts"],
     only: "(replaceInPendingInsertion|replaceRangeInPendingInsertion|deletePendingInsertion) \\(tracked-changes\\)",
@@ -117,17 +127,26 @@ const MUTATIONS: Mutation[] = [
 
 const PR_MODE = process.argv.includes("--pr");
 const tarballsArg = process.argv.indexOf("--tarballs");
-if (process.argv.some((arg) => arg.startsWith("--") && !["--pr", "--tarballs"].includes(arg))) {
-  throw new Error("Usage: bun scripts/oracle-mutation-check.ts [--pr] [--tarballs DIR]");
+if (
+  process.argv.some(
+    (arg) => arg.startsWith("--") && !["--pr", "--tarballs"].includes(arg),
+  )
+) {
+  throw new Error(
+    "Usage: bun scripts/oracle-mutation-check.ts [--pr] [--tarballs DIR]",
+  );
 }
-const tarballsPath = tarballsArg === -1 ? undefined : process.argv.at(tarballsArg + 1);
+const tarballsPath =
+  tarballsArg === -1 ? undefined : process.argv.at(tarballsArg + 1);
 if (tarballsArg !== -1 && tarballsPath === undefined) {
   throw new Error("--tarballs needs a directory");
 }
 const selected = MUTATIONS.filter((mutation) => !PR_MODE || mutation.pr);
 const scratch = await mkdtemp(path.join(tmpdir(), "folio-oracle-mutations-"));
 const baseline =
-  tarballsPath === undefined ? path.join(scratch, "baseline") : path.resolve(tarballsPath);
+  tarballsPath === undefined
+    ? path.join(scratch, "baseline")
+    : path.resolve(tarballsPath);
 const scenarioScript = path.join(repoRoot, "scripts", "consumer-scenarios.ts");
 const fuzzEnv = {
   ...process.env,
@@ -138,7 +157,10 @@ const fuzzEnv = {
 };
 
 type RunOptions = { cwd?: string; env?: Record<string, string> };
-const run = async (command: string[], { cwd = repoRoot, env = {} }: RunOptions = {}) => {
+const run = async (
+  command: string[],
+  { cwd = repoRoot, env = {} }: RunOptions = {},
+) => {
   const child = Bun.spawn(command, {
     cwd,
     env: { ...fuzzEnv, ...env },
@@ -189,10 +211,14 @@ const mutantTarballs = async (mutation: Mutation) => {
   if (unpack.exitCode !== 0)
     throw new Error(`${mutation.id}: tar extraction failed: ${unpack.output}`);
   const target = path.join(extracted, "package", "dist", mutation.file);
-  await writeFile(target, patchExactlyOnce(await readFile(target, "utf8"), mutation));
+  await writeFile(
+    target,
+    patchExactlyOnce(await readFile(target, "utf8"), mutation),
+  );
   const archive = path.join(core, path.basename(original));
   const pack = await run(["tar", "-czf", archive, "-C", extracted, "package"]);
-  if (pack.exitCode !== 0) throw new Error(`${mutation.id}: tar packaging failed: ${pack.output}`);
+  if (pack.exitCode !== 0)
+    throw new Error(`${mutation.id}: tar packaging failed: ${pack.output}`);
   return root;
 };
 
@@ -214,10 +240,13 @@ try {
   if (tarballsArg === -1) {
     await mkdir(baseline);
     const pack = await run(["bun", scenarioScript, "--pack-only", baseline]);
-    if (pack.exitCode !== 0) throw new Error(`Baseline package build failed:\n${pack.output}`);
+    if (pack.exitCode !== 0)
+      throw new Error(`Baseline package build failed:\n${pack.output}`);
   }
   // Cover every file the selected mutants exercise before interpreting a red run.
-  const files = [...new Set(selected.flatMap((mutation) => mutation.scenarios))];
+  const files = [
+    ...new Set(selected.flatMap((mutation) => mutation.scenarios)),
+  ];
   const healthy = await run([
     "bun",
     scenarioScript,
@@ -232,8 +261,8 @@ try {
   if (healthy.exitCode !== 0) {
     throw new Error(`Unmutated consumer scenarios failed:\n${healthy.output}`);
   }
-  const oracleNames = Object.keys(ORACLE_MUTATIONS).filter((key): key is OracleMutation =>
-    Object.hasOwn(ORACLE_MUTATIONS, key),
+  const oracleNames = Object.keys(ORACLE_MUTATIONS).filter(
+    (key): key is OracleMutation => Object.hasOwn(ORACLE_MUTATIONS, key),
   );
   for (const oracle of oracleNames) {
     const probe = ORACLE_MUTATIONS[oracle];
@@ -254,13 +283,18 @@ try {
     };
     // A healthy run of this exact filter must execute; unrelated failures or skips are not kills.
     const control = await run(command, { env });
-    if (control.exitCode !== 0 || !control.output.includes(`✔ oracle sensitivity: ${oracle}`)) {
+    if (
+      control.exitCode !== 0 ||
+      !control.output.includes(`✔ oracle sensitivity: ${oracle}`)
+    ) {
       throw new Error(
         `${oracle}: healthy oracle probe failed or did not execute:\n${control.output}`,
       );
     }
     console.log(`→ oracle ${oracle}: ${probe.bug}`);
-    const mutant = await run(command, { env: { ...env, FOLIO_ORACLE_MUTATION: oracle } });
+    const mutant = await run(command, {
+      env: { ...env, FOLIO_ORACLE_MUTATION: oracle },
+    });
     if (mutant.exitCode === 0) {
       throw new Error(
         `SURVIVED oracle ${oracle}: injected defect escaped its oracle.\n${mutant.output}`,
@@ -285,15 +319,23 @@ try {
       ...new Set(
         result.output
           .split("\n")
-          .filter((line) => /^\s*(?:✖|not ok) /u.test(line) && !line.includes("failing tests:"))
+          .filter(
+            (line) =>
+              /^\s*(?:✖|not ok) /u.test(line) &&
+              !line.includes("failing tests:"),
+          )
           .map((line) => line.trim()),
       ),
     ];
     if (result.exitCode === 0) {
-      console.error(`SURVIVED ${mutation.id}: expected ${mutation.check} to fail.`);
+      console.error(
+        `SURVIVED ${mutation.id}: expected ${mutation.check} to fail.`,
+      );
       survivors += 1;
     } else if (failures.length === 0) {
-      throw new Error(`${mutation.id}: suite exited before a test failed:\n${result.output}`);
+      throw new Error(
+        `${mutation.id}: suite exited before a test failed:\n${result.output}`,
+      );
     } else {
       console.log(`CAUGHT ${mutation.id}: ${failures.join("; ")}`);
     }

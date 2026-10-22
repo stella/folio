@@ -18,7 +18,9 @@ export const largeDocument = (): Promise<Uint8Array> => {
       content.push(
         paragraph([
           run(`Clause ${page + 1}.${index + 1}. `, { bold: true }),
-          run("The supplier delivers goods and the buyer provides written notice."),
+          run(
+            "The supplier delivers goods and the buyer provides written notice.",
+          ),
           run(" Café 日本語 👩🏽‍⚖️."),
         ]),
       );

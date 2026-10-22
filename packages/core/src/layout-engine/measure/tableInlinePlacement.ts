@@ -1,9 +1,8 @@
-import { resolveTableCellPadding, type TableBlock } from "../types";
 import { resolveTablePlacementAlignment } from "../../utils/tablePlacement";
+import { resolveTableCellPadding, type TableBlock } from "../types";
 
 type TableInlinePlacement =
-  | { alignment: "center" }
-  | { alignment: "left" | "right"; offset: number };
+  { alignment: "center" } | { alignment: "left" | "right"; offset: number };
 
 type LeadingEdgeTable = Pick<
   TableBlock,
@@ -30,7 +29,8 @@ export const resolveTableInlinePlacement = (
   table: LeadingEdgeTable,
   rowJustification?: TableBlock["justification"],
 ): TableInlinePlacement => {
-  const logicalJustification = rowJustification ?? table.justification ?? "left";
+  const logicalJustification =
+    rowJustification ?? table.justification ?? "left";
   if (logicalJustification === "center") {
     return { alignment: "center" };
   }
@@ -38,9 +38,14 @@ export const resolveTableInlinePlacement = (
   // OOXML justification is logical: bidiVisual mirrors left/right only after
   // deciding whether the leading-edge indent applies.
   const offset =
-    logicalJustification === "left" ? (table.indent ?? 0) - leadingEdgeCompensation(table) : 0;
+    logicalJustification === "left"
+      ? (table.indent ?? 0) - leadingEdgeCompensation(table)
+      : 0;
   return {
-    alignment: resolveTablePlacementAlignment(logicalJustification, table.bidi === true),
+    alignment: resolveTablePlacementAlignment(
+      logicalJustification,
+      table.bidi === true,
+    ),
     offset,
   };
 };

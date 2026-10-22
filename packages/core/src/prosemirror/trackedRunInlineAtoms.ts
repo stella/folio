@@ -54,7 +54,9 @@ export const trackedRunInlineAtomDisposition = (
 
   const disposition = dispositionsByName.get(node.type.name);
   if (!disposition) {
-    panic(`Inline atom ${JSON.stringify(node.type.name)} has no tracked-run disposition`);
+    panic(
+      `Inline atom ${JSON.stringify(node.type.name)} has no tracked-run disposition`,
+    );
   }
   return disposition;
 };

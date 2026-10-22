@@ -2,7 +2,12 @@ import type { StepMap } from "prosemirror-transform";
 
 /** StepMap.map scans its ranges; index them once for many paragraph lookups. */
 export const indexedPositionMap = (map: StepMap) => {
-  const changes: { oldStart: number; oldEnd: number; newStart: number; newEnd: number }[] = [];
+  const changes: {
+    oldStart: number;
+    oldEnd: number;
+    newStart: number;
+    newEnd: number;
+  }[] = [];
   map.forEach((oldStart, oldEnd, newStart, newEnd) => {
     changes.push({ oldStart, oldEnd, newStart, newEnd });
   });
@@ -35,7 +40,10 @@ export const indexedPositionMap = (map: StepMap) => {
       deletedAcross: false,
     };
   };
-  return Object.assign((position: number, assoc: 1 | -1) => mapResult(position, assoc).pos, {
-    mapResult,
-  });
+  return Object.assign(
+    (position: number, assoc: 1 | -1) => mapResult(position, assoc).pos,
+    {
+      mapResult,
+    },
+  );
 };

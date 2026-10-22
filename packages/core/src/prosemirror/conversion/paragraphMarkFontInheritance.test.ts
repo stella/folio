@@ -20,7 +20,9 @@ const sourceWithParagraphMarkFont = (formatting?: TextFormatting) => {
   source.package.document.content = [
     {
       type: "paragraph",
-      formatting: { runProperties: { fontFamily: { csTheme: "minorHAnsi" }, italic: true } },
+      formatting: {
+        runProperties: { fontFamily: { csTheme: "minorHAnsi" }, italic: true },
+      },
       content: [run],
     },
   ];
@@ -28,19 +30,33 @@ const sourceWithParagraphMarkFont = (formatting?: TextFormatting) => {
 };
 
 test("a paragraph-mark font does not become direct body-run formatting", () => {
-  for (const direct of [undefined, { fontFamily: { csTheme: "minorHAnsi" } }] as const) {
+  for (const direct of [
+    undefined,
+    { fontFamily: { csTheme: "minorHAnsi" } },
+  ] as const) {
     const source = sourceWithParagraphMarkFont(direct);
-    const saved = fromProseDoc(toProseDoc(source, { styles: source.package.styles }), source, {
-      stylesheetSource: { type: "package" },
-    });
+    const saved = fromProseDoc(
+      toProseDoc(source, { styles: source.package.styles }),
+      source,
+      {
+        stylesheetSource: { type: "package" },
+      },
+    );
     const paragraph = saved.package.document.content.at(0);
-    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const run =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
     expect(run?.type === "run" ? run.formatting : undefined).toEqual(direct);
 
-    const savedAgain = fromProseDoc(toProseDoc(saved, { styles: saved.package.styles }), saved, {
-      stylesheetSource: { type: "package" },
-    });
-    expect(savedAgain.package.document.content).toEqual(saved.package.document.content);
+    const savedAgain = fromProseDoc(
+      toProseDoc(saved, { styles: saved.package.styles }),
+      saved,
+      {
+        stylesheetSource: { type: "package" },
+      },
+    );
+    expect(savedAgain.package.document.content).toEqual(
+      saved.package.document.content,
+    );
   }
 });
 
@@ -52,5 +68,7 @@ test("an empty paragraph keeps its paragraph-mark font for painting", () => {
   }
   paragraph.content = [];
   const prose = toProseDoc(source, { styles: source.package.styles });
-  expect(prose.firstChild?.attrs["defaultTextFormatting"]?.fontFamily?.csTheme).toBe("minorHAnsi");
+  expect(
+    prose.firstChild?.attrs["defaultTextFormatting"]?.fontFamily?.csTheme,
+  ).toBe("minorHAnsi");
 });

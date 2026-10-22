@@ -2,17 +2,17 @@
 /** Install a task environment from the repository lock, then restore manifests. */
 import {
   existsSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+
 import { installFrozenRepositoryDependencies } from "./clean-room-install";
 
 export const INSTALL_SCOPES = {
-  "docs-format": { roots: ["oxfmt"], workspaces: "none" },
   "ci-plan": {
     roots: ["@stll/oxlint-config", "oxlint", "oxlint-tsgolint"],
     workspaces: "none",
@@ -51,8 +51,9 @@ export const INSTALL_SCOPES = {
   },
 } as const;
 
-export const isInstallScope = (scope: string): scope is keyof typeof INSTALL_SCOPES =>
-  Object.hasOwn(INSTALL_SCOPES, scope);
+export const isInstallScope = (
+  scope: string,
+): scope is keyof typeof INSTALL_SCOPES => Object.hasOwn(INSTALL_SCOPES, scope);
 
 type Manifest = {
   name: string;
@@ -78,12 +79,14 @@ export const installedPackageBytes = (repoRoot: string): number => {
     const item = pending.pop();
     if (item === undefined) break;
     const resolved = realpathSync(item);
-    if (resolved.startsWith(path.join(physicalRoot, "packages") + path.sep)) continue;
+    if (resolved.startsWith(path.join(physicalRoot, "packages") + path.sep))
+      continue;
     const stat = statSync(resolved);
     if (stat.isDirectory()) {
       if (directories.has(resolved)) continue;
       directories.add(resolved);
-      for (const name of readdirSync(resolved)) pending.push(path.join(resolved, name));
+      for (const name of readdirSync(resolved))
+        pending.push(path.join(resolved, name));
       continue;
     }
     const identity = `${stat.dev}:${stat.ino}`;
@@ -94,7 +97,10 @@ export const installedPackageBytes = (repoRoot: string): number => {
   return bytes;
 };
 
-export const scopeInstall = (scope: keyof typeof INSTALL_SCOPES, repoRoot: string) => {
+export const scopeInstall = (
+  scope: keyof typeof INSTALL_SCOPES,
+  repoRoot: string,
+) => {
   const originals = new Map<string, string>();
   const read = (file: string) => {
     const text = readFileSync(path.join(repoRoot, file), "utf8");
@@ -107,17 +113,22 @@ export const scopeInstall = (scope: keyof typeof INSTALL_SCOPES, repoRoot: strin
   const dependencies: Record<string, string> = {};
   for (const name of profile.roots) {
     const version = root.devDependencies?.[name];
-    if (version === undefined) throw new TypeError(`Undeclared scoped dependency: ${name}`);
+    if (version === undefined)
+      throw new TypeError(`Undeclared scoped dependency: ${name}`);
     dependencies[name] = version;
   }
   root.devDependencies = dependencies;
   const rootLock = lock.workspaces[""];
-  if (rootLock === undefined) throw new TypeError("Lockfile has no root workspace");
+  if (rootLock === undefined)
+    throw new TypeError("Lockfile has no root workspace");
   rootLock.devDependencies = dependencies;
 
   const retained = new Set<string>();
   const workspaceByName = new Map(
-    Object.entries(lock.workspaces).map(([dir, manifest]) => [manifest.name, dir]),
+    Object.entries(lock.workspaces).map(([dir, manifest]) => [
+      manifest.name,
+      dir,
+    ]),
   );
   const retainRuntime = (name: string) => {
     const dir = workspaceByName.get(name);
@@ -125,14 +136,18 @@ export const scopeInstall = (scope: keyof typeof INSTALL_SCOPES, repoRoot: strin
     if (retained.has(dir)) return;
     retained.add(dir);
     const manifest = lock.workspaces[dir];
-    if (manifest === undefined) throw new TypeError(`Missing workspace: ${dir}`);
-    for (const [dependency, version] of Object.entries(manifest.dependencies ?? {})) {
+    if (manifest === undefined)
+      throw new TypeError(`Missing workspace: ${dir}`);
+    for (const [dependency, version] of Object.entries(
+      manifest.dependencies ?? {},
+    )) {
       if (version.startsWith("workspace:")) retainRuntime(dependency);
     }
   };
   if (profile.workspaces === "runtime") retainRuntime("@stll/folio-cli");
   if (profile.workspaces === "all") {
-    for (const dir of Object.keys(lock.workspaces)) if (dir !== "") retained.add(dir);
+    for (const dir of Object.keys(lock.workspaces))
+      if (dir !== "") retained.add(dir);
   }
   root.workspaces = [...retained].toSorted();
   const files = new Map<string, string>();
@@ -149,7 +164,9 @@ export const scopeInstall = (scope: keyof typeof INSTALL_SCOPES, repoRoot: strin
     files.set(file, JSON.stringify(source, null, 2));
   }
   lock.workspaces = Object.fromEntries(
-    Object.entries(lock.workspaces).filter(([dir]) => dir === "" || retained.has(dir)),
+    Object.entries(lock.workspaces).filter(
+      ([dir]) => dir === "" || retained.has(dir),
+    ),
   );
   lock.packages = Object.fromEntries(
     Object.entries(lock.packages).filter(([, entry]) => {
@@ -173,14 +190,22 @@ if (import.meta.main) {
     const { files, originals } = scopeInstall(name, repoRoot);
     const started = performance.now();
     try {
-      for (const [file, text] of files) writeFileSync(path.join(repoRoot, file), text);
+      for (const [file, text] of files)
+        writeFileSync(path.join(repoRoot, file), text);
       installFrozenRepositoryDependencies(repoRoot);
       if (existsSync(path.join(repoRoot, "node_modules/binaryen")))
-        throw new TypeError("Scoped install includes an unrelated WASM optimizer");
-      console.log(`Scoped install ${name}: ${Math.round(performance.now() - started)} ms`);
-      console.log(`Scoped install ${name}: ${installedPackageBytes(repoRoot)} package bytes`);
+        throw new TypeError(
+          "Scoped install includes an unrelated WASM optimizer",
+        );
+      console.log(
+        `Scoped install ${name}: ${Math.round(performance.now() - started)} ms`,
+      );
+      console.log(
+        `Scoped install ${name}: ${installedPackageBytes(repoRoot)} package bytes`,
+      );
     } finally {
-      for (const [file, text] of originals) writeFileSync(path.join(repoRoot, file), text);
+      for (const [file, text] of originals)
+        writeFileSync(path.join(repoRoot, file), text);
     }
   };
   run(scope);

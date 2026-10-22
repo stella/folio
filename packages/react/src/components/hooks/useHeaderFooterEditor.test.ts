@@ -2,6 +2,7 @@ import { expect, mock, test } from "bun:test";
 
 import { createEmptyDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import type { Document } from "@stll/folio-core/types/document";
+
 import { saveAndCloseHeaderFooterEdit } from "./useHeaderFooterEditor";
 
 test("a stale header view closes when its source disappeared", () => {

@@ -7,8 +7,15 @@ import {
   withFakeTextMeasure,
 } from "../layout-engine/measure/__tests__/fakeTextMeasure";
 import { measureBlocks } from "../layout-engine/measure/measureBlocks";
-import type { FlowBlock, ParagraphBlock, TableBlock } from "../layout-engine/types";
-import { computePerBlockMeasureInputs, computePerBlockWidths } from "./sectionBlockWidths";
+import type {
+  FlowBlock,
+  ParagraphBlock,
+  TableBlock,
+} from "../layout-engine/types";
+import {
+  computePerBlockMeasureInputs,
+  computePerBlockWidths,
+} from "./sectionBlockWidths";
 
 const BODY_CONFIG = {
   pageSize: { w: 1000, h: 1200 },
@@ -93,7 +100,11 @@ describe("section block measurement inputs", () => {
     });
 
     expect(inputs.marginTops).toEqual([64, 64, BODY_CONFIG.margins.top]);
-    expect(inputs.physicalPageGeometry.marginTops).toEqual([64, 64, BODY_CONFIG.margins.top]);
+    expect(inputs.physicalPageGeometry.marginTops).toEqual([
+      64,
+      64,
+      BODY_CONFIG.margins.top,
+    ]);
     expect(inputs.pageWidths).toEqual([600, 600, BODY_CONFIG.pageSize.w]);
     expect(inputs.marginLefts).toEqual([50, 50, BODY_CONFIG.margins.left]);
     expect(inputs.marginRights).toEqual([50, 50, BODY_CONFIG.margins.right]);
@@ -280,8 +291,16 @@ describe("section block measurement inputs", () => {
   });
 
   test("advances nextColumn across a blank page created by a hard break", () => {
-    const unequalColumns = { count: 2, gap: 20, widths: [200, 300], gaps: [100] };
-    const config = { ...BODY_CONFIG, columns: unequalColumns } satisfies SectionLayoutConfig;
+    const unequalColumns = {
+      count: 2,
+      gap: 20,
+      widths: [200, 300],
+      gaps: [100],
+    };
+    const config = {
+      ...BODY_CONFIG,
+      columns: unequalColumns,
+    } satisfies SectionLayoutConfig;
     const blocks: FlowBlock[] = [
       paragraph("first-page"),
       { kind: "pageBreak", id: "blank-second-page" },
@@ -302,7 +321,12 @@ describe("section block measurement inputs", () => {
       finalConfig: config,
     });
 
-    expect(inputs.sectionAdvances).toEqual([undefined, undefined, "column", undefined]);
+    expect(inputs.sectionAdvances).toEqual([
+      undefined,
+      undefined,
+      "column",
+      undefined,
+    ]);
     expect(inputs.columnIndices).toEqual([0, 0, 0, 1]);
     expect(inputs.widths).toEqual([200, 200, 200, 300]);
     expect(inputs.contentLefts).toEqual([100, 100, 100, 400]);
@@ -366,14 +390,20 @@ describe("section block measurement inputs", () => {
       const tableMeasure = measures.at(2);
       const tableFragment = layout.pages
         .flatMap((page) => page.fragments)
-        .find((fragment) => fragment.kind === "table" && fragment.blockId === table.id);
+        .find(
+          (fragment) =>
+            fragment.kind === "table" && fragment.blockId === table.id,
+        );
       if (bodyMeasure?.kind !== "paragraph" || tableMeasure?.kind !== "table") {
         throw new Error("Expected paragraph and table measures");
       }
 
       expect(tableFragment?.x).toBe(240);
       expect(bodyMeasure.lines.at(0)?.leftOffset).toBe(
-        (tableFragment?.x ?? 0) + tableMeasure.totalWidth + 12 - (inputs.contentLefts.at(3) ?? 0),
+        (tableFragment?.x ?? 0) +
+          tableMeasure.totalWidth +
+          12 -
+          (inputs.contentLefts.at(3) ?? 0),
       );
     }, fakeMeasure);
   });
@@ -390,8 +420,12 @@ describe("section block measurement inputs", () => {
         margins: { top: 200, right: 100, bottom: 180, left: 200 },
         pageNumbering: { type: "continue" },
       } as const;
-      const outgoingTable = centeredMarginFloatingTable("outgoing-margin-float");
-      const incomingTable = centeredMarginFloatingTable("incoming-margin-float");
+      const outgoingTable = centeredMarginFloatingTable(
+        "outgoing-margin-float",
+      );
+      const incomingTable = centeredMarginFloatingTable(
+        "incoming-margin-float",
+      );
       const pageBreakParagraph = paragraph("page-break-before");
       pageBreakParagraph.attrs = { pageBreakBefore: true };
       const blocks: FlowBlock[] = [
@@ -442,7 +476,10 @@ describe("section block measurement inputs", () => {
       const bodyMeasure = measures.at(5);
       const tableFragment = layout.pages
         .flatMap((page) => page.fragments)
-        .find((fragment) => fragment.kind === "table" && fragment.blockId === incomingTable.id);
+        .find(
+          (fragment) =>
+            fragment.kind === "table" && fragment.blockId === incomingTable.id,
+        );
       if (
         pageBreakMeasure?.kind !== "paragraph" ||
         tableMeasure?.kind !== "table" ||
@@ -451,15 +488,22 @@ describe("section block measurement inputs", () => {
         throw new Error("Expected paragraph and table measures");
       }
 
-      expect(inputs.physicalPageGeometry.marginLefts).toEqual([40, 40, 40, 200, 200, 200]);
-      expect(inputs.physicalPageGeometry.marginRights).toEqual([160, 160, 160, 100, 100, 100]);
+      expect(inputs.physicalPageGeometry.marginLefts).toEqual([
+        40, 40, 40, 200, 200, 200,
+      ]);
+      expect(inputs.physicalPageGeometry.marginRights).toEqual([
+        160, 160, 160, 100, 100, 100,
+      ]);
       expect(inputs.widths).toEqual([600, 600, 600, 500, 500, 500]);
       expect(inputs.contentLefts).toEqual([40, 40, 40, 200, 200, 200]);
       expect(pageBreakMeasure.lines.at(0)?.leftOffset).toBeUndefined();
       expect(pageBreakMeasure.lines.at(0)?.rightOffset).toBeUndefined();
       expect(tableFragment?.x).toBe(350);
       expect(bodyMeasure.lines.at(0)?.leftOffset).toBe(
-        (tableFragment?.x ?? 0) + tableMeasure.totalWidth + 12 - (inputs.contentLefts.at(5) ?? 0),
+        (tableFragment?.x ?? 0) +
+          tableMeasure.totalWidth +
+          12 -
+          (inputs.contentLefts.at(5) ?? 0),
       );
     }, fakeMeasure);
   });

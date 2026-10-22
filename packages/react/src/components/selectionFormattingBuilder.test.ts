@@ -62,7 +62,10 @@ describe("buildSelectionFormatting", () => {
 
   test("copies optional fields only when their source is defined", () => {
     const formatting = buildSelectionFormatting({
-      selectionState: makeSelection({ bold: true, italic: false }, { alignment: "center" }),
+      selectionState: makeSelection(
+        { bold: true, italic: false },
+        { alignment: "center" },
+      ),
       fontFamily: undefined,
       fontSize: undefined,
       textColor: undefined,

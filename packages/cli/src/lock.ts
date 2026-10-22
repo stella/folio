@@ -1,4 +1,4 @@
-import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
+import { Result } from "better-result";
 /**
  * Cooperative write lease: `.<name>.folio-lock` beside the document, holding
  * the owner's pid, host, expiry, and a random token. A folio write takes it
@@ -16,16 +16,16 @@ import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
  * exited. A lock that cannot be parsed is treated as held until it is older
  * than a lease. Reads never consult it.
  */
-
-import { Result } from "better-result";
 import { randomUUID } from "node:crypto";
 import { link, rename, rm } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { errnoCode } from "./file-system";
+import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
+
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
+import { errnoCode } from "./file-system";
 import { inspectPath, readSidecarFile, writeNewSidecarFile } from "./sidecar";
 
 /** How long a command-line transaction's lease lasts without renewal. */
@@ -37,7 +37,8 @@ export const DEFAULT_LEASE_OWNER = "folio-cli";
 const OWNER_PATTERN = /^[\w.-]{1,64}$/u;
 
 /** A lease owner is 1 to 64 letters, digits, '.', '_' or '-'. */
-export const isLeaseOwner = (value: string): boolean => OWNER_PATTERN.test(value);
+export const isLeaseOwner = (value: string): boolean =>
+  OWNER_PATTERN.test(value);
 
 export type LockHolder = {
   owner: string;
@@ -74,7 +75,10 @@ export const publicLockHolder = ({
 });
 
 export const lockPathFor = (documentPath: string): string =>
-  path.join(path.dirname(documentPath), `.${path.basename(documentPath)}.folio-lock`);
+  path.join(
+    path.dirname(documentPath),
+    `.${path.basename(documentPath)}.folio-lock`,
+  );
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -82,7 +86,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const parseHolder = (text: string): LockHolder | null => {
   const parsed = Result.try((): unknown => JSON.parse(text));
   if (parsed.isErr() || !isRecord(parsed.value)) return null;
-  const { owner, pid, host, txId, token, acquiredAt, expiresAt, acceptsFlush } = parsed.value;
+  const { owner, pid, host, txId, token, acquiredAt, expiresAt, acceptsFlush } =
+    parsed.value;
   return typeof owner === "string" &&
     typeof pid === "number" &&
     typeof host === "string" &&
@@ -128,7 +133,9 @@ export const isStaleLease = (state: LeaseState, now: Date): boolean => {
     case "held": {
       const expires = Date.parse(state.holder.expiresAt);
       if (Number.isNaN(expires) || expires <= now.getTime()) return true;
-      return state.holder.host === hostname() && !processIsAlive(state.holder.pid);
+      return (
+        state.holder.host === hostname() && !processIsAlive(state.holder.pid)
+      );
     }
     default: {
       const unreachable: never = state;
@@ -143,7 +150,8 @@ export const readLease = async (documentPath: string): Promise<LeaseState> => {
   const entry = await inspectPath(lockPath);
   if (entry.isErr()) return { type: "unreadable", modifiedMs: Date.now() };
   if (entry.value.type === "missing") return { type: "free" };
-  const modifiedMs = entry.value.type === "file" ? entry.value.modifiedMs : Date.now();
+  const modifiedMs =
+    entry.value.type === "file" ? entry.value.modifiedMs : Date.now();
   const bytes = await readSidecarFile(lockPath);
   const holder = bytes.isOk() ? parseHolder(decodeText(bytes.value)) : null;
   return holder === null
@@ -184,7 +192,9 @@ const lockedError = (documentPath: string, state: LeaseState): FolioCliError =>
         : ""
     }.`,
     hint: "Retry after it finishes, or pass --force to take the lease over.",
-    ...(state.type === "held" && { details: { holder: publicLockHolder(state.holder) } }),
+    ...(state.type === "held" && {
+      details: { holder: publicLockHolder(state.holder) },
+    }),
   });
 
 const lostError = (documentPath: string): FolioCliError =>
@@ -217,18 +227,23 @@ const placeLock = async (
   if (written.isErr()) return Result.err(written.error);
   try {
     const placed = await Result.tryPromise(() =>
-      mode === "create" ? link(temporary, lockPath) : rename(temporary, lockPath),
+      mode === "create"
+        ? link(temporary, lockPath)
+        : rename(temporary, lockPath),
     );
     if (placed.isOk()) return Result.ok({ type: "placed" });
     return errnoCode(placed.error.cause) === "EEXIST"
       ? Result.ok({ type: "exists" })
-      : Result.err(fileSystemError(`Cannot create ${lockPath}`, placed.error.cause));
+      : Result.err(
+          fileSystemError(`Cannot create ${lockPath}`, placed.error.cause),
+        );
   } finally {
     await rm(temporary, { force: true });
   }
 };
 
-const encodeHolder = (holder: LockHolder): Uint8Array => encodeUtf8(`${JSON.stringify(holder)}\n`);
+const encodeHolder = (holder: LockHolder): Uint8Array =>
+  encodeUtf8(`${JSON.stringify(holder)}\n`);
 
 /** How long a swap lock may stand before another process breaks it (its holder crashed). */
 const SWAP_STALE_MS = 10 * 1000;
@@ -292,11 +307,17 @@ const underSwapLock = async <T>(
 
 /** Whether two reads of the lock saw the same lock. */
 const sameLock = (left: LeaseState, right: LeaseState): boolean =>
-  (left.type === "held" && right.type === "held" && left.holder.token === right.holder.token) ||
+  (left.type === "held" &&
+    right.type === "held" &&
+    left.holder.token === right.holder.token) ||
   (left.type === "unreadable" && right.type === "unreadable");
 
 /** The handle on a lease whose lock carries `initial`'s token. */
-const leaseFor = (documentPath: string, initial: LockHolder, leaseMs: number): AcquiredLease => {
+const leaseFor = (
+  documentPath: string,
+  initial: LockHolder,
+  leaseMs: number,
+): AcquiredLease => {
   const lockPath = lockPathFor(documentPath);
   const holds = async (): Promise<boolean> => {
     const current = await readLease(documentPath);
@@ -304,14 +325,19 @@ const leaseFor = (documentPath: string, initial: LockHolder, leaseMs: number): A
   };
   const lease: AcquiredLease = {
     holder: initial,
-    verify: async () => ((await holds()) ? Result.ok() : Result.err(lostError(documentPath))),
+    verify: async () =>
+      (await holds()) ? Result.ok() : Result.err(lostError(documentPath)),
     renew: async (now = new Date()) => {
       const expiresAt = new Date(now.getTime() + leaseMs).toISOString();
       const renewed = { ...lease.holder, expiresAt };
       // Compare and swap: replaced only while the lock still carries our token.
       const swapped = await underSwapLock(documentPath, async () => {
         if (!(await holds())) return Result.err(lostError(documentPath));
-        const placed = await placeLock(lockPath, encodeHolder(renewed), "replace");
+        const placed = await placeLock(
+          lockPath,
+          encodeHolder(renewed),
+          "replace",
+        );
         return placed.isErr() ? Result.err(placed.error) : Result.ok();
       });
       if (swapped.isErr()) return Result.err(swapped.error);
@@ -344,12 +370,17 @@ export const adoptLease = async (
         code: FOLIO_CLI_ERROR_CODES.locked,
         message: `${documentPath} is not held under that lease token.`,
         hint: "The lease expired or was taken over; acquire it again and retry.",
-        ...(current.type === "held" && { details: { holder: publicLockHolder(current.holder) } }),
+        ...(current.type === "held" && {
+          details: { holder: publicLockHolder(current.holder) },
+        }),
       }),
     );
   }
   const { holder } = current;
-  const leaseMs = Math.max(Date.parse(holder.expiresAt) - Date.parse(holder.acquiredAt), 0);
+  const leaseMs = Math.max(
+    Date.parse(holder.expiresAt) - Date.parse(holder.acquiredAt),
+    0,
+  );
   const lease = leaseFor(documentPath, holder, leaseMs);
   lease.release = () => Promise.resolve();
   return Result.ok(lease);

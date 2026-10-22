@@ -28,7 +28,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { Document, Image, ImageWrap, Shape } from "../../types/document";
 import { emuToPixels, emuToStrokePixels, pixelsToEmu } from "../../utils/units";
 import { fromProseDoc } from "./fromProseDoc";
@@ -42,7 +45,10 @@ const EMU_PER_PIXEL = 9_525;
 const authoredSize = fc.integer({ min: EMU_PER_PIXEL, max: 20_000_000 });
 
 /** A hundredth of a pixel, the stroke projection's resolution. */
-const authoredStrokeWidth = fc.integer({ min: Math.ceil(EMU_PER_PIXEL / 100), max: 2_000_000 });
+const authoredStrokeWidth = fc.integer({
+  min: Math.ceil(EMU_PER_PIXEL / 100),
+  max: 2_000_000,
+});
 
 /** Insets and margins reach zero: an authored zero is a value, not an absence. */
 const authoredInset = fc.integer({ min: 0, max: 2_000_000 });
@@ -103,7 +109,12 @@ const textBody = {
   content: [
     {
       type: "paragraph" as const,
-      content: [{ type: "run" as const, content: [{ type: "text" as const, text: "t" }] }],
+      content: [
+        {
+          type: "run" as const,
+          content: [{ type: "text" as const, text: "t" }],
+        },
+      ],
     },
   ],
 };
@@ -132,14 +143,25 @@ const buildShape = ({
   ...(kind === "textBox" ? { textBody: { ...textBody, margins: m } } : {}),
 });
 
-const buildImage = ({ width, height, outlineWidth, insets: i }: AuthoredGeometry): Image => ({
+const buildImage = ({
+  width,
+  height,
+  outlineWidth,
+  insets: i,
+}: AuthoredGeometry): Image => ({
   type: "image",
   rId: "rIdGeometry",
   size: { width, height },
   wrap: wrapOf(i),
   ...(outlineWidth === undefined
     ? {}
-    : { outline: { style: "solid" as const, color: { rgb: "112233" }, width: outlineWidth } }),
+    : {
+        outline: {
+          style: "solid" as const,
+          color: { rgb: "112233" },
+          width: outlineWidth,
+        },
+      }),
 });
 
 const documentWithDrawing = (geometry: AuthoredGeometry): Document => ({
@@ -212,7 +234,9 @@ const geometryOf = (document: Document): RestoredGeometry => {
           const { size, outline, wrap, textBody: body } = content.shape;
           return {
             size,
-            ...(outline?.width === undefined ? {} : { outlineWidth: outline.width }),
+            ...(outline?.width === undefined
+              ? {}
+              : { outlineWidth: outline.width }),
             ...(wrap === undefined ? {} : { wrap }),
             ...(body?.margins === undefined ? {} : { margins: body.margins }),
           };
@@ -221,7 +245,9 @@ const geometryOf = (document: Document): RestoredGeometry => {
           const { size, outline, wrap } = content.image;
           return {
             size,
-            ...(outline?.width === undefined ? {} : { outlineWidth: outline.width }),
+            ...(outline?.width === undefined
+              ? {}
+              : { outlineWidth: outline.width }),
             ...(wrap === undefined ? {} : { wrap }),
           };
         }
@@ -232,9 +258,20 @@ const geometryOf = (document: Document): RestoredGeometry => {
 };
 
 /** Re-create every drawing node in the projection with different attributes. */
-const editDrawingAttrs = (node: PMNode, overrides: Record<string, unknown>): PMNode => {
-  if (node.type.name === "shape" || node.type.name === "textBox" || node.type.name === "image") {
-    return node.type.create({ ...node.attrs, ...overrides }, node.content, node.marks);
+const editDrawingAttrs = (
+  node: PMNode,
+  overrides: Record<string, unknown>,
+): PMNode => {
+  if (
+    node.type.name === "shape" ||
+    node.type.name === "textBox" ||
+    node.type.name === "image"
+  ) {
+    return node.type.create(
+      { ...node.attrs, ...overrides },
+      node.content,
+      node.marks,
+    );
   }
   const children: PMNode[] = [];
   node.content.forEach((child) => {
@@ -244,7 +281,9 @@ const editDrawingAttrs = (node: PMNode, overrides: Record<string, unknown>): PMN
 };
 
 const restore = (source: Document): Document =>
-  fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } });
+  fromProseDoc(toProseDoc(source), source, {
+    stylesheetSource: { type: "package" },
+  });
 
 describe("drawing geometry survives the editor projection", () => {
   test("an untouched drawing is written back with its authored EMUs", () => {
@@ -252,7 +291,10 @@ describe("drawing geometry survives the editor projection", () => {
       fc.property(authoredGeometry, (geometry) => {
         const restored = geometryOf(restore(documentWithDrawing(geometry)));
 
-        expect(restored.size).toEqual({ width: geometry.width, height: geometry.height });
+        expect(restored.size).toEqual({
+          width: geometry.width,
+          height: geometry.height,
+        });
         expect(restored.outlineWidth).toBe(geometry.outlineWidth);
         expect({
           distT: restored.wrap?.distT,
@@ -299,7 +341,9 @@ describe("drawing geometry survives the editor projection", () => {
             distTop: distTopPx,
           });
           const restored = geometryOf(
-            fromProseDoc(edited, source, { stylesheetSource: { type: "package" } }),
+            fromProseDoc(edited, source, {
+              stylesheetSource: { type: "package" },
+            }),
           );
 
           expect(restored.size.width).toBe(pixelsToEmu(widthPx));
@@ -312,21 +356,30 @@ describe("drawing geometry survives the editor projection", () => {
 
   test("an editor change to a stroke width reaches the document", () => {
     fc.assert(
-      fc.property(authoredGeometry, fc.integer({ min: 1, max: 40 }), (geometry, outlineWidthPx) => {
-        fc.pre(
-          geometry.outlineWidth === undefined ||
-            outlineWidthPx !== emuToStrokePixels(geometry.outlineWidth),
-        );
+      fc.property(
+        authoredGeometry,
+        fc.integer({ min: 1, max: 40 }),
+        (geometry, outlineWidthPx) => {
+          fc.pre(
+            geometry.outlineWidth === undefined ||
+              outlineWidthPx !== emuToStrokePixels(geometry.outlineWidth),
+          );
 
-        const source = documentWithDrawing(geometry);
-        const attr = geometry.kind === "picture" ? "borderWidth" : "outlineWidth";
-        const edited = editDrawingAttrs(toProseDoc(source), { [attr]: outlineWidthPx });
-        const restored = geometryOf(
-          fromProseDoc(edited, source, { stylesheetSource: { type: "package" } }),
-        );
+          const source = documentWithDrawing(geometry);
+          const attr =
+            geometry.kind === "picture" ? "borderWidth" : "outlineWidth";
+          const edited = editDrawingAttrs(toProseDoc(source), {
+            [attr]: outlineWidthPx,
+          });
+          const restored = geometryOf(
+            fromProseDoc(edited, source, {
+              stylesheetSource: { type: "package" },
+            }),
+          );
 
-        expect(restored.outlineWidth).toBe(pixelsToEmu(outlineWidthPx));
-      }),
+          expect(restored.outlineWidth).toBe(pixelsToEmu(outlineWidthPx));
+        },
+      ),
       propertyConfig({ numRuns: 200 }),
     );
   });

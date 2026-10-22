@@ -52,7 +52,8 @@ test("an available drawer focuses and closes with Escape when no headings surviv
   app.mount(container);
 
   try {
-    const opener = container.querySelector<HTMLButtonElement>("#outline-trigger");
+    const opener =
+      container.querySelector<HTMLButtonElement>("#outline-trigger");
     if (!opener) throw new Error("outline trigger missing");
     opener.focus();
     expect(container.querySelector("nav")).toBeNull();
@@ -64,7 +65,8 @@ test("an available drawer focuses and closes with Escape when no headings surviv
     await nextTick();
     await nextTick();
 
-    const drawerAction = container.querySelector<HTMLButtonElement>("#drawer-close");
+    const drawerAction =
+      container.querySelector<HTMLButtonElement>("#drawer-close");
     expect(container.querySelector("#headings")).toBeNull();
     expect(document.activeElement).toBe(drawerAction);
 

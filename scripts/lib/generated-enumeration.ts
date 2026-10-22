@@ -9,19 +9,24 @@
  * generator.
  */
 
+import { TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
-import { TaggedError } from "better-result";
-
 import type { Index } from "./ooxml-schema-graph";
 
-export class GeneratedEnumerationError extends TaggedError("GeneratedEnumerationError")<{
+export class GeneratedEnumerationError extends TaggedError(
+  "GeneratedEnumerationError",
+)<{
   message: string;
 }> {}
 
 /** The tokens one enumerating simple type declares, in schema order. */
-export const enumerationOf = (index: Index, namespace: string, name: string): readonly string[] => {
+export const enumerationOf = (
+  index: Index,
+  namespace: string,
+  name: string,
+): readonly string[] => {
   const symbol = index.byId.get(`simpleType:{${namespace}}${name}`);
   if (symbol?.enumValues === undefined || symbol.enumValues.length === 0) {
     throw new GeneratedEnumerationError({
@@ -48,7 +53,12 @@ export type RenderListOptions = {
  * published declaration does not depend on an array the package has no reason
  * to export.
  */
-export const renderList = ({ name, type, doc, members }: RenderListOptions): string =>
+export const renderList = ({
+  name,
+  type,
+  doc,
+  members,
+}: RenderListOptions): string =>
   `${doc}
 export const ${name} = [
 ${members.map((member) => `  "${member}",`).join("\n")}
@@ -78,7 +88,13 @@ export type RenderMapOptions = {
  * map does not fails to compile, which is the only thing that keeps a
  * hand-decided table from drifting away from the generated union beside it.
  */
-export const renderMap = ({ name, keyType, valueType, doc, entries }: RenderMapOptions): string =>
+export const renderMap = ({
+  name,
+  keyType,
+  valueType,
+  doc,
+  entries,
+}: RenderMapOptions): string =>
   `${doc}
 export const ${name} = {
 ${entries.map(([key, value]) => `  ${key}: "${value}",`).join("\n")}
@@ -93,7 +109,11 @@ export type RenderModuleOptions = {
   lists: readonly string[];
 };
 
-export const renderModule = ({ summary, script, lists }: RenderModuleOptions): string => `/**
+export const renderModule = ({
+  summary,
+  script,
+  lists,
+}: RenderModuleOptions): string => `/**
  * GENERATED FILE — do not edit.
  *
 ${summary
@@ -109,7 +129,8 @@ ${summary
 
 ${lists.join("\n")}`;
 
-const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
+const digest = (value: string): string =>
+  createHash("sha256").update(value).digest("hex");
 
 export type EmitOptions = {
   /** `"write"` rewrites the module; `"check"` fails when it is stale. */

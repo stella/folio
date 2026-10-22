@@ -1,15 +1,25 @@
-import { OP_STORIES, documentStories, storyBody } from "@stll/docx-core/ops";
-import type { OpStory } from "@stll/docx-core/ops";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { createTextStreamRange, measurePaintedSpanRange } from "../layout-bridge/dom/textStreamDom";
-import { getEditorScrollRoot, scrollEditorElementIntoView } from "../paged-layout/editorScrollRoot";
-import { headerFooterToProseDoc, toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { documentStories, OP_STORIES, storyBody } from "@stll/docx-core/ops";
+import type { OpStory } from "@stll/docx-core/ops";
+
+import {
+  createTextStreamRange,
+  measurePaintedSpanRange,
+} from "../layout-bridge/dom/textStreamDom";
+import type { Layout } from "../layout-engine/types";
+import { selectSectionHeaderFooterRIds } from "../layout-painter/renderPage";
+import {
+  getEditorScrollRoot,
+  scrollEditorElementIntoView,
+} from "../paged-layout/editorScrollRoot";
+import {
+  headerFooterToProseDoc,
+  toProseDoc,
+} from "../prosemirror/conversion/toProseDoc";
 import { resolveFindMatchRanges } from "../prosemirror/findReplaceSelection";
 import type { FindMatchRange } from "../prosemirror/findReplaceSelection";
 import type { Document } from "../types/document";
-import type { Layout } from "../layout-engine/types";
-import { selectSectionHeaderFooterRIds } from "../layout-painter/renderPage";
 import type { FindMatch } from "./findReplace";
 
 const storyKey = (story: OpStory): string => {
@@ -56,7 +66,10 @@ export const resolveDocumentFindRanges = ({
   document,
   bodyDoc,
   matches,
-}: Omit<FindMatchViewOptions, "container" | "commentRoot" | "layout">): ResolvedMatch[] => {
+}: Omit<
+  FindMatchViewOptions,
+  "container" | "commentRoot" | "layout"
+>): ResolvedMatch[] => {
   const resolved: ResolvedMatch[] = [];
   const { styles, theme, numbering } = document.package;
   const conversionOptions = {
@@ -83,7 +96,10 @@ export const resolveDocumentFindRanges = ({
     const doc =
       story === OP_STORIES.MAIN
         ? (bodyDoc ?? toProseDoc(document))
-        : headerFooterToProseDoc(storyBody(document, story).content, conversionOptions);
+        : headerFooterToProseDoc(
+            storyBody(document, story).content,
+            conversionOptions,
+          );
     const groups = new Map<number | undefined, typeof entries>();
     for (const entry of entries) {
       const group = groups.get(entry.match.textBoxIndex);
@@ -92,11 +108,13 @@ export const resolveDocumentFindRanges = ({
     }
     const boxes: { doc: PMNode; offset: number }[] = [];
     doc.descendants((node, pos) => {
-      if (node.type.name === "textBox") boxes.push({ doc: node, offset: pos + 1 });
+      if (node.type.name === "textBox")
+        boxes.push({ doc: node, offset: pos + 1 });
       return true;
     });
     for (const [boxIndex, group] of groups) {
-      const source = boxIndex === undefined ? { doc, offset: 0 } : boxes.at(boxIndex);
+      const source =
+        boxIndex === undefined ? { doc, offset: 0 } : boxes.at(boxIndex);
       if (!source) continue;
       const ranges = resolveFindMatchRanges(
         source.doc,
@@ -133,13 +151,17 @@ export const resolveDocumentFindRanges = ({
 
 const spanStoryKey = (span: HTMLElement): string => {
   const story = span.dataset["story"];
-  if (story === "header" || story === "footer") return `${story}:${span.dataset["hfRid"]}`;
-  if (story === "footnote" || story === "endnote") return `${story}:${span.dataset["noteId"]}`;
+  if (story === "header" || story === "footer")
+    return `${story}:${span.dataset["hfRid"]}`;
+  if (story === "footnote" || story === "endnote")
+    return `${story}:${span.dataset["noteId"]}`;
   const slot = span.closest<HTMLElement>(
     "[data-hf-slot-kind][data-hf-rid], [data-note-kind][data-note-id]",
   );
-  if (slot?.dataset["hfSlotKind"]) return `${slot.dataset["hfSlotKind"]}:${slot.dataset["hfRid"]}`;
-  if (slot?.dataset["noteKind"]) return `${slot.dataset["noteKind"]}:${slot.dataset["noteId"]}`;
+  if (slot?.dataset["hfSlotKind"])
+    return `${slot.dataset["hfSlotKind"]}:${slot.dataset["hfRid"]}`;
+  if (slot?.dataset["noteKind"])
+    return `${slot.dataset["noteKind"]}:${slot.dataset["noteId"]}`;
   return "body";
 };
 
@@ -169,7 +191,9 @@ const clipPaintedRects = (source: HTMLElement, rects: readonly DOMRect[]) => {
         bottom = Math.min(bottom, box.bottom);
       }
     }
-    return right > left && bottom > top ? [new DOMRect(left, top, right - left, bottom - top)] : [];
+    return right > left && bottom > top
+      ? [new DOMRect(left, top, right - left, bottom - top)]
+      : [];
   });
 };
 
@@ -188,7 +212,9 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
   });
   container.append(overlay);
   const commentRoot = options.commentRoot ?? container;
-  const commentOverlay = options.matches.some((match) => match.commentId !== undefined)
+  const commentOverlay = options.matches.some(
+    (match) => match.commentId !== undefined,
+  )
     ? container.ownerDocument.createElement("div")
     : null;
   if (commentOverlay) {
@@ -214,7 +240,9 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
       for (const element of elements) {
         const active = index === currentIndex;
         element.dataset["current"] = String(active);
-        element.style.background = active ? "var(--doc-find-current)" : "var(--doc-find-highlight)";
+        element.style.background = active
+          ? "var(--doc-find-current)"
+          : "var(--doc-find-highlight)";
         element.style.outlineWidth = active ? "2px" : "0px";
         element.style.outlineStyle = "solid";
         element.style.outlineColor = "var(--doc-find-current)";
@@ -233,10 +261,14 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
       if (group) group.push(span);
       else spans.set(key, [span]);
     }
-    for (const group of spans.values()) group.sort((a, b) => spanEnd(a) - spanEnd(b));
+    for (const group of spans.values())
+      group.sort((a, b) => spanEnd(a) - spanEnd(b));
     const suffixStarts = new Map<string, number[]>();
     for (const [key, group] of spans) {
-      const starts = Array.from({ length: group.length }, () => Number.POSITIVE_INFINITY);
+      const starts = Array.from(
+        { length: group.length },
+        () => Number.POSITIVE_INFINITY,
+      );
       let minimum = Number.POSITIVE_INFINITY;
       for (let index = group.length - 1; index >= 0; index--) {
         const span = group.at(index);
@@ -253,19 +285,27 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
       source: HTMLElement;
       surface: HTMLElement;
     };
-    const appendRects = ({ index, rects, source, surface }: AppendRectsOptions) => {
+    const appendRects = ({
+      index,
+      rects,
+      source,
+      surface,
+    }: AppendRectsOptions) => {
       const visibleRects = clipPaintedRects(source, rects);
       if (visibleRects.length === 0) return;
       const previousTarget = targets.get(index);
       const firstRect = visibleRects.at(0);
       if (
         firstRect &&
-        (!previousTarget || (previousTarget.source.compareDocumentPosition(source) & 2) !== 0)
+        (!previousTarget ||
+          (previousTarget.source.compareDocumentPosition(source) & 2) !== 0)
       )
         targets.set(index, { source, rect: firstRect });
       const origin = surface.getBoundingClientRect();
-      const scaleX = surface.offsetWidth > 0 ? origin.width / surface.offsetWidth : 1;
-      const scaleY = surface.offsetHeight > 0 ? origin.height / surface.offsetHeight : 1;
+      const scaleX =
+        surface.offsetWidth > 0 ? origin.width / surface.offsetWidth : 1;
+      const scaleY =
+        surface.offsetHeight > 0 ? origin.height / surface.offsetHeight : 1;
       const elements = marks.get(index) ?? [];
       const viewport = getEditorScrollRoot(source)?.getBoundingClientRect();
       for (const rect of visibleRects) {
@@ -300,8 +340,8 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
       }
       for (let index = low; index < group.length; index++) {
         if (
-          (suffixStarts.get(storyKey(range.story))?.at(index) ?? Number.POSITIVE_INFINITY) >=
-          range.to
+          (suffixStarts.get(storyKey(range.story))?.at(index) ??
+            Number.POSITIVE_INFINITY) >= range.to
         )
           break;
         const span = group.at(index);
@@ -320,27 +360,40 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
           ? createTextStreamRange(
               span,
               Math.max(0, atom.startOffset - textOffset),
-              Math.min(span.textContent?.length ?? 0, atom.endOffset - textOffset),
+              Math.min(
+                span.textContent?.length ?? 0,
+                atom.endOffset - textOffset,
+              ),
             )
           : null;
         let intervals = [{ from: range.from, to: range.to }];
         for (const anchor of range.excludedRanges ?? []) {
           intervals = intervals.flatMap((interval) => {
-            if (anchor.to <= interval.from || anchor.from >= interval.to) return [interval];
+            if (anchor.to <= interval.from || anchor.from >= interval.to)
+              return [interval];
             const retained: { from: number; to: number }[] = [];
             if (interval.from < anchor.from)
               retained.push({ from: interval.from, to: anchor.from });
-            if (anchor.to < interval.to) retained.push({ from: anchor.to, to: interval.to });
+            if (anchor.to < interval.to)
+              retained.push({ from: anchor.to, to: interval.to });
             return retained;
           });
         }
         const measurements = atomRange
           ? [{ type: "text", rects: [...atomRange.getClientRects()] } as const]
-          : intervals.map(({ from, to }) => measurePaintedSpanRange(span, from, to));
+          : intervals.map(({ from, to }) =>
+              measurePaintedSpanRange(span, from, to),
+            );
         for (const measured of measurements) {
           if (measured.type === "outside") continue;
-          const rects = measured.type === "element" ? [measured.rect] : measured.rects;
-          appendRects({ index: range.index, rects, source: span, surface: overlay });
+          const rects =
+            measured.type === "element" ? [measured.rect] : measured.rects;
+          appendRects({
+            index: range.index,
+            rects,
+            source: span,
+            surface: overlay,
+          });
         }
       }
     }
@@ -354,10 +407,15 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
       const paragraph = commentParagraphs.find(
         (element) =>
           Number(element.dataset["findCommentId"]) === match.commentId &&
-          Number(element.dataset["findCommentParagraph"]) === match.paragraphIndex,
+          Number(element.dataset["findCommentParagraph"]) ===
+            match.paragraphIndex,
       );
       if (!paragraph) continue;
-      const range = createTextStreamRange(paragraph, match.startOffset, match.endOffset);
+      const range = createTextStreamRange(
+        paragraph,
+        match.startOffset,
+        match.endOffset,
+      );
       if (!range) continue;
       if (commentOverlay)
         appendRects({
@@ -397,9 +455,17 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
     )
       schedule();
   });
-  observer.observe(container, { childList: true, subtree: true, attributes: true });
+  observer.observe(container, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+  });
   if (options.commentRoot && options.commentRoot !== container)
-    observer.observe(options.commentRoot, { childList: true, subtree: true, attributes: true });
+    observer.observe(options.commentRoot, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    });
   const resize = new ResizeObserver(schedule);
   resize.observe(container);
   // Clip paths follow each source's editor scroll root, which may enclose a
@@ -409,7 +475,8 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
       surface ? [surface, getEditorScrollRoot(surface) ?? surface] : [],
     ),
   );
-  for (const target of scrollTargets) target.addEventListener("scroll", schedule, true);
+  for (const target of scrollTargets)
+    target.addEventListener("scroll", schedule, true);
   repaint();
   const paint = (index: number) => {
     currentIndex = index;
@@ -429,7 +496,10 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
   return {
     paint,
     reveal,
-    navigate: (index: number, activateComment?: (commentId: number) => void): void => {
+    navigate: (
+      index: number,
+      activateComment?: (commentId: number) => void,
+    ): void => {
       if (!Number.isInteger(index) || index < 0) return;
       const match = options.matches.at(index);
       if (!match) return;
@@ -452,7 +522,10 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
           case "header":
           case "footer": {
             const refs = selectSectionHeaderFooterRIds(candidate);
-            return (story.kind === "header" ? refs.headerRId : refs.footerRId) === story.rId;
+            return (
+              (story.kind === "header" ? refs.headerRId : refs.footerRId) ===
+              story.rId
+            );
           }
           case "footnote":
             return candidate.footnoteIds?.includes(story.id) ?? false;
@@ -468,13 +541,16 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
       // Shells retain their dimensions while page content is unmounted. Scrolling
       // mounts the page; the geometry observer finishes the pending reveal.
       scrollEditorElementIntoView(
-        container.querySelector<HTMLElement>(`[data-page-number="${page.number}"]`),
+        container.querySelector<HTMLElement>(
+          `[data-page-number="${page.number}"]`,
+        ),
       );
     },
     destroy: () => {
       observer.disconnect();
       resize.disconnect();
-      for (const target of scrollTargets) target.removeEventListener("scroll", schedule, true);
+      for (const target of scrollTargets)
+        target.removeEventListener("scroll", schedule, true);
       if (frame !== null) window?.cancelAnimationFrame(frame);
       overlay.remove();
       commentOverlay?.remove();

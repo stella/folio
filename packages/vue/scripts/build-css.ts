@@ -4,6 +4,7 @@
 // resolve the font files from this package's dependencies.
 import { panic } from "better-result";
 import { join } from "node:path";
+
 import { scopeEditorCss } from "../../../scripts/lib/scoped-editor-css";
 
 const packageDir = join(import.meta.dir, "..");

@@ -1,3 +1,4 @@
+import type { EditorView } from "prosemirror-view";
 /**
  * Vue port of packages/react/src/paged-editor/useVisualLineNavigation.ts.
  * Wraps the framework-agnostic algorithm in core. Same sticky X +
@@ -5,20 +6,23 @@
  * state object.
  */
 import { type Ref } from "vue";
+
 import {
   createVisualLineState,
-  getCaretClientX as coreGetCaretClientX,
   findLineElementAtPosition as coreFindLineElementAtPosition,
   findPositionOnLineAtClientX as coreFindPositionOnLineAtClientX,
+  getCaretClientX as coreGetCaretClientX,
   handleVisualLineKeyDown,
 } from "@stll/folio-core/prosemirror/utils/visualLineNavigation";
-import type { EditorView } from "prosemirror-view";
 
 export type UseVisualLineNavigationReturn = {
   state: ReturnType<typeof createVisualLineState>;
   getCaretClientX: (pmPos: number) => number | null;
   findLineElementAtPosition: (pmPos: number) => HTMLElement | null;
-  findPositionOnLineAtClientX: (line: HTMLElement, clientX: number) => number | null;
+  findPositionOnLineAtClientX: (
+    line: HTMLElement,
+    clientX: number,
+  ) => number | null;
   handlePMKeyDown: (view: EditorView, event: KeyboardEvent) => boolean;
 };
 
@@ -35,7 +39,10 @@ export function useVisualLineNavigation(
     const c = pagesContainer.value;
     return c ? coreFindLineElementAtPosition(c, pmPos) : null;
   }
-  function findPositionOnLineAtClientX(line: HTMLElement, clientX: number): number | null {
+  function findPositionOnLineAtClientX(
+    line: HTMLElement,
+    clientX: number,
+  ): number | null {
     return coreFindPositionOnLineAtClientX(line, clientX);
   }
   function handlePMKeyDown(view: EditorView, event: KeyboardEvent): boolean {

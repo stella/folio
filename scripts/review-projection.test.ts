@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Document, Table } from "../packages/docx-core/src/model/document";
-import { normalizeDocumentPackage } from "./lib/corpus-invariants/model-equality";
 import { canonicalReviewBlocks } from "../test/reviewProjection";
+import { normalizeDocumentPackage } from "./lib/corpus-invariants/model-equality";
 
-const info = (id: number) => ({ id, author: "Reviewer", date: "2026-05-06T07:08:09.000Z" });
+const info = (id: number) => ({
+  id,
+  author: "Reviewer",
+  date: "2026-05-06T07:08:09.000Z",
+});
 const canonical = (table: Table) =>
   normalizeDocumentPackage({
     package: { document: { content: canonicalReviewBlocks([table]) } },
@@ -12,14 +16,19 @@ const canonical = (table: Table) =>
 const tableWithHistory = (): Table => ({
   type: "table",
   columnWidths: [100],
-  formatting: { justification: "center", gridChange: { id: 10, columnWidths: [90] } },
+  formatting: {
+    justification: "center",
+    gridChange: { id: 10, columnWidths: [90] },
+  },
   propertyChanges: [{ type: "tablePropertyChange", info: info(1) }],
   rows: [
     {
       type: "tableRow",
       propertyChanges: [{ type: "tableRowPropertyChange", info: info(2) }],
       tablePropertyExceptions: { width: { type: "dxa", value: 100 } },
-      tablePropertyExceptionChanges: [{ type: "tablePropertyExceptionChange", info: info(3) }],
+      tablePropertyExceptionChanges: [
+        { type: "tablePropertyExceptionChange", info: info(3) },
+      ],
       cells: [
         {
           type: "tableCell",
@@ -142,12 +151,16 @@ describe("canonical review projection for table property histories", () => {
     expect(canonical(gridChanged)).not.toEqual(canonical(baseline));
 
     const previousGridHistoryChanged = structuredClone(baseline);
-    const previousGridTableChange = previousGridHistoryChanged.propertyChanges?.at(0);
-    if (previousGridTableChange === undefined) throw new Error("The table history exists.");
+    const previousGridTableChange =
+      previousGridHistoryChanged.propertyChanges?.at(0);
+    if (previousGridTableChange === undefined)
+      throw new Error("The table history exists.");
     previousGridTableChange.previousFormatting = {
       gridChange: { id: 11, columnWidths: [80] },
     };
-    expect(canonical(previousGridHistoryChanged)).not.toEqual(canonical(baseline));
+    expect(canonical(previousGridHistoryChanged)).not.toEqual(
+      canonical(baseline),
+    );
 
     const tableFormattingChanged = structuredClone(baseline);
     tableFormattingChanged.formatting = {
@@ -165,8 +178,12 @@ describe("canonical review projection for table property histories", () => {
     const exceptionFormattingChanged = structuredClone(baseline);
     const changedExceptions = exceptionFormattingChanged.rows.at(0);
     if (changedExceptions === undefined) throw new Error("The row exists.");
-    changedExceptions.tablePropertyExceptions = { width: { type: "dxa", value: 90 } };
-    expect(canonical(exceptionFormattingChanged)).not.toEqual(canonical(baseline));
+    changedExceptions.tablePropertyExceptions = {
+      width: { type: "dxa", value: 90 },
+    };
+    expect(canonical(exceptionFormattingChanged)).not.toEqual(
+      canonical(baseline),
+    );
 
     const tableHistoryChanged = structuredClone(baseline);
     const tableChange = tableHistoryChanged.propertyChanges?.at(0);
@@ -176,7 +193,8 @@ describe("canonical review projection for table property histories", () => {
 
     const currentCaptureChanged = structuredClone(baseline);
     const currentChange = currentCaptureChanged.propertyChanges?.at(0);
-    if (currentChange === undefined) throw new Error("The table history exists.");
+    if (currentChange === undefined)
+      throw new Error("The table history exists.");
     currentChange.currentFormatting = { justification: "end" };
     expect(canonical(currentCaptureChanged)).not.toEqual(canonical(baseline));
 
@@ -190,7 +208,8 @@ describe("canonical review projection for table property histories", () => {
     const exceptionChange = exceptionHistoryChanged.rows
       .at(0)
       ?.tablePropertyExceptionChanges?.at(0);
-    if (exceptionChange === undefined) throw new Error("The exception history exists.");
+    if (exceptionChange === undefined)
+      throw new Error("The exception history exists.");
     exceptionChange.previousFormatting = { width: { type: "dxa", value: 80 } };
     expect(canonical(exceptionHistoryChanged)).not.toEqual(canonical(baseline));
 

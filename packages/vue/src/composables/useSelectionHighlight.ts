@@ -10,24 +10,25 @@
  * so the DOM read is inlined here (`window.getSelection().toString()`).
  */
 import {
-  ref,
   computed,
-  watch,
-  onMounted,
-  onBeforeUnmount,
-  type Ref,
   type ComputedRef,
   type CSSProperties,
+  onBeforeUnmount,
+  onMounted,
+  type Ref,
+  ref,
+  watch,
 } from "vue";
+
 import {
-  type HighlightRect,
-  type SelectionHighlightConfig,
+  areSelectionStylesInjected,
   DEFAULT_SELECTION_STYLE,
   getMergedSelectionRects,
   hasActiveSelection,
-  isSelectionWithin,
+  type HighlightRect,
   injectSelectionStyles,
-  areSelectionStylesInjected,
+  isSelectionWithin,
+  type SelectionHighlightConfig,
 } from "../utils/selectionHighlight";
 
 /** DOM-selection text read (replaces core's no-arg upstream helper). */
@@ -82,7 +83,9 @@ export function useSelectionHighlight(
     selectedText.value = text;
     isSelectionInContainer.value = inContainer;
     highlightRects.value =
-      useOverlay && inContainer && container ? getMergedSelectionRects(container) : [];
+      useOverlay && inContainer && container
+        ? getMergedSelectionRects(container)
+        : [];
     onSelectionChange?.(active && inContainer, text);
   }
 

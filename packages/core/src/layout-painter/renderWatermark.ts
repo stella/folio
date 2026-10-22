@@ -78,10 +78,17 @@ type RenderTextWatermarkOptions = {
   options: RenderWatermarkOptions;
 };
 
-function renderTextWatermark({ watermark, doc, options }: RenderTextWatermarkOptions): HTMLElement {
+function renderTextWatermark({
+  watermark,
+  doc,
+  options,
+}: RenderTextWatermarkOptions): HTMLElement {
   const el = doc.createElement("div");
   el.textContent = watermark.text;
-  el.style.fontFamily = resolveFontFamily(watermark.font ?? "Calibri", options).cssFallback;
+  el.style.fontFamily = resolveFontFamily(
+    watermark.font ?? "Calibri",
+    options,
+  ).cssFallback;
   // Word's default text-watermark sizing: ~144pt at ~50% opacity. Matches
   // the visual weight of the VML shape's autoscaled WordArt path.
   el.style.fontSize = "144px";
@@ -92,7 +99,10 @@ function renderTextWatermark({ watermark, doc, options }: RenderTextWatermarkOpt
   // serializer round-trips it from style="opacity:0.5". `color: "auto"`
   // is a documented model value meaning "use the producer default" —
   // map it to silver rather than emitting invalid CSS `#auto`.
-  const color = watermark.color && watermark.color !== "auto" ? `#${watermark.color}` : "#C0C0C0";
+  const color =
+    watermark.color && watermark.color !== "auto"
+      ? `#${watermark.color}`
+      : "#C0C0C0";
   el.style.color = color;
   el.style.opacity = String(watermark.opacity ?? 0.5);
   // Word's default "diagonal" orientation is bottom-left → top-right,
@@ -126,7 +136,9 @@ function renderPictureWatermark(
     img.style.maxWidth = `${scalePct}%`;
     img.style.maxHeight = `${scalePct}%`;
   }
-  img.style.opacity = String(watermark.washout === false ? 1 : PICTURE_WASHOUT_OPACITY);
+  img.style.opacity = String(
+    watermark.washout === false ? 1 : PICTURE_WASHOUT_OPACITY,
+  );
   img.style.objectFit = "contain";
   return img;
 }

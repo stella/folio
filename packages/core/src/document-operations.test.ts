@@ -2,21 +2,21 @@ import { describe, expect, test } from "bun:test";
 
 import {
   assertSupportedFolioDocumentOperationVersion,
-  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_BATCH_MODES,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
+  FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
   FOLIO_LINE_SPACING_RULE_VALUES,
   FOLIO_PAGE_BREAK_CLEAR_VALUES,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
-  FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
+  type FolioDocumentOperation,
   getFolioDocumentOperationCapabilities,
   getFolioDocumentOperationReceipts,
-  isFolioDocumentOperationModeSupported,
   InvalidFolioDocumentOperationBatchError,
+  isFolioDocumentOperationModeSupported,
   isSupportedFolioDocumentOperationVersion,
   parseFolioDocumentOperationBatch,
   UnsupportedFolioDocumentOperationVersionError,
-  type FolioDocumentOperation,
 } from "./document-operations";
 
 describe("document operation contract", () => {
@@ -84,11 +84,21 @@ describe("document operation contract", () => {
       operations: [{ id: "1", type: "deleteBlock", blockId: "a" }],
       precondition: { documentVersion: "entity-version-42" },
     });
-    expect(batch.precondition).toEqual({ documentVersion: "entity-version-42" });
+    expect(batch.precondition).toEqual({
+      documentVersion: "entity-version-42",
+    });
     expect(Object.isFrozen(batch.precondition)).toBe(true);
     for (const [invalid, path, reason] of [
-      [{ documentVersion: "" }, "$.precondition.documentVersion", "expected a non-empty string"],
-      [{ documentVersion: 7 }, "$.precondition.documentVersion", "expected a string"],
+      [
+        { documentVersion: "" },
+        "$.precondition.documentVersion",
+        "expected a non-empty string",
+      ],
+      [
+        { documentVersion: 7 },
+        "$.precondition.documentVersion",
+        "expected a string",
+      ],
       [{ versionId: "x" }, "$.precondition.versionId", "unexpected property"],
       ["v1", "$.precondition", "expected an object when provided"],
     ] as const) {
@@ -109,42 +119,106 @@ describe("document operation contract", () => {
   });
 
   test("reports mode support for each operation type", () => {
-    expect(isFolioDocumentOperationModeSupported("replaceInBlock", "tracked-changes")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("formatRange", "tracked-changes")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("insertSignatureTable", "direct")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("insertSignatureTable", "tracked-changes")).toBe(
-      false,
-    );
-    expect(isFolioDocumentOperationModeSupported("deleteTableRow", "tracked-changes")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("insertTableColumn", "direct")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("insertTableColumn", "tracked-changes")).toBe(
-      true,
-    );
-    expect(isFolioDocumentOperationModeSupported("deleteTableColumn", "direct")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("deleteTableColumn", "tracked-changes")).toBe(
-      true,
-    );
-    expect(isFolioDocumentOperationModeSupported("mergeTableCells", "direct")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("mergeTableCells", "tracked-changes")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("splitTableCell", "direct")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("splitTableCell", "tracked-changes")).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported(
+        "replaceInBlock",
+        "tracked-changes",
+      ),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported("formatRange", "tracked-changes"),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported("insertSignatureTable", "direct"),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported(
+        "insertSignatureTable",
+        "tracked-changes",
+      ),
+    ).toBe(false);
+    expect(
+      isFolioDocumentOperationModeSupported(
+        "deleteTableRow",
+        "tracked-changes",
+      ),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported("insertTableColumn", "direct"),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported(
+        "insertTableColumn",
+        "tracked-changes",
+      ),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported("deleteTableColumn", "direct"),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported(
+        "deleteTableColumn",
+        "tracked-changes",
+      ),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported("mergeTableCells", "direct"),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported(
+        "mergeTableCells",
+        "tracked-changes",
+      ),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported("splitTableCell", "direct"),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported(
+        "splitTableCell",
+        "tracked-changes",
+      ),
+    ).toBe(true);
     // Suggested mode: inline + block/table structural ops, but not comment ops
     // or cell merge/split. A whole inserted table is suggested but not tracked.
-    expect(isFolioDocumentOperationModeSupported("replaceInBlock", "suggested")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("insertAfterBlock", "suggested")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("insertTableRow", "suggested")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("insertSignatureTable", "suggested")).toBe(true);
-    expect(isFolioDocumentOperationModeSupported("commentOnRange", "suggested")).toBe(false);
-    expect(isFolioDocumentOperationModeSupported("mergeTableCells", "suggested")).toBe(false);
-    expect(isFolioDocumentOperationModeSupported("splitTableCell", "suggested")).toBe(false);
     expect(
-      Reflect.apply(isFolioDocumentOperationModeSupported, null, ["unknownOperation", "direct"]),
+      isFolioDocumentOperationModeSupported("replaceInBlock", "suggested"),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported("insertAfterBlock", "suggested"),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported("insertTableRow", "suggested"),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported(
+        "insertSignatureTable",
+        "suggested",
+      ),
+    ).toBe(true);
+    expect(
+      isFolioDocumentOperationModeSupported("commentOnRange", "suggested"),
+    ).toBe(false);
+    expect(
+      isFolioDocumentOperationModeSupported("mergeTableCells", "suggested"),
+    ).toBe(false);
+    expect(
+      isFolioDocumentOperationModeSupported("splitTableCell", "suggested"),
+    ).toBe(false);
+    expect(
+      Reflect.apply(isFolioDocumentOperationModeSupported, null, [
+        "unknownOperation",
+        "direct",
+      ]),
     ).toBe(false);
     expect(Object.keys(FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE)).toEqual(
       getFolioDocumentOperationCapabilities().operationTypes,
     );
     expect(FOLIO_DOCUMENT_OPERATION_PRECONDITIONS).toEqual(["blockTextHash"]);
-    expect(FOLIO_DOCUMENT_OPERATION_BATCH_MODES).toEqual(["best-effort", "atomic"]);
+    expect(FOLIO_DOCUMENT_OPERATION_BATCH_MODES).toEqual([
+      "best-effort",
+      "atomic",
+    ]);
   });
 
   test("rejects prototype-key operation types instead of resolving inherited members", () => {
@@ -154,9 +228,17 @@ describe("document operation contract", () => {
     // reach `.includes` on a non-array value and throw. Untrusted input
     // (e.g. a document-operation batch parsed from an agent tool call) must
     // be rejected cleanly instead.
-    for (const operationType of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    for (const operationType of [
+      "__proto__",
+      "constructor",
+      "toString",
+      "hasOwnProperty",
+    ]) {
       expect(
-        Reflect.apply(isFolioDocumentOperationModeSupported, null, [operationType, "direct"]),
+        Reflect.apply(isFolioDocumentOperationModeSupported, null, [
+          operationType,
+          "direct",
+        ]),
       ).toBe(false);
       expect(
         Reflect.apply(isFolioDocumentOperationModeSupported, null, [
@@ -207,7 +289,10 @@ describe("document operation contract", () => {
       blockId: "0304003A",
       properties: { outlineLevel: { kind: "heading", level: 1 } },
     };
-    const batch = parseFolioDocumentOperationBatch({ version: 1, operations: [operation] });
+    const batch = parseFolioDocumentOperationBatch({
+      version: 1,
+      operations: [operation],
+    });
     expect(batch.operations.at(0)).toMatchObject(operation);
     expect(parseFolioDocumentOperationBatch(batch)).toBe(batch);
 
@@ -221,7 +306,15 @@ describe("document operation contract", () => {
         expect(() =>
           parseFolioDocumentOperationBatch({
             version: 1,
-            operations: [{ id: "outline", type, blockId: "0304003A", text: "New", outlineLevel }],
+            operations: [
+              {
+                id: "outline",
+                type,
+                blockId: "0304003A",
+                text: "New",
+                outlineLevel,
+              },
+            ],
           }),
         ).toThrow(
           expect.objectContaining({
@@ -245,7 +338,12 @@ describe("document operation contract", () => {
   });
 
   test("validates an authored hard page-break carrier separately from paragraph layout", () => {
-    expect(FOLIO_PAGE_BREAK_CLEAR_VALUES).toEqual(["none", "left", "right", "all"]);
+    expect(FOLIO_PAGE_BREAK_CLEAR_VALUES).toEqual([
+      "none",
+      "left",
+      "right",
+      "all",
+    ]);
     const batch = parseFolioDocumentOperationBatch({
       version: 1,
       operations: [
@@ -258,7 +356,9 @@ describe("document operation contract", () => {
         },
       ],
     });
-    expect(batch.operations.at(0)).toMatchObject({ hardPageBreak: { clear: "left" } });
+    expect(batch.operations.at(0)).toMatchObject({
+      hardPageBreak: { clear: "left" },
+    });
 
     for (const [hardPageBreak, path] of [
       ["page", "$.operations[0].hardPageBreak"],
@@ -283,8 +383,14 @@ describe("document operation contract", () => {
 
     for (const [operation, path] of [
       [{ text: "text", hardPageBreak: {} }, "$.operations[0].text"],
-      [{ text: "", hardPageBreak: {}, pageBreakBefore: true }, "$.operations[0].pageBreakBefore"],
-      [{ text: "", hardPageBreak: {}, lineBreakMode: "inline" }, "$.operations[0].lineBreakMode"],
+      [
+        { text: "", hardPageBreak: {}, pageBreakBefore: true },
+        "$.operations[0].pageBreakBefore",
+      ],
+      [
+        { text: "", hardPageBreak: {}, lineBreakMode: "inline" },
+        "$.operations[0].lineBreakMode",
+      ],
     ] as const) {
       expect(() =>
         parseFolioDocumentOperationBatch({
@@ -318,7 +424,11 @@ describe("document operation contract", () => {
           id: "format",
           type: "formatRange",
           range,
-          formatting: { fontFamily: " Georgia ", fontSizePt: 10.5, color: "c00000" },
+          formatting: {
+            fontFamily: " Georgia ",
+            fontSizePt: 10.5,
+            color: "c00000",
+          },
         },
       ],
     });
@@ -335,7 +445,9 @@ describe("document operation contract", () => {
       expect(() =>
         parseFolioDocumentOperationBatch({
           version: 1,
-          operations: [{ id: "format", type: "formatRange", range, formatting }],
+          operations: [
+            { id: "format", type: "formatRange", range, formatting },
+          ],
         }),
       ).toThrow(
         expect.objectContaining({
@@ -361,17 +473,31 @@ describe("document operation contract", () => {
         const batch = parseFolioDocumentOperationBatch({
           version: 1,
           operations: [
-            { id: "format", type: "formatRange", range, formatting: { [property]: value } },
+            {
+              id: "format",
+              type: "formatRange",
+              range,
+              formatting: { [property]: value },
+            },
           ],
         });
-        expect(batch.operations.at(0)).toMatchObject({ formatting: { [property]: value } });
+        expect(batch.operations.at(0)).toMatchObject({
+          formatting: { [property]: value },
+        });
       }
     }
 
     expect(() =>
       parseFolioDocumentOperationBatch({
         version: 1,
-        operations: [{ id: "format", type: "formatRange", range, formatting: { bold: "inherit" } }],
+        operations: [
+          {
+            id: "format",
+            type: "formatRange",
+            range,
+            formatting: { bold: "inherit" },
+          },
+        ],
       }),
     ).toThrow(
       expect.objectContaining({
@@ -394,7 +520,9 @@ describe("document operation contract", () => {
           },
         ],
       });
-      expect(batch.operations.at(0)).toMatchObject({ properties: { alignment } });
+      expect(batch.operations.at(0)).toMatchObject({
+        properties: { alignment },
+      });
 
       for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
         const insertBatch = parseFolioDocumentOperationBatch({
@@ -508,7 +636,9 @@ describe("document operation contract", () => {
         },
       ],
     });
-    expect(batch.operations).toMatchObject([{ formattingScope: "allParagraphs" }]);
+    expect(batch.operations).toMatchObject([
+      { formattingScope: "allParagraphs" },
+    ]);
 
     expect(() =>
       parseFolioDocumentOperationBatch({
@@ -547,7 +677,9 @@ describe("document operation contract", () => {
           },
         ],
       });
-      expect(batch.operations.at(0)).toMatchObject({ properties: { spacing: value } });
+      expect(batch.operations.at(0)).toMatchObject({
+        properties: { spacing: value },
+      });
 
       for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
         const insertBatch = parseFolioDocumentOperationBatch({
@@ -562,7 +694,10 @@ describe("document operation contract", () => {
             },
           ],
         });
-        expect(insertBatch.operations.at(0)).toMatchObject({ spacing: value, type });
+        expect(insertBatch.operations.at(0)).toMatchObject({
+          spacing: value,
+          type,
+        });
       }
     }
   });
@@ -702,9 +837,19 @@ describe("document operation contract", () => {
         replace: "new",
         comment: { text: "Changed" },
       },
-      { id: "comment", type: "commentOnRange", range, comment: { text: "Review" } },
+      {
+        id: "comment",
+        type: "commentOnRange",
+        range,
+        comment: { text: "Review" },
+      },
       { id: "format", type: "formatRange", range, formatting: { bold: true } },
-      { id: "insert", type: "insertBeforeBlock", blockId: "paragraph-3", text: "New" },
+      {
+        id: "insert",
+        type: "insertBeforeBlock",
+        blockId: "paragraph-3",
+        text: "New",
+      },
       { id: "delete", type: "deleteBlock", blockId: "paragraph-4" },
       {
         id: "signature",
@@ -726,7 +871,11 @@ describe("document operation contract", () => {
         blockId: "paragraph-8",
         cellTexts: ["A", "B"],
       },
-      { id: "delete-column", type: "deleteTableColumn", blockId: "paragraph-9" },
+      {
+        id: "delete-column",
+        type: "deleteTableColumn",
+        blockId: "paragraph-9",
+      },
       {
         id: "merge-cells",
         type: "mergeTableCells",
@@ -909,7 +1058,11 @@ describe("document operation contract", () => {
     } as const;
 
     expect(parseFolioDocumentOperationBatch(batch)).toEqual(batch);
-    expect(getFolioDocumentOperationReceipts(batch.operations, [{ id: "merge-down" }])).toEqual([
+    expect(
+      getFolioDocumentOperationReceipts(batch.operations, [
+        { id: "merge-down" },
+      ]),
+    ).toEqual([
       {
         operationId: "merge-down",
         operationIndex: 0,
@@ -1013,8 +1166,16 @@ describe("document operation contract", () => {
     [null, "$", "expected an object"],
     [{ version: 1 }, "$.operations", "expected an array"],
     [{ version: 1, operations: [], mode: "review" }, "$.mode", "expected"],
-    [{ version: 1, operations: [], atomic: "yes" }, "$.atomic", "expected a boolean"],
-    [{ version: 1, operations: [], dryRun: "yes" }, "$.dryRun", "expected a boolean"],
+    [
+      { version: 1, operations: [], atomic: "yes" },
+      "$.atomic",
+      "expected a boolean",
+    ],
+    [
+      { version: 1, operations: [], dryRun: "yes" },
+      "$.dryRun",
+      "expected a boolean",
+    ],
     [
       {
         version: 1,
@@ -1047,7 +1208,10 @@ describe("document operation contract", () => {
       "unsupported operation type",
     ],
     [
-      { version: 1, operations: [{ id: "1", type: "replaceInBlock", blockId: "a" }] },
+      {
+        version: 1,
+        operations: [{ id: "1", type: "replaceInBlock", blockId: "a" }],
+      },
       "$.operations[0].find",
       "expected a string",
     ],
@@ -1076,7 +1240,9 @@ describe("document operation contract", () => {
     [
       {
         version: 1,
-        operations: [{ id: "1", type: "deleteBlock", blockId: "a", typo: true }],
+        operations: [
+          { id: "1", type: "deleteBlock", blockId: "a", typo: true },
+        ],
       },
       "$.operations[0].typo",
       "unexpected property",
@@ -1084,7 +1250,9 @@ describe("document operation contract", () => {
     [
       {
         version: 1,
-        operations: [{ id: "1", type: "commentOnBlock", blockId: "a", comment: "note" }],
+        operations: [
+          { id: "1", type: "commentOnBlock", blockId: "a", comment: "note" },
+        ],
       },
       "$.operations[0].comment",
       "expected an object",
@@ -1146,7 +1314,9 @@ describe("document operation contract", () => {
     [
       {
         version: 1,
-        operations: [{ id: "1", type: "mergeTableCells", blockId: "a", rowCount: 1 }],
+        operations: [
+          { id: "1", type: "mergeTableCells", blockId: "a", rowCount: 1 },
+        ],
       },
       "$.operations[0].rowCount",
       "greater than or equal to 2",

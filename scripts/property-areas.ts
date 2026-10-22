@@ -26,12 +26,16 @@
  * selection without running it.
  */
 
-import { PROPERTY_SEEDS_FILE, testFileForSeedFile } from "../test/seed-registry";
-import { $ } from "bun";
 import { panic } from "better-result";
+import { $ } from "bun";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+
+import {
+  PROPERTY_SEEDS_FILE,
+  testFileForSeedFile,
+} from "../test/seed-registry";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
@@ -42,14 +46,23 @@ const PROPERTY_FILE = /\.test\.tsx?$/;
  * Changed-path prefixes whose code another area's properties exercise, on top
  * of the area the path itself belongs to.
  */
-export const COUPLINGS: readonly { prefix: string; areas: readonly string[] }[] = [
+export const COUPLINGS: readonly {
+  prefix: string;
+  areas: readonly string[];
+}[] = [
   // Shared boundaries are exercised by the actual ZIP and document serializers.
-  { prefix: "packages/utf8-boundaries/src/", areas: ["docx-core/zip", "core/utils"] },
+  {
+    prefix: "packages/utf8-boundaries/src/",
+    areas: ["docx-core/zip", "core/utils"],
+  },
   // The comparison's internals live under internal/compare.
   { prefix: "packages/core/src/internal/compare/", areas: ["core/compare"] },
   // Whole-story revision resolution backs accept/reject in the reviewer and
   // the editor: the tracked-resolution and headless-review properties drive it.
-  { prefix: "packages/core/src/internal/", areas: ["core/ai-edits", "core/prosemirror"] },
+  {
+    prefix: "packages/core/src/internal/",
+    areas: ["core/ai-edits", "core/prosemirror"],
+  },
   // Tracked changes are ProseMirror marks resolved by the same commands.
   { prefix: "packages/core/src/prosemirror/", areas: ["core/ai-edits"] },
   // Both markdown readers share the docx-core compiler.
@@ -59,13 +72,20 @@ export const COUPLINGS: readonly { prefix: string; areas: readonly string[] }[] 
   { prefix: "packages/core/src/docx/serializer/", areas: ["core/compare"] },
 ];
 
-type PropertyFile = { area: string; packageDir: string; file: string; weightMs: number };
+type PropertyFile = {
+  area: string;
+  packageDir: string;
+  file: string;
+  weightMs: number;
+};
 
 const PROPERTY_WORKERS = 2;
 type PropertyBatch = { packageDir: string; files: PropertyFile[] };
 
 /** Split a package's serial test workload without changing its selected files. */
-export const propertyBatches = (selected: readonly PropertyFile[]): PropertyBatch[] => {
+export const propertyBatches = (
+  selected: readonly PropertyFile[],
+): PropertyBatch[] => {
   const byPackage = new Map<string, PropertyFile[]>();
   for (const entry of selected) {
     const files = byPackage.get(entry.packageDir);
@@ -92,7 +112,9 @@ export const runPropertyBatches = async (
   const worker = async () => {
     for (const batch of queue) exitCodes.push(await run(batch));
   };
-  await Promise.all(Array.from({ length: Math.min(PROPERTY_WORKERS, batches.length) }, worker));
+  await Promise.all(
+    Array.from({ length: Math.min(PROPERTY_WORKERS, batches.length) }, worker),
+  );
   return exitCodes;
 };
 
@@ -109,14 +131,18 @@ const DEFAULT_PROPERTY_WEIGHT_MS = 5_000;
 
 const callName = (expression: ts.Expression): string | undefined => {
   if (ts.isIdentifier(expression)) return expression.text;
-  if (ts.isPropertyAccessExpression(expression)) return callName(expression.expression);
+  if (ts.isPropertyAccessExpression(expression))
+    return callName(expression.expression);
   if (ts.isCallExpression(expression)) return callName(expression.expression);
   return undefined;
 };
 
 const enclosingTest = (node: ts.Node): ts.CallExpression | undefined => {
   for (let parent = node.parent; parent !== undefined; parent = parent.parent) {
-    if (ts.isCallExpression(parent) && ["test", "it"].includes(callName(parent.expression) ?? ""))
+    if (
+      ts.isCallExpression(parent) &&
+      ["test", "it"].includes(callName(parent.expression) ?? "")
+    )
       return parent;
   }
   return undefined;
@@ -125,7 +151,10 @@ const enclosingTest = (node: ts.Node): ts.CallExpression | undefined => {
 type PropertyFileProfileOptions = { file: string; text: string };
 
 /** Derive scheduling weight from actual property drivers and their stated base budgets. */
-export const propertyFileProfile = ({ file, text }: PropertyFileProfileOptions) => {
+export const propertyFileProfile = ({
+  file,
+  text,
+}: PropertyFileProfileOptions) => {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const constants = new Map<string, ts.Expression[]>();
   const drivers: ts.CallExpression[] = [];
@@ -153,30 +182,46 @@ export const propertyFileProfile = ({ file, text }: PropertyFileProfileOptions) 
           (callee.name.text === "assert" || callee.name.text === "check"))
       )
         drivers.push(node);
-      if (ts.isIdentifier(callee) && callee.text === "propertyTestTimeout") budgets.push(node);
-      if (ts.isIdentifier(callee) && callee.text === "setDefaultTimeout") defaults.push(node);
+      if (ts.isIdentifier(callee) && callee.text === "propertyTestTimeout")
+        budgets.push(node);
+      if (ts.isIdentifier(callee) && callee.text === "setDefaultTimeout")
+        defaults.push(node);
     }
     ts.forEachChild(node, visit);
   };
   visit(source);
-  if (drivers.length === 0) return { drivers: 0, weightMs: 0, missingBudgets: 0 };
+  if (drivers.length === 0)
+    return { drivers: 0, weightMs: 0, missingBudgets: 0 };
 
-  const numericBudget = (expression: ts.Expression, resolving = new Set<string>()): number => {
+  const numericBudget = (
+    expression: ts.Expression,
+    resolving = new Set<string>(),
+  ): number => {
     let value: number;
     if (ts.isNumericLiteral(expression)) value = Number(expression.text);
     else if (ts.isParenthesizedExpression(expression))
       return numericBudget(expression.expression, resolving);
     else if (ts.isIdentifier(expression)) {
       const definitions = constants.get(expression.text);
-      const definition = definitions?.length === 1 ? definitions.at(0) : undefined;
+      const definition =
+        definitions?.length === 1 ? definitions.at(0) : undefined;
       if (!definition || resolving.has(expression.text))
-        return panic(`Cannot derive property budget in ${file}: ${expression.getText(source)}`);
-      return numericBudget(definition, new Set([...resolving, expression.text]));
+        return panic(
+          `Cannot derive property budget in ${file}: ${expression.getText(source)}`,
+        );
+      return numericBudget(
+        definition,
+        new Set([...resolving, expression.text]),
+      );
     } else {
-      return panic(`Cannot derive property budget in ${file}: ${expression.getText(source)}`);
+      return panic(
+        `Cannot derive property budget in ${file}: ${expression.getText(source)}`,
+      );
     }
     if (!Number.isFinite(value) || value <= 0)
-      return panic(`Property budget must be finite and positive in ${file}: ${String(value)}`);
+      return panic(
+        `Property budget must be finite and positive in ${file}: ${String(value)}`,
+      );
     return value;
   };
   let missingBudgets = 0;
@@ -194,32 +239,43 @@ export const propertyFileProfile = ({ file, text }: PropertyFileProfileOptions) 
   let defaultBudget = DEFAULT_PROPERTY_WEIGHT_MS;
   for (const call of defaults) {
     const argument = call.arguments.at(0);
-    if (argument === undefined) return panic(`Missing default property budget in ${file}`);
+    if (argument === undefined)
+      return panic(`Missing default property budget in ${file}`);
     defaultBudget =
       ts.isCallExpression(argument) && stated.has(argument)
-        ? (stated.get(argument) ?? panic(`Missing profiled property budget in ${file}`))
+        ? (stated.get(argument) ??
+          panic(`Missing profiled property budget in ${file}`))
         : numericBudget(argument);
   }
   const testBudgets = new Map<ts.CallExpression, number>();
   for (const [call, budget] of stated) {
     const owner = enclosingTest(call);
     if (owner !== undefined) {
-      if (testBudgets.has(owner)) return panic(`Multiple property budgets in one test in ${file}`);
+      if (testBudgets.has(owner))
+        return panic(`Multiple property budgets in one test in ${file}`);
       testBudgets.set(owner, budget);
     }
   }
   let weightMs = 0;
   for (const driver of drivers) {
     const owner = enclosingTest(driver);
-    weightMs += owner === undefined ? defaultBudget : (testBudgets.get(owner) ?? defaultBudget);
+    weightMs +=
+      owner === undefined
+        ? defaultBudget
+        : (testBudgets.get(owner) ?? defaultBudget);
   }
   if (!Number.isFinite(weightMs) || weightMs <= 0)
-    return panic(`Property scheduling weight must be finite and positive in ${file}`);
+    return panic(
+      `Property scheduling weight must be finite and positive in ${file}`,
+    );
   return { drivers: drivers.length, weightMs, missingBudgets };
 };
 
 const profileProperty = (file: string) => {
-  const profile = propertyFileProfile({ file, text: readFileSync(file, "utf8") });
+  const profile = propertyFileProfile({
+    file,
+    text: readFileSync(file, "utf8"),
+  });
   if (profile.missingBudgets > 0)
     console.warn(
       `${file}: ${String(profile.missingBudgets)} missing property budget arguments; scheduling uses Bun's 5000ms default estimate.`,
@@ -273,7 +329,9 @@ export const propertyFiles = (): PropertyFile[] => {
         };
       }),
   );
-  return [...packages, ...rootTests].toSorted((a, b) => a.file.localeCompare(b.file));
+  return [...packages, ...rootTests].toSorted((a, b) =>
+    a.file.localeCompare(b.file),
+  );
 };
 
 /** The areas a set of changed repo paths touches. */
@@ -306,7 +364,8 @@ export const selectPropertyFiles = (
   const areas = touchedAreas(changed);
   const named = new Set(changed);
   for (const file of changed) {
-    if (file.startsWith(`${PROPERTY_SEEDS_FILE}/`)) named.add(testFileForSeedFile(file));
+    if (file.startsWith(`${PROPERTY_SEEDS_FILE}/`))
+      named.add(testFileForSeedFile(file));
   }
   return all.filter(({ area, file }) => areas.has(area) || named.has(file));
 };
@@ -325,21 +384,29 @@ export const shardPropertyFiles = (
     index < 1 ||
     index > total
   )
-    return panic("Property shard must be an integer index/total with 1 ≤ index ≤ total.");
-  const shards = Array.from({ length: total }, () => ({ files: files.slice(0, 0), weightMs: 0 }));
+    return panic(
+      "Property shard must be an integer index/total with 1 ≤ index ≤ total.",
+    );
+  const shards = Array.from({ length: total }, () => ({
+    files: files.slice(0, 0),
+    weightMs: 0,
+  }));
   for (const file of files.toSorted(
     (a, b) => b.weightMs - a.weightMs || a.file.localeCompare(b.file),
   )) {
     if (!Number.isFinite(file.weightMs) || file.weightMs <= 0)
-      return panic(`Property scheduling weight must be finite and positive: ${file.file}`);
+      return panic(
+        `Property scheduling weight must be finite and positive: ${file.file}`,
+      );
     let target = shards.at(0) ?? panic("Property scheduling requires a shard");
-    for (const shard of shards) if (shard.weightMs < target.weightMs) target = shard;
+    for (const shard of shards)
+      if (shard.weightMs < target.weightMs) target = shard;
     target.files.push(file);
     target.weightMs += file.weightMs;
   }
-  return (shards.at(index - 1) ?? panic("Requested property shard is unavailable")).files.toSorted(
-    (a, b) => a.file.localeCompare(b.file),
-  );
+  return (
+    shards.at(index - 1) ?? panic("Requested property shard is unavailable")
+  ).files.toSorted((a, b) => a.file.localeCompare(b.file));
 };
 
 const parseArgs = (argv: readonly string[]) => {
@@ -356,20 +423,29 @@ const parseArgs = (argv: readonly string[]) => {
     else if (arg === "--all") all = true;
     else if (arg === "--shard") {
       const parts = (argv[++index] ?? "").split("/");
-      if (parts.length !== 2) return panic("Property shard must use index/total.");
+      if (parts.length !== 2)
+        return panic("Property shard must use index/total.");
       shard = { index: Number(parts.at(0)), total: Number(parts.at(1)) };
     } else throw new Error(`Unknown argument ${String(arg)}`);
   }
   const envFactor = process.env["PROPERTY_TEST_NUM_RUNS_FACTOR"];
   const defaultFactor = all ? 1 : 5;
-  factor ??= envFactor === undefined || envFactor === "" ? defaultFactor : Number(envFactor);
-  if (!Number.isFinite(factor) || factor < 1) throw new Error("the factor must be a number ≥ 1");
+  factor ??=
+    envFactor === undefined || envFactor === ""
+      ? defaultFactor
+      : Number(envFactor);
+  if (!Number.isFinite(factor) || factor < 1)
+    throw new Error("the factor must be a number ≥ 1");
   return { base, factor, dryRun, all, shard };
 };
 
 const changedFiles = async (base: string): Promise<string[]> => {
-  const mergeBase = (await $`git merge-base ${base} HEAD`.cwd(REPO_ROOT).text()).trim();
-  const diff = await $`git diff --name-only ${mergeBase} HEAD`.cwd(REPO_ROOT).text();
+  const mergeBase = (
+    await $`git merge-base ${base} HEAD`.cwd(REPO_ROOT).text()
+  ).trim();
+  const diff = await $`git diff --name-only ${mergeBase} HEAD`
+    .cwd(REPO_ROOT)
+    .text();
   return diff.split("\n").filter((line) => line !== "");
 };
 
@@ -378,7 +454,9 @@ if (import.meta.main) {
   let selected: PropertyFile[];
   if (all) {
     selected = propertyFiles();
-    console.log(`${String(selected.length)} property files at factor ${String(factor)}`);
+    console.log(
+      `${String(selected.length)} property files at factor ${String(factor)}`,
+    );
   } else {
     const changed = await changedFiles(base);
     selected = selectPropertyFiles(changed, propertyFiles());
@@ -401,14 +479,19 @@ if (import.meta.main) {
     const exitCodes = await runPropertyBatches(
       propertyBatches(selected),
       async ({ packageDir, files }) => {
-        const relative = files.map(({ file }) => path.relative(packageDir, file));
+        const relative = files.map(({ file }) =>
+          path.relative(packageDir, file),
+        );
         const started = performance.now();
         console.log(
           `${packageDir}: starting ${String(files.length)} files: ${relative.join(", ")}`,
         );
         const run = await $`bun test ${relative} 2>&1`
           .cwd(path.join(REPO_ROOT, packageDir))
-          .env({ ...process.env, PROPERTY_TEST_NUM_RUNS_FACTOR: String(factor) })
+          .env({
+            ...process.env,
+            PROPERTY_TEST_NUM_RUNS_FACTOR: String(factor),
+          })
           .nothrow();
         const seconds = ((performance.now() - started) / 1000).toFixed(1);
         console.log(

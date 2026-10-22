@@ -1,5 +1,11 @@
-import { noteContentWithAutomaticMark, noteUsesCustomMark } from "./noteMarks";
-import { documentStories, replaceStoryBody, storyBody } from "./stories";
+import { Result, TaggedError } from "better-result";
+
+import type {
+  BlockContent,
+  Document,
+  TableCell,
+  TableRow,
+} from "../model/document";
 /**
  * The seed contract: what a document must be for operations to apply to it.
  *
@@ -23,35 +29,50 @@ import { documentStories, replaceStoryBody, storyBody } from "./stories";
  * so a document an operation produced is not checked again: documents are
  * values, never modified in place.
  */
-
-import { Result, TaggedError } from "better-result";
-
-import type { BlockContent, Document, TableCell, TableRow } from "../model/document";
 import { sectionsInStep, storyParagraphs, withBodyContent } from "./blocks";
-import { countIds, countKeys, packageIdentityKeys, packageParagraphIds } from "./ids";
 import {
-  leafSpans,
+  countIds,
+  countKeys,
+  packageIdentityKeys,
+  packageParagraphIds,
+} from "./ids";
+import {
   asParagraphContent,
   childNodes,
   type InlineNode,
   isEmptyRecord,
+  leafSpans,
   rebuildNode,
 } from "./leaves";
-import { DOCUMENT_OP_REFUSAL_REASONS, type DocumentOpRefusalReason } from "./refusal";
+import { noteContentWithAutomaticMark, noteUsesCustomMark } from "./noteMarks";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  type DocumentOpRefusalReason,
+} from "./refusal";
+import { documentStories, replaceStoryBody, storyBody } from "./stories";
 
 /** A document that does not meet the seed contract. */
-export class DocumentOpsContractError extends TaggedError("DocumentOpsContractError")<{
+export class DocumentOpsContractError extends TaggedError(
+  "DocumentOpsContractError",
+)<{
   message: string;
   reason: DocumentOpRefusalReason;
 }> {}
 
 const holdsEmptyRecord = (nodes: readonly InlineNode[]): boolean =>
-  nodes.some((node) => isEmptyRecord(node) || holdsEmptyRecord(childNodes(node) ?? []));
+  nodes.some(
+    (node) => isEmptyRecord(node) || holdsEmptyRecord(childNodes(node) ?? []),
+  );
 
 // Operation documents and their block lists are immutable once validated.
-const MULTIPLE_PROPERTY_CHANGES = new WeakMap<readonly BlockContent[], boolean>();
+const MULTIPLE_PROPERTY_CHANGES = new WeakMap<
+  readonly BlockContent[],
+  boolean
+>();
 
-const blocksHaveMultiplePropertyChanges = (blocks: readonly BlockContent[]): boolean => {
+const blocksHaveMultiplePropertyChanges = (
+  blocks: readonly BlockContent[],
+): boolean => {
   const cached = MULTIPLE_PROPERTY_CHANGES.get(blocks);
   if (cached !== undefined) return cached;
   const found = blocks.some((block) => {
@@ -60,7 +81,9 @@ const blocksHaveMultiplePropertyChanges = (blocks: readonly BlockContent[]): boo
         return (block.propertyChanges?.length ?? 0) > 1;
       case "table":
         return block.rows.some((row) =>
-          row.cells.some((cell) => blocksHaveMultiplePropertyChanges(cell.content)),
+          row.cells.some((cell) =>
+            blocksHaveMultiplePropertyChanges(cell.content),
+          ),
         );
       case "blockSdt":
       case "blockCustomXml":
@@ -80,12 +103,16 @@ const blocksHaveMultiplePropertyChanges = (blocks: readonly BlockContent[]): boo
 };
 
 /** Check every editable story and nested block container, reusing unchanged lists. */
-export const hasMultipleParagraphPropertyChanges = (document: Document): boolean =>
+export const hasMultipleParagraphPropertyChanges = (
+  document: Document,
+): boolean =>
   documentStories(document).some((story) =>
     blocksHaveMultiplePropertyChanges(storyBody(document, story).content),
   );
 
-const violation = (document: Document): DocumentOpsContractError | undefined => {
+const violation = (
+  document: Document,
+): DocumentOpsContractError | undefined => {
   if (hasMultipleParagraphPropertyChanges(document)) {
     return new DocumentOpsContractError({
       reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
@@ -99,7 +126,8 @@ const violation = (document: Document): DocumentOpsContractError | undefined => 
   if (paragraphs.some(({ paragraph }) => paragraph.paraId === undefined)) {
     return new DocumentOpsContractError({
       reason: DOCUMENT_OP_REFUSAL_REASONS.MISSING_BLOCK_ID,
-      message: "A story paragraph has no paraId; ensureParaIds establishes one.",
+      message:
+        "A story paragraph has no paraId; ensureParaIds establishes one.",
     });
   }
   for (const notes of [document.package.footnotes, document.package.endnotes]) {
@@ -111,19 +139,21 @@ const violation = (document: Document): DocumentOpsContractError | undefined => 
       });
   }
   for (const story of documentStories(document)) {
-    const misplaced = storyParagraphs(storyBody(document, story)).some(({ paragraph }) =>
-      leafSpans(paragraph.content).some(
-        ({ node }) =>
-          node.type === "noteMarker" &&
-          (story === "main" ||
-            (story.kind !== "footnote" && story.kind !== "endnote") ||
-            node.kind !== story.kind),
-      ),
+    const misplaced = storyParagraphs(storyBody(document, story)).some(
+      ({ paragraph }) =>
+        leafSpans(paragraph.content).some(
+          ({ node }) =>
+            node.type === "noteMarker" &&
+            (story === "main" ||
+              (story.kind !== "footnote" && story.kind !== "endnote") ||
+              node.kind !== story.kind),
+        ),
     );
     if (misplaced)
       return new DocumentOpsContractError({
         reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-        message: "An automatic note mark must belong to its matching note story.",
+        message:
+          "An automatic note mark must belong to its matching note story.",
       });
   }
   const repeated = [...countIds(packageParagraphIds(document.package))].find(
@@ -135,9 +165,9 @@ const violation = (document: Document): DocumentOpsContractError | undefined => 
       message: `${repeated[1]} paragraphs in the package are ${repeated[0]}.`,
     });
   }
-  const repeatedRecord = [...countKeys(packageIdentityKeys(document.package))].find(
-    ([, count]) => count > 1,
-  );
+  const repeatedRecord = [
+    ...countKeys(packageIdentityKeys(document.package)),
+  ].find(([, count]) => count > 1);
   if (repeatedRecord !== undefined) {
     return new DocumentOpsContractError({
       reason: DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_RECORD_ID,
@@ -184,8 +214,9 @@ export const meetsContract = (document: Document): void => {
 };
 
 /** The contract checked afresh, for tests that hold operations to it. */
-export const contractViolation = (document: Document): DocumentOpsContractError | undefined =>
-  violation(document);
+export const contractViolation = (
+  document: Document,
+): DocumentOpsContractError | undefined => violation(document);
 
 const withoutEmpty = (nodes: readonly InlineNode[]): readonly InlineNode[] => {
   let changed = false;
@@ -216,7 +247,9 @@ const normalizeBlocks = (blocks: readonly BlockContent[]): BlockContent[] => {
       case "paragraph": {
         const content = withoutEmpty(block.content);
         out.push(
-          content === block.content ? block : { ...block, content: asParagraphContent(content) },
+          content === block.content
+            ? block
+            : { ...block, content: asParagraphContent(content) },
         );
         break;
       }
@@ -256,7 +289,10 @@ const normalizeBlocks = (blocks: readonly BlockContent[]): BlockContent[] => {
 export const normalizeForOps = (document: Document): Document => {
   let current = document;
   for (const story of documentStories(document)) {
-    if (story !== "main" && (story.kind === "footnote" || story.kind === "endnote")) {
+    if (
+      story !== "main" &&
+      (story.kind === "footnote" || story.kind === "endnote")
+    ) {
       const note =
         story.kind === "footnote"
           ? current.package.footnotes?.find(({ id }) => id === story.id)

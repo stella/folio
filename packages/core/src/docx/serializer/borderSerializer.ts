@@ -7,11 +7,12 @@
  * (eigenpal/docx-editor#959).
  */
 
+import { escapeXmlAttribute } from "@stll/docx-core";
+import { borderStyleToken, themeColorToken } from "@stll/docx-core/model";
+
 import type { BorderSpec, ExhaustiveFields } from "../../types/document";
 import { serializePreservedAttributes } from "../attributeRemainder";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
-import { borderStyleToken, themeColorToken } from "@stll/docx-core/model";
 
 type ClassifiedBorderField =
   | "style"
@@ -29,8 +30,12 @@ type ClassifiedBorderField =
 type ExhaustiveBorder = ExhaustiveFields<BorderSpec, ClassifiedBorderField>;
 
 type BorderColor = NonNullable<BorderSpec["color"]>;
-type ClassifiedBorderColorField = "auto" | "rgb" | "themeColor" | "themeTint" | "themeShade";
-type ExhaustiveBorderColor = ExhaustiveFields<BorderColor, ClassifiedBorderColorField>;
+type ClassifiedBorderColorField =
+  "auto" | "rgb" | "themeColor" | "themeTint" | "themeShade";
+type ExhaustiveBorderColor = ExhaustiveFields<
+  BorderColor,
+  ClassifiedBorderColorField
+>;
 
 /**
  * Serialize a single border element (`<w:top .../>`, `<w:left .../>`, ...).
@@ -51,7 +56,10 @@ type ExhaustiveBorderColor = ExhaustiveFields<BorderColor, ClassifiedBorderColor
  * XML attributes; for valid documents these are enum/hex values, so escaping is
  * a no-op.
  */
-export function serializeBorder(input: ExhaustiveBorder | undefined, elementName: string): string {
+export function serializeBorder(
+  input: ExhaustiveBorder | undefined,
+  elementName: string,
+): string {
   if (!input) {
     return "";
   }
@@ -73,7 +81,9 @@ export function serializeBorder(input: ExhaustiveBorder | undefined, elementName
     preservedAttributes,
   } = border;
 
-  const attrs: string[] = [`w:val="${escapeXmlAttribute(borderStyleToken(style))}"`];
+  const attrs: string[] = [
+    `w:val="${escapeXmlAttribute(borderStyleToken(style))}"`,
+  ];
 
   if (size !== undefined) {
     attrs.push(`w:sz="${intAttr(size)}"`);
@@ -93,7 +103,9 @@ export function serializeBorder(input: ExhaustiveBorder | undefined, elementName
     }
 
     if (themeColor) {
-      attrs.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(themeColor))}"`);
+      attrs.push(
+        `w:themeColor="${escapeXmlAttribute(themeColorToken(themeColor))}"`,
+      );
     }
 
     if (themeTint) {
@@ -135,11 +147,15 @@ export function serializeBorder(input: ExhaustiveBorder | undefined, elementName
   }
 
   if (bottomLeftArtRelationshipId) {
-    attrs.push(`r:bottomLeft="${escapeXmlAttribute(bottomLeftArtRelationshipId)}"`);
+    attrs.push(
+      `r:bottomLeft="${escapeXmlAttribute(bottomLeftArtRelationshipId)}"`,
+    );
   }
 
   if (bottomRightArtRelationshipId) {
-    attrs.push(`r:bottomRight="${escapeXmlAttribute(bottomRightArtRelationshipId)}"`);
+    attrs.push(
+      `r:bottomRight="${escapeXmlAttribute(bottomRightArtRelationshipId)}"`,
+    );
   }
 
   return `<w:${elementName} ${serializePreservedAttributes(attrs, preservedAttributes).join(" ")}/>`;

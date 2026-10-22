@@ -23,8 +23,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import type { Document, Image, Run } from "../../types/document";
@@ -43,7 +45,8 @@ const NS = [
 ].join(" ");
 
 const DECORATIVE_URI = "{C183D7F6-B498-43B3-948B-1728B52AA6E4}";
-const DECORATIVE_NS = "http://schemas.microsoft.com/office/drawing/2017/decorative";
+const DECORATIVE_NS =
+  "http://schemas.microsoft.com/office/drawing/2017/decorative";
 /** `a16:creationId`, the sibling extension Word writes beside it. */
 const CREATION_ID_URI = "{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}";
 const CREATION_ID_EXT =
@@ -64,7 +67,13 @@ type DocPrFacts = {
 const decorativeExt = (value: boolean) =>
   `<a:ext uri="${DECORATIVE_URI}"><adec:decorative xmlns:adec="${DECORATIVE_NS}" val="${value ? "1" : "0"}"/></a:ext>`;
 
-const drawingXml = ({ anchoring, decorative, hidden, alt, otherExtension }: DocPrFacts): string => {
+const drawingXml = ({
+  anchoring,
+  decorative,
+  hidden,
+  alt,
+  otherExtension,
+}: DocPrFacts): string => {
   const open =
     anchoring === "inline"
       ? "<wp:inline>"
@@ -73,8 +82,10 @@ const drawingXml = ({ anchoring, decorative, hidden, alt, otherExtension }: DocP
     anchoring === "anchor"
       ? '<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>'
       : "";
-  const wrap = anchoring === "anchor" ? '<wp:wrapSquare wrapText="bothSides"/>' : "";
-  const hiddenAttr = hidden === undefined ? "" : ` hidden="${hidden ? "1" : "0"}"`;
+  const wrap =
+    anchoring === "anchor" ? '<wp:wrapSquare wrapText="bothSides"/>' : "";
+  const hiddenAttr =
+    hidden === undefined ? "" : ` hidden="${hidden ? "1" : "0"}"`;
   const descr = alt === undefined ? "" : ` descr="${alt}"`;
   const extensions = `${decorative === undefined ? "" : decorativeExt(decorative)}${
     otherExtension ? CREATION_ID_EXT : ""
@@ -102,7 +113,9 @@ const parseDrawingXml = (xml: string): Image | null => {
 /** The real serializer, then the parser: the path an edited document takes. */
 const reserialize = (image: Image): Image | null => {
   const run: Run = { type: "run", content: [{ type: "drawing", image }] };
-  const root = (parseXml(`<root ${NS}>${serializeRun(run)}</root>`).elements as XmlElement[]).at(0);
+  const root = (
+    parseXml(`<root ${NS}>${serializeRun(run)}</root>`).elements as XmlElement[]
+  ).at(0);
   const drawing = (root?.elements as XmlElement[] | undefined)
     ?.at(0)
     ?.elements?.find((child) => child.type === "element");
@@ -113,7 +126,10 @@ const documentWithImage = (image: Image): Document => ({
   package: {
     document: {
       content: [
-        { type: "paragraph", content: [{ type: "run", content: [{ type: "drawing", image }] }] },
+        {
+          type: "paragraph",
+          content: [{ type: "run", content: [{ type: "drawing", image }] }],
+        },
       ],
     },
   },
@@ -134,9 +150,13 @@ const firstImage = (document: Document): Image | null => {
 
 const editorRoundTrip = (image: Image): Image | null =>
   firstImage(
-    fromProseDoc(toProseDoc(documentWithImage(image)), documentWithImage(image), {
-      stylesheetSource: { type: "package" },
-    }),
+    fromProseDoc(
+      toProseDoc(documentWithImage(image)),
+      documentWithImage(image),
+      {
+        stylesheetSource: { type: "package" },
+      },
+    ),
   );
 
 /** The facts, as the model should hold them. */
@@ -207,7 +227,10 @@ describe("wp:docPr decorative and hidden", () => {
     if (!image) {
       return;
     }
-    const xml = serializeRun({ type: "run", content: [{ type: "drawing", image }] });
+    const xml = serializeRun({
+      type: "run",
+      content: [{ type: "drawing", image }],
+    });
     expect(xml).not.toContain("hidden=");
     expect(xml).toContain(`<a:ext uri="${DECORATIVE_URI}">`);
   });
@@ -246,7 +269,9 @@ describe("wp:docPr decorative and hidden", () => {
         expect(factsOf(editorRoundTrip(parsed))).toEqual(expected);
         // And through the editor and out to XML again, which is the whole path
         // an edited image takes.
-        expect(factsOf(reserialize(editorRoundTrip(parsed) ?? parsed))).toEqual(expected);
+        expect(factsOf(reserialize(editorRoundTrip(parsed) ?? parsed))).toEqual(
+          expected,
+        );
       }),
       propertyConfig({ numRuns: 200 }),
     );

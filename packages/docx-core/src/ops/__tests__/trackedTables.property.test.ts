@@ -2,22 +2,35 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { BlockContent, Document, Paragraph, Table } from "../../model/document";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  Table,
+} from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { storyParagraphs } from "../blocks";
 import { contractViolation } from "../contract";
 import { identityKeysIn, paragraphIdsIn } from "../ids";
-import { asParagraphContent, childNodes, rebuildNode, type InlineNode } from "../leaves";
+import {
+  asParagraphContent,
+  childNodes,
+  type InlineNode,
+  rebuildNode,
+} from "../leaves";
 import { paragraphLength } from "../offsets";
 import { revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { mergeAtSeam } from "../resolve";
 import {
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   OP_STORIES,
   REVISION_DECISIONS,
-  type DocumentOp,
   type RevisionDecision,
 } from "../types";
 import { independentCopy } from "./documentArbitraries";
@@ -30,7 +43,10 @@ const shapes = fc.record({
   paragraphs: fc.integer({ min: 1, max: 3 }),
   seed: fc.integer({ min: 0, max: 0xffff_ffff }),
   text: fc
-    .array(fc.constantFrom("a", "é", "ž", "漢", "😀", " "), { minLength: 0, maxLength: 16 })
+    .array(fc.constantFrom("a", "é", "ž", "漢", "😀", " "), {
+      minLength: 0,
+      maxLength: 16,
+    })
     .map((tokens) => tokens.join("")),
   placement: fc.constantFrom("before", "after", "terminal"),
 });
@@ -68,17 +84,21 @@ const makeTable = (shape: Shape, base = 0x100): Table => ({
   rows: Array.from({ length: shape.rows }, (_rowValue, row) => ({
     type: "tableRow",
     formatting: { cantSplit: row % 2 === 0 },
-    cells: Array.from({ length: 1 + ((shape.cells + row) % 3) }, (_cellValue, cell) => ({
-      type: "tableCell",
-      content: Array.from(
-        { length: 1 + ((shape.paragraphs + cell) % 3) },
-        (_paragraphValue, index) =>
-          makeParagraph(base + row * 27 + cell * 9 + index, {
-            ...shape,
-            text: (shape.seed + row + cell + index) % 3 === 0 ? "" : shape.text,
-          }),
-      ),
-    })),
+    cells: Array.from(
+      { length: 1 + ((shape.cells + row) % 3) },
+      (_cellValue, cell) => ({
+        type: "tableCell",
+        content: Array.from(
+          { length: 1 + ((shape.paragraphs + cell) % 3) },
+          (_paragraphValue, index) =>
+            makeParagraph(base + row * 27 + cell * 9 + index, {
+              ...shape,
+              text:
+                (shape.seed + row + cell + index) % 3 === 0 ? "" : shape.text,
+            }),
+        ),
+      }),
+    ),
   })),
 });
 const wrap = (shape: Shape, content: BlockContent[]): BlockContent[] => {
@@ -141,9 +161,16 @@ const wrap = (shape: Shape, content: BlockContent[]): BlockContent[] => {
 const documentOf = (shape: Shape, content: BlockContent[]): Document => ({
   package: { document: { content: wrap(shape, content) } },
 });
-const stamp = (value = 1000) => ({ id: value, author: "Reviewer", date: "2026-05-06T07:08:09Z" });
+const stamp = (value = 1000) => ({
+  id: value,
+  author: "Reviewer",
+  date: "2026-05-06T07:08:09Z",
+});
 const freshIds = (value = 1000) => ({
-  revision: Array.from({ length: 128 }, (_revisionValue, index) => value + index + 1),
+  revision: Array.from(
+    { length: 128 },
+    (_revisionValue, index) => value + index + 1,
+  ),
 });
 const applied = (document: Document, op: DocumentOp) => {
   const result = applyDocumentOp(document, op);
@@ -151,14 +178,21 @@ const applied = (document: Document, op: DocumentOp) => {
   expect(contractViolation(result.value.document)).toBeUndefined();
   return result.value;
 };
-const resolved = (document: Document, revisionIds: readonly number[], decision: RevisionDecision) =>
+const resolved = (
+  document: Document,
+  revisionIds: readonly number[],
+  decision: RevisionDecision,
+) =>
   applied(document, {
     type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
     story: OP_STORIES.MAIN,
     revisionIds,
     decision,
   });
-const exactInverse = (document: Document, result: ReturnType<typeof applied>) => {
+const exactInverse = (
+  document: Document,
+  result: ReturnType<typeof applied>,
+) => {
   for (const inverse of [result.inverse, independentCopy(result.inverse)]) {
     const undone = applyDocumentOps(result.document, inverse);
     if (undone.isErr()) throw undone.error;
@@ -170,7 +204,10 @@ const canonicalList = (nodes: readonly InlineNode[]): InlineNode[] => {
   const out: InlineNode[] = [];
   for (const node of nodes) {
     const children = childNodes(node);
-    const current = children === undefined ? node : rebuildNode(node, canonicalList(children));
+    const current =
+      children === undefined
+        ? node
+        : rebuildNode(node, canonicalList(children));
     const last = out.at(-1);
     if (last === undefined) out.push(current);
     else out.splice(-1, 1, ...mergeAtSeam(last, current));
@@ -181,13 +218,19 @@ const canonicalBlocks = (blocks: readonly BlockContent[]): BlockContent[] =>
   blocks.map((block): BlockContent => {
     switch (block.type) {
       case "paragraph":
-        return { ...block, content: asParagraphContent(canonicalList(block.content)) };
+        return {
+          ...block,
+          content: asParagraphContent(canonicalList(block.content)),
+        };
       case "table":
         return {
           ...block,
           rows: block.rows.map((row) => ({
             ...row,
-            cells: row.cells.map((cell) => ({ ...cell, content: canonicalBlocks(cell.content) })),
+            cells: row.cells.map((cell) => ({
+              ...cell,
+              content: canonicalBlocks(cell.content),
+            })),
           })),
         };
       case "blockSdt":
@@ -217,7 +260,9 @@ const insertionFor = (shape: Shape) =>
       blockId: shape.placement === "terminal" ? id(3) : id(1),
     },
     table: makeTable(shape),
-    ...(shape.placement === "terminal" ? { terminal: { beforeBlockId: id(4) } } : {}),
+    ...(shape.placement === "terminal"
+      ? { terminal: { beforeBlockId: id(4) } }
+      : {}),
   }) as const satisfies DocumentOp;
 const targetTable = (document: Document, blockId = id(0x100)): Table => {
   const visit = (blocks: readonly BlockContent[]): Table | undefined => {
@@ -228,7 +273,8 @@ const targetTable = (document: Document, blockId = id(0x100)): Table => {
             block.rows.some((row) =>
               row.cells.some((cell) =>
                 cell.content.some(
-                  (child) => child.type === "paragraph" && child.paraId === blockId,
+                  (child) =>
+                    child.type === "paragraph" && child.paraId === blockId,
                 ),
               ),
             )
@@ -254,7 +300,8 @@ const targetTable = (document: Document, blockId = id(0x100)): Table => {
     return undefined;
   };
   const table = visit(document.package.document.content);
-  if (table === undefined) throw new Error("Generated target table remains present.");
+  if (table === undefined)
+    throw new Error("Generated target table remains present.");
   return table;
 };
 const demandFor = (value: Table) => {
@@ -263,11 +310,15 @@ const demandFor = (value: Table) => {
     for (const cell of row.cells) {
       records += 1;
       for (const block of cell.content)
-        if (block.type === "paragraph" && block.content.length !== 0) records += 1;
+        if (block.type === "paragraph" && block.content.length !== 0)
+          records += 1;
     }
   return records - 1;
 };
-const assertLocality = (before: Document, result: ReturnType<typeof applied>) => {
+const assertLocality = (
+  before: Document,
+  result: ReturnType<typeof applied>,
+) => {
   const touched = new Set([
     ...result.touched.modified,
     ...result.touched.inserted,
@@ -280,7 +331,8 @@ const assertLocality = (before: Document, result: ReturnType<typeof applied>) =>
     ]),
   );
   for (const { paragraph } of storyParagraphs(before.package.document))
-    if (!touched.has(paragraph.paraId ?? "")) expect(after.get(paragraph.paraId)).toBe(paragraph);
+    if (!touched.has(paragraph.paraId ?? ""))
+      expect(after.get(paragraph.paraId)).toBe(paragraph);
   const beforeIds = new Set(paragraphIdsIn(before.package.document));
   const afterIds = new Set(paragraphIdsIn(result.document.package.document));
   expect(new Set(result.touched.inserted)).toEqual(
@@ -297,10 +349,12 @@ const assertReviewShape = (value: Table, kind: "ins" | "del") => {
     );
     for (const cell of row.cells) {
       const final = cell.content.at(-1);
-      if (final?.type !== "paragraph") throw new Error("Generated cells end in paragraphs.");
+      if (final?.type !== "paragraph")
+        throw new Error("Generated cells end in paragraphs.");
       expect(final.pPrMark?.kind).toBe(kind);
       for (const block of cell.content) {
-        if (block.type !== "paragraph") throw new Error("Generated cells contain paragraphs.");
+        if (block.type !== "paragraph")
+          throw new Error("Generated cells contain paragraphs.");
         if (block !== final) expect(block.pPrMark).toBeUndefined();
         for (const wrapper of block.content)
           expect(wrapper.type).toBe(kind === "ins" ? "insertion" : "deletion");
@@ -342,26 +396,33 @@ describe("tracked whole table properties", () => {
             expect(original).toStrictEqual(snapshot);
             exactInverse(original, tracked);
             assertLocality(original, tracked);
-            const repeat = applied(independentCopy(original), independentCopy(op));
+            const repeat = applied(
+              independentCopy(original),
+              independentCopy(op),
+            );
             expect(repeat).toStrictEqual(tracked);
             assertReviewShape(
               targetTable(tracked.document),
               family === "insertion" ? "ins" : "del",
             );
-            const final = storyParagraphs(tracked.document.package.document).find(
-              ({ paragraph }) => paragraph.paraId === id(3),
-            );
+            const final = storyParagraphs(
+              tracked.document.package.document,
+            ).find(({ paragraph }) => paragraph.paraId === id(3));
             expect(final?.paragraph.pPrMark).toBeUndefined();
             const demand = revisionIdDemand(original, op);
             if (demand.isErr()) throw demand.error;
             expect(demand.value).toBe(
               demandFor(makeTable(shape)) +
-                (family === "insertion" && shape.placement === "terminal" ? 1 : 0),
+                (family === "insertion" && shape.placement === "terminal"
+                  ? 1
+                  : 0),
             );
             const keys = identityKeysIn(targetTable(tracked.document));
             expect(new Set(keys).size).toBe(keys.length);
             expect(tracked.revisions.length).toBe(demand.value + 1);
-            expect(new Set(tracked.revisions).size).toBe(tracked.revisions.length);
+            expect(new Set(tracked.revisions).size).toBe(
+              tracked.revisions.length,
+            );
             const exact = applied(original, {
               ...op,
               newIds: { revision: freshIds().revision.slice(0, demand.value) },
@@ -370,13 +431,17 @@ describe("tracked whole table properties", () => {
             if (demand.value > 0) {
               const short = applyDocumentOp(original, {
                 ...op,
-                newIds: { revision: freshIds().revision.slice(0, demand.value - 1) },
+                newIds: {
+                  revision: freshIds().revision.slice(0, demand.value - 1),
+                },
               });
               if (short.isOk())
                 throw new Error(
                   "One missing physical revision id must refuse the whole operation.",
                 );
-              expect(short.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS);
+              expect(short.error.reason).toBe(
+                DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+              );
               expect(original).toStrictEqual(snapshot);
             }
             const accepted = resolved(
@@ -394,17 +459,27 @@ describe("tracked whole table properties", () => {
             expect(canonical(accepted.document)).toStrictEqual(
               canonical(applied(original, directOp).document),
             );
-            expect(canonical(rejected.document)).toStrictEqual(canonical(original));
-            expect(identityKeysIn(accepted.document)).toEqual(identityKeysIn(original));
-            expect(identityKeysIn(rejected.document)).toEqual(identityKeysIn(original));
-            const again = resolved(accepted.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
+            expect(canonical(rejected.document)).toStrictEqual(
+              canonical(original),
+            );
+            expect(identityKeysIn(accepted.document)).toEqual(
+              identityKeysIn(original),
+            );
+            expect(identityKeysIn(rejected.document)).toEqual(
+              identityKeysIn(original),
+            );
+            const again = resolved(
+              accepted.document,
+              tracked.revisions,
+              REVISION_DECISIONS.ACCEPT,
+            );
             expect(again.document).toStrictEqual(accepted.document);
             expect(again.inverse).toEqual([]);
             if (family === "insertion" && shape.placement === "terminal") {
               const source = anchors.at(-1);
-              const restored = storyParagraphs(rejected.document.package.document).find(
-                ({ paragraph }) => paragraph.paraId === id(3),
-              );
+              const restored = storyParagraphs(
+                rejected.document.package.document,
+              ).find(({ paragraph }) => paragraph.paraId === id(3));
               expect(restored?.paragraph).toStrictEqual(source);
               expect(paragraphIdsIn(rejected.document)).not.toContain(id(4));
               expect(paragraphIdsIn(accepted.document)).toContain(id(4));
@@ -472,7 +547,9 @@ describe("tracked whole table properties", () => {
           exactInverse(tracked, accepted);
           exactInverse(tracked, rejected);
           expect(canonical(accepted.document)).toStrictEqual(canonical(direct));
-          expect(canonical(rejected.document)).toStrictEqual(canonical(original));
+          expect(canonical(rejected.document)).toStrictEqual(
+            canonical(original),
+          );
           let separatelyAccepted = tracked;
           let separatelyRejected = tracked;
           for (const ids of batches)
@@ -487,8 +564,12 @@ describe("tracked whole table properties", () => {
               ids,
               REVISION_DECISIONS.REJECT,
             ).document;
-          expect(canonical(separatelyAccepted)).toStrictEqual(canonical(accepted.document));
-          expect(canonical(separatelyRejected)).toStrictEqual(canonical(original));
+          expect(canonical(separatelyAccepted)).toStrictEqual(
+            canonical(accepted.document),
+          );
+          expect(canonical(separatelyRejected)).toStrictEqual(
+            canonical(original),
+          );
           const undone = applyDocumentOps(tracked, inverses.flat());
           if (undone.isErr()) throw undone.error;
           expect(undone.value.document).toStrictEqual(original);
@@ -555,7 +636,10 @@ describe("tracked whole table properties", () => {
                       cells: [
                         {
                           ...cell,
-                          structuralChange: { type: "tableCellInsertion", info: foreign },
+                          structuralChange: {
+                            type: "tableCellInsertion",
+                            info: foreign,
+                          },
                         },
                       ],
                     },
@@ -566,7 +650,15 @@ describe("tracked whole table properties", () => {
               case "rowRevision":
                 value = {
                   ...source,
-                  rows: [{ ...row, structuralChange: { type: "tableRowDeletion", info: foreign } }],
+                  rows: [
+                    {
+                      ...row,
+                      structuralChange: {
+                        type: "tableRowDeletion",
+                        info: foreign,
+                      },
+                    },
+                  ],
                 };
                 reason = DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT;
                 break;
@@ -590,7 +682,12 @@ describe("tracked whole table properties", () => {
                                   content: [
                                     {
                                       type: "run",
-                                      content: [{ type: "text", text: shape.text || "moved" }],
+                                      content: [
+                                        {
+                                          type: "text",
+                                          text: shape.text || "moved",
+                                        },
+                                      ],
                                     },
                                   ],
                                 },
@@ -661,7 +758,9 @@ describe("tracked whole table properties", () => {
                     } as const satisfies DocumentOp);
               const result = applyDocumentOp(original, op);
               if (result.isOk())
-                throw new Error(`Unsupported ${unsupported} table must be refused.`);
+                throw new Error(
+                  `Unsupported ${unsupported} table must be refused.`,
+                );
               expect(result.error.reason).toBe(reason);
               expect(original).toStrictEqual(snapshot);
             }
@@ -680,62 +779,78 @@ describe("tracked whole table properties", () => {
     "partial resolution retains cell final marks after keeping rows and restores them exactly through inverses",
     () => {
       assertProperty(
-        fc.property(shapes, fc.constantFrom("insertion", "deletion"), (shape, family) => {
-          const value = makeTable(shape);
-          const original = documentOf(
-            shape,
-            family === "insertion"
-              ? [makeParagraph(1, shape), makeParagraph(3, shape)]
-              : [value, makeParagraph(3, shape)],
-          );
-          const op =
-            family === "insertion"
-              ? ({
-                  type: DOCUMENT_OP_TYPES.INSERT_TABLE,
-                  story: OP_STORIES.MAIN,
-                  at: { type: "before", blockId: id(3) },
-                  table: value,
-                  revision: stamp(),
-                  newIds: freshIds(),
-                } as const satisfies DocumentOp)
-              : ({
-                  type: DOCUMENT_OP_TYPES.DELETE_TABLE,
-                  story: OP_STORIES.MAIN,
-                  blockId: id(0x100),
-                  revision: stamp(),
-                  newIds: freshIds(),
-                } as const satisfies DocumentOp);
-          const tracked = applied(original, op);
-          const pending = targetTable(tracked.document);
-          const rowIds = pending.rows.map((row) => {
-            if (row.structuralChange === undefined)
-              throw new Error("Generated rows carry revisions.");
-            return row.structuralChange.info.id;
-          });
-          const decision =
-            family === "insertion" ? REVISION_DECISIONS.ACCEPT : REVISION_DECISIONS.REJECT;
-          const rowsKept = resolved(tracked.document, rowIds, decision);
-          exactInverse(tracked.document, rowsKept);
-          const kept = targetTable(rowsKept.document);
-          expect(kept.rows.every((row) => row.structuralChange === undefined)).toBe(true);
-          const markIds = kept.rows.flatMap((row) =>
-            row.cells.map((cell) => {
-              const final = cell.content.at(-1);
-              if (final?.type !== "paragraph" || final.pPrMark === undefined)
-                throw new Error("Cell final marks survive independent row resolution.");
-              return final.pPrMark.info.id;
-            }),
-          );
-          const marksKept = resolved(rowsKept.document, markIds, decision);
-          exactInverse(rowsKept.document, marksKept);
-          const structuralIds = new Set([...rowIds, ...markIds]);
-          const contentIds = tracked.revisions.filter(
-            (revisionId) => !structuralIds.has(revisionId),
-          );
-          const completed = resolved(marksKept.document, contentIds, decision);
-          exactInverse(marksKept.document, completed);
-          expect(identityKeysIn(completed.document)).toEqual(identityKeysIn(original));
-        }),
+        fc.property(
+          shapes,
+          fc.constantFrom("insertion", "deletion"),
+          (shape, family) => {
+            const value = makeTable(shape);
+            const original = documentOf(
+              shape,
+              family === "insertion"
+                ? [makeParagraph(1, shape), makeParagraph(3, shape)]
+                : [value, makeParagraph(3, shape)],
+            );
+            const op =
+              family === "insertion"
+                ? ({
+                    type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+                    story: OP_STORIES.MAIN,
+                    at: { type: "before", blockId: id(3) },
+                    table: value,
+                    revision: stamp(),
+                    newIds: freshIds(),
+                  } as const satisfies DocumentOp)
+                : ({
+                    type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+                    story: OP_STORIES.MAIN,
+                    blockId: id(0x100),
+                    revision: stamp(),
+                    newIds: freshIds(),
+                  } as const satisfies DocumentOp);
+            const tracked = applied(original, op);
+            const pending = targetTable(tracked.document);
+            const rowIds = pending.rows.map((row) => {
+              if (row.structuralChange === undefined)
+                throw new Error("Generated rows carry revisions.");
+              return row.structuralChange.info.id;
+            });
+            const decision =
+              family === "insertion"
+                ? REVISION_DECISIONS.ACCEPT
+                : REVISION_DECISIONS.REJECT;
+            const rowsKept = resolved(tracked.document, rowIds, decision);
+            exactInverse(tracked.document, rowsKept);
+            const kept = targetTable(rowsKept.document);
+            expect(
+              kept.rows.every((row) => row.structuralChange === undefined),
+            ).toBe(true);
+            const markIds = kept.rows.flatMap((row) =>
+              row.cells.map((cell) => {
+                const final = cell.content.at(-1);
+                if (final?.type !== "paragraph" || final.pPrMark === undefined)
+                  throw new Error(
+                    "Cell final marks survive independent row resolution.",
+                  );
+                return final.pPrMark.info.id;
+              }),
+            );
+            const marksKept = resolved(rowsKept.document, markIds, decision);
+            exactInverse(rowsKept.document, marksKept);
+            const structuralIds = new Set([...rowIds, ...markIds]);
+            const contentIds = tracked.revisions.filter(
+              (revisionId) => !structuralIds.has(revisionId),
+            );
+            const completed = resolved(
+              marksKept.document,
+              contentIds,
+              decision,
+            );
+            exactInverse(marksKept.document, completed);
+            expect(identityKeysIn(completed.document)).toEqual(
+              identityKeysIn(original),
+            );
+          },
+        ),
         {
           numRuns: NUM_RUNS,
           id: "partial resolution retains cell final marks after keeping rows and restores them exactly through inverses",

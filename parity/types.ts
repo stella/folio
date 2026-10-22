@@ -83,9 +83,19 @@ export type DocGeom = {
 export type Divergence =
   | { kind: "page-count"; reference: number; folio: number }
   /** Same line of text landed on different pages. */
-  | { kind: "pagination"; text: string; referencePage: number; folioPage: number }
+  | {
+      kind: "pagination";
+      text: string;
+      referencePage: number;
+      folioPage: number;
+    }
   /** One reference line corresponds to 2+ folio lines, or vice versa. */
-  | { kind: "line-break"; page: number; referenceTexts: string[]; folioTexts: string[] }
+  | {
+      kind: "line-break";
+      page: number;
+      referenceTexts: string[];
+      folioTexts: string[];
+    }
   /** Line present in reference output but never matched in folio. */
   | { kind: "missing-line"; page: number; text: string }
   /** Line present in folio output but never matched in the reference. */
@@ -97,7 +107,12 @@ export type Divergence =
   /** Matched line's ink width differs (font metric / measurement divergence). */
   | { kind: "width-drift"; page: number; text: string; deltaPt: number }
   /** Lines aligned positionally but their text content differs. */
-  | { kind: "text-mismatch"; page: number; referenceText: string; folioText: string };
+  | {
+      kind: "text-mismatch";
+      page: number;
+      referenceText: string;
+      folioText: string;
+    };
 
 export type DivergenceKind = Divergence["kind"];
 
@@ -149,7 +164,12 @@ export type FontAlias = { requestedFamily: string; faceFamily: string };
 export type FontEnvironmentAssessment = {
   /** `partial-mismatch`: a small share of lines differ in family; those lines
    * are excluded from the score while the rest of the document stays scored. */
-  status: "native" | "shared-substitution" | "partial-mismatch" | "mismatch" | "unverified";
+  status:
+    | "native"
+    | "shared-substitution"
+    | "partial-mismatch"
+    | "mismatch"
+    | "unverified";
   tags: string[];
   comparedLines: number;
   matchingLines: number;

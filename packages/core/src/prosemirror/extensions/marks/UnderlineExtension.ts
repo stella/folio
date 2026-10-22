@@ -4,7 +4,6 @@
 
 import { panic } from "better-result";
 
-import { withCanonicalCommand } from "../../canonicalCommands";
 import type { UnderlineStyle } from "../../../types/document";
 import {
   PLAIN_UNDERLINE,
@@ -12,10 +11,15 @@ import {
   underlineStyleFromCssDecoration,
 } from "../../../utils/formatToStyle";
 import { expectUnderlineMarkAttrs } from "../../attrs";
+import { withCanonicalCommand } from "../../canonicalCommands";
 import type { TextColorAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { canonicalSetMarkFormatting, setMark, toggleUnderlineMark } from "./markUtils";
+import {
+  canonicalSetMarkFormatting,
+  setMark,
+  toggleUnderlineMark,
+} from "./markUtils";
 
 /** `w:u w:val="none"`: the token that cancels an inherited underline. */
 const NO_UNDERLINE = "none";
@@ -47,11 +51,15 @@ export const UnderlineExtension = createMarkExtension({
     ],
     toDOM(mark) {
       const { style = PLAIN_UNDERLINE, color } = expectUnderlineMarkAttrs(mark);
-      const { decorationStyle, decorationThickness } = underlineDecorationCss(style);
+      const { decorationStyle, decorationThickness } =
+        underlineDecorationCss(style);
       // Line and style go in the shorthand so a copy out of the editor parses
       // back through the one rule above; the longhands after it survive the
       // reset the shorthand performs.
-      const line = decorationStyle === undefined ? NO_UNDERLINE : `underline ${decorationStyle}`;
+      const line =
+        decorationStyle === undefined
+          ? NO_UNDERLINE
+          : `underline ${decorationStyle}`;
       const declarations = [`text-decoration: ${line}`];
 
       if (decorationThickness !== undefined) {
@@ -73,12 +81,14 @@ export const UnderlineExtension = createMarkExtension({
       commands: {
         toggleUnderline: () => toggleUnderlineMark(underlineType),
         setUnderlineStyle: (style: UnderlineStyle, color?: TextColorAttrs) =>
-          withCanonicalCommand(setMark(underlineType, { style, color }), (state) =>
-            canonicalSetMarkFormatting({
-              state,
-              type: underlineType,
-              attrs: { style, color },
-            }),
+          withCanonicalCommand(
+            setMark(underlineType, { style, color }),
+            (state) =>
+              canonicalSetMarkFormatting({
+                state,
+                type: underlineType,
+                attrs: { style, color },
+              }),
           ),
       },
       keyboardShortcuts: {

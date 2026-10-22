@@ -12,7 +12,10 @@
   <div
     v-if="data"
     ref="popupRef"
-    :class="['docx-hyperlink-popup', { 'docx-hyperlink-popup--edit': isEditing }]"
+    :class="[
+      'docx-hyperlink-popup',
+      { 'docx-hyperlink-popup--edit': isEditing },
+    ]"
     :style="popupStyle"
     @mousedown.stop
   >
@@ -46,7 +49,11 @@
         {{ data.href }}
       </a>
       <span class="docx-hyperlink-popup__sep" />
-      <button class="docx-hyperlink-popup__btn" :title="t('copyLink')" @click.prevent="onCopy">
+      <button
+        class="docx-hyperlink-popup__btn"
+        :title="t('copyLink')"
+        @click.prevent="onCopy"
+      >
         <svg
           width="18"
           height="18"
@@ -77,7 +84,9 @@
           stroke-linecap="round"
           stroke-linejoin="round"
         >
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+          <path
+            d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+          />
           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
         </svg>
       </button>
@@ -141,8 +150,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount, type CSSProperties } from "vue";
+import { computed, type CSSProperties, onBeforeUnmount, ref, watch } from "vue";
+
 import { anchorTargetAttrs } from "@stll/folio-core/utils/urlSecurity";
+
 import { useTranslation } from "../../i18n";
 
 const { t } = useTranslation();
@@ -263,7 +274,8 @@ function onCopy() {
   align-items: center;
   gap: 8px;
   max-width: 400px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
 }
 .docx-hyperlink-popup--edit {

@@ -5,19 +5,34 @@
  */
 
 /** The keys of a record a comparison leaves out. */
-type SkippedKeys = (entries: readonly [string, unknown][]) => ReadonlySet<string>;
+type SkippedKeys = (
+  entries: readonly [string, unknown][],
+) => ReadonlySet<string>;
 
 const NOTHING: ReadonlySet<string> = new Set();
 
-const equal = (left: unknown, right: unknown, skipped: SkippedKeys): boolean => {
+const equal = (
+  left: unknown,
+  right: unknown,
+  skipped: SkippedKeys,
+): boolean => {
   if (Object.is(left, right)) {
     return true;
   }
-  if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) {
+  if (
+    typeof left !== "object" ||
+    typeof right !== "object" ||
+    left === null ||
+    right === null
+  ) {
     return false;
   }
   if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    if (
+      !Array.isArray(left) ||
+      !Array.isArray(right) ||
+      left.length !== right.length
+    ) {
       return false;
     }
     return left.every((item, index) => equal(item, right[index], skipped));
@@ -33,7 +48,8 @@ const equal = (left: unknown, right: unknown, skipped: SkippedKeys): boolean => 
     return false;
   }
   return leftEntries.every(
-    ([key, value]) => rightEntries.has(key) && equal(value, rightEntries.get(key), skipped),
+    ([key, value]) =>
+      rightEntries.has(key) && equal(value, rightEntries.get(key), skipped),
   );
 };
 

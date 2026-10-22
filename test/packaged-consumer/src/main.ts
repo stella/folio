@@ -1,3 +1,5 @@
+import { projectCompressedDocx } from "@stll/docx-core/projection";
+import { canPrefetchMeasurement } from "@stll/folio-core/layout-engine/measure/measureWorker";
 // Import the surfaces a real consumer wires up, from the PACKED packages. The
 // editor pulls the layout engine, which pulls the off-main-thread font-metrics
 // worker (`measureWorker` -> `new Worker(new URL(...))`). Importing the
@@ -7,8 +9,6 @@
 // tree-shakes. The messages subpath is the bundled UI catalog.
 import { DocxEditor, FolioUIProvider } from "@stll/folio-react";
 import { getFolioMessages } from "@stll/folio-react/messages";
-import { canPrefetchMeasurement } from "@stll/folio-core/layout-engine/measure/measureWorker";
-import { projectCompressedDocx } from "@stll/docx-core/projection";
 
 // Reference every import so nothing is eliminated before the bundler's worker
 // transform runs. Exported (not executed): the build is what is under test.

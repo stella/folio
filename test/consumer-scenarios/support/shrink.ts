@@ -7,7 +7,12 @@
  * Imports nothing from folio.
  */
 
-import { BATCH_ACTIONS, type FlowFile, type FlowStep, rebindStepOperations } from "./flow-file.ts";
+import {
+  BATCH_ACTIONS,
+  type FlowFile,
+  type FlowStep,
+  rebindStepOperations,
+} from "./flow-file.ts";
 
 /** How much replaying a shrink may spend. */
 export type ShrinkBudget = { maxAttempts: number; deadline: number };
@@ -35,7 +40,10 @@ export const shrinkSequence = async <T>(
   while (!spent(tracker)) {
     let removed = false;
     for (let start = 0; start < current.length && !spent(tracker);) {
-      const candidate = [...current.slice(0, start), ...current.slice(start + chunk)];
+      const candidate = [
+        ...current.slice(0, start),
+        ...current.slice(start + chunk),
+      ];
       if (candidate.length < min) {
         start += chunk;
         continue;
@@ -55,7 +63,10 @@ export const shrinkSequence = async <T>(
   return current;
 };
 
-const withSteps = (flow: FlowFile, steps: FlowStep[]): FlowFile => ({ ...flow, steps });
+const withSteps = (flow: FlowFile, steps: FlowStep[]): FlowFile => ({
+  ...flow,
+  steps,
+});
 
 /** `flow` with step `index`'s pinned operations cut to the fewest that still fail. */
 const shrinkOperations = async (
@@ -65,7 +76,8 @@ const shrinkOperations = async (
   tracker: Tracker,
 ): Promise<FlowFile> => {
   const step = flow.steps[index] as FlowStep;
-  if (!BATCH_ACTIONS.has(step.action) || (step.operations?.length ?? 0) < 2) return flow;
+  if (!BATCH_ACTIONS.has(step.action) || (step.operations?.length ?? 0) < 2)
+    return flow;
   const withOperations = (operations: FlowStep["operations"]): FlowFile => {
     const steps = [...flow.steps];
     steps[index] = rebindStepOperations(step, operations);
@@ -100,7 +112,11 @@ export const shrinkFlow = async (
   const shrinkSteps = async (current: FlowFile): Promise<FlowFile> =>
     withSteps(
       current,
-      await shrinkSequence(current.steps, (steps) => holds(withSteps(current, steps)), tracker),
+      await shrinkSequence(
+        current.steps,
+        (steps) => holds(withSteps(current, steps)),
+        tracker,
+      ),
     );
 
   let current = await shrinkSteps(flow);
@@ -109,7 +125,11 @@ export const shrinkFlow = async (
     tracker.attempts += 1;
     if (await holds(pinned)) {
       current = pinned;
-      for (let index = 0; index < current.steps.length && !spent(tracker); index += 1) {
+      for (
+        let index = 0;
+        index < current.steps.length && !spent(tracker);
+        index += 1
+      ) {
         current = await shrinkOperations(current, index, holds, tracker);
       }
       current = await shrinkSteps(current);

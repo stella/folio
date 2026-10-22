@@ -1,4 +1,8 @@
-import { computePageNumber, formatDate, parseFieldInstruction } from "../docx/fieldParser";
+import {
+  computePageNumber,
+  formatDate,
+  parseFieldInstruction,
+} from "../docx/fieldParser";
 import type { ParsedFieldInstruction } from "../docx/fieldParser";
 import type { FieldContext } from "./fieldContext";
 
@@ -20,7 +24,10 @@ function hasSeqHiddenSwitch(parsed: ParsedFieldInstruction): boolean {
   return hasAnySwitch(parsed, ["h"]);
 }
 
-function hasAnySwitch(parsed: ParsedFieldInstruction, names: readonly string[]): boolean {
+function hasAnySwitch(
+  parsed: ParsedFieldInstruction,
+  names: readonly string[],
+): boolean {
   return names.some((name) => hasSwitch(parsed, name));
 }
 
@@ -72,12 +79,16 @@ export function evaluateField(
 
     case "TIME": {
       const format = dateFormatSwitch(parsed);
-      return format ? formatDate(ctx.now, format) : ctx.now.toLocaleTimeString();
+      return format
+        ? formatDate(ctx.now, format)
+        : ctx.now.toLocaleTimeString();
     }
 
     case "DATE": {
       const format = dateFormatSwitch(parsed);
-      return format ? formatDate(ctx.now, format) : ctx.now.toLocaleDateString();
+      return format
+        ? formatDate(ctx.now, format)
+        : ctx.now.toLocaleDateString();
     }
 
     case "CREATEDATE":
@@ -89,7 +100,9 @@ export function evaluateField(
       if (hasPageRefPositionSwitch(parsed)) {
         return fallback;
       }
-      const page = parsed.argument ? ctx.bookmarkPages.get(parsed.argument) : undefined;
+      const page = parsed.argument
+        ? ctx.bookmarkPages.get(parsed.argument)
+        : undefined;
       return page === undefined ? fallback : computePageNumber(page, parsed);
     }
 
@@ -97,7 +110,9 @@ export function evaluateField(
       if (hasRefNumberingSwitch(parsed)) {
         return fallback;
       }
-      const text = parsed.argument ? ctx.bookmarkText.get(parsed.argument) : undefined;
+      const text = parsed.argument
+        ? ctx.bookmarkText.get(parsed.argument)
+        : undefined;
       return text ?? fallback;
     }
 
@@ -106,7 +121,9 @@ export function evaluateField(
         return fallback;
       }
       const value =
-        options.instanceId === undefined ? undefined : ctx.seqValues.get(options.instanceId);
+        options.instanceId === undefined
+          ? undefined
+          : ctx.seqValues.get(options.instanceId);
       return value === undefined ? fallback : computePageNumber(value, parsed);
     }
 

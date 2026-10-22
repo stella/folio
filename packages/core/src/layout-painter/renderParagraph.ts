@@ -10,6 +10,12 @@ import { parseXmlDocument } from "../docx/xmlParser";
 import { evaluateFieldInstruction } from "../fields/evaluateField";
 import type { FieldContext } from "../fields/fieldContext";
 import {
+  applyComplexScriptFormatting,
+  hasComplexScriptFormatting,
+  resolveComplexScriptFormatting,
+} from "../layout-engine/measure/complexScriptFormatting";
+import { getHyperlinkInstanceIndex } from "../layout-engine/measure/hyperlinkInstance";
+import {
   getListMarkerInlineWidth,
   getListMarkerVisualOffset,
   resolveListMarkerFont,
@@ -19,76 +25,79 @@ import {
   DEFAULT_FONT_SIZE,
   docxScriptFontSize,
 } from "../layout-engine/measure/measureHelpers";
-import { getHyperlinkInstanceIndex } from "../layout-engine/measure/hyperlinkInstance";
-import { SMALL_CAPS_SCALE, smallCapsSegments } from "../layout-engine/measure/smallCapsCasing";
 import {
-  FONT_KERNING_MODE,
+  SMALL_CAPS_SCALE,
+  smallCapsSegments,
+} from "../layout-engine/measure/smallCapsCasing";
+import { calculateTabWidth } from "../layout-engine/measure/tabCalculator";
+import type {
+  TabContext,
+  TabStop as TabCalcStop,
+} from "../layout-engine/measure/tabCalculator";
+import {
   countCompressibleSpaces,
+  FONT_KERNING_MODE,
   getFontKerningMode,
   getRunFontKerningMode,
   toPaintedText,
 } from "../layout-engine/measure/textMeasurementPolicy";
 import type {
-  ParagraphBlock,
-  ParagraphMeasure,
-  ParagraphFragment,
-  ParagraphBorders,
   BorderStyle,
-  MeasuredLine,
-  Run,
-  TextRun,
-  TabRun,
+  FieldRun,
+  HyperlinkInfo,
   ImageRun,
   LineBreakRun,
-  FieldRun,
   MathRun,
-  TabStop,
+  MeasuredLine,
   ParagraphAttrs,
-  HyperlinkInfo,
+  ParagraphBlock,
+  ParagraphBorders,
+  ParagraphFragment,
+  ParagraphMeasure,
+  Run,
+  TabRun,
+  TabStop,
+  TextRun,
 } from "../layout-engine/types";
 import { writeCommentAnchorIds } from "../render-dom/commentAnchorAttributes";
-import { calculateTabWidth } from "../layout-engine/measure/tabCalculator";
-import type { TabContext, TabStop as TabCalcStop } from "../layout-engine/measure/tabCalculator";
-import { getAuthorColorIdx, AUTHOR_COLORS } from "../utils/authorColors";
-import {
-  resolvePhysicalParagraphInlineLayout,
-  type PhysicalParagraphInlineLayout,
-} from "../utils/paragraphInlineLayout";
-import {
-  applyComplexScriptFormatting,
-  hasComplexScriptFormatting,
-  resolveComplexScriptFormatting,
-} from "../layout-engine/measure/complexScriptFormatting";
-import { planCursiveJoiners, withCursiveJoiners } from "./cursiveJoiners";
+import { AUTHOR_COLORS, getAuthorColorIdx } from "../utils/authorColors";
 import { resolveFontFamily } from "../utils/fontResolver";
-import { underlineDecorationCss } from "../utils/formatToStyle";
 import { DOCX_BOLD_FONT_WEIGHT } from "../utils/fontWeights";
+import { underlineDecorationCss } from "../utils/formatToStyle";
 import { getHorizontalScaleFactor } from "../utils/horizontalScale";
-import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
-import { trailingSpaceStart } from "../utils/trailingText";
-import { anchorTargetAttrs, sanitizeExternalUrl } from "../utils/urlSecurity";
+import {
+  type PhysicalParagraphInlineLayout,
+  resolvePhysicalParagraphInlineLayout,
+} from "../utils/paragraphInlineLayout";
 import {
   inlineImageBoundingBox,
   parseRotationDegrees,
   rotatedBoundingBox,
 } from "../utils/rotationBoundingBox";
+import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 import {
   eastAsiaHintApplies,
   hasComplexScript,
   hasEastAsiaSlotText,
   SCRIPT_CLASS,
-  segmentByScript,
   type ScriptClass,
+  segmentByScript,
 } from "../utils/scriptSegments";
-import { borderStrokeToCss, resolveParagraphBorderHorizontalOutsets } from "./borderStroke";
+import { trailingSpaceStart } from "../utils/trailingText";
+import { anchorTargetAttrs, sanitizeExternalUrl } from "../utils/urlSecurity";
+import {
+  borderStrokeToCss,
+  resolveParagraphBorderHorizontalOutsets,
+} from "./borderStroke";
+import { planCursiveJoiners, withCursiveJoiners } from "./cursiveJoiners";
 import {
   getAutomaticTextColorForBackground,
   setAuthoredBackgroundColor,
   setAuthoredTextColor,
 } from "./documentColors";
 import {
-  applyImageColorAttrs,
   applyImageBorder,
+  applyImageColorAttrs,
   applyImageVisualAttrs,
   hasImageCrop,
   hasImageVisualAttrs,
@@ -166,7 +175,9 @@ function hyperlinksMatch(left: HyperlinkInfo, right: HyperlinkInfo): boolean {
   );
 }
 
-function collectLeftToRightDisplayedUrlHyperlinks(runs: Run[]): ReadonlySet<HyperlinkInfo> {
+function collectLeftToRightDisplayedUrlHyperlinks(
+  runs: Run[],
+): ReadonlySet<HyperlinkInfo> {
   const result = new Set<HyperlinkInfo>();
   let index = 0;
 
@@ -249,7 +260,8 @@ const DEFAULT_BLACK_TEXT_COLOR_VALUES = new Set(["000000", "000"]);
 // `--suggestion-color` / `--suggestion-bg` CSS custom properties (editor.css);
 // the inline fallbacks keep the painted canvas legible without the stylesheet.
 const SUGGESTION_COLOR_CSS = "var(--suggestion-color, #6d3bd6)";
-const SUGGESTION_TINT_CSS = "var(--suggestion-bg, color-mix(in oklch, #6d3bd6 12%, transparent))";
+const SUGGESTION_TINT_CSS =
+  "var(--suggestion-bg, color-mix(in oklch, #6d3bd6 12%, transparent))";
 // The tint is layered as a translucent background-image so authored
 // highlight/shading (w:highlight / w:shd) and the comment highlight — both
 // painted via background-color earlier in applyRunStyles — stay visible
@@ -277,13 +289,17 @@ function shouldRenderTextColor(
   }
 
   if (highlight) {
-    return textColorSource !== "paragraphDefault" || !isDefaultBlackTextColor(color);
+    return (
+      textColorSource !== "paragraphDefault" || !isDefaultBlackTextColor(color)
+    );
   }
 
   return !isDefaultBlackTextColor(color);
 }
 
-export function getRenderableTextColor(run: TextRun | TabRun): string | undefined {
+export function getRenderableTextColor(
+  run: TextRun | TabRun,
+): string | undefined {
   const textColor = run.color;
   if (!textColor) {
     return undefined;
@@ -300,7 +316,9 @@ export function getRenderableTextColor(run: TextRun | TabRun): string | undefine
  * The colour a list marker paints in, or undefined for the canvas text colour.
  * Black and `auto` fall back to the canvas colour, as they do for runs.
  */
-export function getRenderableListMarkerColor(color: string | undefined): string | undefined {
+export function getRenderableListMarkerColor(
+  color: string | undefined,
+): string | undefined {
   if (!color || isAutomaticTextColor(color) || isDefaultBlackTextColor(color)) {
     return undefined;
   }
@@ -309,7 +327,11 @@ export function getRenderableListMarkerColor(color: string | undefined): string 
 
 function getHyperlinkTextColor(run: TextRun, inheritedColor: string): string {
   const textColor = run.color?.trim();
-  if (textColor && !isAutomaticTextColor(textColor) && run.textColorSource === "direct") {
+  if (
+    textColor &&
+    !isAutomaticTextColor(textColor) &&
+    run.textColorSource === "direct"
+  ) {
     return textColor;
   }
 
@@ -349,7 +371,10 @@ function applyHorizontalScaleTransform(
 export const UNICODE_BIDI_BY_WRAPPER_CONTROL = {
   override: "bidi-override",
   embedding: "embed",
-} as const satisfies Record<NonNullable<TextRun["bidiWrapper"]>["control"], string>;
+} as const satisfies Record<
+  NonNullable<TextRun["bidiWrapper"]>["control"],
+  string
+>;
 
 /**
  * Apply text run styles to an element
@@ -410,10 +435,12 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   applyHorizontalScaleTransform(element, run.horizontalScale);
   element.style.fontKerning = getRunFontKerningMode(run, DEFAULT_FONT_SIZE);
   if (run.emboss) {
-    element.style.textShadow = "1px 1px 1px rgba(255,255,255,0.5), -1px -1px 1px rgba(0,0,0,0.3)";
+    element.style.textShadow =
+      "1px 1px 1px rgba(255,255,255,0.5), -1px -1px 1px rgba(0,0,0,0.3)";
   }
   if (run.imprint) {
-    element.style.textShadow = "-1px -1px 1px rgba(255,255,255,0.5), 1px 1px 1px rgba(0,0,0,0.3)";
+    element.style.textShadow =
+      "-1px -1px 1px rgba(255,255,255,0.5), 1px 1px 1px rgba(0,0,0,0.3)";
   }
   if (run.textShadow && !run.emboss && !run.imprint) {
     element.style.textShadow = "1px 1px 2px rgba(0,0,0,0.3)";
@@ -441,17 +468,23 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   // on. The painter flattens the wrapper onto the run's own span, so the
   // wrapper's direction is written only when the run states none of its own.
   if (run.bidiWrapper) {
-    element.style.unicodeBidi = UNICODE_BIDI_BY_WRAPPER_CONTROL[run.bidiWrapper.control];
+    element.style.unicodeBidi =
+      UNICODE_BIDI_BY_WRAPPER_CONTROL[run.bidiWrapper.control];
     if (run.bidiWrapper.direction !== undefined && run.rtl === undefined) {
       element.dir =
-        run.bidiWrapper.direction === "rtl" ? RIGHT_TO_LEFT_DIRECTION : LEFT_TO_RIGHT_DIRECTION;
+        run.bidiWrapper.direction === "rtl"
+          ? RIGHT_TO_LEFT_DIRECTION
+          : LEFT_TO_RIGHT_DIRECTION;
     }
   }
 
   // Text effect animation (w:effect). Host CSS opts in to the actual
   // animation via the docx-text-effect-<name> class plus data-effect.
   if (run.textEffect) {
-    element.classList.add("docx-text-effect", `docx-text-effect-${run.textEffect}`);
+    element.classList.add(
+      "docx-text-effect",
+      `docx-text-effect-${run.textEffect}`,
+    );
     element.dataset["effect"] = run.textEffect;
   }
 
@@ -462,11 +495,13 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     } else if (run.emphasisMark === "circle") {
       variant = "filled circle";
     }
-    const position = run.emphasisMark === "underDot" ? "under right" : "over right";
+    const position =
+      run.emphasisMark === "underDot" ? "under right" : "over right";
     element.style.textEmphasis = variant;
     element.style.textEmphasisPosition = position;
-    (element.style as CSSStyleDeclaration & { webkitTextEmphasis?: string }).webkitTextEmphasis =
-      variant;
+    (
+      element.style as CSSStyleDeclaration & { webkitTextEmphasis?: string }
+    ).webkitTextEmphasis = variant;
     (
       element.style as CSSStyleDeclaration & {
         webkitTextEmphasisPosition?: string;
@@ -494,7 +529,8 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   if (runBackground) {
     setAuthoredBackgroundColor(element.style, runBackground);
     const hasTrackedChangeColor = run.isInsertion || run.isDeletion;
-    const hasCommentHighlight = run.commentIds !== undefined && run.commentIds.length > 0;
+    const hasCommentHighlight =
+      run.commentIds !== undefined && run.commentIds.length > 0;
     const automaticTextColor =
       hasExplicitTextColor || hasTrackedChangeColor || hasCommentHighlight
         ? undefined
@@ -513,13 +549,16 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     // `text-decoration-style: dottedHeavy` is dropped by the browser and the
     // run paints a plain line. The one table translates it, and the editor's
     // own `toDOM` reads the same table for the same member.
-    const authored = typeof run.underline === "object" ? run.underline.style : undefined;
-    const underline = authored === undefined ? undefined : underlineDecorationCss(authored);
+    const authored =
+      typeof run.underline === "object" ? run.underline.style : undefined;
+    const underline =
+      authored === undefined ? undefined : underlineDecorationCss(authored);
     // `w:u w:val="none"` cancels an underline inherited from the style chain
     // rather than drawing one, so it carries no `text-decoration-style` and
     // paints no line. The display-list painter reads the same member the same
     // way; this is the second reader agreeing, not a fallback.
-    const paintsLine = underline === undefined || underline.decorationStyle !== undefined;
+    const paintsLine =
+      underline === undefined || underline.decorationStyle !== undefined;
     if (paintsLine && !isNoteReferenceRun(run)) {
       decorations.push("underline");
     }
@@ -694,7 +733,11 @@ function reserveScaledAdvance({
 /**
  * Apply PM position data attributes
  */
-function applyPmPositions(element: HTMLElement, pmStart?: number, pmEnd?: number): void {
+function applyPmPositions(
+  element: HTMLElement,
+  pmStart?: number,
+  pmEnd?: number,
+): void {
   if (pmStart !== undefined) {
     element.dataset["pmStart"] = String(pmStart);
   }
@@ -743,7 +786,8 @@ function fillPaintedText({
 
   if (!HAS_NON_COMPRESSIBLE_WHITESPACE_PATTERN.test(text)) {
     host.textContent = text;
-    host.style.wordSpacing = countCompressibleSpaces(text) > 0 ? contractedWordSpacing : "0";
+    host.style.wordSpacing =
+      countCompressibleSpaces(text) > 0 ? contractedWordSpacing : "0";
     return;
   }
 
@@ -770,7 +814,8 @@ function appendPaintedText({
   contractedWordSpacing,
   smallCapsFontSizePx,
 }: AppendPaintedTextOptions): void {
-  const wordSpacing = contractedWordSpacing === undefined ? {} : { contractedWordSpacing };
+  const wordSpacing =
+    contractedWordSpacing === undefined ? {} : { contractedWordSpacing };
   if (smallCapsFontSizePx === undefined) {
     fillPaintedText({ host, text, doc, ...wordSpacing });
     return;
@@ -793,12 +838,21 @@ function appendPaintedText({
     if (segment.small) {
       segmentEl.style.fontSize = `${smallCapsFontSizePx}px`;
     }
-    fillPaintedText({ host: segmentEl, text: segment.text, doc, ...wordSpacing });
+    fillPaintedText({
+      host: segmentEl,
+      text: segment.text,
+      doc,
+      ...wordSpacing,
+    });
     host.append(segmentEl);
   }
 }
 
-function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptions): HTMLElement {
+function renderTextRun(
+  run: TextRun,
+  doc: Document,
+  options?: RenderTextRunOptions,
+): HTMLElement {
   const span = doc.createElement("span");
   span.className = `${PARAGRAPH_CLASS_NAMES.run} ${PARAGRAPH_CLASS_NAMES.text}`;
 
@@ -832,23 +886,31 @@ function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptio
       : undefined;
   const visualSpaceContractionPx = options?.visualSpaceContractionPx;
   const effectiveHorizontalScaleFactor =
-    getHorizontalScaleFactor(run.horizontalScale) * (options?.ancestorHorizontalScaleFactor ?? 1);
+    getHorizontalScaleFactor(run.horizontalScale) *
+    (options?.ancestorHorizontalScaleFactor ?? 1);
   // CSS transforms scale word-spacing with the glyphs. Convert the visual
   // per-space plan back into the pre-transform length so every counted space
   // contributes exactly the contraction admitted by measurement.
   const contractedWordSpacing =
-    visualSpaceContractionPx === undefined || effectiveHorizontalScaleFactor === 0
+    visualSpaceContractionPx === undefined ||
+    effectiveHorizontalScaleFactor === 0
       ? undefined
       : `${-visualSpaceContractionPx / effectiveHorizontalScaleFactor}px`;
 
   const isBookmarkTarget = run.hyperlink?.href.startsWith("#") === true;
-  const hyperlinkHref = resolveHyperlinkHref(run.hyperlink?.href, isBookmarkTarget);
+  const hyperlinkHref = resolveHyperlinkHref(
+    run.hyperlink?.href,
+    isBookmarkTarget,
+  );
 
   // Handle hyperlinks
   if (run.hyperlink && hyperlinkHref !== undefined) {
     const anchor = doc.createElement("a");
     anchor.href = hyperlinkHref;
-    if (options?.hyperlinkDirection || DISPLAYED_URL_PATTERN.test(paintedText.trim())) {
+    if (
+      options?.hyperlinkDirection ||
+      DISPLAYED_URL_PATTERN.test(paintedText.trim())
+    ) {
       anchor.dir = LEFT_TO_RIGHT_DIRECTION;
     }
     // External links leave this browsing context, through the one owner of
@@ -935,7 +997,10 @@ function applyContinuousUnderline(
   underline: NonNullable<TextRun["underline"]>,
 ): void {
   removeUnderlineTextDecoration(element);
-  const color = typeof underline === "object" && underline.color ? underline.color : "currentColor";
+  const color =
+    typeof underline === "object" && underline.color
+      ? underline.color
+      : "currentColor";
   // Paint inside the inline box. A bottom border grows the box by one pixel;
   // fixed line boxes then let the following line paint over that border.
   element.style.boxShadow = `inset 0 -1px 0 ${color}`;
@@ -968,7 +1033,12 @@ const LEADER_FILL_COUNT = 1000;
  * to the surrounding text and lets the right-tab flex anchor compute a stable
  * height for the line.
  */
-function renderTabRun(run: TabRun, doc: Document, width: number, leader?: string): HTMLElement {
+function renderTabRun(
+  run: TabRun,
+  doc: Document,
+  width: number,
+  leader?: string,
+): HTMLElement {
   const span = doc.createElement("span");
   span.className = `${PARAGRAPH_CLASS_NAMES.run} ${PARAGRAPH_CLASS_NAMES.tab}`;
 
@@ -1281,7 +1351,11 @@ function renderImageRun(run: ImageRun, doc: Document): HTMLElement {
   // Floating images should be handled at paragraph level, not here
   // If they reach here (e.g., inside table cells), render as block
   let el: HTMLElement;
-  if (isFloatingImageRun(run) || run.displayMode === "block" || run.wrapType === "topAndBottom") {
+  if (
+    isFloatingImageRun(run) ||
+    run.displayMode === "block" ||
+    run.wrapType === "topAndBottom"
+  ) {
     el = renderBlockImage(run, doc);
   } else {
     el = renderInlineImageRun(run, doc);
@@ -1290,7 +1364,9 @@ function renderImageRun(run: ImageRun, doc: Document): HTMLElement {
   return el;
 }
 
-function isStyleableHTMLElement(value: Element | undefined): value is HTMLElement {
+function isStyleableHTMLElement(
+  value: Element | undefined,
+): value is HTMLElement {
   return typeof value === "object" && "style" in value;
 }
 
@@ -1364,7 +1440,10 @@ const EMPTY_SEQ_VALUES: ReadonlyMap<number, number> = new Map();
  * drives evaluation; `fieldType` is the fallback when a node carries none.
  * Returns the cached fallback when no render context is available.
  */
-function resolveFieldText(run: FieldRun, context: RenderContext | undefined): string {
+function resolveFieldText(
+  run: FieldRun,
+  context: RenderContext | undefined,
+): string {
   const fallback = run.fallback ?? "";
   if (run.fieldType === "OTHER" && run.pmStart === undefined) {
     return fallback;
@@ -1382,13 +1461,19 @@ function resolveFieldText(run: FieldRun, context: RenderContext | undefined): st
     bookmarkText: context.bookmarkText ?? EMPTY_BOOKMARK_TEXT,
     seqValues: context.seqValues ?? EMPTY_SEQ_VALUES,
     now: new Date(),
-    ...(context.sectionPages === undefined ? {} : { sectionPages: context.sectionPages }),
+    ...(context.sectionPages === undefined
+      ? {}
+      : { sectionPages: context.sectionPages }),
   };
-  return evaluateFieldInstruction(run.instruction || run.fieldType, fieldContext, {
-    fallback,
-    ...(run.pmStart === undefined ? {} : { instanceId: run.pmStart }),
-    ...(run.fldLock ? { locked: true } : {}),
-  });
+  return evaluateFieldInstruction(
+    run.instruction || run.fieldType,
+    fieldContext,
+    {
+      fallback,
+      ...(run.pmStart === undefined ? {} : { instanceId: run.pmStart }),
+      ...(run.fldLock ? { locked: true } : {}),
+    },
+  );
 }
 
 type RenderFieldRunOptions = {
@@ -1414,10 +1499,19 @@ function renderFieldRun(
     kind: "text",
     text,
   };
-  if (resolvedRun.forceComplexScript && hasComplexScriptFormatting(resolvedRun)) {
-    return renderTextRun(applyComplexScriptFormatting(resolvedRun, resolvedRun), doc, {
-      ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
-    });
+  if (
+    resolvedRun.forceComplexScript &&
+    hasComplexScriptFormatting(resolvedRun)
+  ) {
+    return renderTextRun(
+      applyComplexScriptFormatting(resolvedRun, resolvedRun),
+      doc,
+      {
+        ...(visualSpaceContractionPx !== undefined
+          ? { visualSpaceContractionPx }
+          : {}),
+      },
+    );
   }
 
   // A CJK field result is generated text inside one atomic pm range, so the
@@ -1433,7 +1527,9 @@ function renderFieldRun(
     // horizontalScale lives on the wrapper (inline-block so the reserved width
     // the render loop sets via reserveScaledAdvance applies, scaleX so the
     // segments scale uniformly); the segments drop it to avoid double-scaling.
-    const horizontalScaleFactor = getHorizontalScaleFactor(resolvedRun.horizontalScale);
+    const horizontalScaleFactor = getHorizontalScaleFactor(
+      resolvedRun.horizontalScale,
+    );
     applyHorizontalScaleTransform(wrapper, resolvedRun.horizontalScale);
     // The pm range lives on the wrapper; segments carry none (the field is one
     // atomic unit), so drop pmStart/pmEnd (and the wrapper-applied scale) before
@@ -1444,7 +1540,10 @@ function renderFieldRun(
       horizontalScale: _horizontalScale,
       ...segmentBase
     } = resolvedRun;
-    for (const segment of segmentByScript(text, eastAsiaHintApplies(resolvedRun))) {
+    for (const segment of segmentByScript(
+      text,
+      eastAsiaHintApplies(resolvedRun),
+    )) {
       const segmentRun = formatTextRunForScript(
         {
           ...segmentBase,
@@ -1454,7 +1553,9 @@ function renderFieldRun(
       );
       wrapper.append(
         renderTextRun(segmentRun, doc, {
-          ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
+          ...(visualSpaceContractionPx !== undefined
+            ? { visualSpaceContractionPx }
+            : {}),
           ancestorHorizontalScaleFactor: horizontalScaleFactor,
         }),
       );
@@ -1463,7 +1564,9 @@ function renderFieldRun(
   }
 
   return renderTextRun(resolvedRun, doc, {
-    ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
+    ...(visualSpaceContractionPx !== undefined
+      ? { visualSpaceContractionPx }
+      : {}),
   });
 }
 
@@ -1508,7 +1611,8 @@ function renderMathRun(run: MathRun, doc: Document): HTMLElement {
   }
 
   // Cambria Math fallback chain for browsers that don't ship a math font.
-  host.style.fontFamily = '"Cambria Math", "Latin Modern Math", "STIX Two Math", serif';
+  host.style.fontFamily =
+    '"Cambria Math", "Latin Modern Math", "STIX Two Math", serif';
   applyHorizontalScaleTransform(host, run.horizontalScale);
 
   try {
@@ -1544,7 +1648,8 @@ function renderMathFallback(
     span.title = "[equation render failed]";
   }
   span.style.fontStyle = "italic";
-  span.style.fontFamily = '"Cambria Math", "Latin Modern Math", "STIX Two Math", serif';
+  span.style.fontFamily =
+    '"Cambria Math", "Latin Modern Math", "STIX Two Math", serif';
   applyHorizontalScaleTransform(span, run.horizontalScale);
   span.textContent = fallbackText;
   applyPmPositions(span, run.pmStart, run.pmEnd);
@@ -1554,7 +1659,11 @@ function renderMathFallback(
 /**
  * Render a single run (for non-tab runs)
  */
-function renderRun(run: Run, doc: Document, context?: RenderContext): HTMLElement {
+function renderRun(
+  run: Run,
+  doc: Document,
+  context?: RenderContext,
+): HTMLElement {
   if (isTextRun(run)) {
     return renderTextRun(run, doc);
   }
@@ -1597,7 +1706,10 @@ function renderRun(run: Run, doc: Document, context?: RenderContext): HTMLElemen
  * @param line - The line measurement
  * @returns Array of runs for this line
  */
-export function sliceRunsForLine(block: ParagraphBlock, line: MeasuredLine): Run[] {
+export function sliceRunsForLine(
+  block: ParagraphBlock,
+  line: MeasuredLine,
+): Run[] {
   const result: Run[] = [];
   const runs = block.runs;
 
@@ -1652,7 +1764,10 @@ const formatTextRunForScript = (run: TextRun, script: ScriptClass): TextRun => {
   if (run.forceComplexScript || script === SCRIPT_CLASS.complex) {
     return applyComplexScriptFormatting(run, run);
   }
-  if (script === SCRIPT_CLASS.eastAsia && run.eastAsiaFontFamily !== undefined) {
+  if (
+    script === SCRIPT_CLASS.eastAsia &&
+    run.eastAsiaFontFamily !== undefined
+  ) {
     const result = { ...run, fontFamily: run.eastAsiaFontFamily };
     delete result.alternateFontFamily;
     if (run.eastAsiaAlternateFontFamily !== undefined) {
@@ -1693,7 +1808,11 @@ export function splitTextRunsByEastAsia(runs: Run[]): Run[] {
   const result: Run[] = [];
 
   for (const run of runs) {
-    if (isTextRun(run) && run.forceComplexScript && hasComplexScriptFormatting(run)) {
+    if (
+      isTextRun(run) &&
+      run.forceComplexScript &&
+      hasComplexScriptFormatting(run)
+    ) {
       result.push(applyComplexScriptFormatting(run, run));
       continue;
     }
@@ -1755,7 +1874,10 @@ const splitTextRunAt = (run: TextRun, index: number): [TextRun, TextRun] => {
     return [leading, trailing];
   }
 
-  const splitPosition = Math.min(run.pmStart + index, run.pmEnd ?? Number.POSITIVE_INFINITY);
+  const splitPosition = Math.min(
+    run.pmStart + index,
+    run.pmEnd ?? Number.POSITIVE_INFINITY,
+  );
   leading.pmEnd = splitPosition;
   trailing.pmStart = splitPosition;
   return [leading, trailing];
@@ -1831,7 +1953,10 @@ export const splitCollapsibleLineEdgeSpaces = (
   return { runs, collapsedLeadingRuns, collapsedTrailingRuns };
 };
 
-export const startsAfterSoftWrap = (block: ParagraphBlock, line: MeasuredLine): boolean => {
+export const startsAfterSoftWrap = (
+  block: ParagraphBlock,
+  line: MeasuredLine,
+): boolean => {
   if (line.fromChar > 0) {
     return true;
   }
@@ -1894,7 +2019,10 @@ type RenderLineOptions = {
  */
 const RIGHT_EDGE_EPSILON_PX = 0.5;
 
-function countShrinkableSpaces(runs: Run[], context: RenderContext | undefined): number {
+function countShrinkableSpaces(
+  runs: Run[],
+  context: RenderContext | undefined,
+): number {
   let count = 0;
   for (const run of runs) {
     if (isTextRun(run)) {
@@ -1923,7 +2051,10 @@ function runVisualSpaceContraction({
   horizontalScale,
   visualSpaceContractionPx,
 }: RunVisualSpaceContractionOptions): number {
-  if (visualSpaceContractionPx === undefined || getHorizontalScaleFactor(horizontalScale) === 0) {
+  if (
+    visualSpaceContractionPx === undefined ||
+    getHorizontalScaleFactor(horizontalScale) === 0
+  ) {
     return 0;
   }
   return countCompressibleSpaces(text) * visualSpaceContractionPx;
@@ -1934,15 +2065,21 @@ function runVisualSpaceContraction({
  */
 function runMeasureStyle(run: TextRun | FieldRun | MathRun): TextMeasureStyle {
   return {
-    ...(run.embeddedFontFamilyMap ? { embeddedFontFamilyMap: run.embeddedFontFamilyMap } : {}),
+    ...(run.embeddedFontFamilyMap
+      ? { embeddedFontFamilyMap: run.embeddedFontFamilyMap }
+      : {}),
     ...(run.bold !== undefined ? { bold: run.bold } : {}),
     ...(run.italic !== undefined ? { italic: run.italic } : {}),
-    ...(run.letterSpacing !== undefined ? { letterSpacing: run.letterSpacing } : {}),
+    ...(run.letterSpacing !== undefined
+      ? { letterSpacing: run.letterSpacing }
+      : {}),
     ...(run.smallCaps !== undefined ? { smallCaps: run.smallCaps } : {}),
     ...(run.alternateFontFamily !== undefined
       ? { alternateFontFamily: run.alternateFontFamily }
       : {}),
-    ...(run.eastAsiaFontFamily !== undefined ? { eastAsiaFontFamily: run.eastAsiaFontFamily } : {}),
+    ...(run.eastAsiaFontFamily !== undefined
+      ? { eastAsiaFontFamily: run.eastAsiaFontFamily }
+      : {}),
     ...(run.eastAsiaAlternateFontFamily !== undefined
       ? { eastAsiaAlternateFontFamily: run.eastAsiaAlternateFontFamily }
       : {}),
@@ -1951,17 +2088,26 @@ function runMeasureStyle(run: TextRun | FieldRun | MathRun): TextMeasureStyle {
       ? { complexScriptFontFamily: run.complexScriptFontFamily }
       : {}),
     ...(run.complexScriptAlternateFontFamily !== undefined
-      ? { complexScriptAlternateFontFamily: run.complexScriptAlternateFontFamily }
+      ? {
+          complexScriptAlternateFontFamily:
+            run.complexScriptAlternateFontFamily,
+        }
       : {}),
     ...(run.complexScriptFontSize !== undefined
       ? { complexScriptFontSize: run.complexScriptFontSize }
       : {}),
-    ...(run.complexScriptBold !== undefined ? { complexScriptBold: run.complexScriptBold } : {}),
+    ...(run.complexScriptBold !== undefined
+      ? { complexScriptBold: run.complexScriptBold }
+      : {}),
     ...(run.complexScriptItalic !== undefined
       ? { complexScriptItalic: run.complexScriptItalic }
       : {}),
-    ...(run.forceComplexScript !== undefined ? { forceComplexScript: run.forceComplexScript } : {}),
-    kerning: getRunFontKerningMode(run, DEFAULT_FONT_SIZE) === FONT_KERNING_MODE.enabled,
+    ...(run.forceComplexScript !== undefined
+      ? { forceComplexScript: run.forceComplexScript }
+      : {}),
+    kerning:
+      getRunFontKerningMode(run, DEFAULT_FONT_SIZE) ===
+      FONT_KERNING_MODE.enabled,
   };
 }
 
@@ -2051,7 +2197,11 @@ function measureDecimalPrefixWidth(
 ): number {
   let width = 0;
   let consumed = 0;
-  for (let i = tabRunIndex + 1; i < runs.length && consumed < decimalIndex; i++) {
+  for (
+    let i = tabRunIndex + 1;
+    i < runs.length && consumed < decimalIndex;
+    i++
+  ) {
     const run = runs[i]!; // SAFETY: i < runs.length
     if (isTabRun(run) || isLineBreakRun(run)) {
       break;
@@ -2074,7 +2224,9 @@ function measureDecimalPrefixWidth(
 
     const take = Math.min(runText.length, decimalIndex - consumed);
     if (take > 0) {
-      const horizontalScaleFactor = getHorizontalScaleFactor(run.horizontalScale);
+      const horizontalScaleFactor = getHorizontalScaleFactor(
+        run.horizontalScale,
+      );
       width +=
         measureText(
           runText.slice(0, take),
@@ -2121,7 +2273,11 @@ function convertTabStopToCalc(stop: TabStop): TabCalcStop {
  * Get the text content immediately following a tab run in the runs array
  * Used for center/end/decimal tab alignment calculations
  */
-function getTextAfterTab(runs: Run[], tabRunIndex: number, context?: RenderContext): string {
+function getTextAfterTab(
+  runs: Run[],
+  tabRunIndex: number,
+  context?: RenderContext,
+): string {
   let text = "";
   for (let i = tabRunIndex + 1; i < runs.length; i++) {
     const run = runs[i]!; // SAFETY: i < runs.length
@@ -2180,7 +2336,12 @@ function applyLetterSpacingToMeasuredWidth(
 
 function createTextMeasurer(
   doc: Document,
-): (text: string, fontSize?: number, fontFamily?: string, style?: TextMeasureStyle) => number {
+): (
+  text: string,
+  fontSize?: number,
+  fontFamily?: string,
+  style?: TextMeasureStyle,
+) => number {
   const canvas = doc.createElement("canvas");
   const ctx = canvas.getContext("2d");
 
@@ -2191,7 +2352,11 @@ function createTextMeasurer(
     style: TextMeasureStyle = {},
   ) => {
     if (!ctx) {
-      return applyLetterSpacingToMeasuredWidth(text.length * 7, text, style.letterSpacing);
+      return applyLetterSpacingToMeasuredWidth(
+        text.length * 7,
+        text,
+        style.letterSpacing,
+      );
     } // Fallback estimate
     ctx.fontKerning = getFontKerningMode(style);
     // Use font resolver for category-appropriate fallback stacks,
@@ -2243,12 +2408,16 @@ function createTextMeasurer(
 
     if (
       !style.letterSpacing &&
-      ((style.eastAsiaFontFamily && hasEastAsiaSlotText(text, style.eastAsiaHint)) ||
+      ((style.eastAsiaFontFamily &&
+        hasEastAsiaSlotText(text, style.eastAsiaHint)) ||
         (hasComplexScriptFormatting(style) && hasComplexScript(text)))
     ) {
       let segmentedWidth = 0;
       for (const segment of segmentByScript(text, style.eastAsiaHint)) {
-        if (segment.script === SCRIPT_CLASS.eastAsia && style.eastAsiaFontFamily) {
+        if (
+          segment.script === SCRIPT_CLASS.eastAsia &&
+          style.eastAsiaFontFamily
+        ) {
           ctx.font = fontString(
             style.eastAsiaFontFamily,
             fontSize,
@@ -2313,7 +2482,10 @@ export function renderLine(
     runs: runsForLine,
     collapsedLeadingRuns: collapsedLeadingSpaceRuns,
     collapsedTrailingRuns: collapsedTrailingSpaceRuns,
-  } = splitCollapsibleLineEdgeSpaces(splitRuns, startsAfterSoftWrap(block, line));
+  } = splitCollapsibleLineEdgeSpaces(
+    splitRuns,
+    startsAfterSoftWrap(block, line),
+  );
   const isCollapsedLineEdgeSpaceRun = (run: TextRun): boolean =>
     collapsedLeadingSpaceRuns.has(run) || collapsedTrailingSpaceRuns.has(run);
   const hasCollapsedLineEdgeSpaceRuns =
@@ -2347,17 +2519,26 @@ export function renderLine(
     if (lineEl.style.display === "flex") {
       return [runEl];
     }
-    return withCursiveJoiners(runEl, run, cursiveJoinerPlan, applyJoinerRunStyles, doc);
+    return withCursiveJoiners(
+      runEl,
+      run,
+      cursiveJoinerPlan,
+      applyJoinerRunStyles,
+      doc,
+    );
   };
   let visualSpaceContractionPx: number | undefined;
   const renderLineTextRun = (run: TextRun): HTMLElement => {
     const hyperlinkDirection =
-      run.hyperlink && options?.leftToRightDisplayedUrlHyperlinks?.has(run.hyperlink)
+      run.hyperlink &&
+      options?.leftToRightDisplayedUrlHyperlinks?.has(run.hyperlink)
         ? LEFT_TO_RIGHT_DIRECTION
         : undefined;
     const runEl = renderTextRun(run, doc, {
       ...(hyperlinkDirection !== undefined ? { hyperlinkDirection } : {}),
-      ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
+      ...(visualSpaceContractionPx !== undefined
+        ? { visualSpaceContractionPx }
+        : {}),
     });
     if (collapsedLeadingSpaceRuns.has(run)) {
       runEl.dataset["collapsedLeadingSpaces"] = "true";
@@ -2462,14 +2643,17 @@ export function renderLine(
         ? trailingRun.pmEnd
         : undefined;
     const contentStart =
-      trailingBreakEnd ?? (block.pmStart === undefined ? undefined : block.pmStart + 1);
+      trailingBreakEnd ??
+      (block.pmStart === undefined ? undefined : block.pmStart + 1);
     // For a trailing break, collapse the span to the after-break position. Its
     // `&nbsp;` is matched by the generic `span[data-pm-start][data-pm-end]`
     // resolver (which runs before the empty-run fallback), so a wide range would
     // let a right-half click resolve to the paragraph end instead of after the
     // break — disagreeing with vertical navigation. (eigenpal/docx-editor#752.)
     const contentEnd =
-      trailingBreakEnd !== undefined ? contentStart : (block.pmEnd ?? contentStart);
+      trailingBreakEnd !== undefined
+        ? contentStart
+        : (block.pmEnd ?? contentStart);
     applyPmPositions(emptySpan, contentStart, contentEnd);
     emptySpan.innerHTML = "&nbsp;";
     lineEl.append(emptySpan);
@@ -2482,11 +2666,15 @@ export function renderLine(
   const isJustify = alignment === "justify";
 
   if (isJustify && options) {
-    const firstLineIndentPx = options.isFirstLine ? (options.firstLineIndentPx ?? 0) : 0;
+    const firstLineIndentPx = options.isFirstLine
+      ? (options.firstLineIndentPx ?? 0)
+      : 0;
     const firstLinePositiveIndentPx = Math.max(0, firstLineIndentPx);
     const firstLineHangingPx = Math.max(0, -firstLineIndentPx);
     const hasVisibleListMarker =
-      options.isFirstLine && block.attrs?.listMarker && !block.attrs.listMarkerHidden;
+      options.isFirstLine &&
+      block.attrs?.listMarker &&
+      !block.attrs.listMarkerHidden;
     // A list marker consumes the hanging slot inline. When the marker starts
     // before the content edge, its negative margin cancels the part of that
     // slot outside the paragraph; only the portion between the content edge
@@ -2503,16 +2691,21 @@ export function renderLine(
     // distribute it as extra word spacing, shifting their right edge past
     // the paragraph margin by exactly the first-line indent.
     const justifyCapacityPx =
-      options.availableWidth - firstLinePositiveIndentPx + firstLineHangingExpansionPx;
+      options.availableWidth -
+      firstLinePositiveIndentPx +
+      firstLineHangingExpansionPx;
     const overfullPx = line.width - justifyCapacityPx;
     const shrinkableSpaces = countShrinkableSpaces(
-      runsForLine.filter((run) => !isTextRun(run) || !isCollapsedLineEdgeSpaceRun(run)),
+      runsForLine.filter(
+        (run) => !isTextRun(run) || !isCollapsedLineEdgeSpaceRun(run),
+      ),
       options.context,
     );
     // Underfull final lines remain ragged. A measured final-line paint plan
     // contracts ordinary spaces only; any separately admitted hanging glyph
     // remains outside the content edge.
-    const shouldJustify = !options.isLastLine || options.paragraphEndsWithLineBreak;
+    const shouldJustify =
+      !options.isLastLine || options.paragraphEndsWithLineBreak;
     const finalContractionPx =
       line.justificationPaint?.type === "space-contraction"
         ? line.justificationPaint.contractionPx
@@ -2525,7 +2718,9 @@ export function renderLine(
       shrinkableSpaces > 0;
 
     if (shouldJustify || shouldCompressFinalLine) {
-      const contractionPx = shouldCompressFinalLine ? finalContractionPx : overfullPx;
+      const contractionPx = shouldCompressFinalLine
+        ? finalContractionPx
+        : overfullPx;
       if (contractionPx > RIGHT_EDGE_EPSILON_PX && shrinkableSpaces > 0) {
         lineEl.style.textAlign = "left";
         lineEl.style.textAlignLast = "auto";
@@ -2534,7 +2729,11 @@ export function renderLine(
         // segments opt into this contraction only where they contain counted
         // ASCII spaces.
         lineEl.style.wordSpacing = "0";
-      } else if (hasTabRuns && shrinkableSpaces > 0 && -overfullPx > RIGHT_EDGE_EPSILON_PX) {
+      } else if (
+        hasTabRuns &&
+        shrinkableSpaces > 0 &&
+        -overfullPx > RIGHT_EDGE_EPSILON_PX
+      ) {
         // CSS justification does not expand preserved spaces reliably when a
         // line also contains an inline tab span. The layout engine has already
         // fixed the line break, so distribute the remaining width explicitly;
@@ -2561,7 +2760,9 @@ export function renderLine(
   // are rendered visually (unlike 'nowrap' which collapses them).
   lineEl.style.whiteSpace = "pre";
 
-  lineEl.style.overflow = block.attrs?.suppressEmptyParagraphHeight ? "hidden" : "visible";
+  lineEl.style.overflow = block.attrs?.suppressEmptyParagraphHeight
+    ? "hidden"
+    : "visible";
 
   // Per-line floating margins (leftOffset/rightOffset) are now applied by
   // renderParagraphFragment via MeasuredLine offsets from re-measurement.
@@ -2586,7 +2787,8 @@ export function renderLine(
     // The leftIndent serves two purposes in the tab calculator:
     // 1. For hanging indent paragraphs, it adds an implicit tab stop at the left margin
     // 2. Default tab stops are generated at regular intervals from the left margin
-    const tabLeftIndentPx = options?.tabLeftIndentPx ?? options?.leftIndentPx ?? 0;
+    const tabLeftIndentPx =
+      options?.tabLeftIndentPx ?? options?.leftIndentPx ?? 0;
     const leftIndentTwips = Math.round(tabLeftIndentPx * 15);
 
     tabContext = {
@@ -2616,7 +2818,11 @@ export function renderLine(
     // measureParagraph.ts contentX comment).
     const firstLineIndentPx = options.firstLineIndentPx ?? 0;
     const markerInlineWidth = getListMarkerInlineWidth(block);
-    currentX = tabLeftIndentPx + firstLineIndentPx + markerInlineWidth + floatingLeftOffsetPx;
+    currentX =
+      tabLeftIndentPx +
+      firstLineIndentPx +
+      markerInlineWidth +
+      floatingLeftOffsetPx;
   } else {
     // Non-first lines start at the left indent position
     currentX = tabLeftIndentPx + floatingLeftOffsetPx;
@@ -2643,7 +2849,13 @@ export function renderLine(
       // mixed CJK+Latin prefixes (eigenpal/docx-editor follow-up).
       const decimalPrefixWidth =
         decimalIndex !== -1
-          ? measureDecimalPrefixWidth(runsForLine, i, decimalIndex, measureText, options?.context)
+          ? measureDecimalPrefixWidth(
+              runsForLine,
+              i,
+              decimalIndex,
+              measureText,
+              options?.context,
+            )
           : 0;
 
       const tabResult = calculateTabWidth(currentX, tabContext, {
@@ -2670,11 +2882,13 @@ export function renderLine(
           break;
         }
       }
-      const authoredEndpoint = currentX + tabResult.width + followingWidthForCheck;
+      const authoredEndpoint =
+        currentX + tabResult.width + followingWidthForCheck;
       const activeContentRightEdge =
         options?.contentWidthPx === undefined
           ? undefined
-          : options.contentWidthPx - (options.floatingMargins?.rightMargin ?? 0);
+          : options.contentWidthPx -
+            (options.floatingMargins?.rightMargin ?? 0);
       const preservesAuthoredEndStop =
         activeContentRightEdge !== undefined &&
         tabResult.alignment === "end" &&
@@ -2758,7 +2972,9 @@ export function renderLine(
             lineEl.append(
               renderFieldRun(next, doc, {
                 context: options.context,
-                ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
+                ...(visualSpaceContractionPx !== undefined
+                  ? { visualSpaceContractionPx }
+                  : {}),
               }),
             );
           } else if (isImageRun(next)) {
@@ -2789,14 +3005,17 @@ export function renderLine(
       const landsOnLeftIndent =
         tabResult.alignment === "start" &&
         tabLeftIndentPx > 0 &&
-        Math.abs(currentX + tabWidth - tabLeftIndentPx) <= RIGHT_EDGE_EPSILON_PX;
+        Math.abs(currentX + tabWidth - tabLeftIndentPx) <=
+          RIGHT_EDGE_EPSILON_PX;
       // Mirrors the measurer: any explicit stop past the right indent is
       // honoured while its content ends inside the active content frame. The
       // measurer sizes that content across line wraps, so content that
       // continues onto the next line never qualifies.
       const followingContentEndsOnLine =
         options?.isLastLine === true ||
-        runsForLine.slice(i + 1).some((next) => isTabRun(next) || isLineBreakRun(next));
+        runsForLine
+          .slice(i + 1)
+          .some((next) => isTabRun(next) || isLineBreakRun(next));
       const preservesAuthoredStop =
         preservesAuthoredEndStop ||
         (activeContentRightEdge !== undefined &&
@@ -2815,7 +3034,10 @@ export function renderLine(
         ) &&
         currentX + tabWidth + followingWidthForCheck > lineRightEdgeX
       ) {
-        tabWidth = Math.max(1, lineRightEdgeX - currentX - followingWidthForCheck);
+        tabWidth = Math.max(
+          1,
+          lineRightEdgeX - currentX - followingWidthForCheck,
+        );
       }
 
       const tabEl = renderTabRun(run, doc, tabWidth, tabResult.leader);
@@ -2845,14 +3067,22 @@ export function renderLine(
       );
       const runContractionPx = runVisualSpaceContraction({
         text: run.text,
-        ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
-        ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
+        ...(run.horizontalScale !== undefined
+          ? { horizontalScale: run.horizontalScale }
+          : {}),
+        ...(visualSpaceContractionPx !== undefined
+          ? { visualSpaceContractionPx }
+          : {}),
       });
       currentX += reserveScaledAdvance({
         element: runEl,
         unscaledWidth: measuredWidth,
-        ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
-        ...(runContractionPx > 0 ? { visualSpaceContractionPx: runContractionPx } : {}),
+        ...(run.horizontalScale !== undefined
+          ? { horizontalScale: run.horizontalScale }
+          : {}),
+        ...(runContractionPx > 0
+          ? { visualSpaceContractionPx: runContractionPx }
+          : {}),
       });
     } else if (isImageRun(run)) {
       // Skip floating images - they're rendered separately at page level.
@@ -2884,7 +3114,9 @@ export function renderLine(
       // Render field run with context for PAGE/NUMPAGES substitution
       const runEl = renderFieldRun(run, doc, {
         context: options.context,
-        ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
+        ...(visualSpaceContractionPx !== undefined
+          ? { visualSpaceContractionPx }
+          : {}),
       });
       lineEl.append(runEl);
       if (!measureText) {
@@ -2903,14 +3135,22 @@ export function renderLine(
       );
       const runContractionPx = runVisualSpaceContraction({
         text: fieldText,
-        ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
-        ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
+        ...(run.horizontalScale !== undefined
+          ? { horizontalScale: run.horizontalScale }
+          : {}),
+        ...(visualSpaceContractionPx !== undefined
+          ? { visualSpaceContractionPx }
+          : {}),
       });
       currentX += reserveScaledAdvance({
         element: runEl,
         unscaledWidth: measuredWidth,
-        ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
-        ...(runContractionPx > 0 ? { visualSpaceContractionPx: runContractionPx } : {}),
+        ...(run.horizontalScale !== undefined
+          ? { horizontalScale: run.horizontalScale }
+          : {}),
+        ...(runContractionPx > 0
+          ? { visualSpaceContractionPx: runContractionPx }
+          : {}),
       });
     } else if (isMathRun(run)) {
       const runEl = renderMathRun(run, doc);
@@ -2927,7 +3167,9 @@ export function renderLine(
       currentX += reserveScaledAdvance({
         element: runEl,
         unscaledWidth: measuredWidth,
-        ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
+        ...(run.horizontalScale !== undefined
+          ? { horizontalScale: run.horizontalScale }
+          : {}),
       });
     } else {
       // Fallback for unknown run types
@@ -2964,7 +3206,9 @@ export function renderLine(
   // them in a separate layer (it `continue`s past them), so a break row that
   // also carries a floating image still paints as only a `<br>`. Exclude them
   // when deciding whether the row is blank, else the marker is suppressed.
-  const inFlowRuns = runsForLine.filter((run) => !(isImageRun(run) && isFloatingImageRun(run)));
+  const inFlowRuns = runsForLine.filter(
+    (run) => !(isImageRun(run) && isFloatingImageRun(run)),
+  );
   const blankBreakRun =
     inFlowRuns.length > 0 && inFlowRuns.every(isLineBreakRun)
       ? inFlowRuns.find(isLineBreakRun)
@@ -3017,7 +3261,9 @@ export const paragraphHasTrackedChanges = (block: ParagraphBlock): boolean =>
   block.reviewIndicator === "change-bar" ||
   block.attrs?.listMarkerRevision !== undefined ||
   block.runs.some(
-    (run) => run.kind !== "lineBreak" && (run.isInsertion === true || run.isDeletion === true),
+    (run) =>
+      run.kind !== "lineBreak" &&
+      (run.isInsertion === true || run.isDeletion === true),
   );
 
 /**
@@ -3182,7 +3428,11 @@ export function renderParagraphFragment(
       borderBox.style.borderRight = borderToCss(borders.right);
     }
 
-    const hasBorder = renderedTopBorder || renderedBottomBorder || borders.left || borders.right;
+    const hasBorder =
+      renderedTopBorder ||
+      renderedBottomBorder ||
+      borders.left ||
+      borders.right;
     if (hasBorder) {
       fragmentEl.style.position = "relative";
       fragmentEl.append(borderBox);
@@ -3205,7 +3455,9 @@ export function renderParagraphFragment(
   // Apply shading (background color)
   if (block.attrs?.shading) {
     setAuthoredBackgroundColor(fragmentEl.style, block.attrs.shading);
-    const automaticTextColor = getAutomaticTextColorForBackground(block.attrs.shading);
+    const automaticTextColor = getAutomaticTextColorForBackground(
+      block.attrs.shading,
+    );
     if (automaticTextColor) {
       setAuthoredTextColor(fragmentEl.style, automaticTextColor);
     }
@@ -3233,7 +3485,8 @@ export function renderParagraphFragment(
 
   // Render each line with per-line floating margin calculation
   let _cumulativeLineY = 0; // Track Y position within the fragment
-  const renderedInlineImageKeys = options.renderedInlineImageKeys ?? new Set<string>();
+  const renderedInlineImageKeys =
+    options.renderedInlineImageKeys ?? new Set<string>();
   const leftToRightDisplayedUrlHyperlinks = isRtl
     ? collectLeftToRightDisplayedUrlHyperlinks(block.runs)
     : undefined;
@@ -3266,7 +3519,9 @@ export function renderParagraphFragment(
       isLastLine,
       isFirstLine,
       paragraphEndsWithLineBreak,
-      ...(block.attrs?.tabs !== undefined ? { tabStops: block.attrs.tabs } : {}),
+      ...(block.attrs?.tabs !== undefined
+        ? { tabStops: block.attrs.tabs }
+        : {}),
       leftIndentPx: indentLeft,
       tabLeftIndentPx: indent?.left ?? 0,
       firstLineIndentPx: isFirstLine ? firstLineIndentPx : 0,
@@ -3302,13 +3557,19 @@ export function renderParagraphFragment(
     // Also constrain width so text doesn't overflow into the image area
     const lineMarginLeft = Math.min(indentLeft, 0) + lineLeftOffset;
     const lineMarginRight = Math.min(indentRight, 0) + lineRightOffset;
-    if (lineMarginLeft !== 0 || lineRightOffset > 0 || indentLeft < 0 || indentRight < 0) {
+    if (
+      lineMarginLeft !== 0 ||
+      lineRightOffset > 0 ||
+      indentLeft < 0 ||
+      indentRight < 0
+    ) {
       lineEl.style.marginLeft = `${lineMarginLeft}px`;
       if (lineMarginRight !== 0) {
         lineEl.style.marginRight = `${lineMarginRight}px`;
       }
       // Constrain line width to prevent text from extending into floating image area
-      const constrainedWidth = lineAvailableWidth - lineLeftOffset - lineRightOffset;
+      const constrainedWidth =
+        lineAvailableWidth - lineLeftOffset - lineRightOffset;
       if (constrainedWidth > 0) {
         lineEl.style.width = `${constrainedWidth}px`;
       }
@@ -3357,7 +3618,11 @@ export function renderParagraphFragment(
     // - Marker starts at (inline-start indent - hanging)
     // - Text starts at the inline-start indent
     // - The marker box fills the hanging space
-    if (isFirstLine && block.attrs?.listMarker && !block.attrs.listMarkerHidden) {
+    if (
+      isFirstLine &&
+      block.attrs?.listMarker &&
+      !block.attrs.listMarkerHidden
+    ) {
       // Override padding for list first lines.
       //
       // Two list-indent shapes are common in OOXML:
@@ -3381,8 +3646,10 @@ export function renderParagraphFragment(
       const hanging = indent?.hanging ?? 0;
       const firstLine = indent?.firstLine ?? 0;
       const markerPhysicalStart = isRtl ? "right" : "left";
-      const markerIndent = markerPhysicalStart === "right" ? indentRight : indentLeft;
-      const markerStart = hanging > 0 ? markerIndent - hanging : markerIndent + firstLine;
+      const markerIndent =
+        markerPhysicalStart === "right" ? indentRight : indentLeft;
+      const markerStart =
+        hanging > 0 ? markerIndent - hanging : markerIndent + firstLine;
       const logicalMarkerVisualOffset = getListMarkerVisualOffset(block);
       if (markerPhysicalStart === "right") {
         lineEl.style.paddingRight = `${Math.max(0, markerStart)}px`;
@@ -3397,7 +3664,9 @@ export function renderParagraphFragment(
         marker: block.attrs.listMarker,
         inlineWidth: getListMarkerInlineWidth(block),
         visualOffset:
-          markerPhysicalStart === "right" ? -logicalMarkerVisualOffset : logicalMarkerVisualOffset,
+          markerPhysicalStart === "right"
+            ? -logicalMarkerVisualOffset
+            : logicalMarkerVisualOffset,
         doc,
         formatting: resolveListMarkerFont(block),
         ...(block.attrs.listMarkerRevision === undefined
@@ -3405,7 +3674,10 @@ export function renderParagraphFragment(
           : { revision: block.attrs.listMarkerRevision }),
         ...(block.attrs.listMarkerSecondSlotOffsetTwips === undefined
           ? {}
-          : { secondSlotOffsetTwips: block.attrs.listMarkerSecondSlotOffsetTwips }),
+          : {
+              secondSlotOffsetTwips:
+                block.attrs.listMarkerSecondSlotOffsetTwips,
+            }),
         physicalStart: markerPhysicalStart,
       });
       // When the marker sits left of the line's own start it belongs in the
@@ -3418,7 +3690,9 @@ export function renderParagraphFragment(
       // positive left indent the line margin is 0 and this is just `markerStart`;
       // for a negative left indent it is `markerStart - indentLeft = -hanging`.
       const markerLineMargin =
-        markerPhysicalStart === "right" ? Math.min(indentRight, 0) : Math.min(indentLeft, 0);
+        markerPhysicalStart === "right"
+          ? Math.min(indentRight, 0)
+          : Math.min(indentLeft, 0);
       const markerMarginLeft = markerStart - markerLineMargin;
       if (markerMarginLeft < 0) {
         if (markerPhysicalStart === "right") {
@@ -3489,7 +3763,9 @@ function renderListMarker({
   if (formatting.rtl !== undefined) {
     span.dir = formatting.rtl ? "rtl" : "ltr";
   }
-  const markerColor = revision ? undefined : getRenderableListMarkerColor(formatting.color);
+  const markerColor = revision
+    ? undefined
+    : getRenderableListMarkerColor(formatting.color);
   if (markerColor) {
     setAuthoredTextColor(span.style, markerColor);
   }

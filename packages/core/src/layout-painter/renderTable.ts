@@ -25,26 +25,6 @@ import {
   finishTableCellFlow,
   placeTableCellBlock,
 } from "../layout-engine/measure/tableCellFlow";
-import type {
-  TableFragment,
-  TableBlock,
-  TableMeasure,
-  TableCell,
-  CellBorderSpec,
-  TableCellMeasure,
-  ParagraphBlock,
-  ParagraphMeasure,
-  ParagraphFragment,
-  TextBoxBlock,
-  TextBoxMeasure,
-  TextBoxFragment,
-} from "../layout-engine/types";
-import {
-  isFloatingImageRun,
-  isFloatingTextBoxBlock,
-  resolveTableCellPadding,
-  tableColumnsArePinned,
-} from "../layout-engine/types";
 import {
   buildTableCellGrid,
   buildTableCellPlacements,
@@ -53,26 +33,53 @@ import {
   type TableCellGrid,
   type TableCellPlacements,
 } from "../layout-engine/measure/tableCellGrid";
+import { tableFragmentBottomBorders } from "../layout-engine/measure/tableFragmentBorderGeometry";
 import {
   resolveTableInlineOffset,
   resolveTableInlinePlacement,
 } from "../layout-engine/measure/tableInlinePlacement";
-import { tableFragmentBottomBorders } from "../layout-engine/measure/tableFragmentBorderGeometry";
-import { emuToPixels } from "../utils/units";
+import type {
+  CellBorderSpec,
+  ParagraphBlock,
+  ParagraphFragment,
+  ParagraphMeasure,
+  TableBlock,
+  TableCell,
+  TableCellMeasure,
+  TableFragment,
+  TableMeasure,
+  TextBoxBlock,
+  TextBoxFragment,
+  TextBoxMeasure,
+} from "../layout-engine/types";
+import {
+  isFloatingImageRun,
+  isFloatingTextBoxBlock,
+  resolveTableCellPadding,
+  tableColumnsArePinned,
+} from "../layout-engine/types";
+import { paintsCssBorder } from "../utils/borderCss";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
-import { resolveAnchoredImagePosition, type PageGeometry } from "./anchoredImagePosition";
+import { emuToPixels } from "../utils/units";
+import {
+  type PageGeometry,
+  resolveAnchoredImagePosition,
+} from "./anchoredImagePosition";
 import { borderStrokeToCss, resolveCssBorderStroke } from "./borderStroke";
 import {
   getAutomaticTextColorForBackground,
   setAuthoredBackgroundColor,
   setAuthoredTextColor,
 } from "./documentColors";
-import { applyImageVisualAttrs, hasImageCrop, hasImageVisualAttrs } from "./renderImage";
+import {
+  applyImageVisualAttrs,
+  hasImageCrop,
+  hasImageVisualAttrs,
+} from "./renderImage";
 import { renderParagraphFragment } from "./renderParagraph";
 import { renderTextBoxFragment } from "./renderTextBox";
 import type { RenderContext } from "./renderUtils";
 import { ownedRowBottomBorderOffsets } from "./tableRowPaintGeometry";
-import { paintsCssBorder } from "../utils/borderCss";
 
 /**
  * CSS class names for table elements
@@ -113,8 +120,12 @@ const CELL_TEXT_ROTATION_DEGREES = {
 } as const satisfies Record<TextDirectionFlow, number>;
 
 /** The quarter turn a cell's `w:textDirection` puts on its content. */
-export const cellTextRotationDegrees = (direction: TextDirection | undefined): number =>
-  direction === undefined ? 0 : CELL_TEXT_ROTATION_DEGREES[TEXT_DIRECTION_FLOW_BY_TOKEN[direction]];
+export const cellTextRotationDegrees = (
+  direction: TextDirection | undefined,
+): number =>
+  direction === undefined
+    ? 0
+    : CELL_TEXT_ROTATION_DEGREES[TEXT_DIRECTION_FLOW_BY_TOKEN[direction]];
 
 /**
  * Options for rendering a table fragment
@@ -166,7 +177,8 @@ function renderCellContent({
   // Content width must account for cell padding since the cell uses border-box sizing.
   // Without this, content is wider than the available area, causing centering and
   // clipping issues (especially for nested tables).
-  const contentWidth = contentWidthOverride ?? getTableCellContentWidth(cell, cellMeasure);
+  const contentWidth =
+    contentWidthOverride ?? getTableCellContentWidth(cell, cellMeasure);
   contentEl.style.width = `${contentWidth}px`;
 
   // Extract floating images from cell paragraphs
@@ -191,7 +203,10 @@ function renderCellContent({
   );
 
   // Build floating zones for measurement and render floating layer
-  const floatingZones = buildTableCellFloatingZones(cellFloatingImages, contentWidth);
+  const floatingZones = buildTableCellFloatingZones(
+    cellFloatingImages,
+    contentWidth,
+  );
   const floatingLayers: HTMLElement[] = [];
   if (cellFloatingImages.length > 0) {
     // Render floating image layer within the cell
@@ -262,13 +277,21 @@ function renderCellContent({
       // Re-measure when wrapping width changes or floating exclusions apply.
       if (floatingZones.length > 0 || contentWidthOverride !== undefined) {
         const previewState = { ...flowState };
-        const preview = placeTableCellBlock(previewState, paragraphBlock, paragraphMeasure);
+        const preview = placeTableCellBlock(
+          previewState,
+          paragraphBlock,
+          paragraphMeasure,
+        );
         paragraphMeasure = measureParagraph(paragraphBlock, contentWidth, {
           floatingZones,
           paragraphYOffset: preview.contentTop,
         });
       }
-      const placement = placeTableCellBlock(flowState, paragraphBlock, paragraphMeasure);
+      const placement = placeTableCellBlock(
+        flowState,
+        paragraphBlock,
+        paragraphMeasure,
+      );
 
       // Create synthetic fragment for the paragraph
       const syntheticFragment: ParagraphFragment = {
@@ -280,8 +303,12 @@ function renderCellContent({
         height: placement.contentHeight,
         fromLine: 0,
         toLine: paragraphMeasure.lines.length,
-        ...(paragraphBlock.pmStart !== undefined ? { pmStart: paragraphBlock.pmStart } : {}),
-        ...(paragraphBlock.pmEnd !== undefined ? { pmEnd: paragraphBlock.pmEnd } : {}),
+        ...(paragraphBlock.pmStart !== undefined
+          ? { pmStart: paragraphBlock.pmStart }
+          : {}),
+        ...(paragraphBlock.pmEnd !== undefined
+          ? { pmEnd: paragraphBlock.pmEnd }
+          : {}),
       };
 
       // Consecutive paragraphs sharing a border definition are ONE frame with an
@@ -291,8 +318,11 @@ function renderCellContent({
       const previousBlock = cell.blocks[i - 1];
       const nextBlock = cell.blocks[i + 1];
       const prevBorders =
-        previousBlock?.kind === "paragraph" ? previousBlock.attrs?.borders : undefined;
-      const nextBorders = nextBlock?.kind === "paragraph" ? nextBlock.attrs?.borders : undefined;
+        previousBlock?.kind === "paragraph"
+          ? previousBlock.attrs?.borders
+          : undefined;
+      const nextBorders =
+        nextBlock?.kind === "paragraph" ? nextBlock.attrs?.borders : undefined;
       const cellContext = { ...context, insideTableCell: true as const };
       const fragEl = renderParagraphFragment(
         syntheticFragment,
@@ -321,9 +351,19 @@ function renderCellContent({
       const tableBlock = block as TableBlock;
       const tableMeasure = measure as TableMeasure;
 
-      const nestedTableEl = renderNestedTable(tableBlock, tableMeasure, context, doc, contentWidth);
+      const nestedTableEl = renderNestedTable(
+        tableBlock,
+        tableMeasure,
+        context,
+        doc,
+        contentWidth,
+      );
       nestedTableEl.style.position = "relative";
-      const placement = placeTableCellBlock(flowState, tableBlock, tableMeasure);
+      const placement = placeTableCellBlock(
+        flowState,
+        tableBlock,
+        tableMeasure,
+      );
       if (placement.leadingSpacing > 0) {
         const spacer = doc.createElement("div");
         spacer.style.height = `${placement.leadingSpacing}px`;
@@ -345,8 +385,12 @@ function renderCellContent({
         y: 0,
         width: textBoxMeasure.width,
         height: textBoxMeasure.height,
-        ...(textBoxBlock.pmStart !== undefined ? { pmStart: textBoxBlock.pmStart } : {}),
-        ...(textBoxBlock.pmEnd !== undefined ? { pmEnd: textBoxBlock.pmEnd } : {}),
+        ...(textBoxBlock.pmStart !== undefined
+          ? { pmStart: textBoxBlock.pmStart }
+          : {}),
+        ...(textBoxBlock.pmEnd !== undefined
+          ? { pmEnd: textBoxBlock.pmEnd }
+          : {}),
       };
       const textBoxEl = renderTextBoxFragment(
         syntheticFragment,
@@ -365,7 +409,11 @@ function renderCellContent({
         continue;
       }
 
-      const placement = placeTableCellBlock(flowState, textBoxBlock, textBoxMeasure);
+      const placement = placeTableCellBlock(
+        flowState,
+        textBoxBlock,
+        textBoxMeasure,
+      );
       if (placement.leadingSpacing > 0) {
         const spacer = doc.createElement("div");
         spacer.style.height = `${placement.leadingSpacing}px`;
@@ -401,7 +449,10 @@ function createCellFloatingTextBoxesLayer(doc: Document): HTMLElement {
   return layer;
 }
 
-function resolveCellTextBoxX(block: TextBoxBlock, contentWidth: number): number {
+function resolveCellTextBoxX(
+  block: TextBoxBlock,
+  contentWidth: number,
+): number {
   const horizontal = block.position?.horizontal;
   if (horizontal?.posOffset !== undefined) {
     return emuToPixels(horizontal.posOffset);
@@ -432,11 +483,16 @@ function tableHasFloatingCellContent(block: TableBlock): boolean {
         }
         if (
           cellBlock.kind === "paragraph" &&
-          cellBlock.runs.some((run) => run.kind === "image" && isFloatingImageRun(run))
+          cellBlock.runs.some(
+            (run) => run.kind === "image" && isFloatingImageRun(run),
+          )
         ) {
           return true;
         }
-        if (cellBlock.kind === "table" && tableHasFloatingCellContent(cellBlock)) {
+        if (
+          cellBlock.kind === "table" &&
+          tableHasFloatingCellContent(cellBlock)
+        ) {
           return true;
         }
       }
@@ -561,10 +617,7 @@ function applyBorder(
   border: CellBorderSpec | undefined,
 ): void {
   const styleProp = `border${side.charAt(0).toUpperCase() + side.slice(1)}` as
-    | "borderTop"
-    | "borderRight"
-    | "borderBottom"
-    | "borderLeft";
+    "borderTop" | "borderRight" | "borderBottom" | "borderLeft";
 
   if (!border || !paintsCssBorder(border.style)) {
     el.style[styleProp] = "none";
@@ -573,7 +626,8 @@ function applyBorder(
   }
 }
 
-type CellDiagonalDirection = "top-left-to-bottom-right" | "top-right-to-bottom-left";
+type CellDiagonalDirection =
+  "top-left-to-bottom-right" | "top-right-to-bottom-left";
 
 type RenderCellDiagonalBorderOptions = {
   border: CellBorderSpec | undefined;
@@ -719,7 +773,9 @@ function renderTableCell({
   // Background color
   if (cell.background) {
     setAuthoredBackgroundColor(cellEl.style, cell.background);
-    const automaticTextColor = getAutomaticTextColorForBackground(cell.background);
+    const automaticTextColor = getAutomaticTextColorForBackground(
+      cell.background,
+    );
     if (automaticTextColor) {
       setAuthoredTextColor(cellEl.style, automaticTextColor);
     }
@@ -759,7 +815,9 @@ function renderTableCell({
   // Render cell content
   const cellTextRotation = cellTextRotationDegrees(cell.textDirection);
   const contentWidthOverride =
-    cellTextRotation === 0 ? undefined : Math.max(1, rowHeight - padTop - padBottom);
+    cellTextRotation === 0
+      ? undefined
+      : Math.max(1, rowHeight - padTop - padBottom);
   const renderedContent = renderCellContent({
     cell,
     cellMeasure,
@@ -789,8 +847,14 @@ function renderTableCell({
   }
   if (contentClip) {
     const contentHeight = Math.max(0, rowHeight - padTop - padBottom);
-    const clipTop = Math.min(contentHeight, Math.max(0, contentClip.top - padTop));
-    const clipBottom = Math.min(contentHeight, Math.max(clipTop, contentClip.bottom - padTop));
+    const clipTop = Math.min(
+      contentHeight,
+      Math.max(0, contentClip.top - padTop),
+    );
+    const clipBottom = Math.min(
+      contentHeight,
+      Math.max(clipTop, contentClip.bottom - padTop),
+    );
     renderedContent.content.style.height = `${contentHeight}px`;
     renderedContent.content.style.overflow = "hidden";
     renderedContent.content.style.clipPath = `inset(${clipTop}px 0 ${contentHeight - clipBottom}px 0)`;
@@ -827,7 +891,9 @@ function renderTableCell({
     const firstBlock = cell.blocks.at(0);
     const lastBlock = cell.blocks.at(-1);
     const pmStart =
-      firstBlock !== undefined && "pmStart" in firstBlock ? firstBlock.pmStart : undefined;
+      firstBlock !== undefined && "pmStart" in firstBlock
+        ? firstBlock.pmStart
+        : undefined;
     if (pmStart !== undefined) {
       cellEl.dataset["pmStart"] = String(pmStart);
     }
@@ -842,11 +908,13 @@ function renderTableCell({
 const hasVisibleBorder = (border: CellBorderSpec | undefined): boolean =>
   border !== undefined && paintsCssBorder(border.style);
 
-const isMinimumHeightRow = (row: TableBlock["rows"][number] | undefined): boolean =>
-  row?.height !== undefined && row.heightRule !== "exact";
+const isMinimumHeightRow = (
+  row: TableBlock["rows"][number] | undefined,
+): boolean => row?.height !== undefined && row.heightRule !== "exact";
 
-const rowHasVerticalMerge = (row: TableBlock["rows"][number] | undefined): boolean =>
-  row?.cells.some((cell) => (cell.rowSpan ?? 1) > 1) === true;
+const rowHasVerticalMerge = (
+  row: TableBlock["rows"][number] | undefined,
+): boolean => row?.cells.some((cell) => (cell.rowSpan ?? 1) > 1) === true;
 
 const continuationRowBottomBorderOffsets = (
   fragment: TableFragment,
@@ -862,7 +930,8 @@ const continuationRowBottomBorderOffsets = (
     .some(
       (row, fragmentRowIndex) =>
         rowHasVerticalMerge(row) ||
-        (cellGrid.occupiedColumnsByRow.get(fragment.fromRow + fragmentRowIndex)?.size ?? 0) > 0,
+        (cellGrid.occupiedColumnsByRow.get(fragment.fromRow + fragmentRowIndex)
+          ?.size ?? 0) > 0,
     );
   if (
     fragment.continuesFromPrev !== true ||
@@ -968,14 +1037,23 @@ function renderTableRow({
     if (!placement) {
       continue;
     }
-    const { sourceColumn: columnIndex, columnSpan: colSpan, left: cellLeft, width } = placement;
+    const {
+      sourceColumn: columnIndex,
+      columnSpan: colSpan,
+      left: cellLeft,
+      width,
+    } = placement;
     const rowSpan = cell.rowSpan ?? 1;
 
     // Calculate cell height - for spanning cells, use total height of spanned rows
     let cellHeight = rowMeasure.height;
     if (rowSpan > 1 && rowYPositions) {
       cellHeight = 0;
-      for (let r = rowIndex; r < rowIndex + rowSpan && r < rowYPositions.length - 1; r++) {
+      for (
+        let r = rowIndex;
+        r < rowIndex + rowSpan && r < rowYPositions.length - 1;
+        r++
+      ) {
         cellHeight += (rowYPositions[r + 1] ?? 0) - (rowYPositions[r] ?? 0);
       }
       // Fallback if rowYPositions doesn't have enough entries
@@ -996,12 +1074,26 @@ function renderTableRow({
     const leftNeighborColumn = bidi ? columnIndex + colSpan : columnIndex - 1;
     const leftCell = getSourceCellAt(cellGrid, rowIndex, leftNeighborColumn);
     // Spaced cells share no edge, so each one paints all four of its own.
-    const drawTop = bordersSeparated || isFirstRow || !hasVisibleBorder(aboveCell?.borders?.bottom);
-    const drawLeft = bordersSeparated || isFirstCol || !hasVisibleBorder(leftCell?.borders?.right);
-    const spacing = getTableCellSpacingInsetsY(cellSpacing, rowIndex, rowSpan, totalRows);
+    const drawTop =
+      bordersSeparated ||
+      isFirstRow ||
+      !hasVisibleBorder(aboveCell?.borders?.bottom);
+    const drawLeft =
+      bordersSeparated ||
+      isFirstCol ||
+      !hasVisibleBorder(leftCell?.borders?.right);
+    const spacing = getTableCellSpacingInsetsY(
+      cellSpacing,
+      rowIndex,
+      rowSpan,
+      totalRows,
+    );
     const boxHeight = Math.max(0, cellHeight - spacing.top - spacing.bottom);
     const boxClip = contentClip
-      ? { top: contentClip.top - spacing.top, bottom: contentClip.bottom - spacing.top }
+      ? {
+          top: contentClip.top - spacing.top,
+          bottom: contentClip.bottom - spacing.top,
+        }
       : undefined;
 
     const paintBottomBorderSeparately =
@@ -1095,7 +1187,9 @@ export function renderTableFragment(
   tableEl.style.position = "absolute";
   tableEl.style.width = `${fragment.width}px`;
   tableEl.style.height = `${fragment.height}px`;
-  tableEl.style.overflow = tableHasFloatingCellContent(block) ? "visible" : "hidden";
+  tableEl.style.overflow = tableHasFloatingCellContent(block)
+    ? "visible"
+    : "hidden";
 
   // Store metadata
   tableEl.dataset["blockId"] = String(fragment.blockId);
@@ -1248,8 +1342,10 @@ export function renderTableFragment(
       headerRowCount > 0 && fragment.continuesFromPrev
         ? false // header rows already drawn, content rows are not "first"
         : fragment.continuesFromPrev === true && rowIndex === fragment.fromRow;
-    const rowTopClip = rowIndex === fragment.fromRow ? fragment.topClip : undefined;
-    const rowBottomClip = rowIndex === fragment.toRow - 1 ? fragment.bottomClip : undefined;
+    const rowTopClip =
+      rowIndex === fragment.fromRow ? fragment.topClip : undefined;
+    const rowBottomClip =
+      rowIndex === fragment.toRow - 1 ? fragment.bottomClip : undefined;
     const contentClip =
       rowTopClip !== undefined || rowBottomClip !== undefined
         ? {
@@ -1274,7 +1370,8 @@ export function renderTableFragment(
       cellGrid,
       cellPlacements,
       cellSpacing: block.cellSpacing,
-      bottomBorderOffset: contentRowBottomBorderOffsets[rowIndex - fragment.fromRow] ?? 0,
+      bottomBorderOffset:
+        contentRowBottomBorderOffsets[rowIndex - fragment.fromRow] ?? 0,
       ...(contentClip ? { contentClip } : {}),
       ...(tablePageContentPosition
         ? {
@@ -1373,7 +1470,9 @@ export function renderTableFragment(
     // The visual right edge belongs to logical column 0 in an RTL table, so the
     // edge handle resizes that column instead of the last one
     // (eigenpal/docx-editor#940).
-    rightHandle.dataset["columnIndex"] = String(block.bidi ? 0 : measure.columnWidths.length - 1);
+    rightHandle.dataset["columnIndex"] = String(
+      block.bidi ? 0 : measure.columnWidths.length - 1,
+    );
     rightHandle.dataset["tableBlockId"] = String(fragment.blockId);
     rightHandle.dataset["isEdge"] = "right";
     if (fragment.pmStart !== undefined) {

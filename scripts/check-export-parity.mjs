@@ -11,9 +11,10 @@
  * Adapted from the upstream docx-editor export-parity gate for the folio fork.
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { collectNamedExports } from "./lib/named-exports.mjs";
 import { diffSets, formatDiff } from "./lib/parity-report.mjs";
 
@@ -25,7 +26,9 @@ const VUE_INDEX = resolve(ROOT, "packages/vue/src/index.ts");
 const OPT_OUT = resolve(ROOT, "scripts/parity/export-divergence.md");
 
 function exportSubpaths(pkgPath) {
-  return new Set(Object.keys(JSON.parse(readFileSync(pkgPath, "utf8")).exports ?? {}));
+  return new Set(
+    Object.keys(JSON.parse(readFileSync(pkgPath, "utf8")).exports ?? {}),
+  );
 }
 
 function loadAllowedDivergences() {

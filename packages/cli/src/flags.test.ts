@@ -3,7 +3,12 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { makeTempDir } from "./__tests__/fixtures";
-import { coerceFlag, flagsForSchema, readInputSource, type GeneratedFlag } from "./flags";
+import {
+  coerceFlag,
+  flagsForSchema,
+  type GeneratedFlag,
+  readInputSource,
+} from "./flags";
 import { findFileTool } from "./registry";
 
 const flag = (valueType: GeneratedFlag["valueType"]): GeneratedFlag => ({
@@ -20,12 +25,14 @@ describe("flagsForSchema", () => {
 
     const flags = flagsForSchema(tool.argsSchema);
 
-    expect(flags.map(({ flag: name, valueType }) => [name, valueType])).toEqual([
-      ["query", "string"],
-      ["match-case", "boolean"],
-      ["whole-word", "boolean"],
-      ["scope", "json"],
-    ]);
+    expect(flags.map(({ flag: name, valueType }) => [name, valueType])).toEqual(
+      [
+        ["query", "string"],
+        ["match-case", "boolean"],
+        ["whole-word", "boolean"],
+        ["scope", "json"],
+      ],
+    );
   });
 });
 
@@ -33,8 +40,12 @@ describe("coerceFlag", () => {
   test("parses numbers, integers and JSON, and refuses mismatched values", () => {
     expect(coerceFlag({ flag: flag("integer"), raw: "12" }).unwrap()).toBe(12);
     expect(coerceFlag({ flag: flag("number"), raw: "1.5" }).unwrap()).toBe(1.5);
-    expect(coerceFlag({ flag: flag("json"), raw: '{"a":1}' }).unwrap()).toEqual({ a: 1 });
-    expect(coerceFlag({ flag: flag("boolean"), raw: true }).unwrap()).toBe(true);
+    expect(coerceFlag({ flag: flag("json"), raw: '{"a":1}' }).unwrap()).toEqual(
+      { a: 1 },
+    );
+    expect(coerceFlag({ flag: flag("boolean"), raw: true }).unwrap()).toBe(
+      true,
+    );
 
     for (const [valueType, raw] of [
       ["integer", "1.5"],
@@ -58,7 +69,10 @@ describe("readInputSource", () => {
       await writeFile(file, '{"query":"from file"}');
       const readStdin = () => Promise.resolve('[{"type":"deleteBlock"}]');
 
-      const inline = await readInputSource({ source: '{"query":"inline"}', readStdin });
+      const inline = await readInputSource({
+        source: '{"query":"inline"}',
+        readStdin,
+      });
       const fromFile = await readInputSource({ source: `@${file}`, readStdin });
       const fromStdin = await readInputSource({ source: "-", readStdin });
 

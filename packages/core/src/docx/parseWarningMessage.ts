@@ -14,8 +14,11 @@ import {
   type ParseWarningCode,
 } from "@stll/docx-core/model";
 
-const plural = (count: number, singular: string, pluralForm = `${singular}s`): string =>
-  `${String(count)} ${count === 1 ? singular : pluralForm}`;
+const plural = (
+  count: number,
+  singular: string,
+  pluralForm = `${singular}s`,
+): string => `${String(count)} ${count === 1 ? singular : pluralForm}`;
 
 /** The location suffix, omitted when the part is all we know. */
 const where = ({ location }: ParseWarning): string => {
@@ -25,7 +28,8 @@ const where = ({ location }: ParseWarning): string => {
   return ` at ${location.at} in ${location.part}`;
 };
 
-const quoted = (value: string | undefined): string => (value === undefined ? "" : ` "${value}"`);
+const quoted = (value: string | undefined): string =>
+  value === undefined ? "" : ` "${value}"`;
 
 type ParseWarningFormatter = (warning: ParseWarning) => string;
 
@@ -34,7 +38,8 @@ const PARSE_WARNING_MESSAGES = {
     "Document was opened from password-protected storage; saving writes an unencrypted .docx file.",
   [PARSE_WARNING_CODES.packageArchive]: (warning) =>
     warning.detail ?? "The archive reader reported an issue.",
-  [PARSE_WARNING_CODES.documentPartMissing]: () => "No document.xml found in DOCX",
+  [PARSE_WARNING_CODES.documentPartMissing]: () =>
+    "No document.xml found in DOCX",
   [PARSE_WARNING_CODES.documentModelIssue]: (warning) =>
     warning.detail ?? "The document model reported an issue.",
   [PARSE_WARNING_CODES.duplicateCommentId]: (warning) =>
@@ -90,5 +95,6 @@ const PARSE_WARNING_MESSAGES = {
 export const formatParseWarning = (warning: ParseWarning): string =>
   PARSE_WARNING_MESSAGES[warning.code](warning);
 
-export const formatParseWarnings = (warnings: readonly ParseWarning[]): string[] =>
-  warnings.map(formatParseWarning);
+export const formatParseWarnings = (
+  warnings: readonly ParseWarning[],
+): string[] => warnings.map(formatParseWarning);

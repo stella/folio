@@ -22,15 +22,26 @@ import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/commen
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
-import type { Comment, Paragraph, ParagraphContent, TextFormatting } from "../types/document";
+import type {
+  Comment,
+  Paragraph,
+  ParagraphContent,
+  TextFormatting,
+} from "../types/document";
 
-export const textRun = (text: string, formatting?: TextFormatting): ParagraphContent => ({
+export const textRun = (
+  text: string,
+  formatting?: TextFormatting,
+): ParagraphContent => ({
   type: "run",
   ...(formatting !== undefined && { formatting }),
   content: [{ type: "text", text }],
 });
 
-export const reviewComment = (id: number, text = `Note ${String(id)}`): Comment => ({
+export const reviewComment = (
+  id: number,
+  text = `Note ${String(id)}`,
+): Comment => ({
   id,
   author: "Dana Lindqvist",
   initials: "DL",
@@ -49,7 +60,12 @@ export const paragraphsDocx = (
     content: [...runs],
   }));
   return createDocx({
-    package: { document: { content, ...(comments.length > 0 && { comments: [...comments] }) } },
+    package: {
+      document: {
+        content,
+        ...(comments.length > 0 && { comments: [...comments] }),
+      },
+    },
   });
 };
 
@@ -57,11 +73,17 @@ export const openReviewer = (buffer: ArrayBuffer): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer" });
 
 /** The reviewer's document, saved and opened again. */
-export const reopened = async (reviewer: FolioDocxReviewer): Promise<FolioDocxReviewer> =>
-  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), { author: "Reviewer" });
+export const reopened = async (
+  reviewer: FolioDocxReviewer,
+): Promise<FolioDocxReviewer> =>
+  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    author: "Reviewer",
+  });
 
 /** Saved, reopened, every revision accepted, and saved and reopened once more. */
-export const reopenedAccepted = async (reviewer: FolioDocxReviewer): Promise<FolioDocxReviewer> => {
+export const reopenedAccepted = async (
+  reviewer: FolioDocxReviewer,
+): Promise<FolioDocxReviewer> => {
   const opened = await reopened(reviewer);
   opened.acceptAll();
   return reopened(opened);
@@ -85,9 +107,14 @@ const canonical = (value: unknown): unknown => {
   );
 };
 
-const describeMarks = (marks: readonly Mark[], commentText: (id: number) => string): string => {
+const describeMarks = (
+  marks: readonly Mark[],
+  commentText: (id: number) => string,
+): string => {
   const formatting = JSON.stringify(canonical(marksToTextFormatting(marks)));
-  const link = marks.find((mark) => mark.type.name === "hyperlink")?.attrs["href"];
+  const link = marks.find((mark) => mark.type.name === "hyperlink")?.attrs[
+    "href"
+  ];
   const comments = marks
     .filter((mark) => mark.type.name === "comment")
     .map((mark) => {
@@ -96,7 +123,9 @@ const describeMarks = (marks: readonly Mark[], commentText: (id: number) => stri
     })
     .toSorted();
   const revisions = marks
-    .filter((mark) => mark.type.name === "insertion" || mark.type.name === "deletion")
+    .filter(
+      (mark) => mark.type.name === "insertion" || mark.type.name === "deletion",
+    )
     .map((mark) => mark.type.name)
     .toSorted();
   return `${formatting}|${typeof link === "string" ? link : ""}|${comments.join(",")}|${revisions.join(",")}`;
@@ -172,9 +201,16 @@ export const presentationOf = (
 };
 
 /** {@link presentationOf} the reviewer's document, comments named by their text. */
-export const reviewerPresentation = (reviewer: FolioDocxReviewer): ParagraphPresentation[] => {
-  const texts = new Map(reviewer.getComments().map((comment) => [comment.id, comment.text]));
-  return presentationOf(reviewer.state.doc, (id) => texts.get(id) ?? `#${String(id)}`);
+export const reviewerPresentation = (
+  reviewer: FolioDocxReviewer,
+): ParagraphPresentation[] => {
+  const texts = new Map(
+    reviewer.getComments().map((comment) => [comment.id, comment.text]),
+  );
+  return presentationOf(
+    reviewer.state.doc,
+    (id) => texts.get(id) ?? `#${String(id)}`,
+  );
 };
 
 /**
@@ -213,7 +249,11 @@ export class OperationSession {
       undefinedReferences: "refuse",
       view,
       snapshot: this.snapshot(),
-      batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, mode, operations },
+      batch: {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations,
+      },
       author: "Reviewer",
       createCommentId: (text) => {
         const id = this.nextCommentId++;
@@ -230,7 +270,9 @@ export class OperationSession {
   }
 
   /** See {@link presentationOf}; `withAnchors: false` leaves zero-width anchors out. */
-  presentation(options: { withAnchors?: boolean } = {}): ParagraphPresentation[] {
+  presentation(
+    options: { withAnchors?: boolean } = {},
+  ): ParagraphPresentation[] {
     return presentationOf(
       this.state.doc,
       (id) => this.comments.get(id) ?? `#${String(id)}`,

@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Deletion, Insertion, MoveFrom, MoveTo, Paragraph } from "../../types/content";
+import type {
+  Deletion,
+  Insertion,
+  MoveFrom,
+  MoveTo,
+  Paragraph,
+} from "../../types/content";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -69,30 +75,47 @@ function asDocument(paragraphs: Paragraph[]): never {
 
 describe("moveFrom / moveTo PM round-trip", () => {
   test("toProseDoc stamps the originating element via the moveKind mark attribute", () => {
-    const doc = asDocument([paragraphWith([makeMoveFrom()]), paragraphWith([makeMoveTo()])]);
+    const doc = asDocument([
+      paragraphWith([makeMoveFrom()]),
+      paragraphWith([makeMoveTo()]),
+    ]);
     const pmDoc = toProseDoc(doc);
 
     const moveFromText = pmDoc.firstChild!.firstChild!;
     const moveToText = pmDoc.child(1).firstChild!;
 
-    const moveFromMark = moveFromText.marks.find((m) => m.type.name === "deletion");
-    const moveToMark = moveToText.marks.find((m) => m.type.name === "insertion");
+    const moveFromMark = moveFromText.marks.find(
+      (m) => m.type.name === "deletion",
+    );
+    const moveToMark = moveToText.marks.find(
+      (m) => m.type.name === "insertion",
+    );
 
     expect(moveFromMark?.attrs["moveKind"]).toBe("moveFrom");
     expect(moveToMark?.attrs["moveKind"]).toBe("moveTo");
   });
 
   test("plain insertion / deletion marks keep moveKind = null", () => {
-    const doc = asDocument([paragraphWith([makeInsertion()]), paragraphWith([makeDeletion()])]);
+    const doc = asDocument([
+      paragraphWith([makeInsertion()]),
+      paragraphWith([makeDeletion()]),
+    ]);
     const pmDoc = toProseDoc(doc);
-    const insMark = pmDoc.firstChild!.firstChild!.marks.find((m) => m.type.name === "insertion");
-    const delMark = pmDoc.child(1).firstChild!.marks.find((m) => m.type.name === "deletion");
+    const insMark = pmDoc.firstChild!.firstChild!.marks.find(
+      (m) => m.type.name === "insertion",
+    );
+    const delMark = pmDoc
+      .child(1)
+      .firstChild!.marks.find((m) => m.type.name === "deletion");
     expect(insMark?.attrs["moveKind"]).toBeNull();
     expect(delMark?.attrs["moveKind"]).toBeNull();
   });
 
   test("fromProseDoc re-emits moveFrom / moveTo elements based on moveKind", () => {
-    const doc = asDocument([paragraphWith([makeMoveFrom()]), paragraphWith([makeMoveTo()])]);
+    const doc = asDocument([
+      paragraphWith([makeMoveFrom()]),
+      paragraphWith([makeMoveTo()]),
+    ]);
     const roundtripped = fromProseDoc(toProseDoc(doc), undefined, {
       stylesheetSource: { type: "package" },
     });
@@ -109,37 +132,44 @@ describe("moveFrom / moveTo PM round-trip", () => {
     { type: "deletion", mark: "deletion", moveKind: null },
     { type: "moveFrom", mark: "deletion", moveKind: "moveFrom" },
     { type: "moveTo", mark: "insertion", moveKind: "moveTo" },
-  ] as const)("keeps $type UTC metadata through an editable JSON round-trip", ({ type, mark }) => {
-    const change = {
-      type,
-      info: {
-        ...REVA,
-        utcDate: { attribute: "du:dateUtc", value: UTC_DATE },
-      },
-      content: [runText(type)],
-    } as Insertion | Deletion | MoveFrom | MoveTo;
-    const document = asDocument([paragraphWith([change])]);
-    const pmDoc = toProseDoc(document);
-    const cloned = pmDoc.type.schema.nodeFromJSON(pmDoc.toJSON());
-    const trackedMark = cloned.firstChild?.firstChild?.marks.find(
-      ({ type: markType }) => markType.name === mark,
-    );
+  ] as const)(
+    "keeps $type UTC metadata through an editable JSON round-trip",
+    ({ type, mark }) => {
+      const change = {
+        type,
+        info: {
+          ...REVA,
+          utcDate: { attribute: "du:dateUtc", value: UTC_DATE },
+        },
+        content: [runText(type)],
+      } as Insertion | Deletion | MoveFrom | MoveTo;
+      const document = asDocument([paragraphWith([change])]);
+      const pmDoc = toProseDoc(document);
+      const cloned = pmDoc.type.schema.nodeFromJSON(pmDoc.toJSON());
+      const trackedMark = cloned.firstChild?.firstChild?.marks.find(
+        ({ type: markType }) => markType.name === mark,
+      );
 
-    expect(trackedMark?.attrs["utcDate"]).toBe(UTC_DATE);
+      expect(trackedMark?.attrs["utcDate"]).toBe(UTC_DATE);
 
-    const roundTripped = fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } });
-    const paragraph = roundTripped.package.document.content.at(0) as Paragraph;
-    const outputChange = paragraph.content.at(0);
-    expect(outputChange?.type).toBe(type);
-    expect(
-      outputChange?.type === "insertion" ||
-        outputChange?.type === "deletion" ||
-        outputChange?.type === "moveFrom" ||
-        outputChange?.type === "moveTo"
-        ? outputChange.info.utcDate
-        : null,
-    ).toEqual({ attribute: "w16du:dateUtc", value: UTC_DATE });
-  });
+      const roundTripped = fromProseDoc(cloned, undefined, {
+        stylesheetSource: { type: "package" },
+      });
+      const paragraph = roundTripped.package.document.content.at(
+        0,
+      ) as Paragraph;
+      const outputChange = paragraph.content.at(0);
+      expect(outputChange?.type).toBe(type);
+      expect(
+        outputChange?.type === "insertion" ||
+          outputChange?.type === "deletion" ||
+          outputChange?.type === "moveFrom" ||
+          outputChange?.type === "moveTo"
+          ? outputChange.info.utcDate
+          : null,
+      ).toEqual({ attribute: "w16du:dateUtc", value: UTC_DATE });
+    },
+  );
 
   test("coincident revisionIds across plain ins+del don't fuse into a phantom move", () => {
     // Real-world regression: two reviewers using authoring tools that
@@ -180,7 +210,10 @@ describe("moveFrom / moveTo PM round-trip", () => {
       info: REVB,
       content: [runText("moved here")],
     };
-    const doc = asDocument([paragraphWith([moveFrom]), paragraphWith([moveTo])]);
+    const doc = asDocument([
+      paragraphWith([moveFrom]),
+      paragraphWith([moveTo]),
+    ]);
     const roundtripped = fromProseDoc(toProseDoc(doc), undefined, {
       stylesheetSource: { type: "package" },
     });

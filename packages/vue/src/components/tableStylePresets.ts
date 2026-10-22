@@ -1,3 +1,6 @@
+import type { CSSProperties } from "vue";
+
+import type { TableCellBorderCommandSpec } from "@stll/folio-core/prosemirror";
 /**
  * Built-in table style presets (shared between TableStyleGallery and
  * InsertTableDialog). Mirrors the React BUILTIN_STYLES list in
@@ -5,8 +8,6 @@
  * same styles via the core `applyTableStyle` command.
  */
 import { cssBorderStyle } from "@stll/folio-core/utils/borderCss";
-import type { TableCellBorderCommandSpec } from "@stll/folio-core/prosemirror";
-import type { CSSProperties } from "vue";
 
 /**
  * One preset border: the command spec `applyTableStyle` takes, not a copy of
@@ -53,7 +54,11 @@ export type TableStylePreset = {
   };
 };
 
-const border1 = (rgb: string): TableStyleBorder => ({ style: "single", size: 4, color: { rgb } });
+const border1 = (rgb: string): TableStyleBorder => ({
+  style: "single",
+  size: 4,
+  color: { rgb },
+});
 
 export const BUILTIN_TABLE_STYLES: TableStylePreset[] = [
   {
@@ -245,7 +250,9 @@ export const BUILTIN_TABLE_STYLES: TableStylePreset[] = [
 ];
 
 /** Get a built-in table style preset by ID. */
-export function getBuiltinTableStyle(styleId: string): TableStylePreset | undefined {
+export function getBuiltinTableStyle(
+  styleId: string,
+): TableStylePreset | undefined {
   return BUILTIN_TABLE_STYLES.find((s) => s.id === styleId);
 }
 
@@ -351,10 +358,30 @@ export function getPreviewCells(
         height: "10px",
         boxSizing: "border-box",
         backgroundColor: cond?.backgroundColor ?? "transparent",
-        borderTop: resolveEdgeBorder(condBorders?.top, r > 0, tb?.insideH, tb?.top),
-        borderBottom: resolveEdgeBorder(condBorders?.bottom, r < rows - 1, tb?.insideH, tb?.bottom),
-        borderLeft: resolveEdgeBorder(condBorders?.left, c > 0, tb?.insideV, tb?.left),
-        borderRight: resolveEdgeBorder(condBorders?.right, c < cols - 1, tb?.insideV, tb?.right),
+        borderTop: resolveEdgeBorder(
+          condBorders?.top,
+          r > 0,
+          tb?.insideH,
+          tb?.top,
+        ),
+        borderBottom: resolveEdgeBorder(
+          condBorders?.bottom,
+          r < rows - 1,
+          tb?.insideH,
+          tb?.bottom,
+        ),
+        borderLeft: resolveEdgeBorder(
+          condBorders?.left,
+          c > 0,
+          tb?.insideV,
+          tb?.left,
+        ),
+        borderRight: resolveEdgeBorder(
+          condBorders?.right,
+          c < cols - 1,
+          tb?.insideV,
+          tb?.right,
+        ),
       };
       cells.push(style);
     }

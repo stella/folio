@@ -73,6 +73,8 @@ describe("table templates", () => {
 
     expect(copiedCell?.attrs["rowspan"]).toBe(2);
     expect(payload).not.toBeNull();
-    expect(decodeTableCellParagraphSourcePayload(payload).cells).toHaveLength(1);
+    expect(decodeTableCellParagraphSourcePayload(payload).cells).toHaveLength(
+      1,
+    );
   });
 });

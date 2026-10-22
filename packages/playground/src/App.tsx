@@ -1,18 +1,24 @@
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import type { ChangeEvent } from "react";
+
 import { createTranslator, IntlProvider } from "use-intl";
 
 import {
   isPageRendererName,
   type PageRendererName,
 } from "@stll/folio-core/display-list/editor/pageRenderer";
-
 import {
-  DocxEditor,
   appendAutocompleteToken,
   clearAutocompleteSuggestion,
   createEmptyDocument,
   createStellaStyleDocumentPreset,
+  DocxEditor,
   finishAutocompleteSuggestion,
   getDocumentWatermark,
   insertImageFromFile,
@@ -30,17 +36,16 @@ import type {
 } from "@stll/folio-react";
 import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
 
+import type { FolioParityBridge } from "../../../scripts/parity/bridge-contract";
 import { buildScrollParityBridge } from "./scrollParityBridge";
 import type { ScrollParityBridge } from "./scrollParityBridge";
-import type { FolioParityBridge } from "../../../scripts/parity/bridge-contract";
 
 export type { FolioParityBridge } from "../../../scripts/parity/bridge-contract";
 
-import { browserTestBridge } from "../../../tests/visual/browserTestBridge";
-
-import { CollaborationApp } from "./CollaborationApp";
-import { recordCanonicalFuzzError } from "../../../tests/parity/canonicalFuzzErrors";
 import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
+import { recordCanonicalFuzzError } from "../../../tests/parity/canonicalFuzzErrors";
+import { browserTestBridge } from "../../../tests/visual/browserTestBridge";
+import { CollaborationApp } from "./CollaborationApp";
 import {
   IDLE_PLAYGROUND_STATUS,
   PLAYGROUND_STATUS_CLASS_NAME,
@@ -106,7 +111,11 @@ function buildParityBridge(
       const results = batches.map((batch) => {
         const snapshot = ref.createAIEditSnapshot();
         if (!snapshot) throw new Error("Generated flow requires a snapshot");
-        return ref.applyDocumentOperations({ undefinedReferences: "refuse", snapshot, batch });
+        return ref.applyDocumentOperations({
+          undefinedReferences: "refuse",
+          snapshot,
+          batch,
+        });
       });
       const saved = await ref.save();
       if (!saved) throw new Error("Generated flow did not save");
@@ -124,7 +133,9 @@ function buildParityBridge(
     },
     readScrollViewport: (pageNumber) => {
       const root = getRef()?.getScrollRoot();
-      const target = document.querySelector(`[data-page-number="${pageNumber}"]`);
+      const target = document.querySelector(
+        `[data-page-number="${pageNumber}"]`,
+      );
       if (!root || !target) {
         return null;
       }
@@ -143,7 +154,8 @@ function buildParityBridge(
     },
     ensureView: () => getRef()?.ensureEditorView({ focus: false }),
     hasView: () => liveView() !== null,
-    getDocumentText: () => getRef()?.getEditor()?.getState()?.doc.textContent ?? "",
+    getDocumentText: () =>
+      getRef()?.getEditor()?.getState()?.doc.textContent ?? "",
     getTextWatermark: () => {
       const document = getRef()?.getDocument();
       if (!document) {
@@ -158,7 +170,9 @@ function buildParityBridge(
         return false;
       }
       const { state } = view;
-      view.dispatch(state.tr.insertText(text, state.selection.from, state.selection.to));
+      view.dispatch(
+        state.tr.insertText(text, state.selection.from, state.selection.to),
+      );
       return true;
     },
     boldFirstWord: () => {
@@ -219,7 +233,8 @@ function buildParityBridge(
       editor.setSelection(from, to);
       return true;
     },
-    countSelectionRects: () => document.querySelectorAll("[data-folio-selection-rect]").length,
+    countSelectionRects: () =>
+      document.querySelectorAll("[data-folio-selection-rect]").length,
     setupContentControls: () => {
       const view = liveView();
       if (!view) {
@@ -235,12 +250,27 @@ function buildParityBridge(
             { displayText: "New York", value: "ny" },
           ]),
         },
-        [view.state.schema.node("paragraph", {}, [view.state.schema.text("California")])],
+        [
+          view.state.schema.node("paragraph", {}, [
+            view.state.schema.text("California"),
+          ]),
+        ],
       );
-      const date = view.state.schema.node("blockSdt", { sdtType: "date", tag: "effective" }, [
-        view.state.schema.node("paragraph", {}, [view.state.schema.text("2026-01-15")]),
-      ]);
-      view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, [dropdown, date]));
+      const date = view.state.schema.node(
+        "blockSdt",
+        { sdtType: "date", tag: "effective" },
+        [
+          view.state.schema.node("paragraph", {}, [
+            view.state.schema.text("2026-01-15"),
+          ]),
+        ],
+      );
+      view.dispatch(
+        view.state.tr.replaceWith(0, view.state.doc.content.size, [
+          dropdown,
+          date,
+        ]),
+      );
       return true;
     },
     dispatchClipboardEvent: (kind) => {
@@ -248,7 +278,9 @@ function buildParityBridge(
       if (!view) {
         return 0;
       }
-      view.dom.dispatchEvent(new ClipboardEvent(kind, { bubbles: true, cancelable: true }));
+      view.dom.dispatchEvent(
+        new ClipboardEvent(kind, { bubbles: true, cancelable: true }),
+      );
       return getClipboardCallbackCount(kind);
     },
     getCurrentTableProperties: () => {
@@ -268,7 +300,8 @@ function buildParityBridge(
         return {
           width: typeof width === "number" ? width : null,
           widthType: typeof widthType === "string" ? widthType : null,
-          justification: typeof justification === "string" ? justification : null,
+          justification:
+            typeof justification === "string" ? justification : null,
         };
       }
       return null;
@@ -322,12 +355,20 @@ function buildParityBridge(
         return false;
       }
       const { from, to } = range;
-      view.dispatch(view.state.tr.addMark(from, to, commentType.create({ commentId: 424242 })));
+      view.dispatch(
+        view.state.tr.addMark(
+          from,
+          to,
+          commentType.create({ commentId: 424242 }),
+        ),
+      );
       return view.state.doc.rangeHasMark(from, to, commentType);
     },
     countCommentAnchors: () =>
-      document.querySelectorAll(".paged-editor__pages [data-comment-id]").length,
-    aiSnapshotBlockCount: () => getRef()?.createAIEditSnapshot()?.blocks.length ?? 0,
+      document.querySelectorAll(".paged-editor__pages [data-comment-id]")
+        .length,
+    aiSnapshotBlockCount: () =>
+      getRef()?.createAIEditSnapshot()?.blocks.length ?? 0,
     pendingSuggestionPersistence: () => {
       const ref = getRef();
       const snapshot = ref?.createAIEditSnapshot();
@@ -349,7 +390,9 @@ function buildParityBridge(
         ],
       });
       const id = result.applied.at(0)?.suggestionId;
-      const parsed: unknown = JSON.parse(JSON.stringify(ref.exportPendingSuggestions()));
+      const parsed: unknown = JSON.parse(
+        JSON.stringify(ref.exportPendingSuggestions()),
+      );
       const records = Array.isArray(parsed) ? parsed : [];
       if (id) ref.rejectSuggestion(id);
       const loaded = ref.loadPendingSuggestions(records);
@@ -402,7 +445,11 @@ function buildParityBridge(
       if (!ref || !snapshot || !firstBlock) {
         return { shown: false, targetPage: 0, currentPage: 0 };
       }
-      const target = { type: "block", story: "main", blockId: firstBlock.id } as const;
+      const target = {
+        type: "block",
+        story: "main",
+        blockId: firstBlock.id,
+      } as const;
       const targetPage = ref.getTargetPage(target, snapshot) ?? 0;
       const shown = ref.showInDocument(target, snapshot);
       return { shown, targetPage, currentPage: ref.getCurrentPage() };
@@ -454,7 +501,11 @@ function buildParityBridge(
         },
       });
       const view = liveView();
-      if (!second.undoHandle || !view || view.state.doc.textContent === before) {
+      if (
+        !second.undoHandle ||
+        !view ||
+        view.state.doc.textContent === before
+      ) {
         return false;
       }
 
@@ -490,13 +541,16 @@ function buildParityBridge(
       if (!word) {
         return false;
       }
-      const { key, payload } = setAnonymizationTermsMeta([{ canonical: word, label: "person" }]);
+      const { key, payload } = setAnonymizationTermsMeta([
+        { canonical: word, label: "person" },
+      ]);
       view.dispatch(view.state.tr.setMeta(key, payload));
       return true;
     },
     countAnonymizationRects: () =>
-      document.querySelectorAll("[data-folio-anonymization-overlay] .folio-anonymization-term")
-        .length,
+      document.querySelectorAll(
+        "[data-folio-anonymization-overlay] .folio-anonymization-term",
+      ).length,
     startAutocomplete: (text) => {
       const view = liveView();
       if (!view) {
@@ -509,7 +563,9 @@ function buildParityBridge(
           autocompleteRequestId,
         ),
       );
-      view.dispatch(appendAutocompleteToken(view.state.tr, autocompleteRequestId, text));
+      view.dispatch(
+        appendAutocompleteToken(view.state.tr, autocompleteRequestId, text),
+      );
       return true;
     },
     finishAutocomplete: () => {
@@ -517,7 +573,9 @@ function buildParityBridge(
       if (!view) {
         return false;
       }
-      view.dispatch(finishAutocompleteSuggestion(view.state.tr, autocompleteRequestId));
+      view.dispatch(
+        finishAutocompleteSuggestion(view.state.tr, autocompleteRequestId),
+      );
       return true;
     },
     clearAutocomplete: () => {
@@ -540,7 +598,9 @@ function buildParityBridge(
         return false;
       }
       const { state } = view;
-      pagedRef.dispatch(state.tr.insertText(text, state.selection.from, state.selection.to));
+      pagedRef.dispatch(
+        state.tr.insertText(text, state.selection.from, state.selection.to),
+      );
       return true;
     },
     getPageNumberForSelection: () => {
@@ -558,7 +618,9 @@ function buildParityBridge(
       if (!ref || !view || !before) {
         return false;
       }
-      view.dispatch(view.state.tr.insertText(marker, view.state.selection.from));
+      view.dispatch(
+        view.state.tr.insertText(marker, view.state.selection.from),
+      );
       ref.loadDocument(before);
       return true;
     },
@@ -618,7 +680,11 @@ const createPlaygroundScrollHost = () => {
   };
 };
 
-const fetchPlaygroundDocument = async ({ fileName, missingStatus, url }: LoadDocumentOptions) => {
+const fetchPlaygroundDocument = async ({
+  fileName,
+  missingStatus,
+  url,
+}: LoadDocumentOptions) => {
   try {
     const response = await fetch(url);
     if (!response.ok) return { type: "error", message: missingStatus } as const;
@@ -642,15 +708,19 @@ const DocumentPlayground = () => {
   );
   const clipboardCallbackCountsRef = useRef({ copy: 0, cut: 0, paste: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("file") || params.has("showcase")) return null;
-    const paragraphCount = Number(params.get("paragraphs"));
-    return Number.isInteger(paragraphCount) && paragraphCount > 0
-      ? createLargeDocument(paragraphCount)
-      : createStellaStyleDocument();
-  });
-  const [documentBuffer, setDocumentBuffer] = useState<ArrayBuffer | null>(null);
+  const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(
+    () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("file") || params.has("showcase")) return null;
+      const paragraphCount = Number(params.get("paragraphs"));
+      return Number.isInteger(paragraphCount) && paragraphCount > 0
+        ? createLargeDocument(paragraphCount)
+        : createStellaStyleDocument();
+    },
+  );
+  const [documentBuffer, setDocumentBuffer] = useState<ArrayBuffer | null>(
+    null,
+  );
   const [fileName, setFileName] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const paragraphCount = Number(params.get("paragraphs"));
@@ -664,16 +734,23 @@ const DocumentPlayground = () => {
   const [status, setStatus] = useState<PlaygroundStatus>(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("file"))
-      return { type: PLAYGROUND_STATUS_TYPE.LOADING, message: "Loading fixture..." };
+      return {
+        type: PLAYGROUND_STATUS_TYPE.LOADING,
+        message: "Loading fixture...",
+      };
     if (params.has("showcase"))
-      return { type: PLAYGROUND_STATUS_TYPE.LOADING, message: "Loading showcase..." };
+      return {
+        type: PLAYGROUND_STATUS_TYPE.LOADING,
+        message: "Loading showcase...",
+      };
     return IDLE_PLAYGROUND_STATUS;
   });
   const [editorMode, setEditorMode] = useState<EditorMode>("editing");
   const [locale, setLocale] = useState<string>(DEFAULT_LOCALE);
   const query = new URLSearchParams(window.location.search);
   const parityFonts = globalThis.__folioParityFonts;
-  const experimentalSession = query.get("session") === "canonical" ? "canonical" : undefined;
+  const experimentalSession =
+    query.get("session") === "canonical" ? "canonical" : undefined;
   const showMarginGuides = query.has("marginGuides");
   const marginGuideColor = query.get("marginGuideColor") ?? undefined;
   // The editor paints from the display list. `?pageRenderer=legacy` selects the
@@ -687,7 +764,10 @@ const DocumentPlayground = () => {
       fetchPlaygroundDocument(options).then((result) => {
         switch (result.type) {
           case "error":
-            setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: result.message });
+            setStatus({
+              type: PLAYGROUND_STATUS_TYPE.ERROR,
+              message: result.message,
+            });
             return;
           case "ready":
             setCurrentDocument(null);
@@ -735,30 +815,45 @@ const DocumentPlayground = () => {
     setStatus(IDLE_PLAYGROUND_STATUS);
   }, []);
 
-  const handleFileSelect = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const input = event.currentTarget;
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-    try {
-      setStatus({ type: PLAYGROUND_STATUS_TYPE.LOADING, message: "Loading..." });
-      const buffer = await file.arrayBuffer();
-      setCurrentDocument(null);
-      setDocumentBuffer(buffer);
-      setFileName(file.name);
-      setStatus({ type: PLAYGROUND_STATUS_TYPE.SUCCESS, message: `Loaded ${file.name}` });
-    } catch {
-      setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: "Error loading file" });
-    } finally {
-      input.value = "";
-    }
-  }, []);
+  const handleFileSelect = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const input = event.currentTarget;
+      const file = event.target.files?.[0];
+      if (!file) {
+        return;
+      }
+      try {
+        setStatus({
+          type: PLAYGROUND_STATUS_TYPE.LOADING,
+          message: "Loading...",
+        });
+        const buffer = await file.arrayBuffer();
+        setCurrentDocument(null);
+        setDocumentBuffer(buffer);
+        setFileName(file.name);
+        setStatus({
+          type: PLAYGROUND_STATUS_TYPE.SUCCESS,
+          message: `Loaded ${file.name}`,
+        });
+      } catch {
+        setStatus({
+          type: PLAYGROUND_STATUS_TYPE.ERROR,
+          message: "Error loading file",
+        });
+      } finally {
+        input.value = "";
+      }
+    },
+    [],
+  );
 
   const handleOpenDocument = useCallback(() => {
     const input = fileInputRef.current;
     if (!input) {
-      setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: "File picker unavailable" });
+      setStatus({
+        type: PLAYGROUND_STATUS_TYPE.ERROR,
+        message: "File picker unavailable",
+      });
       return;
     }
     input.value = "";
@@ -766,7 +861,10 @@ const DocumentPlayground = () => {
   }, []);
 
   const handleOpenShowcase = useCallback(() => {
-    setStatus({ type: PLAYGROUND_STATUS_TYPE.LOADING, message: "Loading showcase..." });
+    setStatus({
+      type: PLAYGROUND_STATUS_TYPE.LOADING,
+      message: "Loading showcase...",
+    });
     void loadDocument({
       fileName: SHOWCASE_FILE_NAME,
       missingStatus: "Showcase document not found",
@@ -892,7 +990,9 @@ const DocumentPlayground = () => {
             document={documentBuffer ? null : currentDocument}
             documentBuffer={documentBuffer}
             author="Folio User"
-            {...(experimentalSession === undefined ? {} : { experimentalSession })}
+            {...(experimentalSession === undefined
+              ? {}
+              : { experimentalSession })}
             {...(parityFonts !== undefined ? { fonts: parityFonts } : {})}
             onEditorViewReady={scrollParityHost.onViewReady}
             preserveDocumentWhileLoading={query.has("readyScroll")}
@@ -921,7 +1021,9 @@ const DocumentPlayground = () => {
             type="button"
             className="pg-button"
             aria-pressed={trackChangesOn}
-            onClick={() => setEditorMode(trackChangesOn ? "editing" : "suggesting")}
+            onClick={() =>
+              setEditorMode(trackChangesOn ? "editing" : "suggesting")
+            }
           >
             {trackChangesOn ? "Tracking" : "Track Changes"}
           </button>
@@ -929,14 +1031,20 @@ const DocumentPlayground = () => {
             type="button"
             className="pg-button"
             aria-pressed={editorMode === "viewing"}
-            onClick={() => setEditorMode(editorMode === "viewing" ? "editing" : "viewing")}
+            onClick={() =>
+              setEditorMode(editorMode === "viewing" ? "editing" : "viewing")
+            }
           >
             View Only
           </button>
 
           <span className="pg-sep" aria-hidden="true" />
 
-          <button type="button" className="pg-button" onClick={handleOpenDocument}>
+          <button
+            type="button"
+            className="pg-button"
+            onClick={handleOpenDocument}
+          >
             Open
           </button>
           <input
@@ -948,10 +1056,18 @@ const DocumentPlayground = () => {
             onChange={handleFileSelect}
             className="pg-visually-hidden"
           />
-          <button type="button" className="pg-button" onClick={handleNewDocument}>
+          <button
+            type="button"
+            className="pg-button"
+            onClick={handleNewDocument}
+          >
             New
           </button>
-          <button type="button" className="pg-button" onClick={handleOpenShowcase}>
+          <button
+            type="button"
+            className="pg-button"
+            onClick={handleOpenShowcase}
+          >
             Showcase
           </button>
           <button type="button" className="pg-button" onClick={handleSave}>
@@ -987,7 +1103,10 @@ const DocumentPlayground = () => {
           </select>
 
           {status.type !== PLAYGROUND_STATUS_TYPE.IDLE && (
-            <span className={PLAYGROUND_STATUS_CLASS_NAME} data-status={status.type}>
+            <span
+              className={PLAYGROUND_STATUS_CLASS_NAME}
+              data-status={status.type}
+            >
               {status.message}
             </span>
           )}

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { CellSelection } from "prosemirror-tables";
 import type { EditorState } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import {
   createHarnessState,
@@ -13,10 +13,15 @@ import {
   SUGGESTION_INPUT_KINDS,
 } from "../../__tests__/suggestionInputKinds";
 import { FolioDocxReviewer } from "../../ai-edits/headless";
-import { fromMarkdown } from "../../markdown/fromMarkdown";
 import { createDocx } from "../../docx/rezip";
+import { fromMarkdown } from "../../markdown/fromMarkdown";
 
-const ORIGINAL_CELLS = ["First cell", "Second cell", "Third cell", "Fourth cell"];
+const ORIGINAL_CELLS = [
+  "First cell",
+  "Second cell",
+  "Third cell",
+  "Fourth cell",
+];
 const TABLE_MARKDOWN =
   "Before.\n\n| A | B |\n|---|---|\n| First cell | Second cell |\n| Third cell | Fourth cell |\n\nAfter.";
 const focusedInputs = SUGGESTION_INPUT_KINDS.filter(
@@ -26,7 +31,10 @@ const focusedInputs = SUGGESTION_INPUT_KINDS.filter(
 const bodyCells = (state: EditorState) => {
   const cells: { text: string; pos: number }[] = [];
   state.doc.descendants((node, pos) => {
-    if (node.type.name === "tableCell" && ORIGINAL_CELLS.includes(node.textContent)) {
+    if (
+      node.type.name === "tableCell" &&
+      ORIGINAL_CELLS.includes(node.textContent)
+    ) {
       cells.push({ text: node.textContent, pos });
     }
   });
@@ -43,7 +51,10 @@ const allBodyCellText = (state: EditorState) => {
   return cells.slice(2);
 };
 
-const reopened = async (state: EditorState, base: ReturnType<typeof fromMarkdown>) => {
+const reopened = async (
+  state: EditorState,
+  base: ReturnType<typeof fromMarkdown>,
+) => {
   const { bytes } = await saveHarnessState(state, base);
   return createHarnessState(await parseShapeDocument(bytes), "editing");
 };
@@ -58,13 +69,21 @@ describe("suggestion mode cell selection deletion", () => {
       const base = await parseShapeDocument(
         new Uint8Array(await createDocx(fromMarkdown(TABLE_MARKDOWN))),
       );
-      const editing = new HeadlessEditorView(createHarnessState(base, "editing"));
-      const suggesting = new HeadlessEditorView(createHarnessState(base, "suggesting"));
+      const editing = new HeadlessEditorView(
+        createHarnessState(base, "editing"),
+      );
+      const suggesting = new HeadlessEditorView(
+        createHarnessState(base, "suggesting"),
+      );
 
       for (const view of [editing, suggesting]) {
         const cells = bodyCells(view.state);
         expect(cells.map(({ text }) => text)).toEqual(ORIGINAL_CELLS);
-        const selection = CellSelection.create(view.state.doc, cells[0]!.pos, cells[3]!.pos);
+        const selection = CellSelection.create(
+          view.state.doc,
+          cells[0]!.pos,
+          cells[3]!.pos,
+        );
         expect(selection.ranges).toHaveLength(4);
         view.dispatch(view.state.tr.setSelection(selection));
         expect(view.pressKey("Delete")).toBe(true);
@@ -86,8 +105,12 @@ describe("suggestion mode cell selection deletion", () => {
       }
 
       const { bytes } = await saveHarnessState(suggesting.state, base);
-      const accepting = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
-      const rejecting = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+      const accepting = await FolioDocxReviewer.fromBuffer(
+        bytes.slice().buffer,
+      );
+      const rejecting = await FolioDocxReviewer.fromBuffer(
+        bytes.slice().buffer,
+      );
       accepting.acceptAll();
       rejecting.rejectAll();
       const accepted = createHarnessState(

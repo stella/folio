@@ -1,9 +1,12 @@
-import { decodeText } from "../../utils/textEncoding";
+import { Result, TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 
-import { Result, TaggedError } from "better-result";
-
-import { getAttributeAnyPrefix, getLocalName, parseXmlDocument } from "../xmlParser";
+import { decodeText } from "../../utils/textEncoding";
+import {
+  getAttributeAnyPrefix,
+  getLocalName,
+  parseXmlDocument,
+} from "../xmlParser";
 import type { DocxArchiveEntry, DocxArchiveOptions } from "./boundedArchive";
 import { DocxArchiveError, loadDocxArchive } from "./boundedArchive";
 
@@ -95,12 +98,14 @@ const decodeXml = (bytes: Uint8Array, part: string): string => {
   let encoding = "utf-8";
   if (
     bytes.length >= 2 &&
-    ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0x3c && bytes[1] === 0x00))
+    ((bytes[0] === 0xff && bytes[1] === 0xfe) ||
+      (bytes[0] === 0x3c && bytes[1] === 0x00))
   ) {
     encoding = "utf-16le";
   } else if (
     bytes.length >= 2 &&
-    ((bytes[0] === 0xfe && bytes[1] === 0xff) || (bytes[0] === 0x00 && bytes[1] === 0x3c))
+    ((bytes[0] === 0xfe && bytes[1] === 0xff) ||
+      (bytes[0] === 0x00 && bytes[1] === 0x3c))
   ) {
     encoding = "utf-16be";
   }
@@ -141,7 +146,10 @@ const parseContentTypes = (xml: string | null): ContentTypeDeclarations => {
     }
     const localName = getLocalName(element.name ?? "");
     if (localName === "Default") {
-      const extension = getAttributeAnyPrefix(element, "Extension")?.toLowerCase();
+      const extension = getAttributeAnyPrefix(
+        element,
+        "Extension",
+      )?.toLowerCase();
       const contentType = getAttributeAnyPrefix(element, "ContentType");
       if (extension !== undefined && contentType !== null) {
         declarations.defaults.set(extension, contentType);
@@ -151,7 +159,10 @@ const parseContentTypes = (xml: string | null): ContentTypeDeclarations => {
     if (localName !== "Override") {
       continue;
     }
-    const partName = getAttributeAnyPrefix(element, "PartName")?.replace(/^\//u, "");
+    const partName = getAttributeAnyPrefix(element, "PartName")?.replace(
+      /^\//u,
+      "",
+    );
     const contentType = getAttributeAnyPrefix(element, "ContentType");
     if (partName !== undefined && contentType !== null) {
       declarations.overrides.set(partName, contentType);
@@ -167,13 +178,18 @@ const extensionFor = (path: string): string | null => {
   return separator === -1 ? null : filename.slice(separator + 1).toLowerCase();
 };
 
-const contentTypeFor = (path: string, declarations: ContentTypeDeclarations): string | null => {
+const contentTypeFor = (
+  path: string,
+  declarations: ContentTypeDeclarations,
+): string | null => {
   const override = declarations.overrides.get(path);
   if (override !== undefined) {
     return override;
   }
   const extension = extensionFor(path);
-  return extension === null ? null : (declarations.defaults.get(extension) ?? null);
+  return extension === null
+    ? null
+    : (declarations.defaults.get(extension) ?? null);
 };
 
 const isXmlPart = (path: string, contentType: string | null): boolean => {
@@ -214,11 +230,13 @@ const resolveLimits = (
     "maxXmlParts",
   ),
   maxXmlPartBytes: requireNonNegativeInteger(
-    limits?.maxXmlPartBytes ?? FOLIO_DOCX_PACKAGE_INSPECTION_DEFAULTS.maxXmlPartBytes,
+    limits?.maxXmlPartBytes ??
+      FOLIO_DOCX_PACKAGE_INSPECTION_DEFAULTS.maxXmlPartBytes,
     "maxXmlPartBytes",
   ),
   maxXmlTotalBytes: requireNonNegativeInteger(
-    limits?.maxXmlTotalBytes ?? FOLIO_DOCX_PACKAGE_INSPECTION_DEFAULTS.maxXmlTotalBytes,
+    limits?.maxXmlTotalBytes ??
+      FOLIO_DOCX_PACKAGE_INSPECTION_DEFAULTS.maxXmlTotalBytes,
     "maxXmlTotalBytes",
   ),
 });
@@ -283,7 +301,8 @@ const validateRequestedParts = ({
     declaredTotalBytes += declaredBytes;
     if (declaredTotalBytes > limits.maxXmlTotalBytes) {
       throw new FolioDocxPackageInspectionError({
-        message: "Requested XML package parts exceed the cumulative inspection limit",
+        message:
+          "Requested XML package parts exceed the cumulative inspection limit",
         code: "xml-total-too-large",
       });
     }
@@ -294,7 +313,10 @@ type ReadRequestedXmlPartsOptions = {
   paths: readonly string[];
   partsByPath: ReadonlyMap<string, FolioDocxPackagePart>;
   limits: Required<FolioDocxPackageInspectionLimits>;
-  readEntryUint8: (path: string, options: { maxBytes: number }) => Promise<Uint8Array | null>;
+  readEntryUint8: (
+    path: string,
+    options: { maxBytes: number },
+  ) => Promise<Uint8Array | null>;
 };
 
 export const readRequestedXmlParts = async ({
@@ -313,13 +335,18 @@ export const readRequestedXmlParts = async ({
       // oxlint-disable-next-line no-await-in-loop -- request order defines the result order and cumulative budget
       bytes = await readEntryUint8(path, { maxBytes: readLimit });
     } catch (cause) {
-      if (cause instanceof DocxArchiveError && cause.reason === "entry-too-large") {
+      if (
+        cause instanceof DocxArchiveError &&
+        cause.reason === "entry-too-large"
+      ) {
         const cumulativeLimitReached = readLimit < limits.maxXmlPartBytes;
         throw new FolioDocxPackageInspectionError({
           message: cumulativeLimitReached
             ? "Requested XML package parts exceed the cumulative inspection limit"
             : `XML package part "${path}" exceeds the per-part inspection limit`,
-          code: cumulativeLimitReached ? "xml-total-too-large" : "xml-part-too-large",
+          code: cumulativeLimitReached
+            ? "xml-total-too-large"
+            : "xml-part-too-large",
           part: path,
           cause,
         });
@@ -337,7 +364,8 @@ export const readRequestedXmlParts = async ({
     totalBytes += bytes.byteLength;
     if (totalBytes > limits.maxXmlTotalBytes) {
       throw new FolioDocxPackageInspectionError({
-        message: "Requested XML package parts exceed the cumulative inspection limit",
+        message:
+          "Requested XML package parts exceed the cumulative inspection limit",
         code: "xml-total-too-large",
       });
     }
@@ -368,12 +396,16 @@ export const inspectDocxPackage = async (
     maxBytes: CONTENT_TYPES_READ_LIMIT,
   });
   const declarations = parseContentTypes(
-    contentTypesBytes === null ? null : decodeXml(contentTypesBytes, CONTENT_TYPES_PATH),
+    contentTypesBytes === null
+      ? null
+      : decodeXml(contentTypesBytes, CONTENT_TYPES_PATH),
   );
   const parts = archive.entryMetadata
     .filter(({ directory }) => !directory)
     .map((entry) => toPackagePart(entry, declarations))
-    .toSorted(({ path: left }, { path: right }) => comparePackagePaths(left, right));
+    .toSorted(({ path: left }, { path: right }) =>
+      comparePackagePaths(left, right),
+    );
   const partsByPath = new Map(parts.map((part) => [part.path, part] as const));
   validateRequestedParts({ requestedPaths, partsByPath, limits });
 

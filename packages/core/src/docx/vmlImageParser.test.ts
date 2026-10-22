@@ -97,7 +97,9 @@ ${withControl ? '  <Relationship Id="rIdControl" Type="http://schemas.openxmlfor
 }
 
 /** Pull the first drawing content out of a paragraph's first run. */
-function firstDrawing(block: BlockContent | undefined): DrawingContent | undefined {
+function firstDrawing(
+  block: BlockContent | undefined,
+): DrawingContent | undefined {
   if (block?.type === "blockSdt") {
     for (const child of block.content) {
       const drawing = firstDrawing(child);
@@ -118,13 +120,17 @@ function firstDrawing(block: BlockContent | undefined): DrawingContent | undefin
  * A `w:pict` the preview pipeline declines still reaches the model as raw XML:
  * refusing to rasterize it must not delete the shape from the document.
  */
-function expectPreservedWithoutPreview(drawing: DrawingContent | undefined): void {
+function expectPreservedWithoutPreview(
+  drawing: DrawingContent | undefined,
+): void {
   expect(drawing?.rawXmlMode).toBe("preserveOnly");
   expect(drawing?.image.src).toBeUndefined();
 }
 
 /** First drawing carried by a run nested inside the paragraph's first hyperlink. */
-function firstDrawingInHyperlink(block: Paragraph | Table | undefined): DrawingContent | undefined {
+function firstDrawingInHyperlink(
+  block: Paragraph | Table | undefined,
+): DrawingContent | undefined {
   if (block?.type !== "paragraph") {
     return undefined;
   }
@@ -136,7 +142,9 @@ function firstDrawingInHyperlink(block: Paragraph | Table | undefined): DrawingC
     if (child.type !== "run") {
       continue;
     }
-    const drawing = child.content.find((c): c is DrawingContent => c.type === "drawing");
+    const drawing = child.content.find(
+      (c): c is DrawingContent => c.type === "drawing",
+    );
     if (drawing) {
       return drawing;
     }
@@ -145,7 +153,9 @@ function firstDrawingInHyperlink(block: Paragraph | Table | undefined): DrawingC
 }
 
 /** First drawing carried by a run nested inside the paragraph's first inline SDT. */
-function firstDrawingInInlineSdt(block: Paragraph | Table | undefined): DrawingContent | undefined {
+function firstDrawingInInlineSdt(
+  block: Paragraph | Table | undefined,
+): DrawingContent | undefined {
   if (block?.type !== "paragraph") {
     return undefined;
   }
@@ -157,7 +167,9 @@ function firstDrawingInInlineSdt(block: Paragraph | Table | undefined): DrawingC
     if (child.type !== "run") {
       continue;
     }
-    const drawing = child.content.find((c): c is DrawingContent => c.type === "drawing");
+    const drawing = child.content.find(
+      (c): c is DrawingContent => c.type === "drawing",
+    );
     if (drawing) {
       return drawing;
     }
@@ -289,7 +301,9 @@ describe("VML w:pict inline images", () => {
       { preloadFonts: false },
     );
 
-    expect(firstDrawing(doc.package.document.content.at(0))?.image.position).toEqual({
+    expect(
+      firstDrawing(doc.package.document.content.at(0))?.image.position,
+    ).toEqual({
       horizontal: { relativeTo: "leftMargin", posOffset: 0 },
       vertical: { relativeTo: "topMargin", posOffset: 0 },
     });
@@ -323,7 +337,9 @@ describe("VML w:pict inline images", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     const reopened = await parseDocx(out, { preloadFonts: false });
 
-    expect(firstDrawing(reopened.package.document.content.at(0))?.rawXml).toBe(rawXml);
+    expect(firstDrawing(reopened.package.document.content.at(0))?.rawXml).toBe(
+      rawXml,
+    );
   });
 
   test("keeps character-referenced VML line endings stable after save and reopen", async () => {
@@ -336,7 +352,9 @@ describe("VML w:pict inline images", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     const reopened = await parseDocx(out, { preloadFonts: false });
 
-    expect(firstDrawing(reopened.package.document.content.at(0))?.rawXml).toBe(rawXml);
+    expect(firstDrawing(reopened.package.document.content.at(0))?.rawXml).toBe(
+      rawXml,
+    );
   });
 
   test("stabilizes VML that omits standard namespace declarations", async () => {
@@ -349,13 +367,18 @@ describe("VML w:pict inline images", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     const reopened = await parseDocx(out, { preloadFonts: false });
 
-    expect(firstDrawing(reopened.package.document.content.at(0))?.rawXml).toBe(rawXml);
+    expect(firstDrawing(reopened.package.document.content.at(0))?.rawXml).toBe(
+      rawXml,
+    );
   });
 
   test("parses an embedded object's VML preview with its authored dimensions", async () => {
-    const doc = await parseDocx(await pictDocx({ runXml: OBJECT_WITH_PREVIEW }), {
-      preloadFonts: false,
-    });
+    const doc = await parseDocx(
+      await pictDocx({ runXml: OBJECT_WITH_PREVIEW }),
+      {
+        preloadFonts: false,
+      },
+    );
 
     const drawing = firstDrawing(doc.package.document.content.at(0));
     expect(drawing?.image.rId).toBe("rIdImg");
@@ -369,7 +392,11 @@ describe("VML w:pict inline images", () => {
 
   test("preserves an embedded object wrapper when saving its preview", async () => {
     const original = await pictDocx({ runXml: OBJECT_WITH_PREVIEW });
-    expect(await validateDocx(original)).toEqual({ valid: true, errors: [], warnings: [] });
+    expect(await validateDocx(original)).toEqual({
+      valid: true,
+      errors: [],
+      warnings: [],
+    });
     const doc = await parseDocx(original, { preloadFonts: false });
     const out = await repackDocx(doc, { updateModifiedDate: false });
 
@@ -421,7 +448,9 @@ describe("VML w:pict inline images", () => {
 
   test("keeps a cached page-break hint when the following VML content is retained", async () => {
     const doc = await parseDocx(
-      await pictDocx({ runXml: `<w:lastRenderedPageBreak/>${PICT_WITH_IMAGE}` }),
+      await pictDocx({
+        runXml: `<w:lastRenderedPageBreak/>${PICT_WITH_IMAGE}`,
+      }),
       { preloadFonts: false },
     );
     const paragraph = doc.package.document.content.at(0);
@@ -453,9 +482,9 @@ describe("VML w:pict inline images", () => {
       vertical: { relativeTo: "page", posOffset: 76_200 },
     });
     expect(drawing?.image.src).toStartWith("data:image/svg+xml");
-    expect(decodeURIComponent(drawing?.image.src?.split(",").at(1) ?? "")).toContain(
-      'fill="black"',
-    );
+    expect(
+      decodeURIComponent(drawing?.image.src?.split(",").at(1) ?? ""),
+    ).toContain('fill="black"');
     expect(drawing?.rawXml).toContain("<w:pict");
   });
 
@@ -477,10 +506,14 @@ describe("VML w:pict inline images", () => {
     const zip = await JSZip.loadAsync(out);
     const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
     expect(rels).not.toContain(`Type="${RELATIONSHIP_TYPES.image}"`);
-    expect(Object.keys(zip.files).some((path) => path.startsWith("word/media/"))).toBe(false);
+    expect(
+      Object.keys(zip.files).some((path) => path.startsWith("word/media/")),
+    ).toBe(false);
 
     const reopened = await parseDocx(out, { preloadFonts: false });
-    const reopenedDrawing = firstDrawing(reopened.package.document.content.at(0));
+    const reopenedDrawing = firstDrawing(
+      reopened.package.document.content.at(0),
+    );
     expect(reopenedDrawing?.image.rId).toBeUndefined();
     expect(reopenedDrawing?.rawXml).toBe(rawXml);
   });
@@ -521,7 +554,10 @@ describe("VML w:pict inline images", () => {
     );
 
     const drawing = firstDrawing(doc.package.document.content.at(0));
-    expect(drawing?.image.size).toEqual({ width: 1_270_000, height: 1_270_000 });
+    expect(drawing?.image.size).toEqual({
+      width: 1_270_000,
+      height: 1_270_000,
+    });
     expect(drawing?.image.wrap.type).toBe("inFront");
     expect(drawing?.image.position).toEqual({
       horizontal: { relativeTo: "page", posOffset: 127_000 },
@@ -617,7 +653,9 @@ describe("VML w:pict inline images", () => {
         ? run.content.filter((c): c is DrawingContent => c.type === "drawing")
         : [];
     };
-    const unbounded = drawingsOf(await parseDocx(source, { preloadFonts: false }));
+    const unbounded = drawingsOf(
+      await parseDocx(source, { preloadFonts: false }),
+    );
     const firstSrc = unbounded.at(0)?.image.src ?? "";
     expect(firstSrc).toStartWith("data:image/svg+xml");
 
@@ -674,7 +712,9 @@ describe("VML w:pict inline images", () => {
         { preloadFonts: false },
       );
 
-      expectPreservedWithoutPreview(firstDrawing(doc.package.document.content.at(0)));
+      expectPreservedWithoutPreview(
+        firstDrawing(doc.package.document.content.at(0)),
+      );
     }
   });
 
@@ -691,9 +731,13 @@ describe("VML w:pict inline images", () => {
       }),
       { preloadFonts: false },
     );
-    expectPreservedWithoutPreview(firstDrawing(depthDoc.package.document.content.at(0)));
+    expectPreservedWithoutPreview(
+      firstDrawing(depthDoc.package.document.content.at(0)),
+    );
 
-    const rectangles = `<v:rect style="left:0;top:0;width:1;height:1"/>`.repeat(256);
+    const rectangles = `<v:rect style="left:0;top:0;width:1;height:1"/>`.repeat(
+      256,
+    );
     const elementDoc = await parseDocx(
       await pictDocx({
         runXml: `<w:pict><v:group style="width:10pt;height:10pt" coordsize="1,1"><v:group style="left:0;top:0;width:1;height:1" coordsize="1,1">${rectangles}</v:group></v:group></w:pict>`,
@@ -702,7 +746,9 @@ describe("VML w:pict inline images", () => {
       }),
       { preloadFonts: false },
     );
-    expectPreservedWithoutPreview(firstDrawing(elementDoc.package.document.content.at(0)));
+    expectPreservedWithoutPreview(
+      firstDrawing(elementDoc.package.document.content.at(0)),
+    );
 
     const pathPoints = Array.from({ length: 20_000 }, () => "1,1").join(",");
     const pathDoc = await parseDocx(
@@ -713,7 +759,9 @@ describe("VML w:pict inline images", () => {
       }),
       { preloadFonts: false },
     );
-    expectPreservedWithoutPreview(firstDrawing(pathDoc.package.document.content.at(0)));
+    expectPreservedWithoutPreview(
+      firstDrawing(pathDoc.package.document.content.at(0)),
+    );
   });
 
   test("renders no preview for solid shapes with unsafe dimensions", async () => {
@@ -724,13 +772,18 @@ describe("VML w:pict inline images", () => {
       { preloadFonts: false },
     );
 
-    expectPreservedWithoutPreview(firstDrawing(doc.package.document.content.at(0)));
+    expectPreservedWithoutPreview(
+      firstDrawing(doc.package.document.content.at(0)),
+    );
   });
 
   test("keeps a w:pict whose relationship does not resolve (no src) and preserves it on save", async () => {
-    const doc = await parseDocx(await pictDocx({ runXml: PICT_WITH_IMAGE, imageRel: false }), {
-      preloadFonts: false,
-    });
+    const doc = await parseDocx(
+      await pictDocx({ runXml: PICT_WITH_IMAGE, imageRel: false }),
+      {
+        preloadFonts: false,
+      },
+    );
 
     const drawing = firstDrawing(doc.package.document.content.at(0));
     expect(drawing).toBeDefined();
@@ -1174,7 +1227,9 @@ describe("VML w:pict inline images", () => {
 
     // Re-parsing the saved output still resolves the picture (lossless).
     const reparsed = await parseDocx(out, { preloadFonts: false });
-    const reDrawing = firstDrawingInHyperlink(reparsed.package.document.content.at(0));
+    const reDrawing = firstDrawingInHyperlink(
+      reparsed.package.document.content.at(0),
+    );
     expect(reDrawing?.image.rId).toBe("rIdImg");
     expect(reDrawing?.image.src?.startsWith("data:image/png")).toBe(true);
   });
@@ -1205,7 +1260,9 @@ describe("VML w:pict inline images", () => {
 
     // Re-parsing the saved output still resolves the picture (lossless).
     const reparsed = await parseDocx(out, { preloadFonts: false });
-    const reDrawing = firstDrawingInInlineSdt(reparsed.package.document.content.at(0));
+    const reDrawing = firstDrawingInInlineSdt(
+      reparsed.package.document.content.at(0),
+    );
     expect(reDrawing?.image.rId).toBe("rIdImg");
     expect(reDrawing?.image.src?.startsWith("data:image/png")).toBe(true);
   });
@@ -1253,7 +1310,9 @@ describe("VML w:pict inline images", () => {
     }
     const reCellControl = reTable.rows.at(0)?.cells.at(0)?.content.at(0);
     if (reCellControl?.type !== "blockSdt") {
-      throw new Error("Expected block content control inside the table cell after save");
+      throw new Error(
+        "Expected block content control inside the table cell after save",
+      );
     }
     expect(firstDrawing(reCellControl)?.image.rId).toBe("rIdImg");
   });

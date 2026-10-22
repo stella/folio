@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { paraIdInRange } from "../docx/paraIdRangeNormalization";
 import {
   currentFolioBlockId,
   deriveBlankBlockId,
@@ -9,7 +10,6 @@ import {
   isFolioBlockId,
   isSequentialFolioBlockId,
 } from "./block-id";
-import { paraIdInRange } from "../docx/paraIdRangeNormalization";
 
 describe("deriveBlockId", () => {
   test("returns the source paraId when present and unused", () => {
@@ -72,20 +72,30 @@ describe("deriveBlockId", () => {
     const first = run();
     const second = run();
     expect(first).toEqual(second);
-    expect(first as string[]).toEqual(["AAAA0001", "seq-0002", "AAAA0002", "seq-0004", "seq-0005"]);
+    expect(first as string[]).toEqual([
+      "AAAA0001",
+      "seq-0002",
+      "AAAA0002",
+      "seq-0004",
+      "seq-0005",
+    ]);
   });
 });
 
 describe("isSequentialFolioBlockId", () => {
   test("matches seq-NNNN ids", () => {
     expect(
-      isSequentialFolioBlockId(deriveBlockId({ paraId: null, index: 1, taken: new Set() })),
+      isSequentialFolioBlockId(
+        deriveBlockId({ paraId: null, index: 1, taken: new Set() }),
+      ),
     ).toBe(true);
   });
 
   test("rejects paraId-shaped ids", () => {
     expect(
-      isSequentialFolioBlockId(deriveBlockId({ paraId: "AAAA0001", index: 1, taken: new Set() })),
+      isSequentialFolioBlockId(
+        deriveBlockId({ paraId: "AAAA0001", index: 1, taken: new Set() }),
+      ),
     ).toBe(false);
   });
 });
@@ -93,13 +103,17 @@ describe("isSequentialFolioBlockId", () => {
 describe("getFolioParaIdFromBlockId", () => {
   test("returns the underlying paraId for paraId-shaped ids", () => {
     expect(
-      getFolioParaIdFromBlockId(deriveBlockId({ paraId: "AAAA0001", index: 1, taken: new Set() })),
+      getFolioParaIdFromBlockId(
+        deriveBlockId({ paraId: "AAAA0001", index: 1, taken: new Set() }),
+      ),
     ).toBe("AAAA0001");
   });
 
   test("returns null for seq-NNNN ids", () => {
     expect(
-      getFolioParaIdFromBlockId(deriveBlockId({ paraId: null, index: 1, taken: new Set() })),
+      getFolioParaIdFromBlockId(
+        deriveBlockId({ paraId: null, index: 1, taken: new Set() }),
+      ),
     ).toBeNull();
   });
 });
@@ -179,9 +193,18 @@ describe("getSequentialFolioBlockIdIndex", () => {
 // belongs.
 describe("the reserved id prefixes", () => {
   test("a source paraId shaped like a generated id is not used verbatim", () => {
-    for (const paraId of ["seq-0001", "blank-0001", "seq-anything", "blank-x"]) {
-      expect(deriveBlockId({ paraId, index: 3, taken: new Set() })).toBe("seq-0003");
-      expect(deriveBlankBlockId({ paraId, index: 3, taken: new Set() })).toBe("blank-0003");
+    for (const paraId of [
+      "seq-0001",
+      "blank-0001",
+      "seq-anything",
+      "blank-x",
+    ]) {
+      expect(deriveBlockId({ paraId, index: 3, taken: new Set() })).toBe(
+        "seq-0003",
+      );
+      expect(deriveBlankBlockId({ paraId, index: 3, taken: new Set() })).toBe(
+        "blank-0003",
+      );
     }
   });
 

@@ -1,3 +1,19 @@
+import { panic } from "better-result";
+import { Fragment, type Node as PMNode } from "prosemirror-model";
+import { Plugin, Transaction } from "prosemirror-state";
+import type { EditorState } from "prosemirror-state";
+
+import {
+  getExplicitParagraphPropertySourceTransfers,
+  getProseDocumentParagraphPropertySourceContract,
+  getProseParagraphPropertySourceToken,
+  paragraphPropertySourceTokenMatchesContract,
+  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
+  recreateProseNodeWithParagraphPropertySource,
+  setProseParagraphMarkupWithPropertySource,
+  transferProseParagraphPropertySource,
+} from "../../../docx/paragraphPropertySource";
+import { deterministicHexId, generateHexId } from "../../../utils/hexId";
 /**
  * ParaIdAllocator — assigns a stable `w14:paraId` to every paragraph.
  *
@@ -36,23 +52,7 @@
  *   another one.
  */
 import { createPluginKeyOwner } from "../../pluginKeyOwner";
-import { panic } from "better-result";
-import { Fragment, type Node as PMNode } from "prosemirror-model";
-import { Plugin, Transaction } from "prosemirror-state";
-import type { EditorState } from "prosemirror-state";
-
-import { deterministicHexId, generateHexId } from "../../../utils/hexId";
-import {
-  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
-  getExplicitParagraphPropertySourceTransfers,
-  getProseDocumentParagraphPropertySourceContract,
-  getProseParagraphPropertySourceToken,
-  paragraphPropertySourceTokenMatchesContract,
-  recreateProseNodeWithParagraphPropertySource,
-  setProseParagraphMarkupWithPropertySource,
-  transferProseParagraphPropertySource,
-} from "../../../docx/paragraphPropertySource";
-import { sweepPositions, type PositionQuery } from "../../positionSweep";
+import { type PositionQuery, sweepPositions } from "../../positionSweep";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { ignoreTrackedChanges } from "./ParagraphChangeTrackerExtension";
@@ -75,11 +75,14 @@ export const paraIdAllocatorKey =
  * be deterministic, so it says so on its own transaction rather than leaving
  * the plugin to guess.
  */
-export const deterministicParaIdSeedKey = "stll.folio.meta.deterministicParaIdSeed";
+export const deterministicParaIdSeedKey =
+  "stll.folio.meta.deterministicParaIdSeed";
 
 /** Ask the allocator to mint reproducible ids for the paragraphs `tr` creates. */
-export const requestDeterministicParaIds = (tr: Transaction, seed: string): Transaction =>
-  tr.setMeta(deterministicParaIdSeedKey, seed);
+export const requestDeterministicParaIds = (
+  tr: Transaction,
+  seed: string,
+): Transaction => tr.setMeta(deterministicParaIdSeedKey, seed);
 
 const deterministicSeedOf = (transaction: Transaction): string | undefined => {
   const seed: unknown = transaction.getMeta(deterministicParaIdSeedKey);
@@ -98,7 +101,11 @@ const deterministicSeedOf = (transaction: Transaction): string | undefined => {
  * loops terminate — the id space is 2^31 wide and `taken` holds at most one
  * entry per paragraph.
  */
-const mintParaId = (taken: ReadonlySet<string>, seed: string | null, pos: number): string => {
+const mintParaId = (
+  taken: ReadonlySet<string>,
+  seed: string | null,
+  pos: number,
+): string => {
   if (seed === null) {
     let id = generateHexId();
     while (taken.has(id)) {
@@ -126,7 +133,9 @@ type ParagraphOccurrence = {
 const isUsableParaId = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value !== "00000000";
 
-const collectParagraphPropertySourceSeed = (doc: PMNode): ParagraphPropertySourceSeed => {
+const collectParagraphPropertySourceSeed = (
+  doc: PMNode,
+): ParagraphPropertySourceSeed => {
   const contract = getProseDocumentParagraphPropertySourceContract(doc);
   if (!contract) {
     return { contract: null, tokens: new Set() };
@@ -144,13 +153,14 @@ const collectParagraphPropertySourceSeed = (doc: PMNode): ParagraphPropertySourc
   });
   return {
     contract,
-    tokens: new Set([...counts].filter(([, count]) => count === 1).map(([token]) => token)),
+    tokens: new Set(
+      [...counts].filter(([, count]) => count === 1).map(([token]) => token),
+    ),
   };
 };
 
 type ParagraphPropertySourceKeeper =
-  | { status: "ambiguous" }
-  | { pos: number; status: "deleted" | "mapped" };
+  { status: "ambiguous" } | { pos: number; status: "deleted" | "mapped" };
 
 type MappedParagraphKeepers = {
   paraIds: Map<string, number>;
@@ -175,7 +185,10 @@ export const mapParagraphKeepers = (
     }
     const id = node.attrs["paraId"];
     const token = getProseParagraphPropertySourceToken(node);
-    if (isUsableParaId(id) || (typeof token === "string" && sourceSeed.tokens.has(token))) {
+    if (
+      isUsableParaId(id) ||
+      (typeof token === "string" && sourceSeed.tokens.has(token))
+    ) {
       paragraphs.push({ pos, id, token });
     }
     return false;
@@ -235,7 +248,8 @@ const collectParagraphCensus = (
   const contractMatchesSeed =
     sourceSeed?.contract !== null &&
     sourceSeed?.contract !== undefined &&
-    getProseDocumentParagraphPropertySourceContract(doc) === sourceSeed.contract;
+    getProseDocumentParagraphPropertySourceContract(doc) ===
+      sourceSeed.contract;
 
   doc.descendants((node, pos) => {
     if (node.type.name !== "paragraph") {
@@ -260,7 +274,10 @@ const collectParagraphCensus = (
           !contractMatchesSeed ||
           !sourceSeed.contract ||
           !sourceSeed.tokens.has(token) ||
-          !paragraphPropertySourceTokenMatchesContract(token, sourceSeed.contract)
+          !paragraphPropertySourceTokenMatchesContract(
+            token,
+            sourceSeed.contract,
+          )
         ) {
           census.invalidSourceTokens.push(occurrence);
         } else {
@@ -286,7 +303,8 @@ const collectParaIdUpdatesFromCensus = (
       continue;
     }
     const keeperPos = keeperPositions?.get(id);
-    const keeper = occurrences.find(({ pos }) => pos === keeperPos) ?? occurrences[0];
+    const keeper =
+      occurrences.find(({ pos }) => pos === keeperPos) ?? occurrences[0];
     for (const occurrence of occurrences) {
       if (occurrence !== keeper) {
         needFreshId.push(occurrence);
@@ -352,7 +370,8 @@ const collectParagraphPropertySourceUpdates = (
       !transferredKeeper &&
       occurrences.length === 1 &&
       (mappedOwner === undefined ||
-        (mappedOwner.status === "deleted" && mappedOwner.pos === occurrences.at(0)?.pos))
+        (mappedOwner.status === "deleted" &&
+          mappedOwner.pos === occurrences.at(0)?.pos))
         ? occurrences.at(0)
         : undefined;
     const keeper = mappedKeeper ?? transferredKeeper ?? detachedKeeper;
@@ -413,7 +432,11 @@ const collectInitialParaIds = (doc: PMNode): InitialParaIds => {
   return { needsRewrite, taken };
 };
 
-const rewriteInitialParaIds = (parent: PMNode, taken: Set<string>, seen: Set<string>): Fragment => {
+const rewriteInitialParaIds = (
+  parent: PMNode,
+  taken: Set<string>,
+  seen: Set<string>,
+): Fragment => {
   let changed = false;
   const children: PMNode[] = [];
   parent.forEach((child) => {
@@ -509,9 +532,15 @@ const createParaIdAllocatorPlugin = (): Plugin<ParagraphPropertySourceSeed> =>
       if (!paragraphSourceSeed) {
         panic("ParaId allocator lost its paragraph-property source seed");
       }
-      const keeperPositions = mapParagraphKeepers(oldState.doc, transactions, paragraphSourceSeed);
+      const keeperPositions = mapParagraphKeepers(
+        oldState.doc,
+        transactions,
+        paragraphSourceSeed,
+      );
       const deterministicSeed =
-        transactions.map(deterministicSeedOf).find((value) => typeof value === "string") ?? null;
+        transactions
+          .map(deterministicSeedOf)
+          .find((value) => typeof value === "string") ?? null;
       const census = collectParagraphCensus(newState.doc, paragraphSourceSeed);
       const updates = collectParaIdUpdatesFromCensus(
         census,
@@ -542,7 +571,10 @@ const createParaIdAllocatorPlugin = (): Plugin<ParagraphPropertySourceSeed> =>
           panic("Paragraph-property token update lost its paragraph");
         }
         setProseParagraphMarkupWithPropertySource({
-          attrs: { ...paragraph.attrs, [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: token },
+          attrs: {
+            ...paragraph.attrs,
+            [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: token,
+          },
           ownership: "preserve",
           pos,
           transaction: tr,

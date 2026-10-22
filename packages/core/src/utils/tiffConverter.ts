@@ -45,7 +45,10 @@ export async function convertTiffToPngDataUrl(
   // Bail out before any decode if Canvas isn't available — without it we
   // can't produce a PNG anyway, and TIFF decoding + RGBA conversion would
   // allocate hundreds of MB and burn CPU for nothing in headless parses.
-  if (typeof document === "undefined" || typeof document.createElement !== "function") {
+  if (
+    typeof document === "undefined" ||
+    typeof document.createElement !== "function"
+  ) {
     return null;
   }
 

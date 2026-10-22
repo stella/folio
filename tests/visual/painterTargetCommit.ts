@@ -32,7 +32,10 @@ export const resolvePainterTarget = <T>({
       resolve(result.value.target);
     };
     const unsubscribe = subscribe(check);
-    const committed = Result.try({ try: commit, catch: (error: unknown) => error });
+    const committed = Result.try({
+      try: commit,
+      catch: (error: unknown) => error,
+    });
     if (committed.isErr()) {
       phase = "settled";
       unsubscribe();

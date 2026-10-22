@@ -7,11 +7,12 @@
  * serializer owns the OOXML.
  */
 
-import { assertValidOoxmlNumericId, finalizeParagraphFormatting } from "@stll/docx-core";
-import { mintBookmarkId, reserveBookmarkIds } from "../bookmarkIds";
-import { mintEndnoteId } from "../noteIds";
-
 import { TaggedError } from "better-result";
+
+import {
+  assertValidOoxmlNumericId,
+  finalizeParagraphFormatting,
+} from "@stll/docx-core";
 
 import type { ShadingProperties } from "../../types/colors";
 import type {
@@ -28,7 +29,12 @@ import type {
   TableRow,
 } from "../../types/content";
 import type { Document } from "../../types/document";
-import type { ParagraphFormatting, TextFormatting } from "../../types/formatting";
+import type {
+  ParagraphFormatting,
+  TextFormatting,
+} from "../../types/formatting";
+import { mintBookmarkId, reserveBookmarkIds } from "../bookmarkIds";
+import { mintEndnoteId } from "../noteIds";
 
 /** Character style applied to hyperlink text; present in the bundled style sets. */
 const HYPERLINK_STYLE_ID = "Hyperlink";
@@ -109,7 +115,9 @@ export const paragraph = (
   const finalizedFormatting = finalizeParagraphFormatting(formatting);
   return {
     type: "paragraph",
-    ...(finalizedFormatting === undefined ? {} : { formatting: finalizedFormatting }),
+    ...(finalizedFormatting === undefined
+      ? {}
+      : { formatting: finalizedFormatting }),
     content: typeof content === "string" ? [run(content)] : content,
   };
 };
@@ -131,7 +139,8 @@ export const pageBreak = (): Paragraph => ({
   content: [{ type: "run", content: [{ type: "break", breakType: "page" }] }],
 });
 
-type HyperlinkTarget = { href: string; anchor?: never } | { anchor: string; href?: never };
+type HyperlinkTarget =
+  { href: string; anchor?: never } | { anchor: string; href?: never };
 
 type HyperlinkOptions = HyperlinkTarget & {
   text: string;
@@ -168,7 +177,11 @@ type BookmarkOptions = {
 };
 
 /** `content` wrapped in a named bookmark, the target of `hyperlink({ anchor })`. */
-export const bookmark = ({ name, content, id }: BookmarkOptions): ParagraphContent[] => {
+export const bookmark = ({
+  name,
+  content,
+  id,
+}: BookmarkOptions): ParagraphContent[] => {
   if (id !== undefined) {
     assertValidOoxmlNumericId({
       value: id,
@@ -247,7 +260,9 @@ const buildCell = ({
   assertPositiveInteger(gridSpan, "gridSpan");
   const width = cellWidth(columnWidths, gridIndex, gridSpan);
   const formatting = {
-    ...(width !== undefined ? { width: { type: "dxa" as const, value: width } } : {}),
+    ...(width !== undefined
+      ? { width: { type: "dxa" as const, value: width } }
+      : {}),
     ...(resolved.shading ? { shading: resolved.shading } : {}),
     ...(resolved.gridSpan !== undefined ? { gridSpan: resolved.gridSpan } : {}),
     ...(resolved.vMerge !== undefined ? { vMerge: resolved.vMerge } : {}),
@@ -278,7 +293,13 @@ const buildRow = ({
   const built: TableCell[] = [];
   let gridIndex = 0;
   for (const spec of cells) {
-    const cell = buildCell({ spec, columnWidths, gridIndex, shading, textFormatting });
+    const cell = buildCell({
+      spec,
+      columnWidths,
+      gridIndex,
+      shading,
+      textFormatting,
+    });
     built.push(cell);
     gridIndex += cell.formatting?.gridSpan ?? 1;
   }
@@ -301,7 +322,9 @@ export const table = ({
   headerShading,
   repeatHeader = true,
 }: TableOptions): Table => {
-  columnWidths?.forEach((width, index) => assertPositiveInteger(width, `columnWidths[${index}]`));
+  columnWidths?.forEach((width, index) =>
+    assertPositiveInteger(width, `columnWidths[${index}]`),
+  );
   const builtRows: TableRow[] = [];
   if (header) {
     builtRows.push(
@@ -369,7 +392,8 @@ type TableOfContentsOptions = {
 };
 
 const DEFAULT_TOC_LEVELS = { from: 1, to: 3 };
-const DEFAULT_TOC_PLACEHOLDER = "Update the field to build the table of contents.";
+const DEFAULT_TOC_PLACEHOLDER =
+  "Update the field to build the table of contents.";
 
 /**
  * A paragraph holding a dirty `TOC` field, so the consumer recomputes the

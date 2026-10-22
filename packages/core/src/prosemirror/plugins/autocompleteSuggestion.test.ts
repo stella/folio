@@ -34,7 +34,9 @@ const schema = new Schema({
 type BlockName = "paragraph" | "heading" | "code_block";
 
 const blockDoc = (block: BlockName, text: string): PMNode =>
-  schema.node("doc", null, [schema.node(block, null, text.length > 0 ? [schema.text(text)] : [])]);
+  schema.node("doc", null, [
+    schema.node(block, null, text.length > 0 ? [schema.text(text)] : []),
+  ]);
 
 const emptyDoc = (): PMNode => schema.node("doc", null, []);
 
@@ -150,7 +152,9 @@ describe("autocompleteSuggestion reducer", () => {
 
   test("a selection-only transaction preserves the suggestion", () => {
     const { state } = shownState("Dear", " Sir");
-    const moved = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2)));
+    const moved = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 2)),
+    );
     const sug = getAutocompleteSuggestion(moved);
     expect(sug.status).toBe("shown");
     expect(sug.text).toBe(" Sir");
@@ -332,7 +336,9 @@ describe("shouldTriggerAutocomplete", () => {
 
   test("honours extra dead-zone node names from options", () => {
     const state = mkState(blockDoc("paragraph", "x"), 1);
-    expect(shouldTriggerAutocomplete(state, { extraDeadZoneNodes: ["paragraph"] })).toEqual({
+    expect(
+      shouldTriggerAutocomplete(state, { extraDeadZoneNodes: ["paragraph"] }),
+    ).toEqual({
       ok: false,
       reason: "deadzone",
       detail: "paragraph",

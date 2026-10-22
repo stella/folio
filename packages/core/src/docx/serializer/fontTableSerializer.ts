@@ -1,19 +1,29 @@
-import type { EmbeddedFontRef, FontInfo, FontTable } from "../../types/document";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
+import type {
+  EmbeddedFontRef,
+  FontInfo,
+  FontTable,
+} from "../../types/document";
 import { serializePreservedAttributes } from "../attributeRemainder";
 import { serializeWithPreservedChildren } from "../containerChildren";
 import { serializePartElement } from "./partNamespaces";
-import { escapeXmlAttribute } from "@stll/docx-core";
 
 export const serializeFontTableXml = (fontTable: FontTable): string =>
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
   serializePartElement({
     partPath: "word/fontTable.xml",
     rootName: "w:fonts",
-    rootAttributes: serializePreservedAttributes([], fontTable.preservedAttributes).join(" "),
+    rootAttributes: serializePreservedAttributes(
+      [],
+      fontTable.preservedAttributes,
+    ).join(" "),
     baselinePrefixes: ["w"],
     sourceBindings: undefined,
-    body: serializeWithPreservedChildren(fontTable.fonts.map(serializeFont), fontTable.preserved),
+    body: serializeWithPreservedChildren(
+      fontTable.fonts.map(serializeFont),
+      fontTable.preserved,
+    ),
   });
 
 /**
@@ -37,12 +47,18 @@ const serializeFont = (font: FontInfo): string => {
       attributes.push(`w:val="${escapeXmlAttribute(font.charset.val)}"`);
     }
     if (font.charset.characterSet !== undefined) {
-      attributes.push(`w:characterSet="${escapeXmlAttribute(font.charset.characterSet)}"`);
+      attributes.push(
+        `w:characterSet="${escapeXmlAttribute(font.charset.characterSet)}"`,
+      );
     }
     // A bare `<w:charset/>` is the default code page, which is not the same as
     // no `w:charset` at all, so the element is written whether or not it
     // states anything.
-    parts.push(attributes.length === 0 ? "<w:charset/>" : `<w:charset ${attributes.join(" ")}/>`);
+    parts.push(
+      attributes.length === 0
+        ? "<w:charset/>"
+        : `<w:charset ${attributes.join(" ")}/>`,
+    );
   }
   if (font.family) {
     parts.push(`<w:family w:val="${font.family}"/>`);
@@ -75,7 +91,11 @@ const serializeFont = (font: FontInfo): string => {
   return `<w:font ${attributes.join(" ")}>${body}</w:font>`;
 };
 
-const pushEmbed = (parts: string[], element: string, embed: EmbeddedFontRef | undefined): void => {
+const pushEmbed = (
+  parts: string[],
+  element: string,
+  embed: EmbeddedFontRef | undefined,
+): void => {
   if (embed === undefined) {
     return;
   }

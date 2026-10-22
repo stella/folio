@@ -2,6 +2,7 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
+
 import { scanTestTimeout } from "../test/scan-timeout";
 
 setDefaultTimeout(scanTestTimeout(10_000));
@@ -55,12 +56,16 @@ const enclosingDeclaration = (
       (ts.isArrowFunction(ancestor) || ts.isFunctionExpression(ancestor)) &&
       ts.isVariableDeclaration(ancestor.parent)
     ) {
-      return { name: ancestor.parent.name.getText(source), node: ancestor.parent };
+      return {
+        name: ancestor.parent.name.getText(source),
+        node: ancestor.parent,
+      };
     }
     if (ts.isFunctionExpression(ancestor) && ancestor.name) {
       return { name: ancestor.name.text, node: ancestor };
     }
-    if (!nearestVariable && ts.isVariableDeclaration(ancestor)) nearestVariable = ancestor;
+    if (!nearestVariable && ts.isVariableDeclaration(ancestor))
+      nearestVariable = ancestor;
   }
   return nearestVariable
     ? { name: nearestVariable.name.getText(source), node: nearestVariable }
@@ -68,7 +73,12 @@ const enclosingDeclaration = (
 };
 
 const directProducerKeys = (file: string, sourceText: string): string[] => {
-  const source = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
+  const source = ts.createSourceFile(
+    file,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const declarationCounts = new Map<ts.Node, number>();
   const producers: string[] = [];
   const visit = (node: ts.Node): void => {
@@ -81,8 +91,11 @@ const directProducerKeys = (file: string, sourceText: string): string[] => {
           property.initializer.text === "paragraph",
       );
       const formattingProperty = node.properties.find(
-        (property): property is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
-          (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) &&
+        (
+          property,
+        ): property is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
+          (ts.isPropertyAssignment(property) ||
+            ts.isShorthandPropertyAssignment(property)) &&
           property.name.getText(source) === "formatting",
       );
       if (typeProperty && formattingProperty) {
@@ -107,7 +120,9 @@ test("paragraph formatting producers use the canonical finalizer", async () => {
     }
   }
 
-  expect(producers.toSorted()).toEqual([...ALLOWED_DIRECT_PRODUCERS].toSorted());
+  expect(producers.toSorted()).toEqual(
+    [...ALLOWED_DIRECT_PRODUCERS].toSorted(),
+  );
 });
 
 test("producer keys are stable outside their declaration and ordinal within it", () => {
@@ -118,9 +133,9 @@ const second = () => ({ type: "paragraph", formatting: {}, content: [] });
   const expected = ["fixture.ts#first#1", "fixture.ts#second#1"];
 
   expect(directProducerKeys("fixture.ts", sourceText)).toEqual(expected);
-  expect(directProducerKeys("fixture.ts", `const unrelated = true;\n${sourceText}`)).toEqual(
-    expected,
-  );
+  expect(
+    directProducerKeys("fixture.ts", `const unrelated = true;\n${sourceText}`),
+  ).toEqual(expected);
   expect(
     directProducerKeys(
       "fixture.ts",
@@ -132,5 +147,9 @@ const second = () => ({ type: "paragraph", formatting: {}, content: [] });
 ];`,
       ),
     ),
-  ).toEqual(["fixture.ts#first#1", "fixture.ts#second#1", "fixture.ts#second#2"]);
+  ).toEqual([
+    "fixture.ts#first#1",
+    "fixture.ts#second#1",
+    "fixture.ts#second#2",
+  ]);
 });

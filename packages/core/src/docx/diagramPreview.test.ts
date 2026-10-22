@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type { Image, MediaFile, PreviewDescriptor, RelationshipMap } from "../types/document";
-import { MAX_PREVIEW_SHAPES, parseDiagramPreview } from "./diagramPreview";
+
 import { paintPreview } from "../display-list/build/previewPrimitives";
+import type {
+  Image,
+  MediaFile,
+  PreviewDescriptor,
+  RelationshipMap,
+} from "../types/document";
+import { MAX_PREVIEW_SHAPES, parseDiagramPreview } from "./diagramPreview";
 import { parseRelationships } from "./relsParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -83,7 +89,14 @@ describe("SmartArt preview", () => {
     expect(image?.preview?.kind).toBe("diagram");
     expect(image?.preview?.extent).toEqual({ width: 914400, height: 457200 });
     expect(image?.preview?.shapes).toEqual([
-      { type: "rect", x: 10_000, y: 10_000, width: 400_000, height: 200_000, color: "70AD47" },
+      {
+        type: "rect",
+        x: 10_000,
+        y: 10_000,
+        width: 400_000,
+        height: 200_000,
+        color: "70AD47",
+      },
     ]);
 
     // And the drawing is drawn, one step later: a backdrop and the shape,
@@ -91,10 +104,22 @@ describe("SmartArt preview", () => {
     const marks = shapeMarks(image);
     expect(marks).toHaveLength(1);
     expect(marks.at(0)?.fill).toEqual({ r: 0x70, g: 0xad, b: 0x47, a: 1 });
-    expect(marks.at(0)?.rect.xPx).toBeCloseTo((10_000 / 914_400) * BOX.widthPx, 9);
-    expect(marks.at(0)?.rect.yPx).toBeCloseTo((10_000 / 457_200) * BOX.heightPx, 9);
-    expect(marks.at(0)?.rect.widthPx).toBeCloseTo((400_000 / 914_400) * BOX.widthPx, 9);
-    expect(marks.at(0)?.rect.heightPx).toBeCloseTo((200_000 / 457_200) * BOX.heightPx, 9);
+    expect(marks.at(0)?.rect.xPx).toBeCloseTo(
+      (10_000 / 914_400) * BOX.widthPx,
+      9,
+    );
+    expect(marks.at(0)?.rect.yPx).toBeCloseTo(
+      (10_000 / 457_200) * BOX.heightPx,
+      9,
+    );
+    expect(marks.at(0)?.rect.widthPx).toBeCloseTo(
+      (400_000 / 914_400) * BOX.widthPx,
+      9,
+    );
+    expect(marks.at(0)?.rect.heightPx).toBeCloseTo(
+      (200_000 / 457_200) * BOX.heightPx,
+      9,
+    );
   });
 
   test("falls back to a bounded background when cached drawing data is unavailable", () => {
@@ -145,10 +170,24 @@ describe("SmartArt preview", () => {
 
     // Each preview describes its own diagram's shape, so the two differ.
     expect(first?.preview?.shapes).toEqual([
-      { type: "rect", x: 0, y: 0, width: 400_000, height: 400_000, color: "70AD47" },
+      {
+        type: "rect",
+        x: 0,
+        y: 0,
+        width: 400_000,
+        height: 400_000,
+        color: "70AD47",
+      },
     ]);
     expect(second?.preview?.shapes).toEqual([
-      { type: "rect", x: 0, y: 0, width: 800_000, height: 400_000, color: "C00000" },
+      {
+        type: "rect",
+        x: 0,
+        y: 0,
+        width: 800_000,
+        height: 400_000,
+        color: "C00000",
+      },
     ]);
 
     // And still draw different pictures.
@@ -177,8 +216,8 @@ describe("SmartArt preview", () => {
       ),
     ]);
     if (!drawing) throw new Error("fixture did not parse");
-    expect(parseDiagramPreview(drawing, rels, media)?.preview?.shapes).toHaveLength(
-      MAX_PREVIEW_SHAPES,
-    );
+    expect(
+      parseDiagramPreview(drawing, rels, media)?.preview?.shapes,
+    ).toHaveLength(MAX_PREVIEW_SHAPES);
   });
 });

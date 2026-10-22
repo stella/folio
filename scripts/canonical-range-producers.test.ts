@@ -1,9 +1,9 @@
-import { scanTestTimeout } from "../test/scan-timeout";
-
-import { setDefaultTimeout, expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 import ts from "typescript";
+
 import type { CanonicalCommandIntent } from "../packages/core/src/prosemirror/canonicalCommands";
+import { scanTestTimeout } from "../test/scan-timeout";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -25,7 +25,11 @@ const producers = {
 
 const typeOf = (node: ts.ObjectLiteralExpression) => {
   for (const property of node.properties) {
-    if (!ts.isPropertyAssignment(property) || property.name.getText() !== "type") continue;
+    if (
+      !ts.isPropertyAssignment(property) ||
+      property.name.getText() !== "type"
+    )
+      continue;
     const value = ts.isAsExpression(property.initializer)
       ? property.initializer.expression
       : property.initializer;
@@ -63,7 +67,10 @@ const rangeInputRoot = (node: ts.Node): ts.Node => {
 
 const memberName = (node: ts.Node) => {
   if (ts.isPropertyAccessExpression(node)) return node.name.text;
-  if (ts.isElementAccessExpression(node) && ts.isStringLiteral(node.argumentExpression))
+  if (
+    ts.isElementAccessExpression(node) &&
+    ts.isStringLiteral(node.argumentExpression)
+  )
     return node.argumentExpression.text;
   return undefined;
 };
@@ -78,7 +85,8 @@ const rawRangeInputs = (source: ts.SourceFile, roots: readonly ts.Node[]) => {
       if (
         ts.isIdentifier(node.name) &&
         node.initializer &&
-        (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+        (ts.isArrowFunction(node.initializer) ||
+          ts.isFunctionExpression(node.initializer))
       ) {
         const entries = helpers.get(node.name.text) ?? [];
         entries.push(node.initializer);
@@ -95,13 +103,17 @@ const rawRangeInputs = (source: ts.SourceFile, roots: readonly ts.Node[]) => {
   collect(source);
   const aliases = new Set<string>();
   const isSelection = (node: ts.Node) =>
-    memberName(node) === "selection" || (ts.isIdentifier(node) && aliases.has(node.text));
+    memberName(node) === "selection" ||
+    (ts.isIdentifier(node) && aliases.has(node.text));
   let previousSize = -1;
   while (aliases.size !== previousSize) {
     previousSize = aliases.size;
     for (const declaration of declarations) {
       if (!declaration.initializer) continue;
-      if (ts.isIdentifier(declaration.name) && isSelection(declaration.initializer))
+      if (
+        ts.isIdentifier(declaration.name) &&
+        isSelection(declaration.initializer)
+      )
         aliases.add(declaration.name.text);
       if (ts.isObjectBindingPattern(declaration.name)) {
         for (const binding of declaration.name.elements) {
@@ -120,7 +132,8 @@ const rawRangeInputs = (source: ts.SourceFile, roots: readonly ts.Node[]) => {
     if (visited.has(node)) return;
     visited.add(node);
     if (
-      (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+      (ts.isPropertyAccessExpression(node) ||
+        ts.isElementAccessExpression(node)) &&
       ["from", "to"].includes(memberName(node) ?? "") &&
       isSelection(node.expression)
     )
@@ -132,12 +145,17 @@ const rawRangeInputs = (source: ts.SourceFile, roots: readonly ts.Node[]) => {
       ts.isObjectBindingPattern(node.name)
     ) {
       for (const binding of node.name.elements) {
-        if (["from", "to"].includes((binding.propertyName ?? binding.name).getText()))
+        if (
+          ["from", "to"].includes(
+            (binding.propertyName ?? binding.name).getText(),
+          )
+        )
           failures.push(binding.getText());
       }
     }
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      for (const helper of helpers.get(node.expression.text) ?? []) visit(helper);
+      for (const helper of helpers.get(node.expression.text) ?? [])
+        visit(helper);
     }
     ts.forEachChild(node, visit);
   };
@@ -176,8 +194,11 @@ test("range guard follows the called helper across raw selection binding shapes"
           (declaration) => declaration.name.getText() === "descriptor",
         ),
     );
-    if (!descriptor) throw new TypeError("Range guard fixture lost its descriptor");
-    expect(rawRangeInputs(parsed, [descriptor]).length > 0).toBe(index < bindings.length - 1);
+    if (!descriptor)
+      throw new TypeError("Range guard fixture lost its descriptor");
+    expect(rawRangeInputs(parsed, [descriptor]).length > 0).toBe(
+      index < bindings.length - 1,
+    );
   }
 });
 
@@ -192,7 +213,12 @@ test("every canonical range producer normalizes selection endpoints", async () =
   for await (const file of glob.scan({ cwd: directory })) {
     if (file.endsWith(".test.ts")) continue;
     const source = await Bun.file(path.join(directory, file)).text();
-    const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    const parsed = ts.createSourceFile(
+      file,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+    );
     const roots: ts.Node[] = [];
     const visit = (node: ts.Node): void => {
       if (ts.isObjectLiteralExpression(node)) {
@@ -222,8 +248,13 @@ test("every canonical range producer normalizes selection endpoints", async () =
             if (ts.isSpreadAssignment(property)) {
               const range = property.expression.getText();
               if (range === "range") {
-                expect(owner).toBe("extensions/marks/HyperlinkExtension.ts#removeHyperlink");
-              } else if (range.includes("Selection") || range.includes("selection")) {
+                expect(owner).toBe(
+                  "extensions/marks/HyperlinkExtension.ts#removeHyperlink",
+                );
+              } else if (
+                range.includes("Selection") ||
+                range.includes("selection")
+              ) {
                 expect(range).toBe("canonicalSelectionRange(state)");
               }
             }
@@ -233,15 +264,21 @@ test("every canonical range producer normalizes selection endpoints", async () =
             owner.endsWith("#canonicalRunFormatting") ||
             owner.endsWith("#clearFormatting")
           ) {
-            expect(declaration?.getText()).toContain("canonicalSelectionRanges(state)");
-            expect(declaration?.getText()).not.toMatch(/state\.selection\.(from|to)/u);
+            expect(declaration?.getText()).toContain(
+              "canonicalSelectionRanges(state)",
+            );
+            expect(declaration?.getText()).not.toMatch(
+              /state\.selection\.(from|to)/u,
+            );
           } else {
             expect(
               node.properties.some(
                 (property) =>
                   ts.isSpreadAssignment(property) &&
-                  (property.expression.getText() === "canonicalSelectionRange(state)" ||
-                    (type === "removeHyperlink" && property.expression.getText() === "range")),
+                  (property.expression.getText() ===
+                    "canonicalSelectionRange(state)" ||
+                    (type === "removeHyperlink" &&
+                      property.expression.getText() === "range")),
               ),
             ).toBe(true);
           }
@@ -257,7 +294,10 @@ test("every canonical range producer normalizes selection endpoints", async () =
           (element.propertyName ?? element.name).getText(),
         );
         const producer = producerDeclaration(node.parent)?.name?.getText();
-        if (producer === "canonicalSetMarkFormatting" || producer === "removalRange") {
+        if (
+          producer === "canonicalSetMarkFormatting" ||
+          producer === "removalRange"
+        ) {
           expect(names).not.toContain("from");
           expect(names).not.toContain("to");
         }

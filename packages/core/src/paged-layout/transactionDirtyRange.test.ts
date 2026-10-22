@@ -7,12 +7,16 @@ import { getTransactionDirtyRange } from "./transactionDirtyRange";
 describe("getTransactionDirtyRange", () => {
   test("maps changed ranges from multi-step transactions into final document coordinates", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("abcdefghijklmnopqrstuvwxyz".repeat(6))]),
+      schema.node("paragraph", null, [
+        schema.text("abcdefghijklmnopqrstuvwxyz".repeat(6)),
+      ]),
     ]);
     const state = EditorState.create({ doc });
     const firstEditPosition = 100;
     const prefixInsertion = "x".repeat(80);
-    const transaction = state.tr.insertText("A", firstEditPosition).insertText(prefixInsertion, 2);
+    const transaction = state.tr
+      .insertText("A", firstEditPosition)
+      .insertText(prefixInsertion, 2);
 
     const dirtyRange = getTransactionDirtyRange(transaction);
 
@@ -44,7 +48,9 @@ describe("getTransactionDirtyRange", () => {
       throw new Error("bold mark missing from schema");
     }
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("hello world", [bold.create()])]),
+      schema.node("paragraph", null, [
+        schema.text("hello world", [bold.create()]),
+      ]),
     ]);
     const state = EditorState.create({ doc });
     const transaction = state.tr.removeMark(2, 7, bold);

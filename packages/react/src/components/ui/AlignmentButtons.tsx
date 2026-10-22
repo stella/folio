@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import type { ParagraphAlignment } from "@stll/folio-core/types/document";
+
 import { cn } from "../../lib/utils";
 import { useFolioUI } from "../../ui/folio-ui";
 
@@ -120,9 +121,20 @@ type AlignmentOptionProps = {
   onChange: AlignmentButtonsProps["onChange"];
 };
 
-function AlignmentOption({ PopoverClose, option, selected, onChange }: AlignmentOptionProps) {
-  const handleMouseDown = useCallback((event: MouseEvent) => event.preventDefault(), []);
-  const handleClick = useCallback(() => onChange?.(option.value), [onChange, option.value]);
+function AlignmentOption({
+  PopoverClose,
+  option,
+  selected,
+  onChange,
+}: AlignmentOptionProps) {
+  const handleMouseDown = useCallback(
+    (event: MouseEvent) => event.preventDefault(),
+    [],
+  );
+  const handleClick = useCallback(
+    () => onChange?.(option.value),
+    [onChange, option.value],
+  );
   const trigger = useMemo(
     () => (
       <button
@@ -139,7 +151,14 @@ function AlignmentOption({ PopoverClose, option, selected, onChange }: Alignment
         type="button"
       />
     ),
-    [handleClick, handleMouseDown, option.label, option.shortcut, option.value, selected],
+    [
+      handleClick,
+      handleMouseDown,
+      option.label,
+      option.shortcut,
+      option.value,
+      selected,
+    ],
   );
 
   return (

@@ -12,15 +12,15 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, TextDirection } from "../types/document";
 import { TEXT_DIRECTION_VALUES } from "../types/documentEnumValues";
-
 import { parseTableCellProperties } from "./tableParser";
 import { parseXmlDocument } from "./xmlParser";
 
-const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const WORD_NAMESPACE =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const parseCellTier = (direction: string): TextDirection | undefined => {
   const tcPr = parseXmlDocument(
@@ -46,7 +46,12 @@ const documentWithDirection = (textDirection: TextDirection): Document => ({
                   content: [
                     {
                       type: "paragraph",
-                      content: [{ type: "run", content: [{ type: "text", text: "Rotated" }] }],
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "Rotated" }],
+                        },
+                      ],
                     },
                   ],
                 },
@@ -77,18 +82,26 @@ describe("ST_TextDirection", () => {
     expect(TEXT_DIRECTION_VALUES).toContain("tbLrV");
   });
 
-  test.each(TEXT_DIRECTION_VALUES)("a cell's w:textDirection reads %s", (direction) => {
-    expect(parseCellTier(direction)).toBe(direction);
-  });
+  test.each(TEXT_DIRECTION_VALUES)(
+    "a cell's w:textDirection reads %s",
+    (direction) => {
+      expect(parseCellTier(direction)).toBe(direction);
+    },
+  );
 
-  test.each(TEXT_DIRECTION_VALUES)("%s survives the editor projection", (direction) => {
-    const original = documentWithDirection(direction);
-    expect(
-      firstCellDirection(
-        fromProseDoc(toProseDoc(original), original, { stylesheetSource: { type: "package" } }),
-      ),
-    ).toBe(direction);
-  });
+  test.each(TEXT_DIRECTION_VALUES)(
+    "%s survives the editor projection",
+    (direction) => {
+      const original = documentWithDirection(direction);
+      expect(
+        firstCellDirection(
+          fromProseDoc(toProseDoc(original), original, {
+            stylesheetSource: { type: "package" },
+          }),
+        ),
+      ).toBe(direction);
+    },
+  );
 
   test("a token outside the enumeration does not become a flow", () => {
     expect(parseCellTier("sideways")).toBeUndefined();

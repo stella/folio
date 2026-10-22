@@ -1,16 +1,24 @@
-import { afterAll, afterEach, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  setSystemTime,
+  test,
+} from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
 // The schema singleton builds a starter kit of its own. Loading it first
 // settles the import cycle between the two before the kit below is built.
 import "../../schema";
+import { resolveAllChangesInHeadlessState } from "../../commands/comments";
+import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { ExtensionManager } from "../ExtensionManager";
 import { createStarterKit } from "../StarterKit";
 import type { HistoryShortcutOwner } from "./HistoryExtension";
-import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
-import { resolveAllChangesInHeadlessState } from "../../commands/comments";
 
 // Read before the DOM is registered, as ProseMirror's keymap reads it at import.
 const MAC = /Mac|iP(?:hone|[oa]d)/u.test(globalThis.navigator?.platform ?? "");
@@ -38,7 +46,11 @@ const createEditor = (
     state: EditorState.create({
       schema,
       doc: schema.node("doc", null, [
-        schema.node("paragraph", null, initialText ? schema.text(initialText) : undefined),
+        schema.node(
+          "paragraph",
+          null,
+          initialText ? schema.text(initialText) : undefined,
+        ),
       ]),
       plugins: [
         createSuggestionModePlugin(mode === "suggesting", "Reviewer"),
@@ -102,9 +114,15 @@ describe("HistoryExtension shortcuts", () => {
     test(`${mode}: empty history shortcuts suppress native history after composition`, async () => {
       for (const redo of REDO_KEYS) {
         const editor = createEditor("editor", { mode });
-        editor.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
-        editor.view.dispatch(editor.view.state.tr.insertText("alpha").setMeta("composition", 1));
-        editor.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+        editor.view.dom.dispatchEvent(
+          new Event("compositionstart", { bubbles: true }),
+        );
+        editor.view.dispatch(
+          editor.view.state.tr.insertText("alpha").setMeta("composition", 1),
+        );
+        editor.view.dom.dispatchEvent(
+          new Event("compositionend", { bubbles: true }),
+        );
         await Promise.resolve();
         const composed = editor.view.state.doc;
         const caret = editor.view.state.selection;
@@ -121,17 +139,30 @@ describe("HistoryExtension shortcuts", () => {
   test("composition replacement, empty redo, and delete have the same accepted result", async () => {
     const results: string[] = [];
     for (const mode of ["editing", "suggesting"] as const) {
-      const editor = createEditor("editor", { mode, initialText: "before target after" });
+      const editor = createEditor("editor", {
+        mode,
+        initialText: "before target after",
+      });
       editor.view.dispatch(
-        editor.view.state.tr.setSelection(TextSelection.create(editor.view.state.doc, 8, 14)),
+        editor.view.state.tr.setSelection(
+          TextSelection.create(editor.view.state.doc, 8, 14),
+        ),
       );
-      editor.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
-      editor.view.dispatch(editor.view.state.tr.insertText("alpha").setMeta("composition", 2));
-      editor.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+      editor.view.dom.dispatchEvent(
+        new Event("compositionstart", { bubbles: true }),
+      );
+      editor.view.dispatch(
+        editor.view.state.tr.insertText("alpha").setMeta("composition", 2),
+      );
+      editor.view.dom.dispatchEvent(
+        new Event("compositionend", { bubbles: true }),
+      );
       await Promise.resolve();
       const composed = editor.view.state.doc;
       const caret = editor.view.state.selection;
-      expect(editor.press({ key: "Z", shift: true }).defaultPrevented).toBe(true);
+      expect(editor.press({ key: "Z", shift: true }).defaultPrevented).toBe(
+        true,
+      );
       expect(editor.view.state.doc.eq(composed)).toBe(true);
       expect(editor.view.state.selection.eq(caret)).toBe(true);
       const event = new KeyboardEvent("keydown", {
@@ -146,7 +177,10 @@ describe("HistoryExtension shortcuts", () => {
         const from = editor.view.state.selection.from;
         editor.view.dispatch(editor.view.state.tr.delete(from, from + 1));
       }
-      results.push(resolveAllChangesInHeadlessState(editor.view.state, "accept").doc.textContent);
+      results.push(
+        resolveAllChangesInHeadlessState(editor.view.state, "accept").doc
+          .textContent,
+      );
       editor.press(UNDO);
       expect(editor.view.state.doc.eq(composed)).toBe(true);
       editor.press(UNDO);
@@ -159,9 +193,15 @@ describe("HistoryExtension shortcuts", () => {
 
   test("a native commit pending at compositionend stays in the same undo event", async () => {
     const editor = createEditor("editor", { mode: "suggesting" });
-    editor.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
-    editor.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
-    editor.view.dispatch(editor.view.state.tr.insertText("alpha").setMeta("composition", 3));
+    editor.view.dom.dispatchEvent(
+      new Event("compositionstart", { bubbles: true }),
+    );
+    editor.view.dom.dispatchEvent(
+      new Event("compositionend", { bubbles: true }),
+    );
+    editor.view.dispatch(
+      editor.view.state.tr.insertText("alpha").setMeta("composition", 3),
+    );
     await Promise.resolve();
     const composed = editor.view.state.doc;
     editor.press(UNDO);
@@ -182,7 +222,9 @@ describe("HistoryExtension shortcuts", () => {
 
 describe("HistoryExtension input grouping", () => {
   const input = (view: EditorView, inputType: string) => {
-    view.dom.dispatchEvent(new InputEvent("beforeinput", { inputType, bubbles: true }));
+    view.dom.dispatchEvent(
+      new InputEvent("beforeinput", { inputType, bubbles: true }),
+    );
   };
 
   // Mark-only deletes have empty step maps; replacement deletes have ranges.
@@ -229,7 +271,11 @@ describe("HistoryExtension input grouping", () => {
           if (representation === "replacement") tr.delete(from, from + 1);
           else {
             const markFrom = direction === "Backward" ? from : 1 + index;
-            tr.addMark(markFrom, markFrom + 1, editor.view.state.schema.mark("bold"));
+            tr.addMark(
+              markFrom,
+              markFrom + 1,
+              editor.view.state.schema.mark("bold"),
+            );
           }
           editor.view.dispatch(tr);
         }
@@ -290,7 +336,12 @@ describe("HistoryExtension input grouping", () => {
         const deletion = editor.view.state.tr;
         const from = direction === "Backward" ? 5 : 1;
         if (representation === "replacement") deletion.delete(from, from + 1);
-        else deletion.addMark(from, from + 1, editor.view.state.schema.mark("bold"));
+        else
+          deletion.addMark(
+            from,
+            from + 1,
+            editor.view.state.schema.mark("bold"),
+          );
         editor.view.dispatch(deletion);
         const deleted = editor.view.state.doc;
         const toolbar = editor.view.state.tr.addMark(
@@ -308,7 +359,11 @@ describe("HistoryExtension input grouping", () => {
           nextDeletion.delete(nextFrom, nextFrom + 1);
         } else {
           const nextFrom = direction === "Backward" ? 4 : 2;
-          nextDeletion.addMark(nextFrom, nextFrom + 1, editor.view.state.schema.mark("bold"));
+          nextDeletion.addMark(
+            nextFrom,
+            nextFrom + 1,
+            editor.view.state.schema.mark("bold"),
+          );
         }
         editor.view.dispatch(nextDeletion);
         editor.press(UNDO);
@@ -349,12 +404,16 @@ describe("HistoryExtension input grouping", () => {
     input(editor.view, "insertText");
     editor.type("a");
     for (const character of ["b", "c"]) {
-      editor.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+      editor.view.dom.dispatchEvent(
+        new Event("compositionstart", { bubbles: true }),
+      );
       input(editor.view, "insertCompositionText");
       editor.type(character);
       input(editor.view, "insertCompositionText");
       editor.type(character);
-      editor.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+      editor.view.dom.dispatchEvent(
+        new Event("compositionend", { bubbles: true }),
+      );
     }
     input(editor.view, "insertText");
     editor.type("d");

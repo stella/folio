@@ -18,16 +18,19 @@
  * audience).
  */
 
-import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 
 import { htmlCommentEnd } from "../../../utils/htmlComments";
 import { stripXmlDeclarations } from "../../../utils/stripXmlDeclarations";
 import { readBookmarkBoundaryAttrs } from "../../bookmarkBoundaryAttrs";
 import {
-  findInvalidBookmarkBoundaryIds,
   type BookmarkBoundaryOccurrence,
+  findInvalidBookmarkBoundaryIds,
 } from "../../bookmarkBoundaryIntegrity";
-import { readMoveRangeBoundaryAttrs, type MoveRangeMarker } from "../../moveRangeBoundaryAttrs";
+import {
+  type MoveRangeMarker,
+  readMoveRangeBoundaryAttrs,
+} from "../../moveRangeBoundaryAttrs";
 
 /**
  * Remove every HTML comment, including downlevel conditional comments
@@ -62,8 +65,10 @@ function stripHtmlComments(html: string): string {
     const styleStart = lower.indexOf("<style", cursor);
     if (styleStart !== -1 && styleStart < commentStart) {
       const openTagEnd = html.indexOf(">", styleStart);
-      const closeStart = openTagEnd === -1 ? -1 : lower.indexOf("</style", openTagEnd + 1);
-      const closeTagEnd = closeStart === -1 ? -1 : html.indexOf(">", closeStart);
+      const closeStart =
+        openTagEnd === -1 ? -1 : lower.indexOf("</style", openTagEnd + 1);
+      const closeTagEnd =
+        closeStart === -1 ? -1 : html.indexOf(">", closeStart);
       if (closeTagEnd === -1) {
         // Malformed/unterminated <style>: keep the remainder as-is and stop.
         result += html.slice(cursor);
@@ -102,7 +107,10 @@ function stripMsoStyles(html: string): string {
       const quote = dq === undefined ? "'" : '"';
       const kept = splitStyleDeclarations(raw)
         .map((declaration) => declaration.trim())
-        .filter((declaration) => declaration.length > 0 && !/^mso-/i.test(declaration))
+        .filter(
+          (declaration) =>
+            declaration.length > 0 && !/^mso-/i.test(declaration),
+        )
         .join("; ");
       return kept ? `${ws}style=${quote}${kept}${quote}` : "";
     },
@@ -186,16 +194,19 @@ const INTERNAL_CLIPBOARD_ATTR_PATTERN =
 // anchor (relocating it, or wrapping it in an attacker-controlled
 // hyperlink). Strip the attribute so a matching span parses as an inert,
 // zero-width `<span>` instead of a `textBoxAnchor` node.
-const TEXTBOX_ANCHOR_ATTR = /\s+data-docx-textbox-anchor(?:="[^"]*"|='[^']*')?/gi;
+const TEXTBOX_ANCHOR_ATTR =
+  /\s+data-docx-textbox-anchor(?:="[^"]*"|='[^']*')?/gi;
 // Bookmark boundaries use the same internal reconstruction pattern. Their
 // complete attribute family must either survive together in an internal slice
 // or be removed together before external HTML reaches the schema parser.
 const BOOKMARK_BOUNDARY_ATTR =
   /\s+data-docx-bookmark-(?:boundary|id|name|col-first|col-last)(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
-const RANGE_ANCHOR_ATTR = /\s+data-docx-range-anchor(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
+const RANGE_ANCHOR_ATTR =
+  /\s+data-docx-range-anchor(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
 const MOVE_RANGE_BOUNDARY_ATTR =
   /\s+data-docx-move-range-boundary(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
-const STRUCTURED_FIELD_ATTR = /\s+data-field-structured(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
+const STRUCTURED_FIELD_ATTR =
+  /\s+data-field-structured(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
 const FIELD_CODE_ATTR = /\s+data-field-code(?:="[^"]*"|'[^']*'|=[^\s>]+)?/gi;
 
 /**
@@ -203,7 +214,10 @@ const FIELD_CODE_ATTR = /\s+data-field-code(?:="[^"]*"|'[^']*'|=[^\s>]+)?/gi;
  * unguessable capability created with this editor schema. `data-pm-slice`
  * cannot establish trust because arbitrary external HTML can forge it.
  */
-function hasInternalClipboardCapability(html: string, token: string | undefined): boolean {
+function hasInternalClipboardCapability(
+  html: string,
+  token: string | undefined,
+): boolean {
   if (!token) {
     return false;
   }
@@ -223,7 +237,10 @@ function stripForeignTextBoxAnchors(html: string, internal: boolean): string {
   return html.replace(TEXTBOX_ANCHOR_ATTR, "");
 }
 
-function stripForeignBookmarkBoundaries(html: string, internal: boolean): string {
+function stripForeignBookmarkBoundaries(
+  html: string,
+  internal: boolean,
+): string {
   if (internal) {
     return html;
   }
@@ -234,7 +251,9 @@ function stripForeignRangeCarriers(html: string, internal: boolean): string {
   if (internal) {
     return html;
   }
-  return html.replace(RANGE_ANCHOR_ATTR, "").replace(MOVE_RANGE_BOUNDARY_ATTR, "");
+  return html
+    .replace(RANGE_ANCHOR_ATTR, "")
+    .replace(MOVE_RANGE_BOUNDARY_ATTR, "");
 }
 
 function stripForeignStructuredFields(html: string, internal: boolean): string {
@@ -284,13 +303,19 @@ type CleanPastedHtmlOptions = {
   internalClipboardToken?: string;
 };
 
-export function cleanPastedHtml(html: string, options: CleanPastedHtmlOptions = {}): string {
+export function cleanPastedHtml(
+  html: string,
+  options: CleanPastedHtmlOptions = {},
+): string {
   if (!html) {
     return html;
   }
 
   try {
-    const internal = hasInternalClipboardCapability(html, options.internalClipboardToken);
+    const internal = hasInternalClipboardCapability(
+      html,
+      options.internalClipboardToken,
+    );
     let cleaned = stripHtmlComments(html);
     cleaned = stripXmlDeclarations(cleaned);
     cleaned = cleaned.replace(NAMESPACED_TAG, "");
@@ -322,7 +347,11 @@ export function removeUnpairedBookmarkBoundaries(slice: Slice): Slice {
       return false;
     }
     const attrs = result.value;
-    boundaries.push({ id: attrs.id, type: attrs.type, position: boundaryIndex });
+    boundaries.push({
+      id: attrs.id,
+      type: attrs.type,
+      position: boundaryIndex,
+    });
     boundaryIndex += 1;
     return false;
   });
@@ -339,12 +368,18 @@ export function removeUnpairedBookmarkBoundaries(slice: Slice): Slice {
         }
         return;
       }
-      children.push(node.childCount === 0 ? node : node.copy(filterFragment(node.content)));
+      children.push(
+        node.childCount === 0 ? node : node.copy(filterFragment(node.content)),
+      );
     });
     return Fragment.fromArray(children);
   };
 
-  return new Slice(filterFragment(slice.content), slice.openStart, slice.openEnd);
+  return new Slice(
+    filterFragment(slice.content),
+    slice.openStart,
+    slice.openEnd,
+  );
 }
 
 type MoveRangeBoundarySummary = {
@@ -375,9 +410,14 @@ export function removeUnpairedMoveRangeBoundaries(slice: Slice): Slice {
       return false;
     }
     const key = moveRangeKey(result.value);
-    const summary = summaries.get(key) ?? { startPositions: [], endPositions: [] };
+    const summary = summaries.get(key) ?? {
+      startPositions: [],
+      endPositions: [],
+    };
     summary[
-      moveRangeBoundaryType(result.value) === "start" ? "startPositions" : "endPositions"
+      moveRangeBoundaryType(result.value) === "start"
+        ? "startPositions"
+        : "endPositions"
     ].push(boundaryIndex);
     summaries.set(key, summary);
     boundaryIndex += 1;
@@ -414,10 +454,16 @@ export function removeUnpairedMoveRangeBoundaries(slice: Slice): Slice {
         }
         return;
       }
-      children.push(node.childCount === 0 ? node : node.copy(filterFragment(node.content)));
+      children.push(
+        node.childCount === 0 ? node : node.copy(filterFragment(node.content)),
+      );
     });
     return Fragment.fromArray(children);
   };
 
-  return new Slice(filterFragment(slice.content), slice.openStart, slice.openEnd);
+  return new Slice(
+    filterFragment(slice.content),
+    slice.openStart,
+    slice.openEnd,
+  );
 }

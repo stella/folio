@@ -1,11 +1,15 @@
-import { expect, test, setDefaultTimeout } from "bun:test";
-import fc from "fast-check";
 import { panic } from "better-result";
+import { expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { Document } from "../../model/document";
-import { compileEditorIntent } from "../editorIntent";
 import { applyDocumentOps } from "../apply";
+import { compileEditorIntent } from "../editorIntent";
 import { OP_STORIES } from "../types";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 test("TOC identities are package-wide, deterministic and exact under inverse", () => {
@@ -24,16 +28,26 @@ test("TOC identities are package-wide, deterministic and exact under inverse", (
                   paraId: "12345678",
                   content: [
                     ...(existing
-                      ? [{ type: "bookmarkStart", id: 7, name: "_TocExisting" } as const]
+                      ? [
+                          {
+                            type: "bookmarkStart",
+                            id: 7,
+                            name: "_TocExisting",
+                          } as const,
+                        ]
                       : []),
                     { type: "run", content: [{ type: "text", text: "Head" }] },
-                    ...(existing ? [{ type: "bookmarkEnd", id: 7 } as const] : []),
+                    ...(existing
+                      ? [{ type: "bookmarkEnd", id: 7 } as const]
+                      : []),
                   ],
                 },
                 {
                   type: "paragraph",
                   paraId: "23456789",
-                  content: [{ type: "run", content: [{ type: "text", text: "a😀" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "a😀" }] },
+                  ],
                 },
               ],
             },
@@ -47,7 +61,10 @@ test("TOC identities are package-wide, deterministic and exact under inverse", (
                     paraId: "00000001",
                     content: [
                       { type: "bookmarkStart", id: 1, name: "_Toc1" },
-                      { type: "run", content: [{ type: "text", text: "Note" }] },
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "Note" }],
+                      },
                       { type: "bookmarkEnd", id: 1 },
                     ],
                   },
@@ -68,11 +85,16 @@ test("TOC identities are package-wide, deterministic and exact under inverse", (
           mode: { type: "editing" },
         }).unwrap();
         expect(
-          compileEditorIntent(document, { intent, mode: { type: "editing" } }).unwrap(),
+          compileEditorIntent(document, {
+            intent,
+            mode: { type: "editing" },
+          }).unwrap(),
         ).toEqual(compiled);
         const applied = applyDocumentOps(document, compiled.ops).unwrap();
         const ids = applied.document.package.document.content.map((item) =>
-          item.type === "paragraph" ? item.paraId : panic("Unexpected TOC block"),
+          item.type === "paragraph"
+            ? item.paraId
+            : panic("Unexpected TOC block"),
         );
         expect(new Set(ids).size).toBe(ids.length);
         expect(ids).not.toContain("00000001");
@@ -80,30 +102,46 @@ test("TOC identities are package-wide, deterministic and exact under inverse", (
           (item) => item.type === "paragraph" && item.paraId === "12345678",
         );
         if (heading?.type !== "paragraph") return panic("Missing TOC heading");
-        const bookmarks = heading.content.filter((item) => item.type === "bookmarkStart");
+        const bookmarks = heading.content.filter(
+          (item) => item.type === "bookmarkStart",
+        );
         expect(bookmarks).toHaveLength(1);
         if (existing)
-          expect(bookmarks.at(0)).toEqual({ type: "bookmarkStart", id: 7, name: "_TocExisting" });
+          expect(bookmarks.at(0)).toEqual({
+            type: "bookmarkStart",
+            id: 7,
+            name: "_TocExisting",
+          });
         else {
           expect(bookmarks.at(0)?.id).not.toBe(1);
           expect(bookmarks.at(0)?.name).not.toBe("_Toc1");
         }
-        const undone = applyDocumentOps(applied.document, applied.inverse).unwrap();
-        expect(undone.document).toStrictEqual(document);
-        expect(applyDocumentOps(undone.document, undone.inverse).unwrap().document).toStrictEqual(
+        const undone = applyDocumentOps(
           applied.document,
-        );
+          applied.inverse,
+        ).unwrap();
+        expect(undone.document).toStrictEqual(document);
+        expect(
+          applyDocumentOps(undone.document, undone.inverse).unwrap().document,
+        ).toStrictEqual(applied.document);
         const suggested = compileEditorIntent(document, {
           intent,
           mode: {
             type: "suggesting",
-            revision: { id: 20, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+            revision: {
+              id: 20,
+              author: "Reviewer",
+              date: "2026-01-01T00:00:00Z",
+            },
             newIds: {},
           },
         });
         expect(suggested.isErr()).toBe(true);
       },
     ),
-    { numRuns: 24, id: "TOC identities are package-wide, deterministic and exact under inverse" },
+    {
+      numRuns: 24,
+      id: "TOC identities are package-wide, deterministic and exact under inverse",
+    },
   );
 });

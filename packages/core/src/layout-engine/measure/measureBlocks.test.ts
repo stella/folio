@@ -1,10 +1,19 @@
 import { describe, expect, test } from "bun:test";
 
-import type { FlowBlock, ImageBlock, ParagraphBlock, TableBlock, TextBoxBlock } from "../types";
+import { pixelsToEmu } from "../../utils/units";
 import { markParagraphFrameTextBox } from "../paragraphFrame";
 import { setTextBoxGroupId } from "../textBoxGroup";
-import { pixelsToEmu } from "../../utils/units";
-import { fixedCharWidth, withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
+import type {
+  FlowBlock,
+  ImageBlock,
+  ParagraphBlock,
+  TableBlock,
+  TextBoxBlock,
+} from "../types";
+import {
+  fixedCharWidth,
+  withFakeTextMeasure,
+} from "./__tests__/fakeTextMeasure";
 import {
   measureBlock,
   measureBlocks,
@@ -20,7 +29,10 @@ const para = (id: string, text: string): ParagraphBlock => ({
   runs: [{ kind: "text", text }],
 });
 
-const centeredMarginFloatingTable = (id: string, cellText = "cell"): TableBlock => ({
+const centeredMarginFloatingTable = (
+  id: string,
+  cellText = "cell",
+): TableBlock => ({
   kind: "table",
   id,
   columnWidths: [200],
@@ -52,13 +64,22 @@ describe("measureBlock dispatch", () => {
   });
 
   test("structural breaks map to matching measure kinds", () => {
-    expect(measureBlock({ kind: "pageBreak", id: "pb-1" }, 500).kind).toBe("pageBreak");
-    expect(measureBlock({ kind: "columnBreak", id: "cb-1" }, 500).kind).toBe("columnBreak");
-    expect(measureBlock({ kind: "sectionBreak", id: "sb-1" }, 500).kind).toBe("sectionBreak");
+    expect(measureBlock({ kind: "pageBreak", id: "pb-1" }, 500).kind).toBe(
+      "pageBreak",
+    );
+    expect(measureBlock({ kind: "columnBreak", id: "cb-1" }, 500).kind).toBe(
+      "columnBreak",
+    );
+    expect(measureBlock({ kind: "sectionBreak", id: "sb-1" }, 500).kind).toBe(
+      "sectionBreak",
+    );
   });
 
   test("unknown block kind falls back to an empty paragraph measure", () => {
-    const measure = measureBlock({ kind: "mystery" } as unknown as FlowBlock, 500);
+    const measure = measureBlock(
+      { kind: "mystery" } as unknown as FlowBlock,
+      500,
+    );
     expect(measure.kind).toBe("paragraph");
     if (measure.kind === "paragraph") {
       expect(measure.lines).toEqual([]);
@@ -99,11 +120,9 @@ describe("text box fitting", () => {
         throw new Error("Expected text box measure");
       }
 
-      expect(measure.innerMeasures.map((innerMeasure) => innerMeasure.kind)).toEqual([
-        "paragraph",
-        "table",
-        "paragraph",
-      ]);
+      expect(
+        measure.innerMeasures.map((innerMeasure) => innerMeasure.kind),
+      ).toEqual(["paragraph", "table", "paragraph"]);
       const tableMeasure = measure.innerMeasures.at(1);
       expect(tableMeasure?.kind).toBe("table");
       if (tableMeasure?.kind !== "table") {
@@ -123,7 +142,10 @@ describe("text box fitting", () => {
         margins: { top: 0, right: 0, bottom: 0, left: 0 },
         content: [para("inner", "content")],
       };
-      const fittedMeasure = measureBlock({ ...fixed, id: "fitted", autoFit: "shape" }, 500);
+      const fittedMeasure = measureBlock(
+        { ...fixed, id: "fitted", autoFit: "shape" },
+        500,
+      );
       const fixedMeasure = measureBlock(fixed, 500);
       const largeMeasure = measureBlock(
         { ...fixed, id: "large", height: 1_000, autoFit: "shape" },
@@ -229,10 +251,18 @@ describe("text box fitting", () => {
 describe("measureBlocks", () => {
   test("returns exactly one measure per input block", () => {
     withFakeTextMeasure(() => {
-      const blocks: FlowBlock[] = [imageBlock, { kind: "pageBreak", id: "pb-1" }, imageBlock];
+      const blocks: FlowBlock[] = [
+        imageBlock,
+        { kind: "pageBreak", id: "pb-1" },
+        imageBlock,
+      ];
       const measures = measureBlocks(blocks, 500);
       expect(measures).toHaveLength(blocks.length);
-      expect(measures.map((m) => m.kind)).toEqual(["image", "pageBreak", "image"]);
+      expect(measures.map((m) => m.kind)).toEqual([
+        "image",
+        "pageBreak",
+        "image",
+      ]);
     }, fakeMeasure);
   });
 
@@ -468,7 +498,10 @@ describe("measureBlocks", () => {
       });
       const samePageBody = measures.at(2);
       const nextPageBody = measures.at(4);
-      if (samePageBody?.kind !== "paragraph" || nextPageBody?.kind !== "paragraph") {
+      if (
+        samePageBody?.kind !== "paragraph" ||
+        nextPageBody?.kind !== "paragraph"
+      ) {
         throw new Error("Expected paragraph measures");
       }
 
@@ -606,19 +639,28 @@ describe("measureBlocks", () => {
         para("tall-first-column", "x".repeat(500)),
         { kind: "columnBreak", id: "unequal-column-break" },
         para("short-second-column", "body"),
-        { kind: "sectionBreak", id: "continuous-after-columns", type: "continuous" },
+        {
+          kind: "sectionBreak",
+          id: "continuous-after-columns",
+          type: "continuous",
+        },
         para("continuous-body", "body"),
       ];
-      const measures = measureBlocks(blocks, [350, 350, 350, 350, 350, 800], 0, {
-        pageWidth: 1_000,
-        pageHeight: 1_000,
-        marginLeft: 100,
-        marginRight: 100,
-        marginBottom: 40,
-        contentLeft: [100, 100, 100, 550, 550, 100],
-        columnIndex: [0, 0, 0, 1, 1, 0],
-        columnCount: [2, 2, 2, 2, 2, 1],
-      });
+      const measures = measureBlocks(
+        blocks,
+        [350, 350, 350, 350, 350, 800],
+        0,
+        {
+          pageWidth: 1_000,
+          pageHeight: 1_000,
+          marginLeft: 100,
+          marginRight: 100,
+          marginBottom: 40,
+          contentLeft: [100, 100, 100, 550, 550, 100],
+          columnIndex: [0, 0, 0, 1, 1, 0],
+          columnCount: [2, 2, 2, 2, 2, 1],
+        },
+      );
       const firstColumn = measures.at(1);
       const secondColumn = measures.at(3);
       const continuousBody = measures.at(5);
@@ -684,21 +726,28 @@ describe("measureBlocks", () => {
           },
         ],
       };
-      const measures = measureBlocks([table, para("body", "body")], [350, 350], 0, {
-        pageWidth: 1_000,
-        pageHeight: 1_000,
-        marginLeft: 100,
-        marginRight: 100,
-        marginBottom: 40,
-        contentLeft: [100, 100],
-      });
+      const measures = measureBlocks(
+        [table, para("body", "body")],
+        [350, 350],
+        0,
+        {
+          pageWidth: 1_000,
+          pageHeight: 1_000,
+          marginLeft: 100,
+          marginRight: 100,
+          marginBottom: 40,
+          contentLeft: [100, 100],
+        },
+      );
       const tableMeasure = measures.at(0);
       const bodyMeasure = measures.at(1);
       if (tableMeasure?.kind !== "table" || bodyMeasure?.kind !== "paragraph") {
         throw new Error("Expected table and paragraph measures");
       }
 
-      expect(bodyMeasure.lines.at(0)?.floatSkipBefore).toBe(tableMeasure.totalHeight);
+      expect(bodyMeasure.lines.at(0)?.floatSkipBefore).toBe(
+        tableMeasure.totalHeight,
+      );
       expect(bodyMeasure.lines.at(0)?.leftOffset).toBeUndefined();
     }, fakeMeasure);
   });
@@ -722,7 +771,10 @@ describe("measureBlocks", () => {
       setTextBoxGroupId(firstBand, "host-paragraph");
       setTextBoxGroupId(secondBand, "host-paragraph");
 
-      const measures = measureBlocks([firstBand, secondBand, para("after", "after")], 600);
+      const measures = measureBlocks(
+        [firstBand, secondBand, para("after", "after")],
+        600,
+      );
       const paragraphMeasure = measures.at(2);
       if (paragraphMeasure?.kind !== "paragraph") {
         throw new Error("Expected paragraph measure");
@@ -753,16 +805,24 @@ describe("measureBlocks", () => {
         ],
       };
 
-      const measures = measureBlocks([anchor, para("after", "after")], 600, 96, {
-        pageWidth: 792,
-        pageHeight: 1_056,
-        marginLeft: 96,
-        marginRight: 96,
-        marginBottom: 96,
-      });
+      const measures = measureBlocks(
+        [anchor, para("after", "after")],
+        600,
+        96,
+        {
+          pageWidth: 792,
+          pageHeight: 1_056,
+          marginLeft: 96,
+          marginRight: 96,
+          marginBottom: 96,
+        },
+      );
       const anchorMeasure = measures.at(0);
       const afterMeasure = measures.at(1);
-      if (anchorMeasure?.kind !== "paragraph" || afterMeasure?.kind !== "paragraph") {
+      if (
+        anchorMeasure?.kind !== "paragraph" ||
+        afterMeasure?.kind !== "paragraph"
+      ) {
         throw new Error("Expected paragraph measures");
       }
       expect(anchorMeasure.totalHeight).toBeLessThan(60);
@@ -793,13 +853,18 @@ describe("measureBlocks", () => {
       setTextBoxGroupId(left, "frame-set");
       setTextBoxGroupId(right, "frame-set");
 
-      const measures = measureBlocks([left, right, para("body", "body")], 600, 96, {
-        pageWidth: 792,
-        pageHeight: 1_056,
-        marginLeft: 96,
-        marginRight: 96,
-        marginBottom: 96,
-      });
+      const measures = measureBlocks(
+        [left, right, para("body", "body")],
+        600,
+        96,
+        {
+          pageWidth: 792,
+          pageHeight: 1_056,
+          marginLeft: 96,
+          marginRight: 96,
+          marginBottom: 96,
+        },
+      );
       const bodyMeasure = measures.at(2);
       if (bodyMeasure?.kind !== "paragraph") {
         throw new Error("Expected body paragraph measure");
@@ -1060,11 +1125,18 @@ describe("measureBlocks", () => {
 describe("measureTableBlock row height", () => {
   test("stacks the effective spacing of contextual-spacing paragraphs in a cell", () => {
     withFakeTextMeasure(() => {
-      const cellParagraph = (id: string, contextualSpacing: boolean): ParagraphBlock => ({
+      const cellParagraph = (
+        id: string,
+        contextualSpacing: boolean,
+      ): ParagraphBlock => ({
         kind: "paragraph",
         id,
         runs: [{ kind: "text", text: id }],
-        attrs: { styleId: "ListParagraph", contextualSpacing, spacing: { after: 10 } },
+        attrs: {
+          styleId: "ListParagraph",
+          contextualSpacing,
+          spacing: { after: 10 },
+        },
       });
       const build = (contextualSpacing: boolean): TableBlock => ({
         kind: "table",
@@ -1340,7 +1412,12 @@ describe("measureTableBlock row height", () => {
               {
                 id: "a",
                 blocks: [para("a1", "One line")],
-                padding: { top: paddingTop, right: 0, bottom: paddingBottom, left: 0 },
+                padding: {
+                  top: paddingTop,
+                  right: 0,
+                  bottom: paddingBottom,
+                  left: 0,
+                },
                 // First row: top+bottom both collapse in, so 2 * border.
                 borders: { top: { width: border }, bottom: { width: border } },
               },
@@ -1386,9 +1463,11 @@ describe("measureTableBlock row height", () => {
         rows: [{ id: "r0", cells: [cell()] }],
       };
 
-      const withMinHeight = measureTableBlock(withMin, 120).rows[0]?.height ?? 0;
+      const withMinHeight =
+        measureTableBlock(withMin, 120).rows[0]?.height ?? 0;
       const noMinHeight = measureTableBlock(noMin, 120).rows[0]?.height ?? 0;
-      const contentHeight = measureTableBlock(noMin, 120).rows[0]?.cells[0]?.height ?? 0;
+      const contentHeight =
+        measureTableBlock(noMin, 120).rows[0]?.cells[0]?.height ?? 0;
 
       expect(withMinHeight).toBe(contentHeight + 2 * border);
       expect(withMinHeight).toBe(noMinHeight);
@@ -1439,7 +1518,12 @@ describe("measureTableBlock row height", () => {
             id: "hidden",
             hidden: true,
             height: 40,
-            cells: [{ id: "b", blocks: [para("p2", "hidden but measured as absent")] }],
+            cells: [
+              {
+                id: "b",
+                blocks: [para("p2", "hidden but measured as absent")],
+              },
+            ],
           },
         ],
       };
@@ -1481,10 +1565,14 @@ describe("measureTableBlock row height", () => {
       const cell = measure.rows.at(0)?.cells.at(0);
       const firstMeasure = cell?.blocks.at(0);
       const secondMeasure = cell?.blocks.at(1);
-      if (firstMeasure?.kind !== "paragraph" || secondMeasure?.kind !== "paragraph") {
+      if (
+        firstMeasure?.kind !== "paragraph" ||
+        secondMeasure?.kind !== "paragraph"
+      ) {
         throw new Error("Expected paragraph measures");
       }
-      const summedParagraphHeights = firstMeasure.totalHeight + secondMeasure.totalHeight;
+      const summedParagraphHeights =
+        firstMeasure.totalHeight + secondMeasure.totalHeight;
 
       expect(cell?.height).toBe(summedParagraphHeights - 8);
       expect(measure.rows.at(0)?.height).toBe(cell?.height);
@@ -1546,7 +1634,9 @@ describe("measureTableBlock row height", () => {
 });
 
 describe("measureTableBlock preferred width", () => {
-  const tableWithPreferredWidth = (widthType?: TableBlock["widthType"]): TableBlock => ({
+  const tableWithPreferredWidth = (
+    widthType?: TableBlock["widthType"],
+  ): TableBlock => ({
     kind: "table",
     id: "t",
     columnWidths: [60],
@@ -1610,7 +1700,12 @@ describe("measureTableBlock w:tblCellSpacing", () => {
     cellSpacing: 2,
     rows: [
       { id: "r0", height: 40, cells: [spacedCell("a"), spacedCell("b")] },
-      { id: "r1", height: 20, heightRule: "exact", cells: [spacedCell("c"), spacedCell("d")] },
+      {
+        id: "r1",
+        height: 20,
+        heightRule: "exact",
+        cells: [spacedCell("c"), spacedCell("d")],
+      },
       { id: "r2", height: 40, cells: [spacedCell("e"), spacedCell("f")] },
     ],
   });
@@ -1619,7 +1714,9 @@ describe("measureTableBlock w:tblCellSpacing", () => {
     withFakeTextMeasure(() => {
       const measure = measureTableBlock(spacedTable(), 500);
 
-      expect(measure.rows[0]!.cells.map((cell) => cell.width)).toEqual([94, 94]);
+      expect(measure.rows[0]!.cells.map((cell) => cell.width)).toEqual([
+        94, 94,
+      ]);
       expect(measure.totalWidth).toBe(200);
     }, fakeMeasure);
   });
@@ -1643,7 +1740,9 @@ describe("measureTableBlock w:tblCellSpacing", () => {
       const measure = measureTableBlock(table, 500);
 
       expect(measure.rows.map((row) => row.height)).toEqual([40, 20, 40]);
-      expect(measure.rows[0]!.cells.map((cell) => cell.width)).toEqual([100, 100]);
+      expect(measure.rows[0]!.cells.map((cell) => cell.width)).toEqual([
+        100, 100,
+      ]);
     }, fakeMeasure);
   });
 });
@@ -1677,7 +1776,9 @@ describe("measureTableBlock row grid offsets", () => {
 
       const measure = measureTableBlock(table, 180);
 
-      expect(measure.rows.at(0)?.cells.map((cell) => cell.width)).toEqual([60, 80]);
+      expect(measure.rows.at(0)?.cells.map((cell) => cell.width)).toEqual([
+        60, 80,
+      ]);
     }, fakeMeasure);
   });
 });
@@ -1715,7 +1816,8 @@ describe("measureTableBlock w:noWrap column pinning", () => {
   });
 
   const cellLineCount = (table: TableBlock): number => {
-    const paragraph = measureTableBlock(table, 500).rows[0]?.cells[0]?.blocks[0];
+    const paragraph = measureTableBlock(table, 500).rows[0]?.cells[0]
+      ?.blocks[0];
     if (paragraph?.kind !== "paragraph") {
       throw new Error("Expected paragraph measure");
     }
@@ -1724,30 +1826,34 @@ describe("measureTableBlock w:noWrap column pinning", () => {
 
   test("wraps an overflowing noWrap cell when an explicit dxa width pins the column", () => {
     withFakeTextMeasure(() => {
-      expect(cellLineCount(noWrapTable({ text: OVERFLOW_TEXT, widthType: "dxa" }))).toBeGreaterThan(
-        1,
-      );
+      expect(
+        cellLineCount(noWrapTable({ text: OVERFLOW_TEXT, widthType: "dxa" })),
+      ).toBeGreaterThan(1);
     }, fakeMeasure);
   });
 
   test("wraps an overflowing noWrap cell under a fixed table layout", () => {
     withFakeTextMeasure(() => {
-      expect(cellLineCount(noWrapTable({ text: OVERFLOW_TEXT, layout: "fixed" }))).toBeGreaterThan(
-        1,
-      );
+      expect(
+        cellLineCount(noWrapTable({ text: OVERFLOW_TEXT, layout: "fixed" })),
+      ).toBeGreaterThan(1);
     }, fakeMeasure);
   });
 
   test("keeps an overflowing noWrap cell on one line in an auto-width table", () => {
     withFakeTextMeasure(() => {
       // Auto layout: Word would widen the column, so noWrap stays single-line.
-      expect(cellLineCount(noWrapTable({ text: OVERFLOW_TEXT, widthType: "auto" }))).toBe(1);
+      expect(
+        cellLineCount(noWrapTable({ text: OVERFLOW_TEXT, widthType: "auto" })),
+      ).toBe(1);
     }, fakeMeasure);
   });
 
   test("keeps a fitting noWrap cell on one line even when the column is pinned", () => {
     withFakeTextMeasure(() => {
-      expect(cellLineCount(noWrapTable({ text: FIT_TEXT, widthType: "dxa" }))).toBe(1);
+      expect(
+        cellLineCount(noWrapTable({ text: FIT_TEXT, widthType: "dxa" })),
+      ).toBe(1);
     }, fakeMeasure);
   });
 });
@@ -1775,7 +1881,9 @@ describe("measureTableBlock floating cell content", () => {
                     height: 120,
                     content: [],
                     displayMode: "float",
-                    position: { vertical: { relativeTo: "paragraph", posOffset: 0 } },
+                    position: {
+                      vertical: { relativeTo: "paragraph", posOffset: 0 },
+                    },
                   },
                 ],
               },
@@ -1835,7 +1943,9 @@ describe("measureBlocks error instrumentation", () => {
     }
 
     // The swallowed failure is now traceable, not silent.
-    expect(events).toEqual([{ blockIndex: 0, blockKind: "paragraph", message: "measure boom" }]);
+    expect(events).toEqual([
+      { blockIndex: 0, blockKind: "paragraph", message: "measure boom" },
+    ]);
   });
 
   test("advances page cursors after returning the fallback measure", () => {

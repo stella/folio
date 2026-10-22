@@ -23,28 +23,44 @@
  */
 
 import { COMMENT_PART_RELATIONSHIPS } from "@stll/docx-core/model";
+
 import type { Relationship, RelationshipMap, RelationshipType } from "../types";
-import { parseXmlDocument, getChildElements, getAttribute } from "./xmlParser";
+import { getAttribute, getChildElements, parseXmlDocument } from "./xmlParser";
 
 /**
  * Relationship type constants for common types
  */
 export const RELATIONSHIP_TYPES = {
-  image: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
-  hyperlink: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
-  header: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
-  footer: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
-  footnotes: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
-  endnotes: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes",
-  styles: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
-  numbering: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
-  fontTable: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable",
-  theme: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
-  settings: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings",
-  webSettings: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings",
-  oleObject: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject",
-  chart: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart",
-  diagramData: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramData",
+  image:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+  hyperlink:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+  header:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+  footer:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
+  footnotes:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
+  endnotes:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes",
+  styles:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
+  numbering:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
+  fontTable:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable",
+  theme:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
+  settings:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings",
+  webSettings:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings",
+  oleObject:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject",
+  chart:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart",
+  diagramData:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramData",
   officeDocument:
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
   coreProperties:
@@ -53,7 +69,8 @@ export const RELATIONSHIP_TYPES = {
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties",
   customProperties:
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties",
-  customXml: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml",
+  customXml:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml",
   comments: COMMENT_PART_RELATIONSHIPS.comments.type,
   commentsExtended: COMMENT_PART_RELATIONSHIPS.commentsExtended.type,
 } as const;
@@ -62,7 +79,9 @@ const STRICT_OFFICE_RELATIONSHIP_PREFIX =
   "http://purl.oclc.org/ooxml/officeDocument/relationships/";
 const TRANSITIONAL_OFFICE_RELATIONSHIP_PREFIX =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
-const KNOWN_RELATIONSHIP_TYPES = new Set<string>(Object.values(RELATIONSHIP_TYPES));
+const KNOWN_RELATIONSHIP_TYPES = new Set<string>(
+  Object.values(RELATIONSHIP_TYPES),
+);
 
 const normalizeRelationshipType = (type: string): string => {
   if (!type.startsWith(STRICT_OFFICE_RELATIONSHIP_PREFIX)) {
@@ -70,7 +89,8 @@ const normalizeRelationshipType = (type: string): string => {
   }
 
   const normalized =
-    TRANSITIONAL_OFFICE_RELATIONSHIP_PREFIX + type.slice(STRICT_OFFICE_RELATIONSHIP_PREFIX.length);
+    TRANSITIONAL_OFFICE_RELATIONSHIP_PREFIX +
+    type.slice(STRICT_OFFICE_RELATIONSHIP_PREFIX.length);
   return KNOWN_RELATIONSHIP_TYPES.has(normalized) ? normalized : type;
 };
 
@@ -160,7 +180,9 @@ export function getRelationshipTypeName(typeUri: string): string {
  * @returns true if this is an external hyperlink
  */
 export function isExternalHyperlink(rel: Relationship): boolean {
-  return rel.type === RELATIONSHIP_TYPES.hyperlink && rel.targetMode === "External";
+  return (
+    rel.type === RELATIONSHIP_TYPES.hyperlink && rel.targetMode === "External"
+  );
 }
 
 /**
@@ -200,7 +222,10 @@ export function isFooterRelationship(rel: Relationship): boolean {
  * @param type - Relationship type URI to filter by
  * @returns Array of matching relationships
  */
-export function filterByType(map: RelationshipMap, type: RelationshipType): Relationship[] {
+export function filterByType(
+  map: RelationshipMap,
+  type: RelationshipType,
+): Relationship[] {
   const results: Relationship[] = [];
   for (const rel of map.values()) {
     if (rel.type === type) {

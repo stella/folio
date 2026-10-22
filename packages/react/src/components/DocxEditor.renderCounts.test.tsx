@@ -2,20 +2,26 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, test } from "bun:test";
-import { panic } from "better-result";
 import { act, createRef, Profiler } from "react";
 import { createRoot } from "react-dom/client";
+
+import { panic } from "better-result";
+import { afterAll, expect, test } from "bun:test";
 import { TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { IntlProvider } from "use-intl";
-import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+
 import { createDocx } from "@stll/folio-core/docx/rezip";
+import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
+
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -44,7 +50,8 @@ const createRenderProbe = () => {
   const commits: number[] = [];
   return {
     commits,
-    onRender: (_id: string, _phase: string, duration: number) => commits.push(duration),
+    onRender: (_id: string, _phase: string, duration: number) =>
+      commits.push(duration),
   };
 };
 
@@ -67,7 +74,9 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
     const initialDocument = createEmptyDocument({ initialText: "Hello" });
     // Load package bytes explicitly, as in the canonical-save harness, so
     // the canonical source and body projection are ready before measuring.
-    const documentBuffer = experimentalSession ? await createDocx(initialDocument) : undefined;
+    const documentBuffer = experimentalSession
+      ? await createDocx(initialDocument)
+      : undefined;
     const documentProps = documentBuffer
       ? { documentBuffer, experimentalSession }
       : { document: initialDocument };
@@ -90,7 +99,9 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
         );
       });
       if (documentBuffer) {
-        await act(async () => editor.current?.loadDocumentBuffer(documentBuffer));
+        await act(async () =>
+          editor.current?.loadDocumentBuffer(documentBuffer),
+        );
       }
       await act(async () => {
         editor.current?.ensureEditorView({ focus: false });
@@ -99,14 +110,19 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 450));
       });
-      const api = editor.current?.getEditor() ?? panic("The editor API did not mount");
-      const getView = () => api.getView() ?? panic("The editor did not create its body view");
+      const api =
+        editor.current?.getEditor() ?? panic("The editor API did not mount");
+      const getView = () =>
+        api.getView() ?? panic("The editor did not create its body view");
       if (experimentalSession) {
         await act(async () => {
           const view = getView();
           view.dispatch(
             view.state.tr.setSelection(
-              TextSelection.create(view.state.doc, view.state.doc.content.size - 1),
+              TextSelection.create(
+                view.state.doc,
+                view.state.doc.content.size - 1,
+              ),
             ),
           );
         });
@@ -131,7 +147,12 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
             expect(event.defaultPrevented).toBe(true);
             return;
           }
-          view.dispatch(view.state.tr.insertText(character, view.state.doc.content.size - 1));
+          view.dispatch(
+            view.state.tr.insertText(
+              character,
+              view.state.doc.content.size - 1,
+            ),
+          );
         });
         typing.push(commits.length - before);
         expectedText += character;
@@ -164,8 +185,12 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
       for (const count of [...typing, ...selection]) {
         expect(count).toBeLessThanOrEqual(RENDER_BUDGET.perOperation);
       }
-      expect(commits.length - immediateCommits).toBeLessThanOrEqual(RENDER_BUDGET.settled);
-      expect(commits.length - startCommit).toBeLessThanOrEqual(RENDER_BUDGET.total);
+      expect(commits.length - immediateCommits).toBeLessThanOrEqual(
+        RENDER_BUDGET.settled,
+      );
+      expect(commits.length - startCommit).toBeLessThanOrEqual(
+        RENDER_BUDGET.total,
+      );
       console.info(
         "FOLIO_RENDER_MEASUREMENT",
         JSON.stringify({
@@ -174,7 +199,9 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
           selection,
           commits: commits.length - startCommit,
           settledCommits: commits.length - immediateCommits,
-          durationMs: commits.slice(startCommit).reduce((sum, duration) => sum + duration, 0),
+          durationMs: commits
+            .slice(startCommit)
+            .reduce((sum, duration) => sum + duration, 0),
         }),
       );
     } finally {

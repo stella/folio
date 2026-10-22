@@ -11,10 +11,13 @@ const insertedParagraphMark = {
   info: { id: 8, author: "Reviewer", date: "2026-10-21" },
 } as const;
 
-const paragraph = (text: string) => schema.node("paragraph", null, text ? [schema.text(text)] : []);
+const paragraph = (text: string) =>
+  schema.node("paragraph", null, text ? [schema.text(text)] : []);
 const table = (text: string) =>
   schema.node("table", null, [
-    schema.node("tableRow", null, [schema.node("tableCell", null, [paragraph(text)])]),
+    schema.node("tableRow", null, [
+      schema.node("tableCell", null, [paragraph(text)]),
+    ]),
   ]);
 
 const rejectFinalParagraph = (doc: PMNode): PMNode => {

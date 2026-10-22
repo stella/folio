@@ -1,16 +1,23 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 
 const existingIds = fc.uniqueArray(
-  fc.oneof(fc.integer({ min: 1, max: MAX_REVISION_ID }), fc.constant(MAX_REVISION_ID)),
+  fc.oneof(
+    fc.integer({ min: 1, max: MAX_REVISION_ID }),
+    fc.constant(MAX_REVISION_ID),
+  ),
   { minLength: 1, maxLength: 4 },
 );
 
@@ -29,7 +36,12 @@ describe("headless comment IDs", () => {
             content: [
               {
                 type: "paragraph",
-                content: [{ type: "run", content: [{ type: "text", text: "Existing" }] }],
+                content: [
+                  {
+                    type: "run",
+                    content: [{ type: "text", text: "Existing" }],
+                  },
+                ],
               },
             ],
           }));
@@ -38,8 +50,14 @@ describe("headless comment IDs", () => {
               type: "paragraph",
               paraId: "12345678",
               content: [
-                ...ids.map((id) => ({ type: "commentRangeStart" as const, id })),
-                { type: "run", content: [{ type: "text", text: "Review this clause." }] },
+                ...ids.map((id) => ({
+                  type: "commentRangeStart" as const,
+                  id,
+                })),
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "Review this clause." }],
+                },
                 ...ids.map((id) => ({ type: "commentRangeEnd" as const, id })),
                 ...ids.map((id) => ({ type: "commentReference" as const, id })),
               ],
@@ -50,7 +68,12 @@ describe("headless comment IDs", () => {
               content: ids.map((id) => ({
                 type: "insertion",
                 info: { id, author: "Author", date: "2026-01-01T00:00:00Z" },
-                content: [{ type: "run", content: [{ type: "text", text: "Existing revision" }] }],
+                content: [
+                  {
+                    type: "run",
+                    content: [{ type: "text", text: "Existing revision" }],
+                  },
+                ],
               })),
             },
           ];
@@ -59,7 +82,9 @@ describe("headless comment IDs", () => {
           const issuedRevisions = new Set(ids);
           for (let reviewerIndex = 0; reviewerIndex < 2; reviewerIndex += 1) {
             const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
-            const block = reviewer.snapshot().blocks.at(0) ?? panic("Expected a reviewable block");
+            const block =
+              reviewer.snapshot().blocks.at(0) ??
+              panic("Expected a reviewable block");
             for (let batchIndex = 0; batchIndex < 2; batchIndex += 1) {
               const result = reviewer.applyOperations(
                 [
@@ -82,7 +107,8 @@ describe("headless comment IDs", () => {
               expect(result.skipped).toEqual([]);
               expect(result.applied).toHaveLength(2);
               const revisionIds =
-                result.applied.find(({ id }) => id === `replace-${batchIndex}`)?.revisionIds ?? [];
+                result.applied.find(({ id }) => id === `replace-${batchIndex}`)
+                  ?.revisionIds ?? [];
               expect(revisionIds.length).toBeGreaterThan(0);
               for (const id of revisionIds) {
                 expect(Number.isInteger(id)).toBe(true);
@@ -94,12 +120,16 @@ describe("headless comment IDs", () => {
             }
             const parentId = ids.at(0) ?? panic("Expected a loaded comment");
             for (let replyIndex = 0; replyIndex < 2; replyIndex += 1) {
-              expect(reviewer.replyTo(parentId, { text: "Reply note" })).not.toBeNull();
+              expect(
+                reviewer.replyTo(parentId, { text: "Reply note" }),
+              ).not.toBeNull();
             }
             const newIds =
               reviewer
                 .toDocument()
-                .package.document.comments?.filter(({ author }) => author !== "Author")
+                .package.document.comments?.filter(
+                  ({ author }) => author !== "Author",
+                )
                 .map(({ id }) => id) ?? [];
             expect(newIds).toHaveLength(4);
             for (const id of newIds) {
@@ -112,12 +142,12 @@ describe("headless comment IDs", () => {
             const saved = await reviewer.toBuffer();
             const reopened = await parseDocx(saved, { preloadFonts: false });
             const reopenedReviewer = await FolioDocxReviewer.fromBuffer(saved);
-            expect(new Set(reopenedReviewer.getChanges().map(({ id }) => id))).toEqual(
-              new Set(reviewer.getChanges().map(({ id }) => id)),
-            );
-            expect(new Set(reopened.package.document.comments?.map(({ id }) => id))).toEqual(
-              new Set([...ids, ...newIds]),
-            );
+            expect(
+              new Set(reopenedReviewer.getChanges().map(({ id }) => id)),
+            ).toEqual(new Set(reviewer.getChanges().map(({ id }) => id)));
+            expect(
+              new Set(reopened.package.document.comments?.map(({ id }) => id)),
+            ).toEqual(new Set([...ids, ...newIds]));
           }
         }),
         {

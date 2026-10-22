@@ -32,46 +32,49 @@ import type {
   Image,
   ImageCrop,
   ImageDocPrLink,
-  ImageSize,
   ImagePosition,
+  ImageSize,
   ImageTransform,
+  MediaFile,
   RelationshipId,
   RelationshipMap,
-  MediaFile,
 } from "../types/document";
+import { normalizeImageLuminancePercent } from "../utils/imageLuminance";
+import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 import { emuToPixels } from "../utils/units";
 import { sanitizeExternalUrl } from "../utils/urlSecurity";
-import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
-import { normalizeImageLuminancePercent } from "../utils/imageLuminance";
 import {
-  parseAnchorBehindDoc,
-  parsePositionH,
-  parsePositionV,
+  parseDrawingAnchor,
+  WORDPROCESSING_DRAWING_NAMESPACE_URIS,
+} from "./drawingAnchor";
+import {
   findWrapElement,
+  parseAnchorBehindDoc,
   parseDrawingEffectExtent,
   parseInlineWrap,
+  parsePositionH,
+  parsePositionV,
   parseWrapElement,
 } from "./drawingUtils";
-import { parseDrawingAnchor, WORDPROCESSING_DRAWING_NAMESPACE_URIS } from "./drawingAnchor";
 import { parseGraphicFrameLocks } from "./graphicFrameLocks";
 import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { isTextBoxDrawing } from "./textBoxParser";
-import { captureVerbatimXml } from "./verbatimCapture";
 import { percentageSpelling } from "./transitionalSpelling";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
+  findAttributeByNamespaceUri,
+  findByFullName,
   findChildByNamespaceUri,
   findChildrenByNamespaceUri,
-  getChildElements,
   getAttribute,
+  getChildElements,
   getLocalName,
   getNamespaceUri,
+  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
   parseNumericAttribute,
   parseOnOffAttribute,
   parseOnOffValue,
-  findByFullName,
-  findAttributeByNamespaceUri,
-  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -113,8 +116,15 @@ function rotToDegrees(rot: string | null | undefined): number | undefined {
  * package that binds the WordprocessingDrawing namespace to another prefix
  * carries the same `wp:extent` and a prefix-matched read finds none of it.
  */
-const findDrawingChild = (parent: XmlElement | null, localName: string): XmlElement | null =>
-  findChildByNamespaceUri(parent, WORDPROCESSING_DRAWING_NAMESPACE_URIS, localName);
+const findDrawingChild = (
+  parent: XmlElement | null,
+  localName: string,
+): XmlElement | null =>
+  findChildByNamespaceUri(
+    parent,
+    WORDPROCESSING_DRAWING_NAMESPACE_URIS,
+    localName,
+  );
 
 // ============================================================================
 // SIZE PARSING
@@ -146,10 +156,12 @@ function parseExtent(extent: XmlElement | null): ImageSize {
  * extension holds `<adec:decorative val="…"/>`; `CT_NonVisualDrawingProps` has
  * no `@decorative` attribute for it to be written as.
  */
-export const DECORATIVE_EXTENSION_URI = "{C183D7F6-B498-43B3-948B-1728B52AA6E4}";
+export const DECORATIVE_EXTENSION_URI =
+  "{C183D7F6-B498-43B3-948B-1728B52AA6E4}";
 
 /** The namespace the decorative extension's element is bound to. */
-export const DECORATIVE_NAMESPACE = "http://schemas.microsoft.com/office/drawing/2017/decorative";
+export const DECORATIVE_NAMESPACE =
+  "http://schemas.microsoft.com/office/drawing/2017/decorative";
 
 /**
  * `wp:docPr`'s extension list is DrawingML's (`a:extLst` holding `a:ext`), in
@@ -177,13 +189,21 @@ type DocPropsExtensions = {
  * fact the document had and no longer does.
  */
 const parseDocPropsExtensions = (docPr: XmlElement): DocPropsExtensions => {
-  const extLst = findChildByNamespaceUri(docPr, DRAWINGML_NAMESPACE_URIS, "extLst");
+  const extLst = findChildByNamespaceUri(
+    docPr,
+    DRAWINGML_NAMESPACE_URIS,
+    "extLst",
+  );
   if (!extLst) {
     return { other: [] };
   }
 
   const result: DocPropsExtensions = { other: [] };
-  for (const ext of findChildrenByNamespaceUri(extLst, DRAWINGML_NAMESPACE_URIS, "ext")) {
+  for (const ext of findChildrenByNamespaceUri(
+    extLst,
+    DRAWINGML_NAMESPACE_URIS,
+    "ext",
+  )) {
     const uri = getAttribute(ext, null, "uri");
     if (uri?.toUpperCase() !== DECORATIVE_EXTENSION_URI) {
       result.other.push(captureVerbatimXml(ext));
@@ -202,7 +222,8 @@ const parseDocPropsExtensions = (docPr: XmlElement): DocPropsExtensions => {
       result.other.push(captureVerbatimXml(ext));
       continue;
     }
-    result.decorative = parseOnOffValue(getAttribute(flag, null, "val")) ?? true;
+    result.decorative =
+      parseOnOffValue(getAttribute(flag, null, "val")) ?? true;
   }
   return result;
 };
@@ -214,12 +235,23 @@ const parseDocPropsExtensions = (docPr: XmlElement): DocPropsExtensions => {
  * to bind DrawingML's namespace to another prefix, and a prefix-matched read
  * would drop the whole link for a document that does.
  */
-const parseDocPrLink = (docPr: XmlElement, localName: string): ImageDocPrLink | undefined => {
-  const element = findChildByNamespaceUri(docPr, DRAWINGML_NAMESPACE_URIS, localName);
+const parseDocPrLink = (
+  docPr: XmlElement,
+  localName: string,
+): ImageDocPrLink | undefined => {
+  const element = findChildByNamespaceUri(
+    docPr,
+    DRAWINGML_NAMESPACE_URIS,
+    localName,
+  );
   if (!element) {
     return undefined;
   }
-  const rId = findAttributeByNamespaceUri(element, OFFICE_RELATIONSHIP_NAMESPACE_URIS, "id")?.value;
+  const rId = findAttributeByNamespaceUri(
+    element,
+    OFFICE_RELATIONSHIP_NAMESPACE_URIS,
+    "id",
+  )?.value;
   return { xml: captureVerbatimXml(element), ...(rId == null ? {} : { rId }) };
 };
 
@@ -279,7 +311,10 @@ function parseDocProps(docPr: XmlElement | null): {
  * and so has nothing to check.
  */
 type DocPrLinkOptions = {
-  props: { hlinkClickSource?: ImageDocPrLink; hlinkHoverSource?: ImageDocPrLink };
+  props: {
+    hlinkClickSource?: ImageDocPrLink;
+    hlinkHoverSource?: ImageDocPrLink;
+  };
   rels: RelationshipMap | undefined;
 };
 
@@ -297,7 +332,11 @@ const safeDocPrLinks = ({
     if (link.rId === undefined) {
       return "";
     }
-    const resolved = resolveRelationshipIdOfType(rels, link.rId, RELATIONSHIP_TYPES.hyperlink);
+    const resolved = resolveRelationshipIdOfType(
+      rels,
+      link.rId,
+      RELATIONSHIP_TYPES.hyperlink,
+    );
     return resolved.status === "resolved"
       ? sanitizeExternalUrl(resolved.relationship.target)
       : undefined;
@@ -308,8 +347,12 @@ const safeDocPrLinks = ({
   const hoverKept = targetOf(props.hlinkHoverSource) !== undefined;
   return {
     ...(clickHref ? { hlinkHref: clickHref } : {}),
-    ...(clickHref !== undefined && click?.rId !== undefined ? { hlinkRId: click.rId } : {}),
-    ...(clickHref === undefined || click === undefined ? {} : { hlinkClickSource: click }),
+    ...(clickHref !== undefined && click?.rId !== undefined
+      ? { hlinkRId: click.rId }
+      : {}),
+    ...(clickHref === undefined || click === undefined
+      ? {}
+      : { hlinkClickSource: click }),
     ...(hoverKept && props.hlinkHoverSource !== undefined
       ? { hlinkHoverXml: props.hlinkHoverSource.xml }
       : {}),
@@ -372,7 +415,10 @@ function findBlipFillElement(container: XmlElement): XmlElement | null {
 
 /** `a:graphic > a:graphicData > pic:pic`, the one walk every picture read shares. */
 function findPictureElement(container: XmlElement): XmlElement | null {
-  const graphicData = findByFullName(findByFullName(container, "a:graphic"), "a:graphicData");
+  const graphicData = findByFullName(
+    findByFullName(container, "a:graphic"),
+    "a:graphicData",
+  );
   return findByFullName(graphicData, "pic:pic");
 }
 
@@ -385,7 +431,9 @@ function findPictureElement(container: XmlElement): XmlElement | null {
  */
 function findPictureNonVisualProps(container: XmlElement): XmlElement | null {
   const pic = findPictureElement(container);
-  return pic ? findByFullName(findByFullName(pic, "pic:nvPicPr"), "pic:cNvPr") : null;
+  return pic
+    ? findByFullName(findByFullName(pic, "pic:nvPicPr"), "pic:cNvPr")
+    : null;
 }
 
 /**
@@ -414,7 +462,12 @@ function parseImageCrop(blipFill: XmlElement | null): ImageCrop | undefined {
   const top = toFraction("t");
   const right = toFraction("r");
   const bottom = toFraction("b");
-  if (left === undefined && top === undefined && right === undefined && bottom === undefined) {
+  if (
+    left === undefined &&
+    top === undefined &&
+    right === undefined &&
+    bottom === undefined
+  ) {
     return undefined;
   }
   const crop: ImageCrop = {};
@@ -471,15 +524,22 @@ const parseLuminancePercent = (
   }
   const strictPercent = percentageSpelling(raw);
   const percent =
-    strictPercent ?? (FIXED_PERCENTAGE.test(raw.trim()) ? Number(raw) / 1_000 : undefined);
+    strictPercent ??
+    (FIXED_PERCENTAGE.test(raw.trim()) ? Number(raw) / 1_000 : undefined);
   return percent === undefined || !Number.isFinite(percent)
     ? undefined
     : normalizeImageLuminancePercent(percent);
 };
 
 /** Parse DrawingML `a:lum` into signed percentage values, preserving explicit zeroes. */
-function parseImageLuminance(blip: XmlElement | null): Image["effects"] | undefined {
-  const luminance = findChildByNamespaceUri(blip, DRAWINGML_MAIN_NAMESPACE_URIS, "lum");
+function parseImageLuminance(
+  blip: XmlElement | null,
+): Image["effects"] | undefined {
+  const luminance = findChildByNamespaceUri(
+    blip,
+    DRAWINGML_MAIN_NAMESPACE_URIS,
+    "lum",
+  );
   if (!luminance) {
     return undefined;
   }
@@ -589,7 +649,11 @@ export function resolveImageData(
   // An id that names no image relationship resolves to nothing. Reading any
   // other part's target as media is how an absent picture comes back named
   // after whichever relationship happened to be first in the part.
-  const resolved = resolveRelationshipIdOfType(rels, rId, RELATIONSHIP_TYPES.image);
+  const resolved = resolveRelationshipIdOfType(
+    rels,
+    rId,
+    RELATIONSHIP_TYPES.image,
+  );
   if (resolved.status !== "resolved") {
     return {};
   }
@@ -670,7 +734,11 @@ type ImageDerivedFactsOptions = {
 };
 
 /** Facts the parser obtains from exported drawing markup and image relationships. */
-export const imageDerivedFactsOf = ({ id, pictureNames, imageData }: ImageDerivedFactsOptions) => ({
+export const imageDerivedFactsOf = ({
+  id,
+  pictureNames,
+  imageData,
+}: ImageDerivedFactsOptions) => ({
   ...(id ? { id } : {}),
   ...(Object.keys(pictureNames).length > 0 ? { pictureNames } : {}),
   ...(imageData.mimeType ? { mimeType: imageData.mimeType } : {}),
@@ -710,7 +778,9 @@ function parseInline(
 
   // `pic:cNvPr`'s own set, kept apart from `wp:docPr`'s above: the rebuild
   // wrote the media filename here, renaming every picture the author had named.
-  const pictureNames = parseNonVisualDrawingNames(findPictureNonVisualProps(inlineEl));
+  const pictureNames = parseNonVisualDrawingNames(
+    findPictureNonVisualProps(inlineEl),
+  );
 
   // Find blip and extract rId
   const blipFill = findBlipFillElement(inlineEl);
@@ -737,7 +807,10 @@ function parseInline(
   };
 
   // Add optional properties
-  Object.assign(image, imageDerivedFactsOf({ id: props.id, pictureNames, imageData }));
+  Object.assign(
+    image,
+    imageDerivedFactsOf({ id: props.id, pictureNames, imageData }),
+  );
   if (props.name !== undefined) {
     image.docPrName = props.name;
   }
@@ -816,7 +889,9 @@ function parseAnchor(
 
   // `pic:cNvPr`'s own set, kept apart from `wp:docPr`'s above: the rebuild
   // wrote the media filename here, renaming every picture the author had named.
-  const pictureNames = parseNonVisualDrawingNames(findPictureNonVisualProps(anchorEl));
+  const pictureNames = parseNonVisualDrawingNames(
+    findPictureNonVisualProps(anchorEl),
+  );
 
   const behindDoc = parseAnchorBehindDoc(anchorEl);
 
@@ -883,7 +958,10 @@ function parseAnchor(
   };
 
   // Add optional properties
-  Object.assign(image, imageDerivedFactsOf({ id: props.id, pictureNames, imageData }));
+  Object.assign(
+    image,
+    imageDerivedFactsOf({ id: props.id, pictureNames, imageData }),
+  );
   if (props.name !== undefined) {
     image.docPrName = props.name;
   }

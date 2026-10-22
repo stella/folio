@@ -3,8 +3,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { TextSelection } from "prosemirror-state";
 
 import type { Document, HeaderFooter } from "../types/document";
-import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
 import {
+  createHeaderFooterEditorManager,
   enumerateDocumentHeaderFooterParts,
   enumerateHeaderFooterParts,
 } from "./headerFooterEditorManager";
@@ -38,15 +38,27 @@ describe("header/footer editor slot identity", () => {
         document: {
           content: [],
           sections: [
-            { content: [], properties: { headerReferences: [{ type: "default", rId: "rIdH" }] } },
-            { content: [], properties: { headerReferences: [{ type: "default", rId: "rIdH" }] } },
+            {
+              content: [],
+              properties: {
+                headerReferences: [{ type: "default", rId: "rIdH" }],
+              },
+            },
+            {
+              content: [],
+              properties: {
+                headerReferences: [{ type: "default", rId: "rIdH" }],
+              },
+            },
           ],
         },
         headers: new Map([["rIdH", headerFooter("header")]]),
       },
     };
 
-    expect(enumerateDocumentHeaderFooterParts(document)).toEqual([{ kind: "header", rId: "rIdH" }]);
+    expect(enumerateDocumentHeaderFooterParts(document)).toEqual([
+      { kind: "header", rId: "rIdH" },
+    ]);
   });
 });
 
@@ -61,7 +73,12 @@ test.each(["header", "footer"] as const)(
       content: [
         {
           type: "paragraph" as const,
-          content: [{ type: "run" as const, content: [{ type: "text" as const, text: kind }] }],
+          content: [
+            {
+              type: "run" as const,
+              content: [{ type: "text" as const, text: kind }],
+            },
+          ],
         },
       ],
     };
@@ -84,7 +101,8 @@ test.each(["header", "footer"] as const)(
     try {
       manager.sync();
       const view = manager.getView(relationshipId);
-      if (!view) throw new Error("Expected a persistent header/footer editor view");
+      if (!view)
+        throw new Error("Expected a persistent header/footer editor view");
 
       readOnly = true;
       manager.sync();
@@ -92,14 +110,18 @@ test.each(["header", "footer"] as const)(
       view.dispatch(view.state.tr.insertText(" forbidden", 1));
       expect(view.state.doc.textContent).toBe(kind);
 
-      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)),
+      );
       expect(view.state.selection.anchor).toBe(3);
 
       readOnly = false;
       manager.sync();
       expect(manager.getView(relationshipId)).toBe(view);
       expect(view.editable).toBe(true);
-      view.dispatch(view.state.tr.insertText(" editable", view.state.doc.content.size - 1));
+      view.dispatch(
+        view.state.tr.insertText(" editable", view.state.doc.content.size - 1),
+      );
       expect(view.state.doc.textContent).toBe(`${kind} editable`);
     } finally {
       manager.destroy();

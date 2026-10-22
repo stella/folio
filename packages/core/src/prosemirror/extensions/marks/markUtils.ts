@@ -5,19 +5,17 @@
  * textFormattingToMarks, clearFormatting
  */
 
-import { canonicalRunFormatting, withCanonicalCommand } from "../../canonicalCommands";
-import { canonicalSelectionRanges } from "../../canonicalSelectionRange";
-import type { RunPropsPatch } from "@stll/docx-core/ops";
-
-import type { Attrs, MarkType, Mark, Schema } from "prosemirror-model";
 import { toggleMark } from "prosemirror-commands";
+import type { Attrs, Mark, MarkType, Schema } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
 import { readThemeColor } from "@stll/docx-core/model";
+import type { RunPropsPatch } from "@stll/docx-core/ops";
 
 import type { TextFormatting, UnderlineStyle } from "../../../types/document";
 import { FONT_THEME_VALUES } from "../../../types/documentEnumValues";
 import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
+import { normalizeHorizontalScalePercent } from "../../../utils/horizontalScale";
 import {
   expectCharacterSpacingMarkAttrs,
   expectCharacterStyleMarkAttrs,
@@ -29,20 +27,27 @@ import {
   expectStrikeMarkAttrs,
   expectTextEffectMarkAttrs,
 } from "../../attrs";
-import { documentMarkType } from "../../documentSchema";
-import { selectRunFormattingCarrierRepresentations } from "../../runFormattingInlineCarriers";
-import { RUN_FORMATTING_MARK_NAMES } from "../../runFormattingMarkNames";
-import { hasRunFormattingOverrideAttrs } from "../../runFormattingProvenance";
-import { normalizeHorizontalScalePercent } from "../../../utils/horizontalScale";
+import {
+  canonicalRunFormatting,
+  withCanonicalCommand,
+} from "../../canonicalCommands";
+import { canonicalSelectionRanges } from "../../canonicalSelectionRange";
 import {
   runShadingAttrsToShading,
   shadingToRunShadingAttrs,
 } from "../../conversion/runShadingMark";
+import { documentMarkType } from "../../documentSchema";
+import { selectRunFormattingCarrierRepresentations } from "../../runFormattingInlineCarriers";
+import { RUN_FORMATTING_MARK_NAMES } from "../../runFormattingMarkNames";
+import { hasRunFormattingOverrideAttrs } from "../../runFormattingProvenance";
 import {
   COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
   type ComplexScriptRunPropertyKey,
 } from "../../schema/marks";
-import type { FontFamilyAttrs, RunFormattingOverrideAttrs } from "../../schema/marks";
+import type {
+  FontFamilyAttrs,
+  RunFormattingOverrideAttrs,
+} from "../../schema/marks";
 import {
   applyRunFormattingOverrideMark,
   buildRunFormattingOverrideAttrs,
@@ -95,7 +100,9 @@ export function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
       case "underline": {
         // SAFETY: underline mark always has style attr per schema; value is a valid UnderlineStyle
         const underlineStyle = (
-          typeof mark.attrs["style"] === "string" ? mark.attrs["style"] : "single"
+          typeof mark.attrs["style"] === "string"
+            ? mark.attrs["style"]
+            : "single"
         ) as UnderlineStyle;
         formatting.underline = {
           style: underlineStyle,
@@ -121,15 +128,18 @@ export function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
             ? String(mark.attrs["rgb"])
             : undefined;
         const colorTheme =
-          mark.attrs["themeColor"] !== null && mark.attrs["themeColor"] !== undefined
+          mark.attrs["themeColor"] !== null &&
+          mark.attrs["themeColor"] !== undefined
             ? readThemeColor(String(mark.attrs["themeColor"]))
             : undefined;
         const colorTint =
-          mark.attrs["themeTint"] !== null && mark.attrs["themeTint"] !== undefined
+          mark.attrs["themeTint"] !== null &&
+          mark.attrs["themeTint"] !== undefined
             ? String(mark.attrs["themeTint"])
             : undefined;
         const colorShade =
-          mark.attrs["themeShade"] !== null && mark.attrs["themeShade"] !== undefined
+          mark.attrs["themeShade"] !== null &&
+          mark.attrs["themeShade"] !== undefined
             ? String(mark.attrs["themeShade"])
             : undefined;
         formatting.color = {
@@ -147,14 +157,18 @@ export function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
         >;
         break;
       case "runShading":
-        formatting.shading = runShadingAttrsToShading(expectRunShadingMarkAttrs(mark));
+        formatting.shading = runShadingAttrsToShading(
+          expectRunShadingMarkAttrs(mark),
+        );
         break;
       case "fontSize":
         // SAFETY: fontSize mark always has size attr per schema
         formatting.fontSize = Number(mark.attrs["size"]);
         break;
       case "fontFamily": {
-        formatting.fontFamily = fontFamilyAttrsToFormatting(expectFontFamilyMarkAttrs(mark));
+        formatting.fontFamily = fontFamilyAttrsToFormatting(
+          expectFontFamilyMarkAttrs(mark),
+        );
         break;
       }
       case "language": {
@@ -255,7 +269,8 @@ function saveStoredMarksToParagraph(
   }
 
   const attrs = expectParagraphAttrs(paragraph);
-  const defaultTextFormatting = marks.length === 0 ? null : marksToTextFormatting(marks);
+  const defaultTextFormatting =
+    marks.length === 0 ? null : marksToTextFormatting(marks);
   return tr.setNodeMarkup($from.before(), undefined, {
     ...paragraph.attrs,
     defaultTextFormatting,
@@ -341,7 +356,11 @@ function createMarkWithMergedAttrs(
   return markType.create(mergeMarkAttrs(markType, currentMark, nextAttrs));
 }
 
-type CanonicalSetMarkFormattingOptions = { state: EditorState; type: MarkType; attrs: MarkAttrs };
+type CanonicalSetMarkFormattingOptions = {
+  state: EditorState;
+  type: MarkType;
+  attrs: MarkAttrs;
+};
 export const canonicalSetMarkFormatting = ({
   state,
   type,
@@ -350,10 +369,14 @@ export const canonicalSetMarkFormatting = ({
   const markType = documentMarkType(state, type);
   const { empty } = state.selection;
   if (empty) {
-    const current = markType.isInSet(state.storedMarks ?? state.selection.$from.marks());
+    const current = markType.isInSet(
+      state.storedMarks ?? state.selection.$from.marks(),
+    );
     return canonicalRunFormatting(
       state,
-      marksToTextFormatting([createMarkWithMergedAttrs(markType, current, attrs)]),
+      marksToTextFormatting([
+        createMarkWithMergedAttrs(markType, current, attrs),
+      ]),
     );
   }
   return canonicalSelectionRanges(state).flatMap(({ from, to }) =>
@@ -363,7 +386,11 @@ export const canonicalSetMarkFormatting = ({
         from: representation.from,
         to: representation.to,
         patch: marksToTextFormatting([
-          createMarkWithMergedAttrs(markType, markType.isInSet(representation.node.marks), attrs),
+          createMarkWithMergedAttrs(
+            markType,
+            markType.isInSet(representation.node.marks),
+            attrs,
+          ),
         ]),
       }),
     ),
@@ -391,7 +418,9 @@ export function setMark(type: MarkType, attrs: MarkAttrs): Command {
 
     if (dispatch) {
       if (!markRequiresAttrMerge(markType)) {
-        dispatch(state.tr.addMark(from, to, markType.create(attrs)).scrollIntoView());
+        dispatch(
+          state.tr.addMark(from, to, markType.create(attrs)).scrollIntoView(),
+        );
         return true;
       }
 
@@ -488,7 +517,9 @@ const updateRunFormattingOverrideMarks = (
   update: UpdateRunFormattingOverride,
 ): readonly Mark[] => {
   const existing = overrideType.isInSet(marks);
-  const attrs = update(existing ? expectRunFormattingOverrideMarkAttrs(existing) : {});
+  const attrs = update(
+    existing ? expectRunFormattingOverrideMarkAttrs(existing) : {},
+  );
   const withoutExisting = marks.filter((mark) => mark.type !== overrideType);
   return hasRunFormattingOverrideAttrs(attrs)
     ? overrideType.create(attrs).addToSet(withoutExisting)
@@ -516,10 +547,18 @@ const updateRunFormattingOverride = (
     return tr;
   }
 
-  const representations = selectRunFormattingCarrierRepresentations({ doc: tr.doc, from, to });
+  const representations = selectRunFormattingCarrierRepresentations({
+    doc: tr.doc,
+    from,
+    to,
+  });
   for (const representation of representations) {
     const { node, position } = representation;
-    const nextMarks = updateRunFormattingOverrideMarks(node.marks, overrideType, update);
+    const nextMarks = updateRunFormattingOverrideMarks(
+      node.marks,
+      overrideType,
+      update,
+    );
     if (node.isText) {
       tr.removeMark(representation.from, representation.to, overrideType);
       const nextOverride = overrideType.isInSet(nextMarks);
@@ -558,14 +597,24 @@ export const toggleDocumentMark = (type: MarkType): Command => {
   return withCanonicalCommand(command, (state) => {
     const markType = documentMarkType(state, type);
     const formatting = marksToTextFormatting([markType.create()]);
-    if (!isMarkActive(state, markType)) return canonicalRunFormatting(state, formatting);
-    const keys = markType.name === "strike" ? ["strike", "doubleStrike"] : Object.keys(formatting);
-    return canonicalRunFormatting(state, Object.fromEntries(keys.map((key) => [key, null])));
+    if (!isMarkActive(state, markType))
+      return canonicalRunFormatting(state, formatting);
+    const keys =
+      markType.name === "strike"
+        ? ["strike", "doubleStrike"]
+        : Object.keys(formatting);
+    return canonicalRunFormatting(
+      state,
+      Object.fromEntries(keys.map((key) => [key, null])),
+    );
   });
 };
 
 /** UI toggle whose direct-formatting contract explicitly targets both script families. */
-export const toggleMarkForAllScripts = (type: MarkType, property: PairedToggleProperty): Command =>
+export const toggleMarkForAllScripts = (
+  type: MarkType,
+  property: PairedToggleProperty,
+): Command =>
   withCanonicalCommand(
     (state, dispatch) => {
       const markType = documentMarkType(state, type);
@@ -585,12 +634,16 @@ export const toggleMarkForAllScripts = (type: MarkType, property: PairedTogglePr
   );
 
 /** UI size command whose direct-formatting contract explicitly targets both script families. */
-export const setFontSizeForAllScripts = (markType: MarkType, size: number): Command =>
+export const setFontSizeForAllScripts = (
+  markType: MarkType,
+  size: number,
+): Command =>
   withCanonicalCommand(
     withRunFormattingOverride(setMark(markType, { size }), (attrs) =>
       updateFontSizeCompanionAttrs(attrs, size),
     ),
-    (state) => canonicalRunFormatting(state, { fontSize: size, fontSizeCs: size }),
+    (state) =>
+      canonicalRunFormatting(state, { fontSize: size, fontSizeCs: size }),
   );
 
 /** Clears both ordinary and complex-script direct size through the UI command boundary. */
@@ -599,10 +652,14 @@ export const clearFontSizeForAllScripts = (markType: MarkType): Command =>
     withRunFormattingOverride(removeMark(markType), (attrs) =>
       updateFontSizeCompanionAttrs(attrs, undefined),
     ),
-    (state) => canonicalRunFormatting(state, { fontSize: null, fontSizeCs: null }),
+    (state) =>
+      canonicalRunFormatting(state, { fontSize: null, fontSizeCs: null }),
   );
 
-function selectionHasVisibleUnderline(state: EditorState, markType: MarkType): boolean {
+function selectionHasVisibleUnderline(
+  state: EditorState,
+  markType: MarkType,
+): boolean {
   const { from, to, empty, $from } = state.selection;
 
   if (empty) {
@@ -632,7 +689,10 @@ export function toggleUnderlineMark(markType: MarkType): Command {
   return withCanonicalCommand(
     (state, dispatch) =>
       setMark(markType, {
-        style: selectionHasVisibleUnderline(state, documentMarkType(state, markType))
+        style: selectionHasVisibleUnderline(
+          state,
+          documentMarkType(state, markType),
+        )
           ? "none"
           : "single",
       })(state, dispatch),
@@ -641,7 +701,10 @@ export function toggleUnderlineMark(markType: MarkType): Command {
         state,
         type: markType,
         attrs: {
-          style: selectionHasVisibleUnderline(state, documentMarkType(state, markType))
+          style: selectionHasVisibleUnderline(
+            state,
+            documentMarkType(state, markType),
+          )
             ? "none"
             : "single",
         },
@@ -656,9 +719,9 @@ export function removeMark(type: MarkType): Command {
 
     if (empty) {
       if (dispatch) {
-        const marks = (state.storedMarks ?? state.selection.$from.marks()).filter(
-          (m) => m.type !== markType,
-        );
+        const marks = (
+          state.storedMarks ?? state.selection.$from.marks()
+        ).filter((m) => m.type !== markType);
         dispatchStoredMarks(state, dispatch, marks);
       }
       return true;
@@ -672,8 +735,12 @@ export function removeMark(type: MarkType): Command {
   };
   if (!RUN_FORMATTING_MARK_NAMES.has(type.name)) return command;
   return withCanonicalCommand(command, (state) => {
-    const formatting = marksToTextFormatting([documentMarkType(state, type).create()]);
-    const patch = Object.fromEntries(Object.keys(formatting).map((key) => [key, null]));
+    const formatting = marksToTextFormatting([
+      documentMarkType(state, type).create(),
+    ]);
+    const patch = Object.fromEntries(
+      Object.keys(formatting).map((key) => [key, null]),
+    );
     return canonicalRunFormatting(state, patch);
   });
 }
@@ -698,7 +765,9 @@ export function isMarkActive(
       if (!attrs) {
         return true;
       }
-      return Object.entries(attrs).every(([key, value]) => mark.attrs[key] === value);
+      return Object.entries(attrs).every(
+        ([key, value]) => mark.attrs[key] === value,
+      );
     });
   }
 
@@ -717,7 +786,9 @@ export function isMarkActive(
           hasMark = true;
           return false;
         }
-        const attrsMatch = Object.entries(attrs).every(([key, value]) => mark.attrs[key] === value);
+        const attrsMatch = Object.entries(attrs).every(
+          ([key, value]) => mark.attrs[key] === value,
+        );
         if (attrsMatch) {
           hasMark = true;
           return false;
@@ -733,7 +804,11 @@ export function isMarkActive(
 /**
  * Get the current value of a mark attribute
  */
-export function getMarkAttr(state: EditorState, type: MarkType, attr: string): unknown {
+export function getMarkAttr(
+  state: EditorState,
+  type: MarkType,
+  attr: string,
+): unknown {
   const markType = documentMarkType(state, type);
   const { empty, $from, from, to } = state.selection;
 
@@ -797,7 +872,8 @@ const withComplexScriptAbsenceProvenance = (
 ): RunFormattingOverrideAttrs | undefined => {
   const absent = COMPLEX_SCRIPT_MIRRORS.filter(
     ({ ordinary, complex }) =>
-      directFormatting?.[ordinary] !== undefined && directFormatting[complex] === undefined,
+      directFormatting?.[ordinary] !== undefined &&
+      directFormatting[complex] === undefined,
   ).map(({ complex }) => complex);
   if (absent.length === 0) {
     return attrs;
@@ -809,8 +885,8 @@ const withComplexScriptAbsenceProvenance = (
   }
   return {
     ...attrs,
-    complexScriptPropertyAbsences: COMPLEX_SCRIPT_RUN_PROPERTY_KEYS.filter((property) =>
-      existingAbsences.has(property),
+    complexScriptPropertyAbsences: COMPLEX_SCRIPT_RUN_PROPERTY_KEYS.filter(
+      (property) => existingAbsences.has(property),
     ),
   };
 };
@@ -843,7 +919,8 @@ export function textFormattingToMarks(
   }
 
   const createMark =
-    options?.createMark ?? ((type: string, attrs?: Attrs | null) => schema.mark(type, attrs));
+    options?.createMark ??
+    ((type: string, attrs?: Attrs | null) => schema.mark(type, attrs));
   const marks: Mark[] = [];
   const overrideFormatting = options ? options.overrideFormatting : formatting;
   let overrideAttrs: ReturnType<typeof buildRunFormattingOverrideAttrs>;
@@ -967,11 +1044,19 @@ export function textFormattingToMarks(
   }
 
   // Character spacing (spacing, position, scale, kerning)
-  const spacing = typeof formatting.spacing === "number" ? formatting.spacing : null;
-  const position = typeof formatting.position === "number" ? formatting.position : null;
+  const spacing =
+    typeof formatting.spacing === "number" ? formatting.spacing : null;
+  const position =
+    typeof formatting.position === "number" ? formatting.position : null;
   const scale = normalizeHorizontalScalePercent(formatting.scale) ?? null;
-  const kerning = typeof formatting.kerning === "number" ? formatting.kerning : null;
-  if (spacing !== null || position !== null || scale !== null || kerning !== null) {
+  const kerning =
+    typeof formatting.kerning === "number" ? formatting.kerning : null;
+  if (
+    spacing !== null ||
+    position !== null ||
+    scale !== null ||
+    kerning !== null
+  ) {
     marks.push(
       createMark("characterSpacing", {
         spacing,
@@ -1024,9 +1109,15 @@ export function textFormattingToMarks(
 
   // The override leads the marks when the formatting has one; provenance alone
   // appends it. Built once, after provenance, so each run creates one override.
-  let provenanceAttrs = withDirectFontProvenance(overrideAttrs, options?.directFormatting);
+  let provenanceAttrs = withDirectFontProvenance(
+    overrideAttrs,
+    options?.directFormatting,
+  );
   if (options?.authoredCarrier === "preserve") {
-    provenanceAttrs = withComplexScriptAbsenceProvenance(provenanceAttrs, options.directFormatting);
+    provenanceAttrs = withComplexScriptAbsenceProvenance(
+      provenanceAttrs,
+      options.directFormatting,
+    );
   }
   if (overrideAttrs) {
     marks.unshift(createMark("runFormattingOverride", provenanceAttrs));
@@ -1083,25 +1174,34 @@ const clearFormattingCommand: Command = (state, dispatch) => {
 };
 
 /** Clear character formatting from the selection. */
-export const clearFormatting: Command = withCanonicalCommand(clearFormattingCommand, (state) =>
-  canonicalSelectionRanges(state).flatMap(({ from, to }) =>
-    selectRunFormattingCarrierRepresentations({ doc: state.doc, from, to }).map(
-      (representation) => ({
+export const clearFormatting: Command = withCanonicalCommand(
+  clearFormattingCommand,
+  (state) =>
+    canonicalSelectionRanges(state).flatMap(({ from, to }) =>
+      selectRunFormattingCarrierRepresentations({
+        doc: state.doc,
+        from,
+        to,
+      }).map((representation) => ({
         type: "formatRun" as const,
         from: representation.from,
         to: representation.to,
         patch: Object.fromEntries(
-          Object.keys(marksToTextFormatting(representation.node.marks)).map((key) => [key, null]),
+          Object.keys(marksToTextFormatting(representation.node.marks)).map(
+            (key) => [key, null],
+          ),
         ),
-      }),
+      })),
     ),
-  ),
 );
 
 /**
  * Create a command that sets a mark on the selection
  */
-export function createSetMarkCommand(markType: MarkType, attrs?: Record<string, unknown>): Command {
+export function createSetMarkCommand(
+  markType: MarkType,
+  attrs?: Record<string, unknown>,
+): Command {
   return setMark(markType, attrs ?? {});
 }
 

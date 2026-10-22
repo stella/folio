@@ -10,7 +10,10 @@ import type { NumberFormat } from "../types/document";
 // predicates over `ImageRun` and now live in `layout-engine/types` so the
 // bridge can call them without importing across the layer boundary. They
 // are re-exported here for back-compat with existing painter consumers.
-export { isFloatingImageRun, isTextWrappingFloatingImageRun } from "../layout-engine/types";
+export {
+  isFloatingImageRun,
+  isTextWrappingFloatingImageRun,
+} from "../layout-engine/types";
 
 /**
  * Horizontal alignment for an image alone on a line. An anchored image

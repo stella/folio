@@ -6,11 +6,15 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Command } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
-import { pageBreakRunParagraphProjectionDisposition } from "../pageBreakRunProjection";
 import { withCanonicalCommand } from "../canonicalCommands";
 import { canonicalSelectionRange } from "../canonicalSelectionRange";
+import { pageBreakRunParagraphProjectionDisposition } from "../pageBreakRunProjection";
 
-const UNSUPPORTED_PAGE_BREAK_RUN_ANCESTORS = new Set(["tableCell", "tableHeader", "textBox"]);
+const UNSUPPORTED_PAGE_BREAK_RUN_ANCESTORS = new Set([
+  "tableCell",
+  "tableHeader",
+  "textBox",
+]);
 
 const hasTextBoxAnchorAtOrAfter = (
   paragraph: PMNode,
@@ -19,7 +23,10 @@ const hasTextBoxAnchorAtOrAfter = (
 ): boolean => {
   let found = false;
   paragraph.descendants((descendant, offset) => {
-    if (descendant.type.name === "textBoxAnchor" && contentStart + offset >= position) {
+    if (
+      descendant.type.name === "textBoxAnchor" &&
+      contentStart + offset >= position
+    ) {
       found = true;
       return false;
     }
@@ -39,7 +46,11 @@ const insertPageBreakCommand: Command = (state, dispatch) => {
   const { schema } = state;
   const pageBreakRunType = schema.nodes["pageBreakRun"];
   const { $from } = state.selection;
-  if (!pageBreakRunType || !state.selection.empty || !$from.parent.isTextblock) {
+  if (
+    !pageBreakRunType ||
+    !state.selection.empty ||
+    !$from.parent.isTextblock
+  ) {
     return false;
   }
   for (let depth = $from.depth; depth >= 0; depth--) {
@@ -49,7 +60,8 @@ const insertPageBreakCommand: Command = (state, dispatch) => {
   }
   if (
     $from.parent.type.name !== "paragraph" ||
-    pageBreakRunParagraphProjectionDisposition($from.parent).status === "approximate" ||
+    pageBreakRunParagraphProjectionDisposition($from.parent).status ===
+      "approximate" ||
     // The break is about to land here, so ask the question of the paragraph
     // this would produce: an anchor the caret precedes would end up after it.
     hasTextBoxAnchorAtOrAfter($from.parent, $from.start(), $from.pos)
@@ -72,14 +84,16 @@ const insertPageBreakCommand: Command = (state, dispatch) => {
  * position among neighbouring run content. Block-level `pageBreak` remains a
  * legacy input boundary and is never emitted by this command.
  */
-export const insertPageBreak = withCanonicalCommand(insertPageBreakCommand, (state) =>
-  !(state.selection instanceof CellSelection) && insertPageBreakCommand(state)
-    ? [
-        {
-          type: "insertBreak",
-          ...canonicalSelectionRange(state),
-          breakType: "page",
-        },
-      ]
-    : [],
+export const insertPageBreak = withCanonicalCommand(
+  insertPageBreakCommand,
+  (state) =>
+    !(state.selection instanceof CellSelection) && insertPageBreakCommand(state)
+      ? [
+          {
+            type: "insertBreak",
+            ...canonicalSelectionRange(state),
+            breakType: "page",
+          },
+        ]
+      : [],
 );

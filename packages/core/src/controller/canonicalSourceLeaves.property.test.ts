@@ -1,8 +1,12 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import type { Document, ParagraphContent, RunContent } from "../types/document";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import type { Document, ParagraphContent, RunContent } from "../types/document";
 import { createCanonicalSession } from "./canonicalSession";
 
 const omittedLeaves = [
@@ -13,7 +17,9 @@ const omittedLeaves = [
 ] as const satisfies readonly RunContent[];
 
 const source = (content: ParagraphContent[]): Document => ({
-  package: { document: { content: [{ type: "paragraph", paraId: "12345678", content }] } },
+  package: {
+    document: { content: [{ type: "paragraph", paraId: "12345678", content }] },
+  },
 });
 
 test(
@@ -30,15 +36,25 @@ test(
                 {
                   type: "run",
                   content: [
-                    ...(before === "" ? [] : [{ type: "text", text: before } as const]),
+                    ...(before === ""
+                      ? []
+                      : [{ type: "text", text: before } as const]),
                     leaf,
-                    ...(after === "" ? [] : [{ type: "text", text: after } as const]),
+                    ...(after === ""
+                      ? []
+                      : [{ type: "text", text: after } as const]),
                   ],
                 },
               ];
               const document = source(
                 wrapped
-                  ? [{ type: "hyperlink", href: "https://example.com/", children: content }]
+                  ? [
+                      {
+                        type: "hyperlink",
+                        href: "https://example.com/",
+                        children: content,
+                      },
+                    ]
                   : content,
               );
               const unchanged = structuredClone(document);
@@ -71,18 +87,31 @@ test(
   () => {
     assertProperty(
       fc.property(
-        fc.array(fc.constantFrom("softHyphen", "noBreakHyphen"), { minLength: 1, maxLength: 6 }),
+        fc.array(fc.constantFrom("softHyphen", "noBreakHyphen"), {
+          minLength: 1,
+          maxLength: 6,
+        }),
         (types) => {
-          const document = source([{ type: "run", content: types.map((type) => ({ type })) }]);
+          const document = source([
+            { type: "run", content: types.map((type) => ({ type })) },
+          ]);
           const unchanged = structuredClone(document);
           const session = createCanonicalSession(document).unwrap();
           expect(session.projection.doc.textContent).toBe(
-            types.map((type) => (type === "softHyphen" ? "\u00ad" : "\u2011")).join(""),
+            types
+              .map((type) => (type === "softHyphen" ? "\u00ad" : "\u2011"))
+              .join(""),
           );
           for (let offset = 0; offset <= types.length; offset++) {
-            const address = { story: "main", blockId: "12345678", offset } as const;
+            const address = {
+              story: "main",
+              blockId: "12345678",
+              offset,
+            } as const;
             const position = session.projection.positionAt(address).unwrap();
-            expect(session.projection.addressAt(position).unwrap()).toMatchObject(address);
+            expect(
+              session.projection.addressAt(position).unwrap(),
+            ).toMatchObject(address);
           }
           expect(document).toEqual(unchanged);
         },

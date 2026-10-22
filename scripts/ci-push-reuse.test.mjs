@@ -38,7 +38,8 @@ const runLookup = (runs, status = 0) => {
           REQUESTS: requests,
           REPO: "stella/folio",
           PUSHED_SHA: pushedSha,
-          GITHUB_WORKFLOW_REF: "stella/folio/.github/workflows/ci.yml@refs/heads/main",
+          GITHUB_WORKFLOW_REF:
+            "stella/folio/.github/workflows/ci.yml@refs/heads/main",
           GITHUB_OUTPUT: output,
         },
       },
@@ -87,18 +88,23 @@ test("missing, failed, malformed and mismatched coverage retains ordinary CI", (
 });
 
 test("warm-main only installs caches after reused coverage and dependency changes", () => {
-  expect(warming.if).toBe("github.event_name == 'push' && steps.reuse.outputs.reused_run != ''");
+  expect(warming.if).toBe(
+    "github.event_name == 'push' && steps.reuse.outputs.reused_run != ''",
+  );
   const warm = workflow.jobs["warm-main-caches"];
   expect(warm.if).toBe(
     "github.event_name == 'push' && needs.ci-plan.outputs.reused_run != '' && needs.ci-plan.outputs.warm_caches == 'true'",
   );
-  expect(warm.steps.filter((step) => step.run).map((step) => step.run)).toEqual([
-    "bun install --frozen-lockfile",
-    "cargo install --git https://github.com/stella/tooling --rev a1bd81740ecb4b66999f56d1716e1190c4e7272f --locked stella_source_lint",
-  ]);
+  expect(warm.steps.filter((step) => step.run).map((step) => step.run)).toEqual(
+    [
+      "bun install --frozen-lockfile",
+      "cargo install --git https://github.com/stella/tooling --rev a1bd81740ecb4b66999f56d1716e1190c4e7272f --locked stella_source_lint",
+    ],
+  );
   for (const step of warm.steps.filter(
     (candidate) =>
-      candidate.id === "source-lint-cache" || candidate.name === "Install shared Rust source lint",
+      candidate.id === "source-lint-cache" ||
+      candidate.name === "Install shared Rust source lint",
   )) {
     expect(workflow.jobs["docx-kernel"].steps).toContainEqual(step);
   }

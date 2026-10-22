@@ -4,6 +4,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+
 import type { FlowBlock, SectionBreakBlock } from "../../layout-engine/types";
 import { parseSectionBreakType } from "../../prosemirror/sectionCarrier";
 import { twipsToPixels } from "./flowConversionShared";
@@ -46,8 +47,12 @@ export function applySectionStartsToBoundaries(
       continue;
     }
     const nextBoundaryIndex = breakIndexes[index + 1];
-    const nextBoundary = nextBoundaryIndex === undefined ? undefined : blocks[nextBoundaryIndex];
-    const nextStart = nextBoundary?.kind === "sectionBreak" ? nextBoundary.type : finalSectionStart;
+    const nextBoundary =
+      nextBoundaryIndex === undefined ? undefined : blocks[nextBoundaryIndex];
+    const nextStart =
+      nextBoundary?.kind === "sectionBreak"
+        ? nextBoundary.type
+        : finalSectionStart;
     const translated = { ...boundary };
     if (nextStart === undefined) {
       delete translated.type;
@@ -98,7 +103,8 @@ export function coalesceTrailingPageBreakBeforeContinuousSection(
       block.pmEnd !== undefined &&
       carrier.pmStart === block.pmEnd &&
       carrier.pmEnd === block.pmEnd + 1;
-    const isUnresolvedInsertion = block?.kind === "pageBreak" && block.isInsertion === true;
+    const isUnresolvedInsertion =
+      block?.kind === "pageBreak" && block.isInsertion === true;
     if (
       block?.kind === "pageBreak" &&
       !isUnresolvedInsertion &&
@@ -149,7 +155,10 @@ export function applySectionDocumentGrid(
   const result = [...blocks];
   let sectionStart = 0;
 
-  const stampSection = (end: number, linePitchTwips: number | undefined): void => {
+  const stampSection = (
+    end: number,
+    linePitchTwips: number | undefined,
+  ): void => {
     if (linePitchTwips === undefined || linePitchTwips <= 0) {
       return;
     }

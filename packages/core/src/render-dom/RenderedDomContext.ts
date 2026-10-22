@@ -4,11 +4,14 @@
  * chrome, and plugin surfaces without duplicating range geometry.
  */
 
-import { findBodyEmptyRuns, findBodyPmSpans } from "../layout-bridge/dom/findBodyPmSpans";
 import {
   findCollapsedLineEdgeCaretTarget,
   findParagraphGapCaretTarget,
 } from "../layout-bridge/dom/clickToPositionDom";
+import {
+  findBodyEmptyRuns,
+  findBodyPmSpans,
+} from "../layout-bridge/dom/findBodyPmSpans";
 import {
   createTextStreamRange,
   descendantTextNodes,
@@ -91,7 +94,10 @@ export class RenderedDomContextImpl implements RenderedDomContext {
         };
       }
 
-      const charIndex = Math.min(Math.max(0, pmPos - pmStart), totalTextLength(textNodes));
+      const charIndex = Math.min(
+        Math.max(0, pmPos - pmStart),
+        totalTextLength(textNodes),
+      );
       const range = createTextStreamRange(span, charIndex, charIndex);
       if (!range) continue;
       const rangeRect = range.getBoundingClientRect();
@@ -148,7 +154,8 @@ export class RenderedDomContextImpl implements RenderedDomContext {
       }
       const measurement = measurePaintedSpanRange(element, from, to);
       if (measurement.type === "outside") continue;
-      const measuredRects = measurement.type === "element" ? [measurement.rect] : measurement.rects;
+      const measuredRects =
+        measurement.type === "element" ? [measurement.rect] : measurement.rects;
       for (const rect of measuredRects) {
         rects.push({
           x: (rect.left - containerRect.left) / this.#zoom,

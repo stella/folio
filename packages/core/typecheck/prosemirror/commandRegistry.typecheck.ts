@@ -18,7 +18,9 @@ if (lineSpacing !== undefined) {
   lineSpacing("240");
 }
 
-const tableBorderPreset = singletonManager.requireCommand("setTableBorderPreset");
+const tableBorderPreset = singletonManager.requireCommand(
+  "setTableBorderPreset",
+);
 // @ts-expect-error table border presets are not arbitrary strings
 tableBorderPreset("not-a-preset");
 

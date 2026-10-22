@@ -18,7 +18,10 @@ const isNonEmptyString = (value: unknown): value is string =>
 export const FOLIO_STORY_HANDLE_JSON_SCHEMA = {
   type: "object",
   properties: {
-    type: { type: "string", enum: ["main", "header", "footer", "footnote", "endnote"] },
+    type: {
+      type: "string",
+      enum: ["main", "header", "footer", "footnote", "endnote"],
+    },
     relationshipId: { type: "string" },
     noteId: { type: "integer" },
   },
@@ -35,7 +38,13 @@ export const FOLIO_SECTION_HANDLE_JSON_SCHEMA = {
     headingTextHash: { type: "string" },
     headingLevel: { type: "integer", minimum: 1, maximum: 9 },
   },
-  required: ["type", "story", "headingBlockId", "headingTextHash", "headingLevel"],
+  required: [
+    "type",
+    "story",
+    "headingBlockId",
+    "headingTextHash",
+    "headingLevel",
+  ],
   additionalProperties: false,
 } as const satisfies FolioAgentJsonObjectSchema;
 
@@ -44,7 +53,14 @@ export const FOLIO_SCOPED_HANDLE_JSON_SCHEMA = {
   properties: {
     type: {
       type: "string",
-      enum: ["main", "header", "footer", "footnote", "endnote", "headingSection"],
+      enum: [
+        "main",
+        "header",
+        "footer",
+        "footnote",
+        "endnote",
+        "headingSection",
+      ],
     },
     story: { type: "string", enum: ["main"] },
     relationshipId: { type: "string" },
@@ -67,7 +83,9 @@ export type FolioAgentCommentId = {
   numeric: number;
 };
 
-export const decodeSectionHandle = (value: unknown): FolioDocumentSectionHandle | null => {
+export const decodeSectionHandle = (
+  value: unknown,
+): FolioDocumentSectionHandle | null => {
   if (!isPlainObject(value)) {
     return null;
   }
@@ -96,7 +114,9 @@ export const decodeSectionHandle = (value: unknown): FolioDocumentSectionHandle 
   };
 };
 
-export const decodeStoryHandle = (value: unknown): FolioDocumentStoryHandle | null => {
+export const decodeStoryHandle = (
+  value: unknown,
+): FolioDocumentStoryHandle | null => {
   if (!isPlainObject(value)) {
     return null;
   }
@@ -121,7 +141,9 @@ export const decodeStoryHandle = (value: unknown): FolioDocumentStoryHandle | nu
   return null;
 };
 
-export const decodeMainStoryTextRangeHandle = (value: unknown): FolioAITextRangeHandle | null => {
+export const decodeMainStoryTextRangeHandle = (
+  value: unknown,
+): FolioAITextRangeHandle | null => {
   if (!isPlainObject(value)) {
     return null;
   }

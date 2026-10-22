@@ -34,7 +34,10 @@ const pictureWatermarkHeader = (style: string): string =>
 </w:hdr>`;
 
 const pictureHeaderFooter = (
-  watermark: Extract<NonNullable<HeaderFooter["watermark"]>, { kind: "picture" }>,
+  watermark: Extract<
+    NonNullable<HeaderFooter["watermark"]>,
+    { kind: "picture" }
+  >,
 ): HeaderFooter => ({
   type: "header",
   hdrFtrType: "default",
@@ -73,7 +76,9 @@ describe("picture watermark aspect ratio (eigenpal #684)", () => {
   });
 
   test("falls back to the default 415x207 box when no dimensions are modeled", () => {
-    const out = serializeHeaderFooter(pictureHeaderFooter({ kind: "picture", imageRId: "rId1" }));
+    const out = serializeHeaderFooter(
+      pictureHeaderFooter({ kind: "picture", imageRId: "rId1" }),
+    );
     expect(out).toContain("width:415pt");
     expect(out).toContain("height:207pt");
   });

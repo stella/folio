@@ -12,5 +12,6 @@ export const setHyperlinkInstanceIndex = (
   hyperlinkInstanceIndexes.set(hyperlink, instanceIndex);
 };
 
-export const getHyperlinkInstanceIndex = (hyperlink: HyperlinkInfo): number | undefined =>
-  hyperlinkInstanceIndexes.get(hyperlink);
+export const getHyperlinkInstanceIndex = (
+  hyperlink: HyperlinkInfo,
+): number | undefined => hyperlinkInstanceIndexes.get(hyperlink);

@@ -23,6 +23,8 @@ minimumReleaseAge = 432_000
 #
 # `bun run check:quarantine-excludes` enforces all of the above.
 minimumReleaseAgeExcludes = [
+  # bun-types ships only declarations and must match the pinned Bun runtime.
+  "bun-types", # quarantine-expires: 2026-10-27T10:17:50.170Z
   # Keep Bun's compiler contract aligned with the runtime during this upgrade.
   "@stll/agent-input",
   "@stll/aho-corasick",
@@ -64,3 +66,43 @@ minimumReleaseAgeExcludes = [
   # release that fixes GHSA-55q2-fjhq-7xh7; publisher and repository ownership
   # match the preceding releases. Remove after quarantine expiry.
 ]
+
+[fmt]
+printWidth = 80
+ignorePatterns = [
+  # Shared generated files (stll-toolchain formatter policy).
+  ".ai/shared/**",
+  ".agents/skills/**",
+  ".claude/skills/**",
+  "**/AGENTS.md",
+  "**/GEMINI.md",
+  "**/CLAUDE.md",
+  ".github/dependabot.yml",
+  "**/fixtures/**",
+  "**/__fixtures__/**",
+  "**/testdata/**",
+  "**/__snapshots__/**",
+  "**/*.gen.*",
+  "api-reports/**",
+  "packages/docx-core/src/generated/**",
+  "packages/core/src/generated/**",
+]
+
+[fmt.sortImports]
+customGroups = [
+  { groupName = "react", elementNamePattern = [
+    "react",
+    "react-dom",
+    "react-dom/**",
+  ] },
+  { groupName = "stella", elementNamePattern = ["@stll/**"] },
+  { groupName = "aliases", elementNamePattern = ["@/**"] },
+]
+groups = [
+  "react",
+  ["builtin", "external", "type-builtin", "type-external"],
+  "stella",
+  "aliases",
+  ["parent", "sibling", "index", "type-parent", "type-sibling", "type-index"],
+]
+newlinesBetween = true

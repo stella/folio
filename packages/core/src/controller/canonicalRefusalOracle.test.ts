@@ -1,22 +1,25 @@
-import { createBuiltInStyleIndex } from "../docx/builtInStyles";
-import { collectHeadings } from "../utils/headingCollector";
-import { parseShapeDocument } from "../__tests__/editorHarness";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { expect, spyOn, test } from "bun:test";
 import { Result } from "better-result";
+import { expect, spyOn, test } from "bun:test";
 import type { Command } from "prosemirror-state";
-import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
+
 import {
   canonicalRefusalCaseId,
-  TOC_HEADING_SHAPES,
   declareCanonicalRefusalCases,
+  TOC_HEADING_SHAPES,
 } from "../../../../test/canonical-conformance-refusals";
-import * as canonicalStructure from "./canonicalStructure";
-import { CanonicalSessionError } from "./canonicalSession";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { DOCUMENT_SHAPES, documentShape } from "../__tests__/documentShapes";
-import { EDITOR_MODES } from "../__tests__/editorHarness";
-import { CONFORMANCE_OPERATIONS, runConformanceCase } from "../__tests__/editorCommandConformance";
+import {
+  CONFORMANCE_OPERATIONS,
+  runConformanceCase,
+} from "../__tests__/editorCommandConformance";
+import { EDITOR_MODES, parseShapeDocument } from "../__tests__/editorHarness";
+import { createBuiltInStyleIndex } from "../docx/builtInStyles";
+import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import { collectHeadings } from "../utils/headingCollector";
+import { CanonicalSessionError } from "./canonicalSession";
+import * as canonicalStructure from "./canonicalStructure";
 
 const CASE = {
   shape: "plain-markdown",
@@ -43,9 +46,9 @@ test("canonical refusal table covers exactly the declared concrete cases", () =>
     DECLARED_CASES.map(canonicalRefusalCaseId).toSorted(),
   );
   expect([...rows.values()]).toEqual([[], []]);
-  expect(() => declareCanonicalRefusalCases([...DECLARED_CASES, ...DECLARED_CASES])).toThrow(
-    "Duplicate canonical refusal case",
-  );
+  expect(() =>
+    declareCanonicalRefusalCases([...DECLARED_CASES, ...DECLARED_CASES]),
+  ).toThrow("Duplicate canonical refusal case");
 });
 
 test("TOC generation has an editing descriptor and a precise suggesting refusal contract", async () => {
@@ -65,11 +68,14 @@ test("TOC generation has an editing descriptor and a precise suggesting refusal 
       {
         id: CANONICAL_GAP.trackedHyperlinkResolution,
         gap: CANONICAL_GAP.trackedHyperlinkResolution,
-        message: "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
+        message:
+          "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
       },
     ],
   ]);
-  const operation = CONFORMANCE_OPERATIONS.find(({ id }) => id === "command:generateTOC");
+  const operation = CONFORMANCE_OPERATIONS.find(
+    ({ id }) => id === "command:generateTOC",
+  );
   if (!operation) throw new TypeError("TOC conformance command is absent");
   const result = await runConformanceCase({
     shape: documentShape("style-numbered-headings"),
@@ -84,8 +90,11 @@ test("TOC generation has an editing descriptor and a precise suggesting refusal 
 test.each(["key:Enter", "host:cut"])(
   "comment geometry keeps %s strict in both modes",
   async (id) => {
-    const operation = CONFORMANCE_OPERATIONS.find((candidate) => candidate.id === id);
-    if (!operation) throw new TypeError("Comment geometry control operation is absent");
+    const operation = CONFORMANCE_OPERATIONS.find(
+      (candidate) => candidate.id === id,
+    );
+    if (!operation)
+      throw new TypeError("Comment geometry control operation is absent");
     const cases = EDITOR_MODES.map(
       (mode) =>
         ({
@@ -108,62 +117,94 @@ test.each(["key:Enter", "host:cut"])(
   },
 );
 
-test.each(EDITOR_MODES)("table fixtures have no activation refusal in %s", (mode) => {
-  const cases = DOCUMENT_SHAPES.map(({ id }) => ({ ...CASE, shape: id, mode }));
-  const rows = declareCanonicalRefusalCases(cases);
-  const tableShapes = DOCUMENT_SHAPES.filter(
-    ({ features }) =>
-      features.includes("table") ||
-      features.includes("nested-table") ||
-      features.includes("merged-cells"),
-  ).map(({ id }) => id);
-  for (const shape of tableShapes)
-    expect(rows.get(canonicalRefusalCaseId({ ...CASE, shape, mode }))).toEqual([]);
-  expect(rows.get(canonicalRefusalCaseId({ ...CASE, mode }))).toEqual([]);
-});
+test.each(EDITOR_MODES)(
+  "table fixtures have no activation refusal in %s",
+  (mode) => {
+    const cases = DOCUMENT_SHAPES.map(({ id }) => ({
+      ...CASE,
+      shape: id,
+      mode,
+    }));
+    const rows = declareCanonicalRefusalCases(cases);
+    const tableShapes = DOCUMENT_SHAPES.filter(
+      ({ features }) =>
+        features.includes("table") ||
+        features.includes("nested-table") ||
+        features.includes("merged-cells"),
+    ).map(({ id }) => id);
+    for (const shape of tableShapes)
+      expect(
+        rows.get(canonicalRefusalCaseId({ ...CASE, shape, mode })),
+      ).toEqual([]);
+    expect(rows.get(canonicalRefusalCaseId({ ...CASE, mode }))).toEqual([]);
+  },
+);
 
 // Inject the same ledger ids the old planner preview automatically allowed.
 // The control proves bold is supported; the ablation must fail the conformance oracle.
 test.each([
   {
     gap: CANONICAL_GAP.trackedHyperlinkResolution,
-    message: "Hyperlink suggestions require serializable wrapper review provenance.",
+    message:
+      "Hyperlink suggestions require serializable wrapper review provenance.",
   },
   {
     gap: CANONICAL_GAP.storyContentProjection,
     message: "The operations produce unsupported canonical story content.",
   },
-])("supported plain-content commands cannot acquire a $gap allowance", async ({ gap, message }) => {
-  const operation = CONFORMANCE_OPERATIONS.find(({ id }) => id === CASE.operation);
-  if (!operation) throw new TypeError("Refusal oracle control command is absent");
-  const options = {
-    shape: documentShape(CASE.shape),
-    operation,
-    placement: CASE.placement,
-    refusalCases: declareCanonicalRefusalCases(DECLARED_CASES),
-  };
-  const control = await runConformanceCase(options);
-  expect(control?.runs).toEqual({ editing: "changed", suggesting: "changed" });
-  expect(control?.violations).toEqual([]);
-  const planner = spyOn(canonicalStructure, "prepareCanonicalCommands").mockImplementation(() =>
-    Result.err(new CanonicalSessionError({ gap, message, reason: "refused" })),
-  );
-  try {
-    const ablated = await runConformanceCase(options);
-    expect(ablated?.runs).toEqual({ editing: "refused", suggesting: "refused" });
-    expect(ablated?.violations).toEqual(expectedSilentRefusals(`${gap}: ${message}`));
-    expect(ablated?.refusals.map(({ expectation }) => expectation)).toEqual([
-      "unexpected",
-      "unexpected",
-    ]);
-  } finally {
-    planner.mockRestore();
-  }
-});
+])(
+  "supported plain-content commands cannot acquire a $gap allowance",
+  async ({ gap, message }) => {
+    const operation = CONFORMANCE_OPERATIONS.find(
+      ({ id }) => id === CASE.operation,
+    );
+    if (!operation)
+      throw new TypeError("Refusal oracle control command is absent");
+    const options = {
+      shape: documentShape(CASE.shape),
+      operation,
+      placement: CASE.placement,
+      refusalCases: declareCanonicalRefusalCases(DECLARED_CASES),
+    };
+    const control = await runConformanceCase(options);
+    expect(control?.runs).toEqual({
+      editing: "changed",
+      suggesting: "changed",
+    });
+    expect(control?.violations).toEqual([]);
+    const planner = spyOn(
+      canonicalStructure,
+      "prepareCanonicalCommands",
+    ).mockImplementation(() =>
+      Result.err(
+        new CanonicalSessionError({ gap, message, reason: "refused" }),
+      ),
+    );
+    try {
+      const ablated = await runConformanceCase(options);
+      expect(ablated?.runs).toEqual({
+        editing: "refused",
+        suggesting: "refused",
+      });
+      expect(ablated?.violations).toEqual(
+        expectedSilentRefusals(`${gap}: ${message}`),
+      );
+      expect(ablated?.refusals.map(({ expectation }) => expectation)).toEqual([
+        "unexpected",
+        "unexpected",
+      ]);
+    } finally {
+      planner.mockRestore();
+    }
+  },
+);
 
 test("a supported command losing its descriptor fails standing conformance in both modes", async () => {
-  const operation = CONFORMANCE_OPERATIONS.find(({ id }) => id === CASE.operation);
-  if (!operation) throw new TypeError("Descriptor-loss control command is absent");
+  const operation = CONFORMANCE_OPERATIONS.find(
+    ({ id }) => id === CASE.operation,
+  );
+  if (!operation)
+    throw new TypeError("Descriptor-loss control command is absent");
   const refusalCases = declareCanonicalRefusalCases(DECLARED_CASES);
   expect([...refusalCases.values()]).toEqual([[], []]);
   const options = {
@@ -188,8 +229,12 @@ test("a supported command losing its descriptor fails standing conformance in bo
         const withoutDescriptor: Command = (state, dispatch, editorView) =>
           command(state, dispatch, editorView);
         // Preserve the exact command body; only its WeakMap metadata is lost.
-        expect(getCanonicalCommandIntents(command, view.state)?.length).toBeGreaterThan(0);
-        expect(getCanonicalCommandIntents(withoutDescriptor, view.state)).toBeUndefined();
+        expect(
+          getCanonicalCommandIntents(command, view.state)?.length,
+        ).toBeGreaterThan(0);
+        expect(
+          getCanonicalCommandIntents(withoutDescriptor, view.state),
+        ).toBeUndefined();
         descriptorLossControls++;
         return view.execute(withoutDescriptor);
       },
@@ -213,14 +258,20 @@ test("TOC refusal applicability matches every fixture's source headings", async 
   for (const shape of DOCUMENT_SHAPES) {
     const source = await parseShapeDocument(await shape.build());
     const definitions = source.package.styles;
-    const styles = createBuiltInStyleIndex(definitions?.styles ?? [], definitions?.docDefaults);
-    if (collectHeadings(toProseDoc(source), styles).length > 0) headingShapes.push(shape.id);
+    const styles = createBuiltInStyleIndex(
+      definitions?.styles ?? [],
+      definitions?.docDefaults,
+    );
+    if (collectHeadings(toProseDoc(source), styles).length > 0)
+      headingShapes.push(shape.id);
   }
   expect(headingShapes.toSorted()).toEqual([...TOC_HEADING_SHAPES].toSorted());
 });
 
 test("TOC without source headings remains a strict no-change command in both modes", async () => {
-  const operation = CONFORMANCE_OPERATIONS.find(({ id }) => id === "command:generateTOC");
+  const operation = CONFORMANCE_OPERATIONS.find(
+    ({ id }) => id === "command:generateTOC",
+  );
   if (!operation) throw new TypeError("TOC conformance command is absent");
   const cases = EDITOR_MODES.map(
     (mode) =>

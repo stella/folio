@@ -9,13 +9,13 @@
  * code runs under both Bun and Node.
  */
 import type { Bench } from "tinybench";
-import { toBenchmarkRow } from "./report";
 
 import { editorTransactionBench } from "./editor-transaction.bench";
 import { lineBreakBench } from "./line-break.bench";
 import { markdownBench } from "./markdown.bench";
 import { parseBench } from "./parse.bench";
 import { proseMirrorBench } from "./prosemirror.bench";
+import { toBenchmarkRow } from "./report";
 import { serializeBench } from "./serialize.bench";
 
 type Group = {
@@ -28,7 +28,10 @@ const GROUPS: readonly Group[] = [
   { name: "serialize · model → DOCX (folio)", make: serializeBench },
   { name: "markdown · model ↔ Markdown (folio)", make: markdownBench },
   { name: "prosemirror · model ↔ ProseMirror (folio)", make: proseMirrorBench },
-  { name: "line breaking · paragraph text → wrap offsets (folio)", make: lineBreakBench },
+  {
+    name: "line breaking · paragraph text → wrap offsets (folio)",
+    make: lineBreakBench,
+  },
   {
     name: "editor · one many-step transaction → plugin stack (folio)",
     make: editorTransactionBench,

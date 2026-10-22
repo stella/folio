@@ -19,6 +19,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+
 import { isCommentAnchorCarrierType } from "@stll/docx-core/ops";
 
 import { visitCommentMarkers } from "../docx/commentAnchorIndex";
@@ -36,11 +37,13 @@ export const commentAnchorIdsForNode = (node: PMNode): readonly number[] => {
     if (attrs.ok) ids.push(attrs.value.commentId);
   } else if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
     const attrs = readRangeAnchorAttrs(node);
-    if (attrs.ok && attrs.value.start.type === "commentRangeStart") ids.push(attrs.value.start.id);
+    if (attrs.ok && attrs.value.start.type === "commentRangeStart")
+      ids.push(attrs.value.start.id);
   }
   for (const mark of node.marks) {
     const commentId = mark.attrs["commentId"];
-    if (mark.type.name === "comment" && typeof commentId === "number") ids.push(commentId);
+    if (mark.type.name === "comment" && typeof commentId === "number")
+      ids.push(commentId);
   }
   return ids;
 };
@@ -71,20 +74,29 @@ export const anchoredCommentIdsInProseDoc = (
   let pendingDeletedText = false;
   doc.descendants((node, position) => {
     addNode(node);
-    const pendingDeletion = node.marks.some(({ type }) => type.name === "deletion");
+    const pendingDeletion = node.marks.some(
+      ({ type }) => type.name === "deletion",
+    );
     if (node.isText) {
       pendingDeletedText ||= pendingDeletion;
       liveText ||= !pendingDeletion;
     }
     if (pendingDeletion) {
-      pendingDeletionRanges.push({ from: position, to: position + node.nodeSize });
+      pendingDeletionRanges.push({
+        from: position,
+        to: position + node.nodeSize,
+      });
     }
     return true;
   });
   if (beforePendingDeletions && pendingDeletionRanges.length > 0) {
     beforePendingDeletions.descendants((node, position) => {
       const end = position + node.nodeSize;
-      if (pendingDeletionRanges.some(({ from, to }) => position < to && end > from)) {
+      if (
+        pendingDeletionRanges.some(
+          ({ from, to }) => position < to && end > from,
+        )
+      ) {
         addNode(node);
       }
       return true;
@@ -109,7 +121,8 @@ export const coveredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {
     if (!node.isInline || isCommentAnchorCarrier(node)) return true;
     for (const mark of node.marks) {
       const commentId = mark.attrs["commentId"];
-      if (mark.type.name === "comment" && typeof commentId === "number") ids.add(commentId);
+      if (mark.type.name === "comment" && typeof commentId === "number")
+        ids.add(commentId);
     }
     return true;
   });
@@ -117,7 +130,9 @@ export const coveredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {
 };
 
 /** Ids of the comments a model story's blocks hold any marker of. */
-export const anchoredCommentIdsInBlocks = (blocks: readonly BlockContent[]): Set<number> => {
+export const anchoredCommentIdsInBlocks = (
+  blocks: readonly BlockContent[],
+): Set<number> => {
   const ids = new Set<number>();
   visitCommentMarkers(blocks, ({ item }) => ids.add(item.id));
   return ids;

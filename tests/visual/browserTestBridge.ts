@@ -1,5 +1,8 @@
+import {
+  resolvePaintedDragTarget,
+  resolvePaintedTableTarget,
+} from "./browserPaintedTargets";
 import { installInterleavingBridge } from "./interleavingBridge";
-import { resolvePaintedDragTarget, resolvePaintedTableTarget } from "./browserPaintedTargets";
 
 /** Bundled with the playground so browser tests also work against built previews. */
 export const browserTestBridge = {

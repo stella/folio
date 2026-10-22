@@ -27,7 +27,9 @@ const IMPORT_REGEX =
 // Strip comments before the raw-text scan so prose mentioning the package
 // cannot trip it (keeps the char before `//` so it does not eat `https://`).
 const stripComments = (source: string): string =>
-  source.replaceAll(/\/\*[\s\S]*?\*\//gu, "").replaceAll(/(?<lead>^|[^:])\/\/[^\n]*/gmu, "$<lead>");
+  source
+    .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
+    .replaceAll(/(?<lead>^|[^:])\/\/[^\n]*/gmu, "$<lead>");
 
 const isForbidden = (specifier: string): boolean =>
   specifier === FORBIDDEN || specifier.startsWith(`${FORBIDDEN}/`);
@@ -39,7 +41,9 @@ const violationsForFile = (filePath: string): Violation[] => {
   const source = stripComments(readFileSync(filePath, "utf-8"));
   for (const match of source.matchAll(IMPORT_REGEX)) {
     const specifier =
-      match.groups?.["fromSpec"] ?? match.groups?.["importSpec"] ?? match.groups?.["dynImportSpec"];
+      match.groups?.["fromSpec"] ??
+      match.groups?.["importSpec"] ??
+      match.groups?.["dynImportSpec"];
     if (specifier !== undefined && isForbidden(specifier)) {
       found.push({ importer: filePath, specifier });
     }
@@ -68,7 +72,9 @@ describe("folio does not depend on the app design system", () => {
   test("no folio source file imports @stll/ui", () => {
     const violations = collectSourceFiles().flatMap(violationsForFile);
     if (violations.length > 0) {
-      const formatted = violations.map((v) => `  ${v.importer} -> ${v.specifier}`).join("\n");
+      const formatted = violations
+        .map((v) => `  ${v.importer} -> ${v.specifier}`)
+        .join("\n");
       throw new Error(
         `folio must not import @stll/ui; use the injectable FolioUIComponents contract instead:\n${formatted}`,
       );

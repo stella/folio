@@ -5,7 +5,12 @@
   <FolioDialog
     :open="isOpen"
     :aria-label="t('dialogs.pageSetup.title')"
-    :style="{ minWidth: '400px', maxWidth: '480px', width: '100%', margin: '20px' }"
+    :style="{
+      minWidth: '400px',
+      maxWidth: '480px',
+      width: '100%',
+      margin: '20px',
+    }"
     @close="close"
     @keydown.enter="apply"
   >
@@ -21,15 +26,25 @@
           <option v-for="(s, i) in PAGE_SIZES" :key="s.labelKey" :value="i">
             {{ t(s.labelKey) }}
           </option>
-          <option v-if="sizeIndex < 0" :value="-1">{{ t("dialogs.pageSetup.custom") }}</option>
+          <option v-if="sizeIndex < 0" :value="-1">
+            {{ t("dialogs.pageSetup.custom") }}
+          </option>
         </select>
       </div>
 
       <div class="ps-row">
         <label class="ps-label">{{ t("dialogs.pageSetup.orientation") }}</label>
-        <select class="ps-input" :value="orientation" @change="onOrientationChange">
-          <option value="portrait">{{ t("dialogs.pageSetup.portrait") }}</option>
-          <option value="landscape">{{ t("dialogs.pageSetup.landscape") }}</option>
+        <select
+          class="ps-input"
+          :value="orientation"
+          @change="onOrientationChange"
+        >
+          <option value="portrait">
+            {{ t("dialogs.pageSetup.portrait") }}
+          </option>
+          <option value="landscape">
+            {{ t("dialogs.pageSetup.landscape") }}
+          </option>
         </select>
       </div>
 
@@ -89,7 +104,9 @@
     </div>
 
     <div class="ps-footer">
-      <button type="button" class="ps-btn" @click="close">{{ t("common.cancel") }}</button>
+      <button type="button" class="ps-btn" @click="close">
+        {{ t("common.cancel") }}
+      </button>
       <button type="button" class="ps-btn ps-btn--primary" @click="apply">
         {{ t("common.apply") }}
       </button>
@@ -98,9 +115,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { computed, ref, watch } from "vue";
+
 import type { SectionProperties } from "@stll/folio-core/types/document";
 import { TWIPS_PER_INCH } from "@stll/folio-core/utils/units";
+
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
 
@@ -119,13 +138,25 @@ const DEFAULT_MARGIN = 1440;
 
 /** Common page sizes in twips (width x height in portrait). Matches React. */
 const PAGE_SIZES = [
-  { labelKey: "dialogs.pageSetup.pageSizes.letter", width: 12240, height: 15840 },
+  {
+    labelKey: "dialogs.pageSetup.pageSizes.letter",
+    width: 12240,
+    height: 15840,
+  },
   { labelKey: "dialogs.pageSetup.pageSizes.a4", width: 11906, height: 16838 },
-  { labelKey: "dialogs.pageSetup.pageSizes.legal", width: 12240, height: 20160 },
+  {
+    labelKey: "dialogs.pageSetup.pageSizes.legal",
+    width: 12240,
+    height: 20160,
+  },
   { labelKey: "dialogs.pageSetup.pageSizes.a3", width: 16838, height: 23811 },
   { labelKey: "dialogs.pageSetup.pageSizes.a5", width: 8391, height: 11906 },
   { labelKey: "dialogs.pageSetup.pageSizes.b5", width: 9979, height: 14175 },
-  { labelKey: "dialogs.pageSetup.pageSizes.executive", width: 10440, height: 15120 },
+  {
+    labelKey: "dialogs.pageSetup.pageSizes.executive",
+    width: 10440,
+    height: 15120,
+  },
 ] as const;
 
 const props = defineProps<{
@@ -158,7 +189,9 @@ function inchesToTwips(inches: number): number {
 const sizeIndex = computed(() => {
   const pw = Math.min(pageWidth.value, pageHeight.value);
   const ph = Math.max(pageWidth.value, pageHeight.value);
-  return PAGE_SIZES.findIndex((s) => Math.abs(s.width - pw) < 20 && Math.abs(s.height - ph) < 20);
+  return PAGE_SIZES.findIndex(
+    (s) => Math.abs(s.width - pw) < 20 && Math.abs(s.height - ph) < 20,
+  );
 });
 
 watch(
@@ -195,7 +228,8 @@ function onPageSizeChange(e: Event) {
 
 function onOrientationChange(e: Event) {
   if (!(e.target instanceof HTMLSelectElement)) return;
-  const next: Orientation = e.target.value === "landscape" ? "landscape" : "portrait";
+  const next: Orientation =
+    e.target.value === "landscape" ? "landscape" : "portrait";
   if (next === orientation.value) return;
   orientation.value = next;
   const w = pageWidth.value;

@@ -1,9 +1,10 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
+import { runBrowserImeLifecycle } from "../tests/visual/browserImeDriver";
 import type { BrowserInputAction } from "../tests/visual/browserInputTrace";
 import { browserImeActionArbitrary } from "../tests/visual/browserInputTrace";
-import { runBrowserImeLifecycle } from "../tests/visual/browserImeDriver";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
 
@@ -12,7 +13,10 @@ type ImeDriverEvent =
   | { kind: "cancel" }
   | {
       kind: "finish";
-      completion: Extract<BrowserInputAction, { kind: "imeReplacement" }>["completion"];
+      completion: Extract<
+        BrowserInputAction,
+        { kind: "imeReplacement" }
+      >["completion"];
     };
 
 test("generated IME lifecycles deliver every update and terminate native composition", async () => {
@@ -44,7 +48,10 @@ test("generated IME lifecycles deliver every update and terminate native composi
               { kind: "commit", text: action.updates.at(-1) },
               { kind: "finish", completion: action.completion },
             ]
-          : [{ kind: "cancel" }, { kind: "finish", completion: action.completion }],
+          : [
+              { kind: "cancel" },
+              { kind: "finish", completion: action.completion },
+            ],
       );
     }),
     {
@@ -100,7 +107,11 @@ test("failed updates propagate without completing the composition", async () => 
           events.push("finish");
         },
       },
-      { kind: "imeReplacement", updates: ["alpha", "東京", "café"], completion: "commit" },
+      {
+        kind: "imeReplacement",
+        updates: ["alpha", "東京", "café"],
+        completion: "commit",
+      },
     ),
   ).rejects.toBe(failure);
   expect(events).toEqual(["alpha", "東京"]);

@@ -10,11 +10,20 @@ import path from "node:path";
 
 import { compareGeoms, mergeVisualRows } from "./compare";
 import { createFolioExtractor } from "./folioExtract";
-import { getReferenceRenderer, isReferenceRendererId } from "./referenceRenderer";
-import { normalizeLineText, textSimilarity } from "./textNorm";
 import { createLiteralSearchScope } from "./literalSearch";
+import {
+  getReferenceRenderer,
+  isReferenceRendererId,
+} from "./referenceRenderer";
+import { normalizeLineText, textSimilarity } from "./textNorm";
 import { REVIEW_VIEWS } from "./types";
-import type { DocGeom, LineBox, PageGeom, ReferenceRendererId, ReviewView } from "./types";
+import type {
+  DocGeom,
+  LineBox,
+  PageGeom,
+  ReferenceRendererId,
+  ReviewView,
+} from "./types";
 import { getReferenceLocalFonts } from "./wordFonts";
 
 type InspectFlags = {
@@ -123,7 +132,10 @@ const parseArgs = (argv: string[]): InspectFlags => {
   if (!Number.isInteger(flags.page) || flags.page <= 0) {
     throw new Error("--page must be a positive integer");
   }
-  if (flags.maxPages !== undefined && (!Number.isInteger(flags.maxPages) || flags.maxPages <= 0)) {
+  if (
+    flags.maxPages !== undefined &&
+    (!Number.isInteger(flags.maxPages) || flags.maxPages <= 0)
+  ) {
     throw new Error("--max-pages must be a positive integer");
   }
   if (!Number.isInteger(flags.limit) || flags.limit <= 0) {
@@ -140,7 +152,11 @@ const pageLines = (geom: DocGeom, pageNumber: number): LineBox[] => {
 const pageInfo = (geom: DocGeom, pageNumber: number): PageGeom | undefined =>
   geom.pages.find((candidate) => candidate.number === pageNumber);
 
-const candidatesFor = (lines: LineBox[], text: string, limit: number): Candidate[] => {
+const candidatesFor = (
+  lines: LineBox[],
+  text: string,
+  limit: number,
+): Candidate[] => {
   const needle = normalizeLineText(text);
   const isContained = createLiteralSearchScope().createCandidateContainment(
     needle,
@@ -152,15 +168,22 @@ const candidatesFor = (lines: LineBox[], text: string, limit: number): Candidate
       const similarity = contains ? 1 : textSimilarity(needle, line.normText);
       return { rank: 0, similarity, lineIndex: index + 1, line };
     })
-    .toSorted((a, b) => b.similarity - a.similarity || a.lineIndex - b.lineIndex)
+    .toSorted(
+      (a, b) => b.similarity - a.similarity || a.lineIndex - b.lineIndex,
+    )
     .slice(0, limit)
-    .map((candidate, index) => Object.assign({}, candidate, { rank: index + 1 }));
+    .map((candidate, index) =>
+      Object.assign({}, candidate, { rank: index + 1 }),
+    );
 };
 
 const round = (value: number | undefined): number | undefined =>
   value === undefined ? undefined : Number(value.toFixed(3));
 
-const ledgerFor = (referenceLines: LineBox[], folioLines: LineBox[]): LedgerRow[] => {
+const ledgerFor = (
+  referenceLines: LineBox[],
+  folioLines: LineBox[],
+): LedgerRow[] => {
   const max = Math.max(referenceLines.length, folioLines.length);
   const rows: LedgerRow[] = [];
   for (let i = 0; i < max; i++) {
@@ -186,7 +209,9 @@ const ledgerFor = (referenceLines: LineBox[], folioLines: LineBox[]): LedgerRow[
         : {}),
       ...(reference && folio
         ? {
-            similarity: round(textSimilarity(reference.normText, folio.normText)),
+            similarity: round(
+              textSimilarity(reference.normText, folio.normText),
+            ),
             deltaY: round(folio.yPt - reference.yPt),
             deltaX: round(folio.xPt - reference.xPt),
             deltaWidth: round(folio.widthPt - reference.widthPt),
@@ -204,13 +229,18 @@ const main = async (): Promise<void> => {
   const referenceRenderer = getReferenceRenderer(flags.referenceId);
   const localFonts = await getReferenceLocalFonts(flags.referenceId);
 
-  const reviewView = flags.reviewView ?? referenceRenderer.reviewViews.at(0) ?? "default";
-  if (!referenceRenderer.reviewViews.some((supported) => supported === reviewView)) {
+  const reviewView =
+    flags.reviewView ?? referenceRenderer.reviewViews.at(0) ?? "default";
+  if (
+    !referenceRenderer.reviewViews.some((supported) => supported === reviewView)
+  ) {
     throw new Error(
       `${referenceRenderer.displayName} does not support review view "${reviewView}"; supported views: ${referenceRenderer.reviewViews.join(", ")}`,
     );
   }
-  const referenceGeom = await referenceRenderer.getGeometry(doc, { reviewView });
+  const referenceGeom = await referenceRenderer.getGeometry(doc, {
+    reviewView,
+  });
   const extractor = await createFolioExtractor({ localFonts });
   let folio: FolioExtractResult;
   try {
@@ -228,7 +258,10 @@ const main = async (): Promise<void> => {
   const folioLines = pageLines(folio.geom, flags.page);
   const referencePage = pageInfo(referenceGeom, flags.page);
   const folioPage = pageInfo(folio.geom, flags.page);
-  const referencePngs = await referenceRenderer.getPagePngs(doc, { maxPages, reviewView });
+  const referencePngs = await referenceRenderer.getPagePngs(doc, {
+    maxPages,
+    reviewView,
+  });
   const counts: Record<string, number> = {};
   for (const divergence of comparison.divergences) {
     counts[divergence.kind] = (counts[divergence.kind] ?? 0) + 1;
@@ -263,7 +296,11 @@ const main = async (): Promise<void> => {
     ...(flags.text
       ? {
           query: flags.text,
-          referenceCandidates: candidatesFor(referenceLines, flags.text, flags.limit),
+          referenceCandidates: candidatesFor(
+            referenceLines,
+            flags.text,
+            flags.limit,
+          ),
           folioCandidates: candidatesFor(folioLines, flags.text, flags.limit),
         }
       : {}),

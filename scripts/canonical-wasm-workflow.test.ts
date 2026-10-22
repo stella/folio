@@ -10,9 +10,16 @@ const repoRoot = path.resolve(import.meta.dir, "..");
 
 test("canonical artifact triggers cover their package command owners", () => {
   const workflow: unknown = Bun.YAML.parse(
-    readFileSync(path.join(repoRoot, ".github/workflows/canonical-wasm.yml"), "utf8"),
+    readFileSync(
+      path.join(repoRoot, ".github/workflows/canonical-wasm.yml"),
+      "utf8",
+    ),
   );
-  if (!isRecord(workflow) || !isRecord(workflow["on"]) || !isRecord(workflow["jobs"])) {
+  if (
+    !isRecord(workflow) ||
+    !isRecord(workflow["on"]) ||
+    !isRecord(workflow["jobs"])
+  ) {
     return panic("Invalid canonical artifact workflow");
   }
   const trigger = workflow["on"]["pull_request"];
@@ -28,14 +35,20 @@ test("canonical artifact triggers cover their package command owners", () => {
     if (!isRecord(job) || !Array.isArray(job["steps"])) continue;
     for (const step of job["steps"]) {
       if (!isRecord(step) || typeof step["run"] !== "string") continue;
-      const name = step["run"].match(/bun --filter '([^']+)' wasm:generate/u)?.at(1);
+      const name = step["run"]
+        .match(/bun --filter '([^']+)' wasm:generate/u)
+        ?.at(1);
       if (name !== undefined) selected.add(name);
     }
   }
   expect(selected.size).toBeGreaterThan(0);
   const exercised = new Set<string>();
-  for (const manifestPath of new Bun.Glob("packages/*/package.json").scanSync({ cwd: repoRoot })) {
-    const manifest: unknown = JSON.parse(readFileSync(path.join(repoRoot, manifestPath), "utf8"));
+  for (const manifestPath of new Bun.Glob("packages/*/package.json").scanSync({
+    cwd: repoRoot,
+  })) {
+    const manifest: unknown = JSON.parse(
+      readFileSync(path.join(repoRoot, manifestPath), "utf8"),
+    );
     if (!isRecord(manifest) || typeof manifest["name"] !== "string") {
       return panic("Invalid workspace manifest");
     }
@@ -46,9 +59,14 @@ test("canonical artifact triggers cover their package command owners", () => {
     ) {
       return panic("Selected package needs a WASM generation command");
     }
-    const script = manifest["scripts"]["wasm:generate"].match(/bun ([^\s]+\.ts)(?:\s|$)/u)?.at(1);
-    if (script === undefined) return panic("Selected WASM command needs a generator script");
-    const generatorPath = path.normalize(path.join(path.dirname(manifestPath), script));
+    const script = manifest["scripts"]["wasm:generate"]
+      .match(/bun ([^\s]+\.ts)(?:\s|$)/u)
+      ?.at(1);
+    if (script === undefined)
+      return panic("Selected WASM command needs a generator script");
+    const generatorPath = path.normalize(
+      path.join(path.dirname(manifestPath), script),
+    );
     for (const input of [manifestPath, generatorPath]) {
       expect(
         paths.some((pattern) => new Bun.Glob(pattern).match(input)),

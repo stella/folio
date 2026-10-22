@@ -14,8 +14,8 @@
 import { canonicalJson } from "../utils/canonicalJson";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
-  findDeep,
   findChildByLocalName,
+  findDeep,
   getAttribute,
   getChildElements,
   getLocalName,
@@ -31,7 +31,12 @@ const MAX_GROUP_DEPTH = 16;
 const MAX_GROUP_TEXT_BOXES = 256;
 
 /** Child coordinates to group EMUs, per axis: `emu = child * scale + offset`. */
-type AxisMap = { scaleX: number; scaleY: number; offsetX: number; offsetY: number };
+type AxisMap = {
+  scaleX: number;
+  scaleY: number;
+  offsetX: number;
+  offsetY: number;
+};
 
 export type GroupTextBoxFrame = {
   /** Element indices from the `wpg:wgp` down to the `wps:wsp`. */
@@ -92,10 +97,14 @@ export const readTransform = (xfrm: XmlElement | null): Transform2D => {
 };
 
 const groupTransform = (group: XmlElement): Transform2D =>
-  readTransform(findChildByLocalName(findChildByLocalName(group, "grpSpPr"), "xfrm"));
+  readTransform(
+    findChildByLocalName(findChildByLocalName(group, "grpSpPr"), "xfrm"),
+  );
 
 const shapeTransform = (shape: XmlElement): Transform2D =>
-  readTransform(findChildByLocalName(findChildByLocalName(shape, "spPr"), "xfrm"));
+  readTransform(
+    findChildByLocalName(findChildByLocalName(shape, "spPr"), "xfrm"),
+  );
 
 /**
  * The top-level mapping: the group's child space stretched over the drawing's
@@ -116,18 +125,25 @@ const rootMap = (group: XmlElement, width: number, height: number): AxisMap => {
 
 /** A nested group's child space, mapped through its frame in the parent's space. */
 const nestedMap = (parent: AxisMap, transform: Transform2D): AxisMap => {
-  const scaleX = transform.childWidth > 0 ? transform.width / transform.childWidth : 1;
-  const scaleY = transform.childHeight > 0 ? transform.height / transform.childHeight : 1;
+  const scaleX =
+    transform.childWidth > 0 ? transform.width / transform.childWidth : 1;
+  const scaleY =
+    transform.childHeight > 0 ? transform.height / transform.childHeight : 1;
   return {
     scaleX: parent.scaleX * scaleX,
     scaleY: parent.scaleY * scaleY,
-    offsetX: parent.scaleX * (transform.x - transform.childX * scaleX) + parent.offsetX,
-    offsetY: parent.scaleY * (transform.y - transform.childY * scaleY) + parent.offsetY,
+    offsetX:
+      parent.scaleX * (transform.x - transform.childX * scaleX) +
+      parent.offsetX,
+    offsetY:
+      parent.scaleY * (transform.y - transform.childY * scaleY) +
+      parent.offsetY,
   };
 };
 
 const hasTextBox = (wsp: XmlElement): boolean =>
-  findChildByLocalName(findChildByLocalName(wsp, "txbx"), "txbxContent") !== null;
+  findChildByLocalName(findChildByLocalName(wsp, "txbx"), "txbxContent") !==
+  null;
 
 /**
  * Every `wps:wsp` with a text box in the group, nested groups included, with
@@ -143,7 +159,12 @@ export const collectGroupTextBoxes = (
   height: number,
 ): GroupTextBoxFrame[] => {
   const frames: GroupTextBoxFrame[] = [];
-  const visit = (container: XmlElement, map: AxisMap, path: number[], depth: number): void => {
+  const visit = (
+    container: XmlElement,
+    map: AxisMap,
+    path: number[],
+    depth: number,
+  ): void => {
     for (const [index, child] of getChildElements(container).entries()) {
       if (frames.length >= MAX_GROUP_TEXT_BOXES) {
         return;
@@ -199,7 +220,8 @@ const fingerprint = (text: string): string => {
 };
 
 /** Identity of a group drawing's authored XML. */
-export const groupXmlFingerprint = (rawXml: string): string => fingerprint(rawXml);
+export const groupXmlFingerprint = (rawXml: string): string =>
+  fingerprint(rawXml);
 
 /** Identity of a text box's content, compared on save to tell an edit. */
 export const groupTextContentFingerprint = (content: unknown): string =>
@@ -219,7 +241,10 @@ export type GroupTextBoxEdit = {
 const findGroup = (root: XmlElement): XmlElement | undefined =>
   findDeep(root, "wpg", "wgp") ?? undefined;
 
-const childAtPath = (group: XmlElement, path: readonly number[]): XmlElement | undefined => {
+const childAtPath = (
+  group: XmlElement,
+  path: readonly number[],
+): XmlElement | undefined => {
   let current: XmlElement | undefined = group;
   for (const index of path) {
     current = current ? getChildElements(current)[index] : undefined;
@@ -231,12 +256,18 @@ const childAtPath = (group: XmlElement, path: readonly number[]): XmlElement | u
  * The text box content element a path names, or undefined when the path does
  * not lead to a `wps:wsp` holding one.
  */
-const textBoxContentAt = (group: XmlElement, path: readonly number[]): XmlElement | undefined => {
+const textBoxContentAt = (
+  group: XmlElement,
+  path: readonly number[],
+): XmlElement | undefined => {
   const wsp = childAtPath(group, path);
   if (!wsp || getLocalName(wsp.name ?? "") !== "wsp") {
     return undefined;
   }
-  return findChildByLocalName(findChildByLocalName(wsp, "txbx"), "txbxContent") ?? undefined;
+  return (
+    findChildByLocalName(findChildByLocalName(wsp, "txbx"), "txbxContent") ??
+    undefined
+  );
 };
 
 /**
@@ -268,7 +299,9 @@ export const replaceGroupTextBoxContent = (
     // empty paragraph.
     replacements.set(`<${placeholder}/>`, edit.contentXml || "<w:p/>");
   }
-  let xml = (root.elements ?? []).map((element) => captureVerbatimXml(element)).join("");
+  let xml = (root.elements ?? [])
+    .map((element) => captureVerbatimXml(element))
+    .join("");
   for (const [placeholder, contentXml] of replacements) {
     xml = xml.replace(placeholder, () => contentXml);
   }

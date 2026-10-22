@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { validatePackageGraph } from "./packageGraph";
 
 const contentTypes =
@@ -21,9 +22,15 @@ test("OPC oracle accepts complete declarations and detects each graph mutation",
   const mutations = [
     (parts: Map<string, string>) => parts.delete("_rels/.rels"),
     (parts: Map<string, string>) =>
-      parts.set("_rels/.rels", rootRels.replace("word/document.xml", "word/missing.xml")),
+      parts.set(
+        "_rels/.rels",
+        rootRels.replace("word/document.xml", "word/missing.xml"),
+      ),
     (parts: Map<string, string>) =>
-      parts.set("_rels/.rels", rootRels.replace('Target="', 'TargetMode="invalid" Target="')),
+      parts.set(
+        "_rels/.rels",
+        rootRels.replace('Target="', 'TargetMode="invalid" Target="'),
+      ),
     (parts: Map<string, string>) =>
       parts.set(
         "[Content_Types].xml",

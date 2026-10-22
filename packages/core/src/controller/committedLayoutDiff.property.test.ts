@@ -10,18 +10,27 @@ import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import { findDirtyBlockIndexes } from "../paged-layout/incrementalMeasure";
 import { schema } from "../prosemirror/schema";
-import { diffAgainstCommittedLayout, type LayoutFlowSource } from "./committedLayoutDiff";
+import {
+  diffAgainstCommittedLayout,
+  type LayoutFlowSource,
+} from "./committedLayoutDiff";
 
 const NO_PREVIEW = { entries: [], hidden: [], mode: "plain" } as const;
 
-const source = (doc: PMNode): LayoutFlowSource => ({ doc, preview: NO_PREVIEW });
+const source = (doc: PMNode): LayoutFlowSource => ({
+  doc,
+  preview: NO_PREVIEW,
+});
 
 const paragraphText = fc
   .array(fc.constantFrom("a", "b", "ab", "the", " "), { maxLength: 12 })
@@ -32,11 +41,20 @@ const docFrom = (paragraphs: readonly string[]): PMNode =>
     "doc",
     null,
     paragraphs.map((text) =>
-      schema.node("paragraph", null, text.length > 0 ? [schema.text(text)] : []),
+      schema.node(
+        "paragraph",
+        null,
+        text.length > 0 ? [schema.text(text)] : [],
+      ),
     ),
   );
 
-type Edit = { type: "insert" | "delete"; at: number; text: string; length: number };
+type Edit = {
+  type: "insert" | "delete";
+  at: number;
+  text: string;
+  length: number;
+};
 
 const edit: fc.Arbitrary<Edit> = fc.record({
   type: fc.constantFrom("insert" as const, "delete" as const),
@@ -81,13 +99,18 @@ describe("diffAgainstCommittedLayout (properties)", () => {
         (paragraphs, edits) => {
           const committed = docFrom(paragraphs);
           const next = applyEdits(committed, edits);
-          const diff = diffAgainstCommittedLayout(source(committed), source(next));
+          const diff = diffAgainstCommittedLayout(
+            source(committed),
+            source(next),
+          );
           if (diff.type === "full") {
             // Only an unchanged document may fall back to a full measure here.
             expect(next.eq(committed)).toBe(true);
             return;
           }
-          const dirty = new Set(findDirtyBlockIndexes(toFlowBlocks(next), diff.range));
+          const dirty = new Set(
+            findDirtyBlockIndexes(toFlowBlocks(next), diff.range),
+          );
           for (let index = 0; index < next.childCount; index += 1) {
             if (!dirty.has(index)) {
               expect(next.child(index).eq(committed.child(index))).toBe(true);
@@ -105,7 +128,9 @@ describe("diffAgainstCommittedLayout (properties)", () => {
       { ...committed.attrs, _finalSectionStart: "continuous" },
       committed.content,
     );
-    expect(diffAgainstCommittedLayout(source(committed), source(next))).toEqual({ type: "full" });
+    expect(diffAgainstCommittedLayout(source(committed), source(next))).toEqual(
+      { type: "full" },
+    );
   });
 });
 
@@ -113,15 +138,25 @@ describe("diffAgainstCommittedLayout (template preview)", () => {
   // "Intro {{ terms }} end." then "Tail."; the marker spans 7..18.
   const committedDoc = docFrom(["Intro {{ terms }} end.", "Tail."]);
   const marker = { from: 7, to: 18, expr: "terms" };
-  const typedBefore = applyEdits(committedDoc, [{ type: "insert", at: 0, text: "ab", length: 1 }]);
+  const typedBefore = applyEdits(committedDoc, [
+    { type: "insert", at: 0, text: "ab", length: 1 },
+  ]);
   const preview = (
-    entries: readonly { from: number; to: number; expr: string; value: string }[],
+    entries: readonly {
+      from: number;
+      to: number;
+      expr: string;
+      value: string;
+    }[],
   ): LayoutFlowSource["preview"] => ({ entries, hidden: [], mode: "plain" });
 
   test("a marker only shifted by an edit before it is not dirty", () => {
     const diff = diffAgainstCommittedLayout(
       { doc: committedDoc, preview: preview([{ ...marker, value: "x" }]) },
-      { doc: typedBefore, preview: preview([{ from: 9, to: 20, expr: "terms", value: "x" }]) },
+      {
+        doc: typedBefore,
+        preview: preview([{ from: 9, to: 20, expr: "terms", value: "x" }]),
+      },
     );
     expect(diff).toEqual({ type: "range", range: { from: 1, to: 3 } });
   });
@@ -137,7 +172,10 @@ describe("diffAgainstCommittedLayout (template preview)", () => {
   test("a preview mode switch measures everything", () => {
     const diff = diffAgainstCommittedLayout(
       { doc: committedDoc, preview: preview([]) },
-      { doc: committedDoc, preview: { entries: [], hidden: [], mode: "highlighted" } },
+      {
+        doc: committedDoc,
+        preview: { entries: [], hidden: [], mode: "highlighted" },
+      },
     );
     expect(diff).toEqual({ type: "full" });
   });

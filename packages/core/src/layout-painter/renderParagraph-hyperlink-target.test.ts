@@ -4,14 +4,20 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { MeasuredLine, ParagraphBlock, TextRun } from "../layout-engine/types";
+import type {
+  MeasuredLine,
+  ParagraphBlock,
+  TextRun,
+} from "../layout-engine/types";
 import { renderLine } from "./renderParagraph";
 
 class FakeElement {
   className = "";
   dataset: Record<string, string> = {};
   innerHTML = "";
-  style: Record<string, string> & { setProperty: (name: string, value: string) => void };
+  style: Record<string, string> & {
+    setProperty: (name: string, value: string) => void;
+  };
   children: FakeElement[] = [];
   classList = {
     add: (...tokens: string[]) => {
@@ -136,7 +142,11 @@ describe("run hyperlink targets", () => {
   test("renders no anchor at all for a target outside the navigable protocols", () => {
     // An empty `href` still resolves to the current document, so the run must
     // carry no anchor rather than an anchor with a blank target.
-    for (const href of ["javascript:void 0", "data:text/html,<p>x</p>", "ftp://example.com/f"]) {
+    for (const href of [
+      "javascript:void 0",
+      "data:text/html,<p>x</p>",
+      "ftp://example.com/f",
+    ]) {
       const rendered = renderRun(href);
 
       expect(rendered.anchors).toHaveLength(0);

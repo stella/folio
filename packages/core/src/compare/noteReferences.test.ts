@@ -12,14 +12,22 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { sourceDocumentOf } from "../ai-edits/snapshot";
-import { expectFootnoteRefMarkAttrs } from "../prosemirror/attrs";
 import { fromMarkdown } from "../markdown";
+import { expectFootnoteRefMarkAttrs } from "../prosemirror/attrs";
 import { createDocx, ensureParaIds } from "../server";
-import type { Endnote, Footnote, Paragraph, RunContent } from "../types/document";
+import type {
+  Endnote,
+  Footnote,
+  Paragraph,
+  RunContent,
+} from "../types/document";
 import { compareDocx } from "./compare";
 import { MISSING_NOTE_DETAIL } from "./inline-atoms";
 
@@ -48,11 +56,16 @@ const buildDocx = async (
   paragraphs: readonly (readonly Piece[])[],
   notes: Notes = NOTES,
 ): Promise<ArrayBuffer> => {
-  const model = fromMarkdown(paragraphs.map((_, index) => `Paragraph ${index}.`).join("\n\n"));
+  const model = fromMarkdown(
+    paragraphs.map((_, index) => `Paragraph ${index}.`).join("\n\n"),
+  );
   for (const [index, pieces] of paragraphs.entries()) {
     const paragraph = model.package.document.content[index];
-    if (paragraph?.type !== "paragraph") throw new Error("fixture paragraph is missing");
-    paragraph.content = [{ type: "run", formatting: {}, content: pieces.map(runContentOf) }];
+    if (paragraph?.type !== "paragraph")
+      throw new Error("fixture paragraph is missing");
+    paragraph.content = [
+      { type: "run", formatting: {}, content: pieces.map(runContentOf) },
+    ];
   }
   model.package.footnotes = notes.footnotes.map((id): Footnote => ({
     type: "footnote",
@@ -66,8 +79,12 @@ const buildDocx = async (
     noteType: "normal",
     content: [noteBody(`Endnote ${id}.`)],
   }));
-  const bytes = (await ensureParaIds(new Uint8Array(await createDocx(model)))).docx;
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const bytes = (await ensureParaIds(new Uint8Array(await createDocx(model))))
+    .docx;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 };
 
 const OPTIONS = { author: "Compare", timestamp: "2026-09-27T00:00:00.000Z" };
@@ -100,18 +117,27 @@ const BASE: readonly (readonly Piece[])[] = [
 
 type ExactComparisonPair = { base: ArrayBuffer; revised: ArrayBuffer };
 
-const expectExactComparison = async ({ base, revised }: ExactComparisonPair) => {
+const expectExactComparison = async ({
+  base,
+  revised,
+}: ExactComparisonPair) => {
   const compared = await compareDocx(base, revised, OPTIONS);
   if (compared.isErr()) throw compared.error;
   const { buffer, changes } = compared.value;
   expect(changes.length).toBeGreaterThan(0);
   // Accepting returns the revised document and rejecting the base, compared
   // with references read as references.
-  expect(await changesBetween(revised, await resolved(buffer, "accept"))).toEqual([]);
-  expect(await changesBetween(base, await resolved(buffer, "reject"))).toEqual([]);
+  expect(
+    await changesBetween(revised, await resolved(buffer, "accept")),
+  ).toEqual([]);
+  expect(await changesBetween(base, await resolved(buffer, "reject"))).toEqual(
+    [],
+  );
   // A reference written back as literal `[^1]` or as its bare note id reads
   // as text, not as a reference.
-  expect(await referencesOf(await resolved(buffer, "accept"))).toEqual(await referencesOf(revised));
+  expect(await referencesOf(await resolved(buffer, "accept"))).toEqual(
+    await referencesOf(revised),
+  );
 };
 
 const expectExactRedline = async (
@@ -184,7 +210,9 @@ describe("comparing documents whose kept paragraphs gain or lose note references
           fc.integer({ min: 0, max: BASE.length - 1 }),
           fc.array(
             fc.oneof(
-              fc.constantFrom(...FOOTNOTE_IDS).map((footnote) => ({ footnote })),
+              fc
+                .constantFrom(...FOOTNOTE_IDS)
+                .map((footnote) => ({ footnote })),
               fc.constantFrom(...ENDNOTE_IDS).map((endnote) => ({ endnote })),
             ),
             { minLength: 1, maxLength: 3 },
@@ -194,7 +222,11 @@ describe("comparing documents whose kept paragraphs gain or lose note references
             // namespace. Vary which kept paragraph gains both kinds and repeated IDs.
             const target = BASE.map((pieces, index) =>
               index === blockIndex
-                ? [...pieces, " Additional references", ...references.flatMap((ref) => [" ", ref])]
+                ? [
+                    ...pieces,
+                    " Additional references",
+                    ...references.flatMap((ref) => [" ", ref]),
+                  ]
                 : pieces,
             );
             const base = await buildDocx(BASE);
@@ -218,7 +250,13 @@ describe("comparing documents whose kept paragraphs gain or lose note references
     await expectExactRedline([
       BASE[0]!,
       BASE[1]!,
-      ["Payment falls due", { footnote: 20 }, " within thirty days", { footnote: 30 }, "."],
+      [
+        "Payment falls due",
+        { footnote: 20 },
+        " within thirty days",
+        { footnote: 30 },
+        ".",
+      ],
       BASE[3]!,
     ]);
   });
@@ -235,7 +273,13 @@ describe("comparing documents whose kept paragraphs gain or lose note references
   test("one kept paragraph loses a reference and gains another", async () => {
     await expectExactRedline([
       BASE[0]!,
-      ["The seller delivers the goods", { endnote: 7 }, " and", { footnote: 40 }, "."],
+      [
+        "The seller delivers the goods",
+        { endnote: 7 },
+        " and",
+        { footnote: 40 },
+        ".",
+      ],
       BASE[2]!,
       BASE[3]!,
     ]);
@@ -260,14 +304,24 @@ describe("comparing documents whose kept paragraphs gain or lose note references
       [
         BASE[0]!,
         BASE[1]!,
-        ["Payment falls due", { footnote: 20 }, " within thirty days", { footnote: 50 }, "."],
+        [
+          "Payment falls due",
+          { footnote: 20 },
+          " within thirty days",
+          { footnote: 50 },
+          ".",
+        ],
         BASE[3]!,
       ],
       { footnotes: [...FOOTNOTE_IDS, 50], endnotes: ENDNOTE_IDS },
     );
     for (const onUnverified of ["refuse", "emit"] as const) {
-      const compared = await compareDocx(base, revised, { ...OPTIONS, onUnverified });
-      if (compared.isOk()) throw new Error("the comparison wrote a reference to a missing note");
+      const compared = await compareDocx(base, revised, {
+        ...OPTIONS,
+        onUnverified,
+      });
+      if (compared.isOk())
+        throw new Error("the comparison wrote a reference to a missing note");
       expect(compared.error._tag).toBe("CompareDocxRoundTripError");
       expect(compared.error.message).toContain(MISSING_NOTE_DETAIL);
     }

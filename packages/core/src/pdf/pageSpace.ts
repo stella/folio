@@ -18,7 +18,14 @@
 export const POINTS_PER_PIXEL = 0.75;
 
 /** `[a b c d e f]` as PDF writes a matrix. */
-export type PdfMatrix = readonly [number, number, number, number, number, number];
+export type PdfMatrix = readonly [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+];
 
 export const pxToPt = (px: number): number => px * POINTS_PER_PIXEL;
 

@@ -44,13 +44,19 @@ export const findOutermostTableBoundary = (
   let boundary: TableBoundary | null = null;
   for (let depth = resolved.depth; depth > 0; depth--) {
     if (resolved.node(depth).type.name === "table") {
-      boundary = { before: resolved.before(depth), after: resolved.after(depth) };
+      boundary = {
+        before: resolved.before(depth),
+        after: resolved.after(depth),
+      };
     }
   }
   return boundary;
 };
 
-export const findEnclosingTableRow = (doc: PMNode, blockFrom: number): TableRowTarget | null => {
+export const findEnclosingTableRow = (
+  doc: PMNode,
+  blockFrom: number,
+): TableRowTarget | null => {
   const resolved = doc.resolve(blockFrom);
   for (let rowDepth = resolved.depth; rowDepth > 0; rowDepth--) {
     if (resolved.node(rowDepth).type.spec["tableRole"] !== "row") {
@@ -72,7 +78,10 @@ export const findEnclosingTableRow = (doc: PMNode, blockFrom: number): TableRowT
   return null;
 };
 
-export const findEnclosingTableCell = (doc: PMNode, blockFrom: number): TableCellTarget | null => {
+export const findEnclosingTableCell = (
+  doc: PMNode,
+  blockFrom: number,
+): TableCellTarget | null => {
   const resolved = doc.resolve(blockFrom);
   for (let cellDepth = resolved.depth; cellDepth > 0; cellDepth--) {
     const cell = resolved.node(cellDepth);
@@ -94,7 +103,9 @@ export const findEnclosingTableCell = (doc: PMNode, blockFrom: number): TableCel
     const table = resolved.node(tableDepth);
     const tableStart = resolved.start(tableDepth);
     const cellPosition = resolved.before(cellDepth);
-    const cellRectangle = TableMap.get(table).findCell(cellPosition - tableStart);
+    const cellRectangle = TableMap.get(table).findCell(
+      cellPosition - tableStart,
+    );
     return {
       tablePosition: resolved.before(tableDepth),
       cellPosition,
@@ -108,7 +119,10 @@ export const findEnclosingTableCell = (doc: PMNode, blockFrom: number): TableCel
   return null;
 };
 
-export const tableRectangleCutsMergedCell = (map: TableMap, rectangle: TableRectangle): boolean => {
+export const tableRectangleCutsMergedCell = (
+  map: TableMap,
+  rectangle: TableRectangle,
+): boolean => {
   if (
     rectangle.left < 0 ||
     rectangle.top < 0 ||
@@ -122,7 +136,8 @@ export const tableRectangleCutsMergedCell = (map: TableMap, rectangle: TableRect
     const rightIndex = row * map.width + rectangle.right - 1;
     if (
       (rectangle.left > 0 && map.map[leftIndex] === map.map[leftIndex - 1]) ||
-      (rectangle.right < map.width && map.map[rightIndex] === map.map[rightIndex + 1])
+      (rectangle.right < map.width &&
+        map.map[rightIndex] === map.map[rightIndex + 1])
     ) {
       return true;
     }
@@ -131,8 +146,10 @@ export const tableRectangleCutsMergedCell = (map: TableMap, rectangle: TableRect
     const topIndex = rectangle.top * map.width + column;
     const bottomIndex = (rectangle.bottom - 1) * map.width + column;
     if (
-      (rectangle.top > 0 && map.map[topIndex] === map.map[topIndex - map.width]) ||
-      (rectangle.bottom < map.height && map.map[bottomIndex] === map.map[bottomIndex + map.width])
+      (rectangle.top > 0 &&
+        map.map[topIndex] === map.map[topIndex - map.width]) ||
+      (rectangle.bottom < map.height &&
+        map.map[bottomIndex] === map.map[bottomIndex + map.width])
     ) {
       return true;
     }

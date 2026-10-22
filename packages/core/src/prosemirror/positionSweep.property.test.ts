@@ -11,14 +11,16 @@ import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 import { Mapping, StepMap } from "prosemirror-transform";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   buildRandomTransaction,
   randomDocument,
   randomOperations,
 } from "./__tests__/randomTransactions";
-import { sweepPositions, type PositionQuery } from "./positionSweep";
+import { type PositionQuery, sweepPositions } from "./positionSweep";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -43,15 +45,20 @@ describe("sweepPositions", () => {
         fc.array(rawQuery, { maxLength: 400, size: "large" }),
         fc.array(fc.nat({ max: 10_000 }), { maxLength: 3 }),
         (doc, operations, rawQueries, cuts) => {
-          const tr = buildRandomTransaction(EditorState.create({ doc }), operations);
+          const tr = buildRandomTransaction(
+            EditorState.create({ doc }),
+            operations,
+          );
           const maps = tr.mapping.maps;
           const docs = [...tr.docs, tr.doc];
-          const queries = rawQueries.map(({ pos, assoc, from }): PositionQuery => {
-            const step = from % (maps.length + 1);
-            // SAFETY: docs holds one document per step plus the final one.
-            const size = docs[step]!.content.size;
-            return { pos: pos % (size + 1), assoc, from: step };
-          });
+          const queries = rawQueries.map(
+            ({ pos, assoc, from }): PositionQuery => {
+              const step = from % (maps.length + 1);
+              // SAFETY: docs holds one document per step plus the final one.
+              const size = docs[step]!.content.size;
+              return { pos: pos % (size + 1), assoc, from: step };
+            },
+          );
           // The same steps split into consecutive transactions' mappings.
           const boundaries = [
             0,
@@ -60,9 +67,13 @@ describe("sweepPositions", () => {
           ];
           const mappings = boundaries
             .slice(1)
-            .map((end, index) => new Mapping(maps.slice(boundaries[index], end)));
+            .map(
+              (end, index) => new Mapping(maps.slice(boundaries[index], end)),
+            );
 
-          expect(sweepPositions(mappings, queries)).toEqual(perStep(maps, queries));
+          expect(sweepPositions(mappings, queries)).toEqual(
+            perStep(maps, queries),
+          );
         },
       ),
       propertyConfig({ numRuns: 300 }),
@@ -79,12 +90,18 @@ describe("sweepPositions", () => {
     ];
     const queries: PositionQuery[] = [];
     for (let pos = 0; pos <= 1_000; pos += 1) {
-      queries.push({ pos, assoc: pos % 2 === 0 ? 1 : -1, from: pos % 3 === 0 ? 0 : 1 });
+      queries.push({
+        pos,
+        assoc: pos % 2 === 0 ? 1 : -1,
+        from: pos % 3 === 0 ? 0 : 1,
+      });
     }
     for (let pos = 0; pos <= 600; pos += 1) {
       queries.push({ pos, assoc: 1, from: 2 });
     }
-    expect(sweepPositions([new Mapping(maps)], queries)).toEqual(perStep(maps, queries));
+    expect(sweepPositions([new Mapping(maps)], queries)).toEqual(
+      perStep(maps, queries),
+    );
   });
 
   test("falls back to the per-step walk when a mapping carries mirrors", () => {
@@ -94,7 +111,11 @@ describe("sweepPositions", () => {
     const mapping = new Mapping();
     mapping.appendMap(deletion);
     mapping.appendMap(deletion.invert(), 0);
-    const queries: PositionQuery[] = [7, 9, 12, 20].map((pos) => ({ pos, assoc: 1, from: 0 }));
+    const queries: PositionQuery[] = [7, 9, 12, 20].map((pos) => ({
+      pos,
+      assoc: 1,
+      from: 0,
+    }));
 
     expect(sweepPositions([mapping], queries)).toEqual(
       queries.map(({ pos, assoc }) => {
@@ -103,6 +124,8 @@ describe("sweepPositions", () => {
       }),
     );
     // Recovered, not collapsed: the plain per-step walk would say 5 or 15.
-    expect(sweepPositions([mapping], queries).map(({ pos }) => pos)).toEqual([7, 9, 12, 20]);
+    expect(sweepPositions([mapping], queries).map(({ pos }) => pos)).toEqual([
+      7, 9, 12, 20,
+    ]);
   });
 });

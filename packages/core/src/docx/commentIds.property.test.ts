@@ -16,18 +16,23 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+
 import { assertValidOoxmlNumericIds } from "@stll/docx-core";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "./parser";
-import { repackDocx } from "./rezip";
 import { RELATIONSHIP_TYPES } from "./relsParser";
+import { repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /** The text the comment defined at this position in comments.xml carries. */
-const commentBody = (position: number): string => `Comment body ${String(position)}`;
+const commentBody = (position: number): string =>
+  `Comment body ${String(position)}`;
 
 const commentsXmlFor = (ids: readonly number[]): string =>
   `${XML_DECLARATION}
@@ -91,8 +96,12 @@ const commentIdsArbitrary = fc.array(fc.integer({ min: 0, max: 4 }), {
   maxLength: 8,
 });
 
-const plainText = (content: { content: { content: { text?: string }[] }[] }): string =>
-  content.content.flatMap((run) => run.content.map((item) => item.text ?? "")).join("");
+const plainText = (content: {
+  content: { content: { text?: string }[] }[];
+}): string =>
+  content.content
+    .flatMap((run) => run.content.map((item) => item.text ?? ""))
+    .join("");
 
 describe("duplicate comment ids (property)", () => {
   test(
@@ -101,13 +110,18 @@ describe("duplicate comment ids (property)", () => {
       await fc.assert(
         fc.asyncProperty(
           fc
-            .tuple(fc.integer({ min: 2_147_483_648, max: 2_000_000_000_000 }), commentIdsArbitrary)
+            .tuple(
+              fc.integer({ min: 2_147_483_648, max: 2_000_000_000_000 }),
+              commentIdsArbitrary,
+            )
             .map(([base, offsets]) => offsets.map((offset) => base + offset)),
           async (ids) => {
             const originalBuffer = await docxFor(ids);
-            const parsed = await parseDocx(originalBuffer, { preloadFonts: false });
-            const firstContents = parsed.package.document.comments?.map((comment) =>
-              comment.content.map(plainText),
+            const parsed = await parseDocx(originalBuffer, {
+              preloadFonts: false,
+            });
+            const firstContents = parsed.package.document.comments?.map(
+              (comment) => comment.content.map(plainText),
             );
             const saved = await repackDocx(
               { ...parsed, originalBuffer },
@@ -116,24 +130,35 @@ describe("duplicate comment ids (property)", () => {
             const zip = await JSZip.loadAsync(saved);
             const xml = await zip.file("word/comments.xml")?.async("string");
             expect(xml).toBeDefined();
-            if (xml !== undefined) assertValidOoxmlNumericIds(xml, "word/comments.xml");
-            const bodyXml = await zip.file("word/document.xml")?.async("string");
+            if (xml !== undefined)
+              assertValidOoxmlNumericIds(xml, "word/comments.xml");
+            const bodyXml = await zip
+              .file("word/document.xml")
+              ?.async("string");
             expect(bodyXml).toBeDefined();
-            if (bodyXml !== undefined) assertValidOoxmlNumericIds(bodyXml, "word/document.xml");
+            if (bodyXml !== undefined)
+              assertValidOoxmlNumericIds(bodyXml, "word/document.xml");
             const reopened = await parseDocx(saved, { preloadFonts: false });
             expect(
-              reopened.package.document.comments?.map((comment) => comment.content.map(plainText)),
+              reopened.package.document.comments?.map((comment) =>
+                comment.content.map(plainText),
+              ),
             ).toEqual(firstContents);
-            const referenceIds = reopened.package.document.content.flatMap((block) =>
-              block.type === "paragraph"
-                ? block.content.flatMap((item) =>
-                    item.type === "commentReference" ? [item.id] : [],
-                  )
-                : [],
+            const referenceIds = reopened.package.document.content.flatMap(
+              (block) =>
+                block.type === "paragraph"
+                  ? block.content.flatMap((item) =>
+                      item.type === "commentReference" ? [item.id] : [],
+                    )
+                  : [],
             );
             expect(referenceIds).toHaveLength(new Set(ids).size);
             expect(new Set(referenceIds)).toEqual(
-              new Set(reopened.package.document.comments?.map((comment) => comment.id)),
+              new Set(
+                reopened.package.document.comments?.map(
+                  (comment) => comment.id,
+                ),
+              ),
             );
           },
         ),
@@ -148,7 +173,9 @@ describe("duplicate comment ids (property)", () => {
     async () => {
       await fc.assert(
         fc.asyncProperty(commentIdsArbitrary, async (ids) => {
-          const document = await parseDocx(await docxFor(ids), { preloadFonts: false });
+          const document = await parseDocx(await docxFor(ids), {
+            preloadFonts: false,
+          });
           const comments = document.package.document.comments ?? [];
 
           const parsedIds = comments.map((comment) => comment.id);
@@ -162,9 +189,11 @@ describe("duplicate comment ids (property)", () => {
               continue;
             }
             const comment = comments.find((candidate) => candidate.id === id);
-            expect(comment?.content.map((paragraph) => plainText(paragraph)).join("")).toBe(
-              commentBody(position),
-            );
+            expect(
+              comment?.content
+                .map((paragraph) => plainText(paragraph))
+                .join(""),
+            ).toBe(commentBody(position));
           }
 
           const duplicates = ids.length - new Set(ids).size;
@@ -177,12 +206,16 @@ describe("duplicate comment ids (property)", () => {
           // duplicate definitions the editable model intentionally omits.
           document.package.document.content.push({
             type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "Body edit" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "Body edit" }] },
+            ],
           });
           const saved = await JSZip.loadAsync(
             await repackDocx(document, { updateModifiedDate: false }),
           );
-          expect(await saved.file("word/comments.xml")?.async("string")).toBe(commentsXmlFor(ids));
+          expect(await saved.file("word/comments.xml")?.async("string")).toBe(
+            commentsXmlFor(ids),
+          );
         }),
         propertyConfig({ numRuns: 60 }),
       );

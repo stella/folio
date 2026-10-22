@@ -19,10 +19,13 @@ import { parseRun } from "../runParser";
 import { serializeRun } from "../serializer/runSerializer";
 import { parseXmlDocument, type XmlElement } from "../xmlParser";
 
-const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W_NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const runFrom = (inner: string) => {
-  const node = parseXmlDocument(`<w:r ${W_NS}>${inner}</w:r>`) as XmlElement | null;
+  const node = parseXmlDocument(
+    `<w:r ${W_NS}>${inner}</w:r>`,
+  ) as XmlElement | null;
   if (!node) {
     throw new Error("the fixture did not parse");
   }
@@ -46,6 +49,8 @@ describe("w:sym keeps whichever of its optional attributes the document wrote", 
 
   test("a symbol with both is unchanged", () => {
     const run = runFrom('<w:sym w:font="Wingdings" w:char="F0B7"/>');
-    expect(serializeRun(run)).toContain('<w:sym w:font="Wingdings" w:char="F0B7"/>');
+    expect(serializeRun(run)).toContain(
+      '<w:sym w:font="Wingdings" w:char="F0B7"/>',
+    );
   });
 });

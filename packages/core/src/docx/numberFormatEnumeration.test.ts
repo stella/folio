@@ -16,14 +16,21 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { COUNTER_FORMAT_VALUES, NUMBER_FORMAT_VALUES } from "../types/documentEnumValues";
-
-import { computeListRendering, counterFormatOf, parseNumbering } from "./numberingParser";
-import { serializeNumberingXml } from "./serializer/numberingSerializer";
+import {
+  COUNTER_FORMAT_VALUES,
+  NUMBER_FORMAT_VALUES,
+} from "../types/documentEnumValues";
+import {
+  computeListRendering,
+  counterFormatOf,
+  parseNumbering,
+} from "./numberingParser";
 import { parseSectionProperties } from "./sectionParser";
+import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { parseXmlDocument } from "./xmlParser";
 
-const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const WORD_NAMESPACE =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const numberingXml = (numFmt: string, format?: string): string =>
   `<w:numbering ${WORD_NAMESPACE}>
@@ -57,7 +64,11 @@ describe("ST_NumberFormat", () => {
     expect(NUMBER_FORMAT_VALUES).toContain("bahtText");
     expect(NUMBER_FORMAT_VALUES).toContain("dollarText");
     expect(NUMBER_FORMAT_VALUES).toContain("custom");
-    for (const invented of ["decimalZero3", "decimalZero4", "decimalZero5"] as const) {
+    for (const invented of [
+      "decimalZero3",
+      "decimalZero4",
+      "decimalZero5",
+    ] as const) {
       expect(NUMBER_FORMAT_VALUES).not.toContain(invented);
       expect(COUNTER_FORMAT_VALUES).toContain(invented);
     }
@@ -67,33 +78,51 @@ describe("ST_NumberFormat", () => {
     expect(levelNumFmt(numberingXml(numFmt))?.numFmt).toBe(numFmt);
   });
 
-  test.each(NUMBER_FORMAT_VALUES)("a section's w:pgNumType reads %s", (numFmt) => {
-    expect(pageNumberFormat(numFmt)).toBe(numFmt);
-  });
+  test.each(NUMBER_FORMAT_VALUES)(
+    "a section's w:pgNumType reads %s",
+    (numFmt) => {
+      expect(pageNumberFormat(numFmt)).toBe(numFmt);
+    },
+  );
 
-  test.each(NUMBER_FORMAT_VALUES)("%s survives parse, save and parse", (numFmt) => {
-    const saved = serializeNumberingXml(parseNumbering(numberingXml(numFmt)).definitions);
-    expect(saved).toContain(`<w:numFmt w:val="${numFmt}"/>`);
-    expect(levelNumFmt(saved)?.numFmt).toBe(numFmt);
-  });
+  test.each(NUMBER_FORMAT_VALUES)(
+    "%s survives parse, save and parse",
+    (numFmt) => {
+      const saved = serializeNumberingXml(
+        parseNumbering(numberingXml(numFmt)).definitions,
+      );
+      expect(saved).toContain(`<w:numFmt w:val="${numFmt}"/>`);
+      expect(levelNumFmt(saved)?.numFmt).toBe(numFmt);
+    },
+  );
 
-  test.each(NUMBER_FORMAT_VALUES)("%s keeps its authored format metadata", (numFmt) => {
-    const format = "authored-format";
-    const parsed = levelNumFmt(numberingXml(numFmt, format));
-    expect(parsed?.numFmtFormat).toBe(format);
+  test.each(NUMBER_FORMAT_VALUES)(
+    "%s keeps its authored format metadata",
+    (numFmt) => {
+      const format = "authored-format";
+      const parsed = levelNumFmt(numberingXml(numFmt, format));
+      expect(parsed?.numFmtFormat).toBe(format);
 
-    const saved = serializeNumberingXml(parseNumbering(numberingXml(numFmt, format)).definitions);
-    expect(saved).toContain(`<w:numFmt w:val="${numFmt}" w:format="${format}"/>`);
-    expect(levelNumFmt(saved)?.numFmtFormat).toBe(format);
-  });
+      const saved = serializeNumberingXml(
+        parseNumbering(numberingXml(numFmt, format)).definitions,
+      );
+      expect(saved).toContain(
+        `<w:numFmt w:val="${numFmt}" w:format="${format}"/>`,
+      );
+      expect(levelNumFmt(saved)?.numFmtFormat).toBe(format);
+    },
+  );
 
-  test.each(NUMBER_FORMAT_VALUES)("%s counts in something the renderer knows", (numFmt) => {
-    const rendering = computeListRendering(
-      { numId: 1, ilvl: 0 },
-      parseNumbering(numberingXml(numFmt)),
-    );
-    expect(COUNTER_FORMAT_VALUES).toContain(rendering?.numFmt);
-  });
+  test.each(NUMBER_FORMAT_VALUES)(
+    "%s counts in something the renderer knows",
+    (numFmt) => {
+      const rendering = computeListRendering(
+        { numId: 1, ilvl: 0 },
+        parseNumbering(numberingXml(numFmt)),
+      );
+      expect(COUNTER_FORMAT_VALUES).toContain(rendering?.numFmt);
+    },
+  );
 
   test("a custom format carries its w:format through a save", () => {
     const level = levelNumFmt(numberingXml("custom", "0001, 0002, 0003"));
@@ -103,7 +132,9 @@ describe("ST_NumberFormat", () => {
     const saved = serializeNumberingXml(
       parseNumbering(numberingXml("custom", "0001, 0002, 0003")).definitions,
     );
-    expect(saved).toContain('<w:numFmt w:val="custom" w:format="0001, 0002, 0003"/>');
+    expect(saved).toContain(
+      '<w:numFmt w:val="custom" w:format="0001, 0002, 0003"/>',
+    );
     expect(levelNumFmt(saved)?.numFmtFormat).toBe("0001, 0002, 0003");
   });
 
@@ -130,7 +161,9 @@ describe("ST_NumberFormat", () => {
       })),
       nums: [],
     });
-    for (const [, value] of saved.matchAll(/<w:numFmt w:val="(?<val>[^"]*)"/gu)) {
+    for (const [, value] of saved.matchAll(
+      /<w:numFmt w:val="(?<val>[^"]*)"/gu,
+    )) {
       expect(NUMBER_FORMAT_VALUES).toContain(value);
     }
   });

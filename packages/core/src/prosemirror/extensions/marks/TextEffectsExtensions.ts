@@ -65,7 +65,8 @@ export const TextShadowExtension = createMarkExtension({
         "span",
         {
           class: "docx-text-shadow",
-          style: "text-shadow: 1px 1px 2px var(--doc-text-shadow, rgba(0,0,0,0.3))",
+          style:
+            "text-shadow: 1px 1px 2px var(--doc-text-shadow, rgba(0,0,0,0.3))",
         },
         0,
       ];
@@ -136,7 +137,8 @@ export const TextOutlineExtension = createMarkExtension({
         "span",
         {
           class: "docx-text-outline",
-          style: "-webkit-text-stroke: 1px currentColor; -webkit-text-fill-color: transparent",
+          style:
+            "-webkit-text-stroke: 1px currentColor; -webkit-text-fill-color: transparent",
         },
         0,
       ];

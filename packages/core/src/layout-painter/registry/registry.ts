@@ -9,7 +9,7 @@
 
 import { panic } from "better-result";
 
-import type { Fragment, FlowBlock, Measure } from "../../layout-engine/types";
+import type { FlowBlock, Fragment, Measure } from "../../layout-engine/types";
 import { renderFragment } from "../renderFragment";
 import type {
   BlockFor,
@@ -21,7 +21,9 @@ import type {
 
 export type FeatureRegistry = {
   register: <TKind extends Fragment["kind"]>(mod: FeatureModule<TKind>) => void;
-  get: <TKind extends Fragment["kind"]>(kind: TKind) => FeatureModule<TKind> | undefined;
+  get: <TKind extends Fragment["kind"]>(
+    kind: TKind,
+  ) => FeatureModule<TKind> | undefined;
   has: (kind: Fragment["kind"]) => boolean;
   render: (input: FeatureDispatchInput) => HTMLElement;
 };
@@ -41,13 +43,17 @@ const defaultFallback: FeatureFallback = ({ fragment, context, doc }) =>
  * Build a new feature registry. Callers register modules, then dispatch via
  * `render()`. The registry never mutates module objects.
  */
-export function createFeatureRegistry(options: CreateFeatureRegistryOptions = {}): FeatureRegistry {
+export function createFeatureRegistry(
+  options: CreateFeatureRegistryOptions = {},
+): FeatureRegistry {
   const modules = new Map<Fragment["kind"], FeatureModule>();
   const fallback = options.fallback ?? defaultFallback;
 
   const register: FeatureRegistry["register"] = (mod) => {
     if (modules.has(mod.kind)) {
-      panic(`FeatureRegistry: module for kind "${mod.kind}" is already registered`);
+      panic(
+        `FeatureRegistry: module for kind "${mod.kind}" is already registered`,
+      );
     }
     // SAFETY: we store as the erased `FeatureModule` and re-narrow on
     // retrieval; the module's own `kind` is the discriminator that makes
@@ -56,7 +62,9 @@ export function createFeatureRegistry(options: CreateFeatureRegistryOptions = {}
     modules.set(mod.kind, mod as unknown as FeatureModule);
   };
 
-  const get: FeatureRegistry["get"] = <TKind extends Fragment["kind"]>(kind: TKind) => {
+  const get: FeatureRegistry["get"] = <TKind extends Fragment["kind"]>(
+    kind: TKind,
+  ) => {
     const found = modules.get(kind);
     if (!found) {
       return undefined;
@@ -68,7 +76,13 @@ export function createFeatureRegistry(options: CreateFeatureRegistryOptions = {}
 
   const has: FeatureRegistry["has"] = (kind) => modules.has(kind);
 
-  const render: FeatureRegistry["render"] = ({ fragment, block, measure, context, doc }) => {
+  const render: FeatureRegistry["render"] = ({
+    fragment,
+    block,
+    measure,
+    context,
+    doc,
+  }) => {
     const mod = modules.get(fragment.kind);
     if (!mod || !block || !measure) {
       return fallback({ fragment, context, doc });
@@ -91,5 +105,7 @@ export function createFeatureRegistry(options: CreateFeatureRegistryOptions = {}
 // Helper aliases to keep the cast comments in `render` readable.
 type FragmentInputFor<TMod> =
   TMod extends FeatureModule<infer K> ? Extract<Fragment, { kind: K }> : never;
-type BlockInputFor<TMod> = TMod extends FeatureModule<infer K> ? BlockFor<K> : FlowBlock;
-type MeasureInputFor<TMod> = TMod extends FeatureModule<infer K> ? MeasureFor<K> : Measure;
+type BlockInputFor<TMod> =
+  TMod extends FeatureModule<infer K> ? BlockFor<K> : FlowBlock;
+type MeasureInputFor<TMod> =
+  TMod extends FeatureModule<infer K> ? MeasureFor<K> : Measure;

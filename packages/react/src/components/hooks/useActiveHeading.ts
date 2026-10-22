@@ -53,7 +53,8 @@ export const useActiveHeading = (
         }
         offsets.push({
           pm,
-          top: el.getBoundingClientRect().top - containerTop + container.scrollTop,
+          top:
+            el.getBoundingClientRect().top - containerTop + container.scrollTop,
         });
       }
       offsets.sort((a, b) => a.pm - b.pm);

@@ -1,4 +1,9 @@
-import { ensureLiveView, expect, forEachAdapter, openEditor } from "./parity-fixture";
+import {
+  ensureLiveView,
+  expect,
+  forEachAdapter,
+  openEditor,
+} from "./parity-fixture";
 
 // Both adapters now wire the comment lifecycle: applying a `comment` mark via
 // the shared core schema paints a `[data-comment-id]` anchor through the shared
@@ -6,17 +11,30 @@ import { ensureLiveView, expect, forEachAdapter, openEditor } from "./parity-fix
 // onto. Driving the mark through the bridge proves the comment-anchor path is
 // present and identical in each adapter (React CommentsSidebar / Vue
 // UnifiedSidebar both read the same painter attribute).
-forEachAdapter("comment: paints a comment anchor through the bridge", async (adapter, { page }) => {
-  await openEditor(page, adapter);
-  await ensureLiveView(page);
+forEachAdapter(
+  "comment: paints a comment anchor through the bridge",
+  async (adapter, { page }) => {
+    await openEditor(page, adapter);
+    await ensureLiveView(page);
 
-  const before = await page.evaluate(() => window.__folioParity?.countCommentAnchors() ?? -1);
-  const applied = await page.evaluate(() => window.__folioParity?.commentFirstWord() ?? false);
+    const before = await page.evaluate(
+      () => window.__folioParity?.countCommentAnchors() ?? -1,
+    );
+    const applied = await page.evaluate(
+      () => window.__folioParity?.commentFirstWord() ?? false,
+    );
 
-  expect(applied).toBe(true);
-  await expect
-    .poll(() => page.evaluate(() => window.__folioParity?.countCommentAnchors() ?? -1), {
-      timeout: 30_000,
-    })
-    .toBeGreaterThan(before);
-});
+    expect(applied).toBe(true);
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () => window.__folioParity?.countCommentAnchors() ?? -1,
+          ),
+        {
+          timeout: 30_000,
+        },
+      )
+      .toBeGreaterThan(before);
+  },
+);

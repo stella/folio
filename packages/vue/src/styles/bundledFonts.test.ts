@@ -1,12 +1,18 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+
 import { FONTSOURCE_PACKAGES } from "@stll/folio-core/fonts/fontsourceFaces";
 
 const readStylesheet = (packageName: "react" | "vue", file: string) =>
-  readFileSync(new URL(`../../../${packageName}/src/styles/${file}`, import.meta.url), "utf8");
+  readFileSync(
+    new URL(`../../../${packageName}/src/styles/${file}`, import.meta.url),
+    "utf8",
+  );
 
 const importSpecs = (css: string) =>
-  [...css.matchAll(/@import "(?<spec>@fontsource\/[^"]+)";/gu)].map((match) => match.groups?.spec);
+  [...css.matchAll(/@import "(?<spec>@fontsource\/[^"]+)";/gu)].map(
+    (match) => match.groups?.spec,
+  );
 
 test("Vue ships the same bundled font faces as React", () => {
   const vueFonts = readStylesheet("vue", "fonts.css");

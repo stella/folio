@@ -3,7 +3,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
@@ -19,11 +22,16 @@ const generatedCase = fc.record({
   italic: fc.boolean(),
   styleNumbered: fc.boolean(),
   mode: fc.constantFrom("direct", "tracked-changes", "suggested"),
-  levels: fc.array(fc.integer({ min: 0, max: 8 }), { minLength: 1, maxLength: 3 }),
+  levels: fc.array(fc.integer({ min: 0, max: 8 }), {
+    minLength: 1,
+    maxLength: 3,
+  }),
 });
 
 const headingState = (reviewer: FolioDocxReviewer, text: string) => {
-  const block = reviewer.getContent().find((candidate) => candidate.text === text);
+  const block = reviewer
+    .getContent()
+    .find((candidate) => candidate.text === text);
   if (!block) throw new Error("heading fixture must expose its text");
   return {
     kind: block.kind,
@@ -36,9 +44,14 @@ const headingState = (reviewer: FolioDocxReviewer, text: string) => {
   };
 };
 
-const expectReopenedHeading = async (reviewer: FolioDocxReviewer, text: string) => {
+const expectReopenedHeading = async (
+  reviewer: FolioDocxReviewer,
+  text: string,
+) => {
   const before = headingState(reviewer, text);
-  const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  const reopened = await FolioDocxReviewer.fromBuffer(
+    await reviewer.toBuffer(),
+  );
   expect(headingState(reopened, text)).toEqual(before);
 };
 
@@ -76,21 +89,29 @@ test(
           nums: [{ numId: 7, abstractNumId: 7 }],
         };
         const paragraph = model.package.document.content.at(0);
-        if (paragraph?.type !== "paragraph") throw new Error("fixture must begin with a paragraph");
+        if (paragraph?.type !== "paragraph")
+          throw new Error("fixture must begin with a paragraph");
         paragraph.formatting = {
           styleId: STYLE_ID,
           ...(entry.directLevel !== undefined && {
             outlineLevel: { kind: "heading", level: entry.directLevel },
           }),
         };
-        const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(model), {
-          author: "Editor",
-        });
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          await createDocx(model),
+          {
+            author: "Editor",
+          },
+        );
         const block = reviewer.getContent().find(({ text }) => text === TITLE);
         if (!block) throw new Error("fixture must expose its heading");
         const expected = headingState(reviewer, TITLE);
-        expect(expected.headingLevel).toBe((entry.directLevel ?? entry.styleLevel) + 1);
-        expect(expected.runs).toEqual([{ text: TITLE, bold: entry.bold, italic: entry.italic }]);
+        expect(expected.headingLevel).toBe(
+          (entry.directLevel ?? entry.styleLevel) + 1,
+        );
+        expect(expected.runs).toEqual([
+          { text: TITLE, bold: entry.bold, italic: entry.italic },
+        ]);
 
         for (const level of entry.levels) {
           const result = reviewer.applyDocumentOperations(
@@ -102,7 +123,9 @@ test(
                   id: "level",
                   type: "setBlockParagraphProperties",
                   blockId: block.id,
-                  properties: { numbering: { kind: "reference", numId: 7, ilvl: level } },
+                  properties: {
+                    numbering: { kind: "reference", numId: 7, ilvl: level },
+                  },
                 },
               ],
             },
@@ -134,7 +157,8 @@ test(
           { undefinedReferences: "refuse" },
         );
         expect(inserted.skipped).toEqual([]);
-        if (entry.mode === "suggested") expect(reviewer.acceptSuggestion("insert")).toBe(true);
+        if (entry.mode === "suggested")
+          expect(reviewer.acceptSuggestion("insert")).toBe(true);
         reviewer.acceptAll();
         expect(headingState(reviewer, TITLE)).toEqual(expected);
         expect(headingState(reviewer, INSERTED)).toEqual({

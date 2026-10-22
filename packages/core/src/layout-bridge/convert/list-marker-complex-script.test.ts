@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { computeListRendering, parseNumbering } from "../../docx/numberingParser";
+import {
+  computeListRendering,
+  parseNumbering,
+} from "../../docx/numberingParser";
 import { expectParagraphAttrs } from "../../prosemirror/attrs";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
@@ -68,7 +71,9 @@ describe("complex-script list-marker pipeline", () => {
       cs: false,
     });
 
-    const roundTripped = fromProseDoc(prose, undefined, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(prose, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const modelParagraph = roundTripped.package.document.content.at(0);
     if (modelParagraph?.type !== "paragraph") {
       throw new TypeError("Expected round-tripped paragraph");
@@ -80,7 +85,9 @@ describe("complex-script list-marker pipeline", () => {
 
   test("converts OOXML units and independent CS values once at the Flow boundary", () => {
     const prose = toProseDoc(parsedDocument());
-    const paragraph = toFlowBlocks(prose, {}).find((block) => block.kind === "paragraph");
+    const paragraph = toFlowBlocks(prose, {}).find(
+      (block) => block.kind === "paragraph",
+    );
     if (!paragraph) {
       throw new TypeError("Expected Flow paragraph");
     }

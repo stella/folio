@@ -11,15 +11,15 @@
  */
 
 import type {
-  Fragment,
   FlowBlock,
+  Fragment,
+  ImageBlock,
+  ImageMeasure,
   Measure,
   ParagraphBlock,
   ParagraphMeasure,
   TableBlock,
   TableMeasure,
-  ImageBlock,
-  ImageMeasure,
   TextBoxBlock,
   TextBoxMeasure,
 } from "../../layout-engine/types";
@@ -28,7 +28,10 @@ import type { RenderContext } from "../renderUtils";
 /**
  * Resolve the concrete Fragment subtype for a given kind discriminator.
  */
-export type FragmentFor<TKind extends Fragment["kind"]> = Extract<Fragment, { kind: TKind }>;
+export type FragmentFor<TKind extends Fragment["kind"]> = Extract<
+  Fragment,
+  { kind: TKind }
+>;
 
 /**
  * Maps Fragment kind -> concrete Block subtype. The block lookup table
@@ -48,15 +51,16 @@ export type BlockFor<TKind extends Fragment["kind"]> = TKind extends "paragraph"
 /**
  * Maps Fragment kind -> concrete Measure subtype. Same intent as `BlockFor`.
  */
-export type MeasureFor<TKind extends Fragment["kind"]> = TKind extends "paragraph"
-  ? ParagraphMeasure
-  : TKind extends "table"
-    ? TableMeasure
-    : TKind extends "image"
-      ? ImageMeasure
-      : TKind extends "textBox"
-        ? TextBoxMeasure
-        : Measure;
+export type MeasureFor<TKind extends Fragment["kind"]> =
+  TKind extends "paragraph"
+    ? ParagraphMeasure
+    : TKind extends "table"
+      ? TableMeasure
+      : TKind extends "image"
+        ? ImageMeasure
+        : TKind extends "textBox"
+          ? TextBoxMeasure
+          : Measure;
 
 /**
  * Inputs handed to a feature module's render function.

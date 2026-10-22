@@ -49,7 +49,9 @@ export const DEFAULT_SELECTION_STYLE: SelectionHighlightConfig = {
  * multiple inline elements. When a container is supplied, rectangles are
  * returned relative to it (and an out-of-container selection yields none).
  */
-function getSelectionRects(containerElement?: HTMLElement | null): HighlightRect[] {
+function getSelectionRects(
+  containerElement?: HTMLElement | null,
+): HighlightRect[] {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
     return [];
@@ -57,7 +59,10 @@ function getSelectionRects(containerElement?: HTMLElement | null): HighlightRect
 
   const range = selection.getRangeAt(0);
 
-  if (containerElement && !containerElement.contains(range.commonAncestorContainer)) {
+  if (
+    containerElement &&
+    !containerElement.contains(range.commonAncestorContainer)
+  ) {
     return [];
   }
 
@@ -89,7 +94,10 @@ function getSelectionRects(containerElement?: HTMLElement | null): HighlightRect
  * Merge adjacent or overlapping rectangles to reduce the number of highlight
  * elements and produce a cleaner visual appearance.
  */
-function mergeAdjacentRects(rects: HighlightRect[], tolerance = 2): HighlightRect[] {
+function mergeAdjacentRects(
+  rects: HighlightRect[],
+  tolerance = 2,
+): HighlightRect[] {
   if (rects.length <= 1) {
     return rects;
   }
@@ -116,7 +124,10 @@ function mergeAdjacentRects(rects: HighlightRect[], tolerance = 2): HighlightRec
     const adjacent = rect.left <= current.left + current.width + tolerance;
 
     if (sameLine && adjacent) {
-      const newRight = Math.max(current.left + current.width, rect.left + rect.width);
+      const newRight = Math.max(
+        current.left + current.width,
+        rect.left + rect.width,
+      );
       current.width = newRight - current.left;
       current.height = Math.max(current.height, rect.height);
     } else {
@@ -130,14 +141,18 @@ function mergeAdjacentRects(rects: HighlightRect[], tolerance = 2): HighlightRec
 }
 
 /** Get selection rectangles with adjacent-rect merging applied. */
-export function getMergedSelectionRects(containerElement?: HTMLElement | null): HighlightRect[] {
+export function getMergedSelectionRects(
+  containerElement?: HTMLElement | null,
+): HighlightRect[] {
   return mergeAdjacentRects(getSelectionRects(containerElement));
 }
 
 /** Whether there is an active, non-collapsed text selection. */
 export function hasActiveSelection(): boolean {
   const selection = window.getSelection();
-  return selection !== null && !selection.isCollapsed && selection.rangeCount > 0;
+  return (
+    selection !== null && !selection.isCollapsed && selection.rangeCount > 0
+  );
 }
 
 /** Whether the current selection is within a specific element. */
@@ -239,6 +254,7 @@ export function injectSelectionStyles(
 /** Whether selection styles are currently injected. */
 export function areSelectionStylesInjected(): boolean {
   return (
-    injectedStyleElement !== null || document.getElementById(SELECTION_STYLE_ELEMENT_ID) !== null
+    injectedStyleElement !== null ||
+    document.getElementById(SELECTION_STYLE_ELEMENT_ID) !== null
   );
 }

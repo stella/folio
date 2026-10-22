@@ -5,22 +5,28 @@
  * as `suggest_changes` takes them; `withIds` adds ids for a core batch.
  */
 
+import { paragraphNumberingReference } from "@stll/docx-core/model";
+import type {
+  FolioAIBlock,
+  FolioAIParagraphBlock,
+} from "@stll/folio-core/ai-edits";
 import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   hashFolioAIBlockText,
   isFolioDocumentOperationModeSupported,
 } from "@stll/folio-core/server";
-import type { FolioAIBlock, FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 
-import { paragraphNumberingReference } from "@stll/docx-core/model";
-
-import { createRandom, type Random, sentence } from "./random.ts";
 import { gapWeight, weightedChoice } from "./feature-coverage.ts";
+import { createRandom, type Random, sentence } from "./random.ts";
 import { type Picker, uniformPicker, wordsOf } from "./targets.ts";
 
 export type Mode = "direct" | "tracked-changes" | "suggested";
-export const MODES: readonly Mode[] = ["direct", "tracked-changes", "suggested"];
+export const MODES: readonly Mode[] = [
+  "direct",
+  "tracked-changes",
+  "suggested",
+];
 
 type BlockFields = Pick<FolioAIBlock, "id" | "text" | "table">;
 export type Block =
@@ -39,9 +45,14 @@ const inTable = (block: Block): boolean => block.table !== undefined;
  * nothing fits. `pick` chooses the block, span and split point; without one
  * the draws are uniform, as they were before targeting.
  */
-type Generator = (blocks: readonly Block[], random: Random, pick?: Picker) => Operation | null;
+type Generator = (
+  blocks: readonly Block[],
+  random: Random,
+  pick?: Picker,
+) => Operation | null;
 
-const withText = (blocks: readonly Block[]) => blocks.filter((block) => wordsOf(block.text).length);
+const withText = (blocks: readonly Block[]) =>
+  blocks.filter((block) => wordsOf(block.text).length);
 
 const numberingRefs = (blocks: readonly Block[]) =>
   blocks.flatMap((block) => {
@@ -59,7 +70,13 @@ const numberingRefs = (blocks: readonly Block[]) =>
     }
   });
 
-const referenceNumbering = ({ numId, level }: { numId: number; level: number }) => ({
+const referenceNumbering = ({
+  numId,
+  level,
+}: {
+  numId: number;
+  level: number;
+}) => ({
   kind: "reference" as const,
   numId,
   ilvl: level,
@@ -84,7 +101,12 @@ const paragraphProperties = (blocks: readonly Block[], random: Random) => {
     { alignment: "center" },
     { alignment: null },
     { spacing: { spaceBefore: 120, spaceAfter: 120 } },
-    { numbering: { kind: "newList", format: random.pick(["numbered", "bullet"]) } },
+    {
+      numbering: {
+        kind: "newList",
+        format: random.pick(["numbered", "bullet"]),
+      },
+    },
     ...(refs.length > 0
       ? [
           { numbering: referenceNumbering(random.pick(refs)) },
@@ -92,18 +114,24 @@ const paragraphProperties = (blocks: readonly Block[], random: Random) => {
         ]
       : []),
   ]);
-  if (!("styleId" in properties) || properties.styleId !== null) return properties;
+  if (!("styleId" in properties) || properties.styleId !== null)
+    return properties;
   // New dimensions must not shift the draws that pinned operation sequences use.
   const numberingRandom = createRandom(random.state());
   return numberingRandom.pick([
     properties,
     { styleId: null, numbering: { kind: "inherit" } },
-    { styleId: null, numbering: { kind: "levelOnly", ilvl: numberingRandom.int(2) } },
+    {
+      styleId: null,
+      numbering: { kind: "levelOnly", ilvl: numberingRandom.int(2) },
+    },
     ...(refs.length > 0
       ? [
           {
             styleId: null,
-            numbering: paragraphNumberingReference({ numId: numberingRandom.pick(refs).numId }),
+            numbering: paragraphNumberingReference({
+              numId: numberingRandom.pick(refs).numId,
+            }),
           },
         ]
       : []),
@@ -128,7 +156,9 @@ export const GENERATORS: Record<string, Generator> = {
     const candidates = withText(blocks);
     if (candidates.length === 0) return null;
     const handle = range(pick.block(candidates), pick);
-    return handle && { type: "replaceRange", range: handle, replace: "updated" };
+    return (
+      handle && { type: "replaceRange", range: handle, replace: "updated" }
+    );
   },
   formatRange: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = withText(blocks);
@@ -138,7 +168,11 @@ export const GENERATORS: Record<string, Generator> = {
       handle && {
         type: "formatRange",
         range: handle,
-        formatting: random.pick([{ bold: true }, { italic: true }, { underline: true }]),
+        formatting: random.pick([
+          { bold: true },
+          { italic: true },
+          { underline: true },
+        ]),
       }
     );
   },
@@ -146,7 +180,13 @@ export const GENERATORS: Record<string, Generator> = {
     const candidates = withText(blocks);
     if (candidates.length === 0) return null;
     const handle = range(pick.block(candidates), pick);
-    return handle && { type: "commentOnRange", range: handle, comment: { text: sentence(random) } };
+    return (
+      handle && {
+        type: "commentOnRange",
+        range: handle,
+        comment: { text: sentence(random) },
+      }
+    );
   },
   insertAfterBlock: (blocks, random, pick = uniformPicker(random)) => {
     if (blocks.length === 0) return null;
@@ -155,8 +195,15 @@ export const GENERATORS: Record<string, Generator> = {
       {},
       { styleId: "Heading2" },
       { alignment: "right" },
-      { numbering: { kind: "newList", format: random.pick(["numbered", "bullet"]) } },
-      ...(refs.length > 0 ? [{ numbering: referenceNumbering(random.pick(refs)) }] : []),
+      {
+        numbering: {
+          kind: "newList",
+          format: random.pick(["numbered", "bullet"]),
+        },
+      },
+      ...(refs.length > 0
+        ? [{ numbering: referenceNumbering(random.pick(refs)) }]
+        : []),
     ]);
     return {
       type: "insertAfterBlock",
@@ -168,11 +215,19 @@ export const GENERATORS: Record<string, Generator> = {
   insertBeforeBlock: (blocks, random, pick = uniformPicker(random)) =>
     blocks.length === 0
       ? null
-      : { type: "insertBeforeBlock", blockId: pick.block(blocks).id, text: sentence(random) },
+      : {
+          type: "insertBeforeBlock",
+          blockId: pick.block(blocks).id,
+          text: sentence(random),
+        },
   replaceBlock: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = blocks.filter((block) => !inTable(block));
     if (candidates.length === 0) return null;
-    return { type: "replaceBlock", blockId: pick.block(candidates).id, text: sentence(random) };
+    return {
+      type: "replaceBlock",
+      blockId: pick.block(candidates).id,
+      text: sentence(random),
+    };
   },
   deleteBlock: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = blocks.filter((block) => !inTable(block));
@@ -180,7 +235,9 @@ export const GENERATORS: Record<string, Generator> = {
     return { type: "deleteBlock", blockId: pick.block(candidates).id };
   },
   splitBlock: (blocks, random, pick = uniformPicker(random)) => {
-    const candidates = blocks.filter((block) => !inTable(block) && wordsOf(block.text).length > 1);
+    const candidates = blocks.filter(
+      (block) => !inTable(block) && wordsOf(block.text).length > 1,
+    );
     if (candidates.length === 0) return null;
     const block = pick.block(candidates);
     return { type: "splitBlock", blockId: block.id, offset: pick.split(block) };
@@ -188,7 +245,9 @@ export const GENERATORS: Record<string, Generator> = {
   mergeBlockWithNext: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = blocks.filter(
       (block, index) =>
-        !inTable(block) && blocks[index + 1] !== undefined && !inTable(blocks[index + 1] as Block),
+        !inTable(block) &&
+        blocks[index + 1] !== undefined &&
+        !inTable(blocks[index + 1] as Block),
     );
     if (candidates.length === 0) return null;
     return {
@@ -200,7 +259,11 @@ export const GENERATORS: Record<string, Generator> = {
         : {}),
     };
   },
-  setBlockParagraphProperties: (blocks, random, pick = uniformPicker(random)) => {
+  setBlockParagraphProperties: (
+    blocks,
+    random,
+    pick = uniformPicker(random),
+  ) => {
     const candidates = blocks.filter((block) => !inTable(block));
     if (candidates.length === 0) return null;
     return {
@@ -245,17 +308,25 @@ export const GENERATORS: Record<string, Generator> = {
   },
   deleteTableRow: (blocks, random, pick = uniformPicker(random)) => {
     const cells = blocks.filter(inTable);
-    return cells.length === 0 ? null : { type: "deleteTableRow", blockId: pick.block(cells).id };
+    return cells.length === 0
+      ? null
+      : { type: "deleteTableRow", blockId: pick.block(cells).id };
   },
   insertTableColumn: (blocks, random, pick = uniformPicker(random)) => {
     const cells = blocks.filter(inTable);
     return cells.length === 0
       ? null
-      : { type: "insertTableColumn", blockId: pick.block(cells).id, position: "after" };
+      : {
+          type: "insertTableColumn",
+          blockId: pick.block(cells).id,
+          position: "after",
+        };
   },
   deleteTable: (blocks, random, pick = uniformPicker(random)) => {
     const cells = blocks.filter(inTable);
-    return cells.length === 0 ? null : { type: "deleteTable", blockId: pick.block(cells).id };
+    return cells.length === 0
+      ? null
+      : { type: "deleteTable", blockId: pick.block(cells).id };
   },
 };
 
@@ -274,12 +345,18 @@ export const randomOperation = (
   blocks: readonly Block[],
   mode: Mode,
   random: Random,
-  { types = Object.keys(GENERATORS), pick, operationHits }: RandomOperationOptions = {},
+  {
+    types = Object.keys(GENERATORS),
+    pick,
+    operationHits,
+  }: RandomOperationOptions = {},
 ): Operation | null => {
   const usable = types.filter((type) => supports(type, mode));
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const type = operationHits
-      ? weightedChoice(usable, random, (candidate) => gapWeight(operationHits[candidate] ?? 0))
+      ? weightedChoice(usable, random, (candidate) =>
+          gapWeight(operationHits[candidate] ?? 0),
+        )
       : random.pick(usable);
     const generator = GENERATORS[type];
     const picker = typeof pick === "function" ? pick(type) : pick;
@@ -291,7 +368,9 @@ export const randomOperation = (
 
 /** A block id this document never had, shaped like a real one. */
 export const foreignBlockId = (random: Random): string =>
-  Array.from({ length: 8 }, () => random.pick([..."0123456789ABCDEF"])).join("");
+  Array.from({ length: 8 }, () => random.pick([..."0123456789ABCDEF"])).join(
+    "",
+  );
 
 /**
  * The mistakes a model makes, as arguments to `suggest_changes`. Each must be
@@ -300,19 +379,26 @@ export const foreignBlockId = (random: Random): string =>
  */
 export const MISTAKES: Record<
   string,
-  (blocks: readonly Block[], random: Random, staleIds: readonly string[]) => unknown
+  (
+    blocks: readonly Block[],
+    random: Random,
+    staleIds: readonly string[],
+  ) => unknown
 > = {
   staleBlockId: (_blocks, random, staleIds) => ({
     operations: [
       {
         type: "replaceBlock",
-        blockId: staleIds.length > 0 ? random.pick(staleIds) : foreignBlockId(random),
+        blockId:
+          staleIds.length > 0 ? random.pick(staleIds) : foreignBlockId(random),
         text: sentence(random),
       },
     ],
   }),
   foreignBlockId: (_blocks, random) => ({
-    operations: [{ type: "insertAfterBlock", blockId: foreignBlockId(random), text: "x" }],
+    operations: [
+      { type: "insertAfterBlock", blockId: foreignBlockId(random), text: "x" },
+    ],
   }),
   wrongPrecondition: (blocks, random) =>
     blocks.length === 0
@@ -334,7 +420,9 @@ export const MISTAKES: Record<
       operations: [
         {
           type: "replaceRange",
-          range: handle ? { ...handle, selectedTextHash: "hstale00" } : { type: "textRange" },
+          range: handle
+            ? { ...handle, selectedTextHash: "hstale00" }
+            : { type: "textRange" },
           replace: "x",
         },
       ],
@@ -369,9 +457,15 @@ export const MISTAKES: Record<
       },
     ],
   }),
-  unknownType: () => ({ operations: [{ type: "rewriteEverything", text: "x" }] }),
+  unknownType: () => ({
+    operations: [{ type: "rewriteEverything", text: "x" }],
+  }),
   missingFields: (blocks, random) => ({
-    operations: [{ type: random.pick(["replaceBlock", "insertAfterBlock", "deleteBlock"]) }],
+    operations: [
+      {
+        type: random.pick(["replaceBlock", "insertAfterBlock", "deleteBlock"]),
+      },
+    ],
   }),
   unknownKey: (blocks, random) => ({
     operations: [
@@ -413,7 +507,10 @@ export const MISTAKES: Record<
           text: "x",
           ...(refs.length > 0
             ? {
-                numbering: paragraphNumberingReference({ numId: random.pick(refs).numId, ilvl: 8 }),
+                numbering: paragraphNumberingReference({
+                  numId: random.pick(refs).numId,
+                  ilvl: 8,
+                }),
               }
             : {}),
         },
@@ -437,7 +534,9 @@ export const MISTAKES: Record<
  * code `suggest_changes` must refuse each with. Accepting one would save a
  * document that silently ignores what the model asked for.
  */
-export const REFUSED_MISTAKES: Readonly<Partial<Record<keyof typeof MISTAKES, string>>> = {
+export const REFUSED_MISTAKES: Readonly<
+  Partial<Record<keyof typeof MISTAKES, string>>
+> = {
   styleThatDoesNotExist: "missingStyle",
   undefinedNumId: "missingNumbering",
 };
@@ -454,7 +553,10 @@ export const undefinedNumbering = (blocks: readonly Block[]) => {
 export const coreBatch = (operations: readonly Operation[], mode: Mode) => ({
   version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   mode,
-  operations: operations.map((operation, index) => ({ id: `op-${index + 1}`, ...operation })),
+  operations: operations.map((operation, index) => ({
+    id: `op-${index + 1}`,
+    ...operation,
+  })),
 });
 
 // ---------------------------------------------------------------------------
@@ -493,7 +595,9 @@ const handleOf = (block: Block, start: number, end: number) =>
 
 const wordRange = (block: Block, which: number) => {
   const word = wordsOf(block.text).at(which);
-  return word ? handleOf(block, word.start, word.start + word.word.length) : null;
+  return word
+    ? handleOf(block, word.start, word.start + word.word.length)
+    : null;
 };
 
 const replaceWord = (block: Block, which = 0): Operation => ({
@@ -510,15 +614,27 @@ const ASTRAL = /[\u{10000}-\u{10FFFF}]/u;
 const emojiOf = (text: string): { start: number; end: number }[] =>
   [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(text)]
     .filter(({ segment }) => ASTRAL.test(segment))
-    .map(({ segment, index }) => ({ start: index, end: index + segment.length }));
+    .map(({ segment, index }) => ({
+      start: index,
+      end: index + segment.length,
+    }));
 
 const emojiBlocks = (blocks: readonly Block[]) =>
   blocks.filter(
-    (block) => !inTable(block) && emojiOf(block.text).length > 0 && wordsOf(block.text).length > 0,
+    (block) =>
+      !inTable(block) &&
+      emojiOf(block.text).length > 0 &&
+      wordsOf(block.text).length > 0,
   );
 
-type Location = { tableIndex: number; rowIndex: number; cellIndex: number; rowSpan: number };
-const locationOf = (block: Block): Location | undefined => block.table as Location | undefined;
+type Location = {
+  tableIndex: number;
+  rowIndex: number;
+  cellIndex: number;
+  rowSpan: number;
+};
+const locationOf = (block: Block): Location | undefined =>
+  block.table as Location | undefined;
 
 /** The paragraphs of the anchor's table row. */
 const rowCells = (blocks: readonly Block[], anchor: Block) =>
@@ -534,7 +650,10 @@ const cellCount = (blocks: readonly Block[]) =>
 const rowCount = (blocks: readonly Block[], anchor: Block) =>
   new Set(
     blocks
-      .filter((block) => locationOf(block)?.tableIndex === locationOf(anchor)?.tableIndex)
+      .filter(
+        (block) =>
+          locationOf(block)?.tableIndex === locationOf(anchor)?.tableIndex,
+      )
       .map((block) => locationOf(block)?.rowIndex),
   ).size;
 
@@ -559,7 +678,12 @@ export const mergedFindCollision: Collision = (blocks) => {
     if (!shared) continue;
     return [
       { type: "mergeBlockWithNext", blockId: block.id, separator: " " },
-      { type: "replaceInBlock", blockId: block.id, find: shared.word, replace: "revised" },
+      {
+        type: "replaceInBlock",
+        blockId: block.id,
+        find: shared.word,
+        replace: "revised",
+      },
     ];
   }
   return null;
@@ -578,7 +702,11 @@ export const COLLISIONS: Record<string, Collision> = {
     return block
       ? [
           { type: "deleteBlock", blockId: block.id },
-          { type: "insertBeforeBlock", blockId: block.id, text: "An added clause." },
+          {
+            type: "insertBeforeBlock",
+            blockId: block.id,
+            text: "An added clause.",
+          },
         ]
       : null;
   },
@@ -587,8 +715,16 @@ export const COLLISIONS: Record<string, Collision> = {
     return block
       ? [
           { type: "deleteBlock", blockId: block.id },
-          { type: "insertBeforeBlock", blockId: block.id, text: "First added clause." },
-          { type: "insertBeforeBlock", blockId: block.id, text: "Second added clause." },
+          {
+            type: "insertBeforeBlock",
+            blockId: block.id,
+            text: "First added clause.",
+          },
+          {
+            type: "insertBeforeBlock",
+            blockId: block.id,
+            text: "Second added clause.",
+          },
         ]
       : null;
   },
@@ -597,26 +733,42 @@ export const COLLISIONS: Record<string, Collision> = {
     return block
       ? [
           { type: "deleteTableRow", blockId: block.id },
-          { type: "insertBeforeBlock", blockId: block.id, text: "First added clause." },
-          { type: "insertBeforeBlock", blockId: block.id, text: "Second added clause." },
+          {
+            type: "insertBeforeBlock",
+            blockId: block.id,
+            text: "First added clause.",
+          },
+          {
+            type: "insertBeforeBlock",
+            blockId: block.id,
+            text: "Second added clause.",
+          },
         ]
       : null;
   },
   replaceThenDeleteSameBlock: (blocks) => {
     const block = prose(blocks)[0];
-    return block ? [replaceWord(block), { type: "deleteBlock", blockId: block.id }] : null;
+    return block
+      ? [replaceWord(block), { type: "deleteBlock", blockId: block.id }]
+      : null;
   },
   deleteThenReplaceSameBlock: (blocks) => {
     const block = prose(blocks)[0];
-    return block ? [{ type: "deleteBlock", blockId: block.id }, replaceWord(block)] : null;
+    return block
+      ? [{ type: "deleteBlock", blockId: block.id }, replaceWord(block)]
+      : null;
   },
   replaceThenDeleteNext: (blocks) => {
     const pair = withNext(blocks);
-    return pair ? [replaceWord(pair[0]), { type: "deleteBlock", blockId: pair[1].id }] : null;
+    return pair
+      ? [replaceWord(pair[0]), { type: "deleteBlock", blockId: pair[1].id }]
+      : null;
   },
   deleteThenReplaceNext: (blocks) => {
     const pair = withNext(blocks);
-    return pair ? [{ type: "deleteBlock", blockId: pair[0].id }, replaceWord(pair[1])] : null;
+    return pair
+      ? [{ type: "deleteBlock", blockId: pair[0].id }, replaceWord(pair[1])]
+      : null;
   },
   twoRangesInOneBlock: (blocks) => {
     const block = prose(blocks)[0];
@@ -644,13 +796,19 @@ export const COLLISIONS: Record<string, Collision> = {
     const handle = block && wordRange(block, -1);
     return handle
       ? [
-          { type: "commentOnRange", range: handle, comment: { text: "Check this word." } },
+          {
+            type: "commentOnRange",
+            range: handle,
+            comment: { text: "Check this word." },
+          },
           { type: "formatRange", range: handle, formatting: { italic: true } },
         ]
       : null;
   },
   splitThenEditSecondHalf: (blocks) => {
-    const block = prose(blocks).find((candidate) => wordsOf(candidate.text).length > 2);
+    const block = prose(blocks).find(
+      (candidate) => wordsOf(candidate.text).length > 2,
+    );
     const second = block && wordsOf(block.text)[1];
     const last = block && wordRange(block, -1);
     return block && second && last
@@ -663,15 +821,26 @@ export const COLLISIONS: Record<string, Collision> = {
   mergeThenEditNext: (blocks) => {
     const pair = withNext(blocks);
     return pair
-      ? [{ type: "mergeBlockWithNext", blockId: pair[0].id, separator: " " }, replaceWord(pair[1])]
+      ? [
+          { type: "mergeBlockWithNext", blockId: pair[0].id, separator: " " },
+          replaceWord(pair[1]),
+        ]
       : null;
   },
   replaceBlockThenInsertAfter: (blocks) => {
     const block = prose(blocks)[0];
     return block
       ? [
-          { type: "replaceBlock", blockId: block.id, text: "A rewritten clause." },
-          { type: "insertAfterBlock", blockId: block.id, text: "An added clause." },
+          {
+            type: "replaceBlock",
+            blockId: block.id,
+            text: "A rewritten clause.",
+          },
+          {
+            type: "insertAfterBlock",
+            blockId: block.id,
+            text: "An added clause.",
+          },
         ]
       : null;
   },
@@ -679,8 +848,16 @@ export const COLLISIONS: Record<string, Collision> = {
     const block = prose(blocks)[0];
     return block
       ? [
-          { type: "insertAfterBlock", blockId: block.id, text: "First added clause." },
-          { type: "insertAfterBlock", blockId: block.id, text: "Second added clause." },
+          {
+            type: "insertAfterBlock",
+            blockId: block.id,
+            text: "First added clause.",
+          },
+          {
+            type: "insertAfterBlock",
+            blockId: block.id,
+            text: "Second added clause.",
+          },
         ]
       : null;
   },
@@ -688,13 +865,23 @@ export const COLLISIONS: Record<string, Collision> = {
     const block = prose(blocks).at(-1);
     return block
       ? [
-          { type: "insertAfterBlock", blockId: block.id, text: "Clause after." },
-          { type: "insertBeforeBlock", blockId: block.id, text: "Clause before." },
+          {
+            type: "insertAfterBlock",
+            blockId: block.id,
+            text: "Clause after.",
+          },
+          {
+            type: "insertBeforeBlock",
+            blockId: block.id,
+            text: "Clause before.",
+          },
         ]
       : null;
   },
   restyleThenEdit: (blocks) => {
-    const block = prose(blocks).find((candidate) => candidate.kind === "paragraph");
+    const block = prose(blocks).find(
+      (candidate) => candidate.kind === "paragraph",
+    );
     return block
       ? [
           {
@@ -742,7 +929,10 @@ export const COLLISIONS: Record<string, Collision> = {
             type: "insertTableRow",
             blockId: anchor.id,
             position: "after",
-            cellTexts: cellTexts(cellCount(rowCells(blocks, anchor)), "Row cell"),
+            cellTexts: cellTexts(
+              cellCount(rowCells(blocks, anchor)),
+              "Row cell",
+            ),
           },
         ]
       : null;
@@ -755,7 +945,10 @@ export const COLLISIONS: Record<string, Collision> = {
             type: "insertTableRow",
             blockId: anchor.id,
             position: "before",
-            cellTexts: cellTexts(cellCount(rowCells(blocks, anchor)), "Earlier cell"),
+            cellTexts: cellTexts(
+              cellCount(rowCells(blocks, anchor)),
+              "Earlier cell",
+            ),
           },
         ]
       : null;
@@ -776,10 +969,14 @@ export const COLLISIONS: Record<string, Collision> = {
   tableRowThroughVerticalMerge: (blocks) => {
     // A row after one where a vertical merge starts: the merge grows through
     // the new row, which has one cell fewer; every text must still land.
-    const anchor = blocks.find((block) => (locationOf(block)?.rowSpan ?? 1) > 1);
+    const anchor = blocks.find(
+      (block) => (locationOf(block)?.rowSpan ?? 1) > 1,
+    );
     if (!anchor) return null;
     const cells = rowCells(blocks, anchor);
-    const merged = cells.filter((block) => (locationOf(block)?.rowSpan ?? 1) > 1).length;
+    const merged = cells.filter(
+      (block) => (locationOf(block)?.rowSpan ?? 1) > 1,
+    ).length;
     return [
       {
         type: "insertTableRow",
@@ -790,9 +987,13 @@ export const COLLISIONS: Record<string, Collision> = {
     ];
   },
   deleteRowThenEditAnotherRow: (blocks) => {
-    const cells = blocks.filter((block) => inTable(block) && wordsOf(block.text).length > 0);
+    const cells = blocks.filter(
+      (block) => inTable(block) && wordsOf(block.text).length > 0,
+    );
     const first = cells[0];
-    const inFirstRow = new Set(first ? rowCells(blocks, first).map(({ id }) => id) : []);
+    const inFirstRow = new Set(
+      first ? rowCells(blocks, first).map(({ id }) => id) : [],
+    );
     const other = cells.find((cell) => !inFirstRow.has(cell.id));
     return first && other
       ? [{ type: "deleteTableRow", blockId: other.id }, replaceWord(first)]
@@ -811,18 +1012,37 @@ export const COLLISIONS: Record<string, Collision> = {
       );
       const after = wordsOf(block.text).find((word) => word.start >= last.end);
       const left = before && handleOf(block, before.start, first.start);
-      if (left) operations.push({ type: "replaceRange", range: left, replace: "Signed " });
-      const right = after && handleOf(block, last.end, after.start + after.word.length);
-      if (right) operations.push({ type: "replaceRange", range: right, replace: " endorsed" });
+      if (left)
+        operations.push({
+          type: "replaceRange",
+          range: left,
+          replace: "Signed ",
+        });
+      const right =
+        after && handleOf(block, last.end, after.start + after.word.length);
+      if (right)
+        operations.push({
+          type: "replaceRange",
+          range: right,
+          replace: " endorsed",
+        });
     }
     return operations.length > 0 ? operations : null;
   },
   replaceEmoji: (blocks) => {
     const operations: Operation[] = [];
     for (const block of emojiBlocks(blocks)) {
-      const { start, end } = emojiOf(block.text)[0] as { start: number; end: number };
+      const { start, end } = emojiOf(block.text)[0] as {
+        start: number;
+        end: number;
+      };
       const handle = handleOf(block, start, end);
-      if (handle) operations.push({ type: "replaceRange", range: handle, replace: "(ok)" });
+      if (handle)
+        operations.push({
+          type: "replaceRange",
+          range: handle,
+          replace: "(ok)",
+        });
     }
     return operations.length > 0 ? operations : null;
   },
@@ -833,7 +1053,11 @@ export const COLLISIONS: Record<string, Collision> = {
       if (!handle) continue;
       operations.push(
         { type: "formatRange", range: handle, formatting: { bold: true } },
-        { type: "commentOnRange", range: handle, comment: { text: "Around the emoji." } },
+        {
+          type: "commentOnRange",
+          range: handle,
+          comment: { text: "Around the emoji." },
+        },
       );
     }
     return operations.length > 0 ? operations : null;
@@ -859,6 +1083,8 @@ export const COLLISIONS: Record<string, Collision> = {
     const join = block ? block.text.indexOf(ZWJ) : -1;
     // The first person of a family: a whole code point, half a character.
     const handle = block && join >= 2 ? handleOf(block, join - 2, join) : null;
-    return handle ? [{ type: "replaceRange", range: handle, replace: "\u{1F469}" }] : null;
+    return handle
+      ? [{ type: "replaceRange", range: handle, replace: "\u{1F469}" }]
+      : null;
   },
 };

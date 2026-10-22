@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
 import path from "node:path";
 import { EditorState } from "prosemirror-state";
+
+import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
+import { getTrackedChangesFromDoc } from "../../packages/core/src/ai-edits/read";
 import { createFolioAIEditSnapshot } from "../../packages/core/src/ai-edits/snapshot";
 import { applyFolioDocumentOperations } from "../../packages/core/src/document-operations";
-import { getTrackedChangesFromDoc } from "../../packages/core/src/ai-edits/read";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { toProseDoc } from "../../packages/core/src/prosemirror/conversion/toProseDoc";
-import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { createInterleavingSuggest } from "./interleavingBridge";
 
 // Compile the actual browser entry, following every runtime import. A future

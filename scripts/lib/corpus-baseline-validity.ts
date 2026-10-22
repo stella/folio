@@ -18,7 +18,16 @@
 import path from "node:path";
 
 import type { CorpusBaseline, CorpusBaselineEntry } from "./corpus-baseline";
-import { type ExpectedDispositions, validateExpectedDispositions } from "./corpus-dispositions";
+import {
+  type ExpectedDispositions,
+  validateExpectedDispositions,
+} from "./corpus-dispositions";
+import {
+  FAMILY_BASELINE_FAMILIES,
+  type FamilyBaseline,
+  familyBaselinePath,
+  loadFamilyBaseline,
+} from "./corpus-family-baseline";
 import {
   type CorpusInvariantFamily,
   EXTENDED_CORPUS_INVARIANTS,
@@ -26,12 +35,6 @@ import {
   isGatingFamily,
   isZeroFamily,
 } from "./corpus-invariants/contract";
-import {
-  FAMILY_BASELINE_FAMILIES,
-  type FamilyBaseline,
-  familyBaselinePath,
-  loadFamilyBaseline,
-} from "./corpus-family-baseline";
 import {
   BASELINE_PATH,
   CORPUS_DIRECTORY,
@@ -96,11 +99,17 @@ const rowIssues = (
     }
     seen.add(row.signature);
     if (previous !== undefined && previous > row.signature) {
-      issues.push({ file, detail: `entries are not sorted by signature at ${row.signature}` });
+      issues.push({
+        file,
+        detail: `entries are not sorted by signature at ${row.signature}`,
+      });
     }
     previous = row.signature;
     if (!Number.isInteger(row.files) || row.files < 1) {
-      issues.push({ file, detail: `${row.signature} records ${row.files} files` });
+      issues.push({
+        file,
+        detail: `${row.signature} records ${row.files} files`,
+      });
     }
     const owning = familyOf(row.invariant);
     if (isZeroFamily(owning)) {
@@ -116,10 +125,16 @@ const rowIssues = (
       });
     }
     if (family !== undefined && owning !== family) {
-      issues.push({ file, detail: `${row.signature} belongs to family \`${owning}\`` });
+      issues.push({
+        file,
+        detail: `${row.signature} belongs to family \`${owning}\``,
+      });
     }
     if (row.producers !== undefined) {
-      const counted = Object.values(row.producers).reduce((total, count) => total + count, 0);
+      const counted = Object.values(row.producers).reduce(
+        (total, count) => total + count,
+        0,
+      );
       if (counted !== row.files) {
         issues.push({
           file,
@@ -133,7 +148,11 @@ const rowIssues = (
 
 type Digests = { lockDigest: string; reportOnlyDigest: string };
 
-const digestIssues = (file: string, measured: Digests, committed: Digests): ValidityIssue[] => {
+const digestIssues = (
+  file: string,
+  measured: Digests,
+  committed: Digests,
+): ValidityIssue[] => {
   const issues: ValidityIssue[] = [];
   if (measured.lockDigest !== committed.lockDigest) {
     issues.push({
@@ -185,7 +204,10 @@ export const corpusValidityIssues = ({
   issues.push(...digestIssues(baselineFile, baseline, committed));
   issues.push(...rowIssues(baselineFile, baseline.entries, undefined));
   if (!Number.isInteger(baseline.failedFiles) || baseline.failedFiles < 0) {
-    issues.push({ file: baselineFile, detail: `failedFiles is ${baseline.failedFiles}` });
+    issues.push({
+      file: baselineFile,
+      detail: `failedFiles is ${baseline.failedFiles}`,
+    });
   }
 
   for (const family of FAMILY_BASELINE_FAMILIES) {
@@ -201,13 +223,18 @@ export const corpusValidityIssues = ({
     issues.push(...digestIssues(file, loaded, committed));
     issues.push(...rowIssues(file, loaded.entries, family));
     if (loaded.failedFiles > loaded.files) {
-      issues.push({ file, detail: `${loaded.failedFiles} of ${loaded.files} files fail` });
+      issues.push({
+        file,
+        detail: `${loaded.failedFiles} of ${loaded.files} files fail`,
+      });
     }
   }
 
   // `corpus/baseline.json` aggregates every invariant, so a family row lives in
   // two committed files and the two have to agree about it.
-  const aggregated = new Map(baseline.entries.map((entry) => [entry.signature, entry.files]));
+  const aggregated = new Map(
+    baseline.entries.map((entry) => [entry.signature, entry.files]),
+  );
   for (const [family, loaded] of families) {
     for (const entry of loaded.entries) {
       const inCore = aggregated.get(entry.signature);
@@ -224,16 +251,25 @@ export const corpusValidityIssues = ({
   const seenRefusals = new Set<string>();
   for (const entry of refusals.entries) {
     if (seenRefusals.has(entry.signature)) {
-      issues.push({ file: refusalsFile, detail: `duplicate signature: ${entry.signature}` });
+      issues.push({
+        file: refusalsFile,
+        detail: `duplicate signature: ${entry.signature}`,
+      });
     }
     seenRefusals.add(entry.signature);
     if (entry.reason.trim().length === 0) {
-      issues.push({ file: refusalsFile, detail: `${entry.signature} states no reason` });
+      issues.push({
+        file: refusalsFile,
+        detail: `${entry.signature} states no reason`,
+      });
     }
     // A refusal is a decision and a baseline row is a defect. A signature in
     // both would be excused and ratcheted at once.
     if (aggregated.has(entry.signature)) {
-      issues.push({ file: refusalsFile, detail: `${entry.signature} is also a baseline defect` });
+      issues.push({
+        file: refusalsFile,
+        detail: `${entry.signature} is also a baseline defect`,
+      });
     }
   }
 
@@ -271,21 +307,34 @@ export const corpusValidityIssues = ({
 };
 
 /** Read every committed file the checks read. */
-export const loadCommittedCorpusFiles = async (): Promise<CommittedCorpusFiles> => {
-  const [baseline, refusals, dispositions, reportOnly, lock] = await Promise.all([
-    Bun.file(BASELINE_PATH).json() as Promise<CorpusBaseline>,
-    Bun.file(EXPECTED_REFUSALS_PATH).json() as Promise<ExpectedRefusals>,
-    Bun.file(EXPECTED_DISPOSITIONS_PATH).json() as Promise<ExpectedDispositions>,
-    Bun.file(REPORT_ONLY_FILES_PATH).json() as Promise<ReportOnlyFiles>,
-    loadCorpusLock(),
-  ]);
-  const loaded = await Promise.all(
-    FAMILY_BASELINE_FAMILIES.map(
-      async (family) => [family, await loadFamilyBaseline(family)] as const,
-    ),
-  );
-  return { baseline, families: new Map(loaded), refusals, dispositions, reportOnly, lock };
-};
+export const loadCommittedCorpusFiles =
+  async (): Promise<CommittedCorpusFiles> => {
+    const [baseline, refusals, dispositions, reportOnly, lock] =
+      await Promise.all([
+        Bun.file(BASELINE_PATH).json() as Promise<CorpusBaseline>,
+        Bun.file(EXPECTED_REFUSALS_PATH).json() as Promise<ExpectedRefusals>,
+        Bun.file(
+          EXPECTED_DISPOSITIONS_PATH,
+        ).json() as Promise<ExpectedDispositions>,
+        Bun.file(REPORT_ONLY_FILES_PATH).json() as Promise<ReportOnlyFiles>,
+        loadCorpusLock(),
+      ]);
+    const loaded = await Promise.all(
+      FAMILY_BASELINE_FAMILIES.map(
+        async (family) => [family, await loadFamilyBaseline(family)] as const,
+      ),
+    );
+    return {
+      baseline,
+      families: new Map(loaded),
+      refusals,
+      dispositions,
+      reportOnly,
+      lock,
+    };
+  };
 
-export const renderValidityIssues = (issues: readonly ValidityIssue[]): string =>
+export const renderValidityIssues = (
+  issues: readonly ValidityIssue[],
+): string =>
   issues.map(({ file, detail }) => `- ${file}: ${detail}`).join("\n");

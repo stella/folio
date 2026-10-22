@@ -5,8 +5,8 @@
  */
 
 import type { Mark } from "prosemirror-model";
+
 import type { RunFormatting } from "../../layout-engine/types";
-import { STYLE_TOGGLE_KEYS } from "../../utils/textFormattingMerge";
 import { expectCharacterStyleMarkAttrs } from "../../prosemirror/attrs";
 import {
   resolveEffectiveRunStyleFormatting,
@@ -14,6 +14,7 @@ import {
 } from "../../prosemirror/runStyleFormatting";
 import type { RunFormattingOverrideAttrs } from "../../prosemirror/schema/marks";
 import type { TextFormatting } from "../../types/document";
+import { STYLE_TOGGLE_KEYS } from "../../utils/textFormattingMerge";
 
 const DEFAULT_BLACK_TEXT_COLOR_VALUES = new Set(["000000", "000"]);
 
@@ -65,7 +66,10 @@ export function mergeRunFormatting(
     ...paraDefaults,
     ...markDefaultBlackTextColorSource(formatting, paraDefaults),
   };
-  if (formatting.fontFamily !== undefined && formatting.alternateFontFamily === undefined) {
+  if (
+    formatting.fontFamily !== undefined &&
+    formatting.alternateFontFamily === undefined
+  ) {
     delete merged.alternateFontFamily;
   }
   if (
@@ -83,7 +87,10 @@ export function mergeRunFormatting(
   if (merged.letterSpacing === 0) {
     delete merged.letterSpacing;
   }
-  if (formatting.horizontalScale === 100 && paraDefaults.horizontalScale === undefined) {
+  if (
+    formatting.horizontalScale === 100 &&
+    paraDefaults.horizontalScale === undefined
+  ) {
     delete merged.horizontalScale;
   }
   return merged;
@@ -109,7 +116,10 @@ const CHARACTER_STYLE_TOGGLE_LAYOUT_PROPERTIES = {
   shadow: "textShadow",
   smallCaps: "smallCaps",
   strike: "strike",
-} as const satisfies Record<(typeof STYLE_TOGGLE_KEYS)[number], keyof RunFormatting>;
+} as const satisfies Record<
+  (typeof STYLE_TOGGLE_KEYS)[number],
+  keyof RunFormatting
+>;
 
 /** Restore character-style toggle values that plain visual marks cannot represent. */
 export function applyCharacterStyleToggleFormatting({
@@ -118,7 +128,9 @@ export function applyCharacterStyleToggleFormatting({
   paragraphFormatting,
   styleResolver,
 }: ApplyCharacterStyleToggleFormattingOptions): void {
-  const characterStyleMark = marks.find((mark) => mark.type.name === "characterStyle");
+  const characterStyleMark = marks.find(
+    (mark) => mark.type.name === "characterStyle",
+  );
   const styleRPr = characterStyleMark
     ? styleResolver.getRunStyleOwnProperties(
         expectCharacterStyleMarkAttrs(characterStyleMark).styleId,
@@ -139,12 +151,19 @@ export function applyCharacterStyleToggleFormatting({
     }
     const layoutProperty = CHARACTER_STYLE_TOGGLE_LAYOUT_PROPERTIES[property];
     if (formatting[layoutProperty] === undefined) {
-      Reflect.set(formatting, layoutProperty, effectiveStyleFormatting?.[property] ?? false);
+      Reflect.set(
+        formatting,
+        layoutProperty,
+        effectiveStyleFormatting?.[property] ?? false,
+      );
     }
   }
 }
 
-type RunFormattingOverrideHandler = (formatting: RunFormatting, value: unknown) => void;
+type RunFormattingOverrideHandler = (
+  formatting: RunFormatting,
+  value: unknown,
+) => void;
 
 const suppressInheritedRunFormatting = (
   formatting: RunFormatting,
@@ -283,7 +302,11 @@ const RUN_FORMATTING_OVERRIDE_HANDLERS = {
     }
   },
   shading(formatting, value) {
-    if (typeof value === "object" && value !== null && Reflect.get(value, "pattern") === "nil") {
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      Reflect.get(value, "pattern") === "nil"
+    ) {
       suppressInheritedRunFormatting(formatting, "shading");
     }
   },
@@ -318,9 +341,14 @@ const RUN_FORMATTING_OVERRIDE_HANDLERS = {
       formatting.subscript = false;
     }
   },
-} satisfies Record<keyof RunFormattingOverrideAttrs, RunFormattingOverrideHandler>;
+} satisfies Record<
+  keyof RunFormattingOverrideAttrs,
+  RunFormattingOverrideHandler
+>;
 
-const RUN_FORMATTING_OVERRIDE_HANDLER_ENTRIES = Object.entries(RUN_FORMATTING_OVERRIDE_HANDLERS);
+const RUN_FORMATTING_OVERRIDE_HANDLER_ENTRIES = Object.entries(
+  RUN_FORMATTING_OVERRIDE_HANDLERS,
+);
 
 export function applyRunFormattingOverrides(
   formatting: RunFormatting,

@@ -1,4 +1,4 @@
-import { readBlobText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
+import type { Node as PMNode } from "prosemirror-model";
 /**
  * Image clipboard + replace helpers. Pure DOM/PM operations — every
  * function takes the view as a parameter so they're testable and don't
@@ -14,18 +14,22 @@ import { readBlobText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
  * to our fork's suggestion-mode plugin module (the plugins barrel does not
  * re-export it).
  */
-
-import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+
 import { makeRevisionInfo } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
+import { encodeUtf8, readBlobText } from "@stll/folio-core/utils/textEncoding";
 
 /**
  * Apply the `insertion` mark to the just-replaced image when suggesting
  * mode is active, so clipboard-pasted images round-trip as tracked
  * additions. Run after replaceSelectionWith on the SAME tr.
  */
-function tagPastedImageAsInsertion(view: EditorView, tr: Transaction, imageNode: PMNode): void {
+function tagPastedImageAsInsertion(
+  view: EditorView,
+  tr: Transaction,
+  imageNode: PMNode,
+): void {
   const info = makeRevisionInfo(view.state);
   const insertionType = view.state.schema.marks["insertion"];
   if (!info || !insertionType) return;
@@ -81,21 +85,30 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
       if (typeof reader.result === "string") resolve(reader.result);
       else reject(new Error("Failed to read blob as data URL"));
     };
-    reader.onerror = () => reject(reader.error ?? new Error("Failed to read blob"));
+    reader.onerror = () =>
+      reject(reader.error ?? new Error("Failed to read blob"));
     reader.readAsDataURL(blob);
   });
 }
 
-export function loadImageDimensions(src: string): Promise<{ width: number; height: number }> {
+export function loadImageDimensions(
+  src: string,
+): Promise<{ width: number; height: number }> {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onload = () =>
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
     img.onerror = () => resolve({ width: 200, height: 200 });
     img.src = src;
   });
 }
 
-function insertPastedImage(view: EditorView, src: string, width: number, height: number): void {
+function insertPastedImage(
+  view: EditorView,
+  src: string,
+  width: number,
+  height: number,
+): void {
   const imageType = view.state.schema.nodes["image"];
   if (!imageType) return;
   const imageNode = imageType.create({
@@ -137,8 +150,12 @@ export async function pasteFromClipboard(view: EditorView): Promise<void> {
         const match = /<img[^>]+src="(?<src>[^"]+)"[^>]*>/iu.exec(html);
         const src = match?.groups?.["src"];
         if (src) {
-          const widthMatch = /data-width="(?<w>\d+)"/u.exec(html)?.groups?.["w"];
-          const heightMatch = /data-height="(?<h>\d+)"/u.exec(html)?.groups?.["h"];
+          const widthMatch = /data-width="(?<w>\d+)"/u.exec(html)?.groups?.[
+            "w"
+          ];
+          const heightMatch = /data-height="(?<h>\d+)"/u.exec(html)?.groups?.[
+            "h"
+          ];
           const w = widthMatch ? Number(widthMatch) : 200;
           const h = heightMatch ? Number(heightMatch) : 200;
           insertPastedImage(view, src, w || 200, h || 200);

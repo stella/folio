@@ -7,7 +7,8 @@ import { IDENTITY_ATTRIBUTES } from "../specifications/generated/identity-attrib
 import baseline from "./identity-attribute-baseline.json";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const RULE_MARKER = "folio-identity-attributes(no-prefix-resolved-identity-read)";
+const RULE_MARKER =
+  "folio-identity-attributes(no-prefix-resolved-identity-read)";
 
 setDefaultTimeout(30_000);
 
@@ -75,10 +76,15 @@ describe("identity-attribute set", () => {
   });
 
   test("the generated set is what the schema graph and the extension table say", () => {
-    const result = Bun.spawnSync(["bun", "scripts/generate-identity-attributes.ts", "check"], {
-      cwd: REPO_ROOT,
-    });
-    expect(`${result.stdout.toString()}${result.stderr.toString()}`).toContain("up to date");
+    const result = Bun.spawnSync(
+      ["bun", "scripts/generate-identity-attributes.ts", "check"],
+      {
+        cwd: REPO_ROOT,
+      },
+    );
+    expect(`${result.stdout.toString()}${result.stderr.toString()}`).toContain(
+      "up to date",
+    );
     expect(result.exitCode).toBe(0);
   });
 });

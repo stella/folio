@@ -2,12 +2,12 @@ import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
-import { tableCellHasMeaningfulContent } from "../../docx/verticalMergeProjection";
 import {
   isCellMergeContinuation,
   isCellMergeStart,
   isTableCellMergeRevisionContinuation,
 } from "../../docx/tableParser";
+import { tableCellHasMeaningfulContent } from "../../docx/verticalMergeProjection";
 import { expectTableCellAttrs } from "../attrs";
 import { standaloneTableCellFromProseMirror } from "../conversion/fromProseDoc";
 
@@ -48,7 +48,9 @@ export const tableMergeFoldDecisions = ({
       position,
       continues &&
         (mode === "reject" ||
-          !tableCellHasMeaningfulContent(standaloneTableCellFromProseMirror(cell))),
+          !tableCellHasMeaningfulContent(
+            standaloneTableCellFromProseMirror(cell),
+          )),
     );
     if (!continues) continue;
     const row = Math.floor(index / map.width);
@@ -57,7 +59,8 @@ export const tableMergeFoldDecisions = ({
       continue;
     }
     const abovePosition = map.map[index - map.width];
-    if (abovePosition === undefined) return panic("Merge resolution lost its origin");
+    if (abovePosition === undefined)
+      return panic("Merge resolution lost its origin");
     const above = table.nodeAt(abovePosition);
     if (!above) return panic("Merge resolution lost its origin");
     const rectangle = map.findCell(position);
@@ -76,7 +79,9 @@ export const tableMergeFoldDecisions = ({
       aboveMarker?.kind === "merge" &&
       (revisionSet === null || revisionSet.has(aboveMarker.info.revisionId)) &&
       isTableCellMergeRevisionContinuation(
-        mode === "accept" ? aboveMarker.verticalMerge : aboveMarker.verticalMergeOriginal,
+        mode === "accept"
+          ? aboveMarker.verticalMerge
+          : aboveMarker.verticalMergeOriginal,
       );
     const aboveModel = standaloneTableCellFromProseMirror(above);
     // A visible continuation closes the reader's merge chain. Cells below it
@@ -84,10 +89,15 @@ export const tableMergeFoldDecisions = ({
     if (
       mode === "accept" &&
       ((aboveContinues && decisions.get(abovePosition) === false) ||
-        (isCellMergeContinuation(aboveModel) && tableCellHasMeaningfulContent(aboveModel)))
+        (isCellMergeContinuation(aboveModel) &&
+          tableCellHasMeaningfulContent(aboveModel)))
     )
       decisions.set(position, false);
-    if (aboveContinues || isCellMergeContinuation(aboveModel) || isCellMergeStart(aboveModel))
+    if (
+      aboveContinues ||
+      isCellMergeContinuation(aboveModel) ||
+      isCellMergeStart(aboveModel)
+    )
       continue;
     origins.add(abovePosition);
   }
@@ -97,7 +107,10 @@ export const tableMergeFoldDecisions = ({
 /** Persist an implicit merge origin even when reader rules retain its continuation. */
 export const resolvedTableMergeOriginAttrs = (cell: PMNode) => ({
   ...cell.attrs,
-  _originalFormatting: { ...expectTableCellAttrs(cell)._originalFormatting, vMerge: "restart" },
+  _originalFormatting: {
+    ...expectTableCellAttrs(cell)._originalFormatting,
+    vMerge: "restart",
+  },
   _preserveVMergeRestart: true,
 });
 
@@ -116,10 +129,12 @@ export const resolvedVisibleTableCellMergeAttrs = ({
   const attrs = expectTableCellAttrs(cell);
   const marker = attrs.cellMarker;
   if (marker?.kind !== "merge") return panic("Cell has no merge revision");
-  const continuation = mode === "accept" ? marker.verticalMerge : marker.verticalMergeOriginal;
+  const continuation =
+    mode === "accept" ? marker.verticalMerge : marker.verticalMergeOriginal;
   const formatting = { ...attrs._originalFormatting };
   if (origin) formatting.vMerge = "restart";
-  else if (isTableCellMergeRevisionContinuation(continuation)) formatting.vMerge = "continue";
+  else if (isTableCellMergeRevisionContinuation(continuation))
+    formatting.vMerge = "continue";
   else delete formatting.vMerge;
   return {
     ...cell.attrs,

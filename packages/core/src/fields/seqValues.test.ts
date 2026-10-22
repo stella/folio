@@ -79,11 +79,15 @@ describe("buildSeqValues", () => {
       rows: [
         {
           id: "r0",
-          cells: [{ id: "c0", blocks: [para("cap0", [seq(10, "SEQ Figure")])] }],
+          cells: [
+            { id: "c0", blocks: [para("cap0", [seq(10, "SEQ Figure")])] },
+          ],
         },
         {
           id: "r1",
-          cells: [{ id: "c1", blocks: [para("cap1", [seq(20, "SEQ Figure")])] }],
+          cells: [
+            { id: "c1", blocks: [para("cap1", [seq(20, "SEQ Figure")])] },
+          ],
         },
       ],
     };

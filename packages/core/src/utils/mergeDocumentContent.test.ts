@@ -8,19 +8,32 @@
 // colliding markdown list silently renders with the preset's clause/
 // definition marker instead of a plain bullet/number.
 
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
-import { docxToMarkdown } from "../docx/server/docxToMarkdown";
+import {
+  MAX_REVISION_ID,
+  paragraphNumberingReferenceId,
+} from "@stll/docx-core/model";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createDocx } from "../docx/rezip";
+import { docxToMarkdown } from "../docx/server/docxToMarkdown";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { createStellaStyleDocumentPreset } from "../style-sets/stellaStyle";
-import type { BlockContent, Document, Paragraph, Table, TableCell } from "../types/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  Table,
+  TableCell,
+} from "../types/document";
 import { createEmptyDocument } from "./createDocument";
 import { mergeDocumentContent } from "./mergeDocumentContent";
-import { MAX_REVISION_ID, paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 const CLEAN = {
   annotations: "strip",
@@ -32,12 +45,17 @@ const CLEAN = {
 
 const clauseParagraph = (text: string): Paragraph => ({
   type: "paragraph",
-  formatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 }, styleId: "ClauseParagraph1" },
+  formatting: {
+    numPr: { kind: "reference", numId: 1, ilvl: 0 },
+    styleId: "ClauseParagraph1",
+  },
   content: [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
 });
 
 const stellaTargetWithClause = (): Document => {
-  const target = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+  const target = createEmptyDocument({
+    preset: createStellaStyleDocumentPreset(),
+  });
   target.package.document.content = [clauseParagraph("Clause text.")];
   return target;
 };
@@ -64,16 +82,25 @@ describe("mergeDocumentContent", () => {
               panic("Source list has no numbering definitions");
             const target = createEmptyDocument();
             target.package.numbering = {
-              abstractNums: loadedIds.map((id) => ({ ...abstract, abstractNumId: id })),
-              nums: loadedIds.map((id) => ({ ...instance, numId: id, abstractNumId: id })),
+              abstractNums: loadedIds.map((id) => ({
+                ...abstract,
+                abstractNumId: id,
+              })),
+              nums: loadedIds.map((id) => ({
+                ...instance,
+                numId: id,
+                abstractNumId: id,
+              })),
             };
             const firstMerge = mergeDocumentContent(target, source);
             expect(mergeDocumentContent(target, source)).toEqual(firstMerge);
             const merged = mergeDocumentContent(firstMerge, source);
-            const numIds = (merged.package.numbering?.nums ?? []).map(({ numId }) => numId);
-            const abstractIds = (merged.package.numbering?.abstractNums ?? []).map(
-              ({ abstractNumId }) => abstractNumId,
+            const numIds = (merged.package.numbering?.nums ?? []).map(
+              ({ numId }) => numId,
             );
+            const abstractIds = (
+              merged.package.numbering?.abstractNums ?? []
+            ).map(({ abstractNumId }) => abstractNumId);
             expect(new Set(numIds).size).toBe(numIds.length);
             expect(new Set(abstractIds).size).toBe(abstractIds.length);
             for (const id of [...numIds, ...abstractIds]) {
@@ -83,7 +110,9 @@ describe("mergeDocumentContent", () => {
             }
             for (const block of merged.package.document.content) {
               if (block.type !== "paragraph") continue;
-              const numId = paragraphNumberingReferenceId(block.formatting?.numPr);
+              const numId = paragraphNumberingReferenceId(
+                block.formatting?.numPr,
+              );
               if (numId !== undefined) expect(numIds).toContain(numId);
             }
           },
@@ -99,13 +128,16 @@ describe("mergeDocumentContent", () => {
 
   test("appends source content and merges numbering definitions", () => {
     const target = stellaTargetWithClause();
-    const merged = mergeDocumentContent(target, fromMarkdown("1. first\n2. second"));
+    const merged = mergeDocumentContent(
+      target,
+      fromMarkdown("1. first\n2. second"),
+    );
 
     expect(merged.package.document.content).toHaveLength(3);
     // Target's own reserved numbering (numId 1-5) is untouched.
-    expect(merged.package.numbering?.nums.filter((num) => num.numId <= 5)).toEqual(
-      target.package.numbering?.nums,
-    );
+    expect(
+      merged.package.numbering?.nums.filter((num) => num.numId <= 5),
+    ).toEqual(target.package.numbering?.nums);
   });
 
   test("does not mutate either input document", () => {
@@ -117,7 +149,9 @@ describe("mergeDocumentContent", () => {
     mergeDocumentContent(target, source);
 
     expect(target.package.document.content).toHaveLength(targetContentLength);
-    expect(source.package.numbering?.nums.map((num) => num.numId)).toEqual(sourceNumIds);
+    expect(source.package.numbering?.nums.map((num) => num.numId)).toEqual(
+      sourceNumIds,
+    );
   });
 
   test("remaps a colliding source numId above the target's existing range", () => {
@@ -141,7 +175,10 @@ describe("mergeDocumentContent", () => {
 
   test("createDocx(merged) succeeds and round-trips both lists correctly", async () => {
     const target = stellaTargetWithClause();
-    const merged = mergeDocumentContent(target, fromMarkdown("1. first\n2. second\n\n- bullet"));
+    const merged = mergeDocumentContent(
+      target,
+      fromMarkdown("1. first\n2. second\n\n- bullet"),
+    );
 
     const bytes = await createDocx(merged);
     const markdown = await docxToMarkdown(bytes, CLEAN);
@@ -153,7 +190,9 @@ describe("mergeDocumentContent", () => {
 
     // The preset's clause paragraph still renders with clause numbering
     // (decimal at level 0), not a plain unnumbered paragraph.
-    const clauseLine = markdown.split("\n").find((line) => line.includes("Clause text."));
+    const clauseLine = markdown
+      .split("\n")
+      .find((line) => line.includes("Clause text."));
     expect(clauseLine).toMatch(/^1[.)]?\s+Clause text\.$/);
   });
 
@@ -166,24 +205,39 @@ describe("mergeDocumentContent", () => {
 
     const nestedTable: Table = {
       type: "table",
-      rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [listItem] }] }],
+      rows: [
+        {
+          type: "tableRow",
+          cells: [{ type: "tableCell", content: [listItem] }],
+        },
+      ],
     };
     const outerTable: Table = {
       type: "table",
-      rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [nestedTable] }] }],
+      rows: [
+        {
+          type: "tableRow",
+          cells: [{ type: "tableCell", content: [nestedTable] }],
+        },
+      ],
     };
     const source: Document = {
       ...fromMarkdown("1. first"),
       package: {
         ...fromMarkdown("1. first").package,
-        document: { ...fromMarkdown("1. first").package.document, content: [outerTable] },
+        document: {
+          ...fromMarkdown("1. first").package.document,
+          content: [outerTable],
+        },
       },
     };
 
     const merged = mergeDocumentContent(target, source);
     const mergedOuterTable = merged.package.document.content.at(-1);
     if (mergedOuterTable?.type !== "table") {
-      throw new Error("expected the merged content to end with the outer table");
+      throw new Error(
+        "expected the merged content to end with the outer table",
+      );
     }
     const mergedNestedTable = mergedOuterTable.rows[0]?.cells[0]?.content[0];
     if (mergedNestedTable?.type !== "table") {
@@ -208,14 +262,20 @@ describe("mergeDocumentContent", () => {
       content: [] as BlockContent[],
     } satisfies Extract<BlockContent, { type: "blockSdt" }>;
     const cell: TableCell = { type: "tableCell", content: [control] };
-    const table: Table = { type: "table", rows: [{ type: "tableRow", cells: [cell] }] };
+    const table: Table = {
+      type: "table",
+      rows: [{ type: "tableRow", cells: [cell] }],
+    };
 
     const target = stellaTargetWithClause();
     const source: Document = {
       ...fromMarkdown("1. first"),
       package: {
         ...fromMarkdown("1. first").package,
-        document: { ...fromMarkdown("1. first").package.document, content: [table] },
+        document: {
+          ...fromMarkdown("1. first").package.document,
+          content: [table],
+        },
       },
     };
 
@@ -245,7 +305,10 @@ describe("mergeDocumentContent", () => {
       ...fromMarkdown("1. first"),
       package: {
         ...fromMarkdown("1. first").package,
-        document: { ...fromMarkdown("1. first").package.document, content: [sdt] },
+        document: {
+          ...fromMarkdown("1. first").package.document,
+          content: [sdt],
+        },
       },
     };
 

@@ -59,7 +59,10 @@ export const STYLE_RESERVED = {
   tblStylePr: NO_RESERVED_VALUE,
 } satisfies Record<keyof Style, ReservedValueDisposition>;
 
-export type ExhaustiveStyleReserved = ExhaustiveFields<Style, keyof typeof STYLE_RESERVED>;
+export type ExhaustiveStyleReserved = ExhaustiveFields<
+  Style,
+  keyof typeof STYLE_RESERVED
+>;
 
 export const STYLE_CONDITIONAL_RESERVED = {
   type: NO_RESERVED_VALUE,
@@ -68,7 +71,10 @@ export const STYLE_CONDITIONAL_RESERVED = {
   tblPr: NO_RESERVED_VALUE,
   trPr: NO_RESERVED_VALUE,
   tcPr: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<Style["tblStylePr"]>[number], ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<Style["tblStylePr"]>[number],
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveStyleConditionalReserved = ExhaustiveFields<
   NonNullable<Style["tblStylePr"]>[number],
@@ -103,7 +109,10 @@ export const LATENT_STYLES_RESERVED = {
   defUnhideWhenUsed: toggle("w:latentStyles@defUnhideWhenUsed"),
   defQFormat: toggle("w:latentStyles@defQFormat"),
   count: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<StyleDefinitions["latentStyles"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<StyleDefinitions["latentStyles"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveLatentStylesReserved = ExhaustiveFields<
   NonNullable<StyleDefinitions["latentStyles"]>,
@@ -159,11 +168,17 @@ export const THEME_RESERVED = {
   formatScheme: NO_RESERVED_VALUE,
 } satisfies Record<keyof Theme, ReservedValueDisposition>;
 
-export type ExhaustiveThemeReserved = ExhaustiveFields<Theme, keyof typeof THEME_RESERVED>;
+export type ExhaustiveThemeReserved = ExhaustiveFields<
+  Theme,
+  keyof typeof THEME_RESERVED
+>;
 
 export const THEME_FORMAT_SCHEME_RESERVED = {
   name: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<Theme["formatScheme"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<Theme["formatScheme"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveThemeFormatSchemeReserved = ExhaustiveFields<
   NonNullable<Theme["formatScheme"]>,
@@ -206,7 +221,10 @@ export const FONT_SIGNATURE_RESERVED = {
   usb3: NO_RESERVED_VALUE,
   csb0: NO_RESERVED_VALUE,
   csb1: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<FontInfo["sig"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<FontInfo["sig"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveFontSignatureReserved = ExhaustiveFields<
   NonNullable<FontInfo["sig"]>,

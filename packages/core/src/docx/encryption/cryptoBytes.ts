@@ -46,12 +46,19 @@ export const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
     return bytes.buffer;
   }
 
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 };
 
 export const decodeBase64 = base64ToBytes;
 
-export const padToBlock = (bytes: Uint8Array, blockSize: number, padByte = 0x36): Uint8Array => {
+export const padToBlock = (
+  bytes: Uint8Array,
+  blockSize: number,
+  padByte = 0x36,
+): Uint8Array => {
   if (bytes.length >= blockSize) {
     return bytes.subarray(0, blockSize);
   }

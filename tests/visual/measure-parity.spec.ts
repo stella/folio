@@ -20,9 +20,13 @@
  * what is drawn, the page is laid out against a fiction.
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
-import { collectLineParity, type LineParity, PER_RUN_TOLERANCE_PX } from "../support/lineParity";
+import {
+  collectLineParity,
+  type LineParity,
+  PER_RUN_TOLERANCE_PX,
+} from "../support/lineParity";
 
 /**
  * How far a repaired cursive line may diverge, as a fraction of its width.
@@ -48,7 +52,9 @@ const CURSIVE_FIXTURE = "cursive-face-change.docx";
 const GENERAL_FIXTURE = "docx-editor-demo.docx";
 
 test.describe("measure/paint parity", () => {
-  test("the measurer's width matches the painted width on every line", async ({ page }) => {
+  test("the measurer's width matches the painted width on every line", async ({
+    page,
+  }) => {
     await openFixture(page, GENERAL_FIXTURE);
     const lines = await collectLineParity(page);
 
@@ -57,7 +63,9 @@ test.describe("measure/paint parity", () => {
     expect(lines.length).toBeGreaterThanOrEqual(100);
 
     const offenders = lines.filter(
-      (line) => Math.abs(line.delta) > PER_RUN_TOLERANCE_PX * Math.max(1, line.runCount),
+      (line) =>
+        Math.abs(line.delta) >
+        PER_RUN_TOLERANCE_PX * Math.max(1, line.runCount),
     );
     expect(
       offenders.map(
@@ -67,7 +75,9 @@ test.describe("measure/paint parity", () => {
     ).toEqual([]);
   });
 
-  test("a repaired cursive line stays within its measurement budget", async ({ page }) => {
+  test("a repaired cursive line stays within its measurement budget", async ({
+    page,
+  }) => {
     // The known residual, pinned as a number rather than left as a comment.
     // Canvas cannot see the joiners the painter inserts to keep a cursive word
     // connected across a face change, so the measurer reserves the unjoined
@@ -117,14 +127,20 @@ test.describe("measure/paint parity", () => {
     ).toEqual([]);
   });
 
-  test("joiner furniture is invisible to the document's text", async ({ page }) => {
+  test("joiner furniture is invisible to the document's text", async ({
+    page,
+  }) => {
     // The joiners must not reach anything that reads the document: they carry no
     // pm positions, so span-to-position mapping and text extraction skip them.
     await openFixture(page, CURSIVE_FIXTURE);
     const leaked = await page.evaluate(
       () =>
-        [...document.querySelectorAll<HTMLElement>("[data-docx-joiner]")].filter(
-          (el) => el.dataset["pmStart"] !== undefined || el.dataset["pmEnd"] !== undefined,
+        [
+          ...document.querySelectorAll<HTMLElement>("[data-docx-joiner]"),
+        ].filter(
+          (el) =>
+            el.dataset["pmStart"] !== undefined ||
+            el.dataset["pmEnd"] !== undefined,
         ).length,
     );
     expect(leaked).toBe(0);

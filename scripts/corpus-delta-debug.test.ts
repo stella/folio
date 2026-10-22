@@ -12,7 +12,9 @@ describe("deltaDebug", () => {
       budget: 1000,
       reproduces: async (kept) => required.every((item) => kept.includes(item)),
     });
-    expect([...result.kept].toSorted((left, right) => left - right)).toEqual(required);
+    expect([...result.kept].toSorted((left, right) => left - right)).toEqual(
+      required,
+    );
     expect(result.exhaustedBudget).toBe(false);
   });
 
@@ -47,7 +49,9 @@ describe("deltaDebug", () => {
     const { kept } = await deltaDebug({ items, budget: 1000, reproduces });
     for (const survivor of kept) {
       // oxlint-disable-next-line no-await-in-loop -- one check per survivor, by definition sequential
-      expect(await reproduces(kept.filter((item) => item !== survivor))).toBe(false);
+      expect(await reproduces(kept.filter((item) => item !== survivor))).toBe(
+        false,
+      );
     }
   });
 });

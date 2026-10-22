@@ -1,12 +1,17 @@
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
-import type { BookmarkEnd, BookmarkStart, DisplacedByCustomXml } from "../types/document";
+import type {
+  BookmarkEnd,
+  BookmarkStart,
+  DisplacedByCustomXml,
+} from "../types/document";
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
 import type { BookmarkBoundaryAttrs } from "./schema/nodes";
 
-export const isDisplacedByCustomXml = (value: unknown): value is DisplacedByCustomXml =>
-  value === "next" || value === "prev";
+export const isDisplacedByCustomXml = (
+  value: unknown,
+): value is DisplacedByCustomXml => value === "next" || value === "prev";
 
 const attrsCache = new WeakMap<PMNode, BookmarkBoundaryAttrs>();
 
@@ -41,7 +46,11 @@ export const bookmarkMarkerFromAttrs = (
         ...(attrs.colLast !== undefined ? { colLast: attrs.colLast } : {}),
         ...bookmarkBoundaryDisplacement(attrs),
       }
-    : { type: "bookmarkEnd", id: attrs.id, ...bookmarkBoundaryDisplacement(attrs) };
+    : {
+        type: "bookmarkEnd",
+        id: attrs.id,
+        ...bookmarkBoundaryDisplacement(attrs),
+      };
 
 export const readBookmarkBoundaryAttrs = (
   node: PMNode,
@@ -49,7 +58,10 @@ export const readBookmarkBoundaryAttrs = (
   const issues: ProseMirrorAttrIssue[] = [];
   // Either level: the inline atom inside a paragraph, or the block one beside
   // paragraphs. Both carry the same marker, so both read through here.
-  if (node.type.name !== "bookmarkBoundary" && node.type.name !== "blockBookmarkBoundary") {
+  if (
+    node.type.name !== "bookmarkBoundary" &&
+    node.type.name !== "blockBookmarkBoundary"
+  ) {
     issues.push({
       path: "bookmarkBoundary.type.name",
       message: `Expected a bookmark boundary, got ${node.type.name}.`,
@@ -80,7 +92,9 @@ export const readBookmarkBoundaryAttrs = (
   if (
     colFirst !== undefined &&
     colFirst !== null &&
-    (typeof colFirst !== "number" || !Number.isInteger(colFirst) || colFirst < 0)
+    (typeof colFirst !== "number" ||
+      !Number.isInteger(colFirst) ||
+      colFirst < 0)
   ) {
     issues.push({
       path: "bookmarkBoundary.attrs.colFirst",
@@ -100,7 +114,11 @@ export const readBookmarkBoundaryAttrs = (
   }
 
   const displaced = node.attrs["displacedByCustomXml"];
-  if (displaced !== undefined && displaced !== null && !isDisplacedByCustomXml(displaced)) {
+  if (
+    displaced !== undefined &&
+    displaced !== null &&
+    !isDisplacedByCustomXml(displaced)
+  ) {
     issues.push({
       path: "bookmarkBoundary.attrs.displacedByCustomXml",
       message: 'Expected "next" or "prev".',
@@ -110,7 +128,9 @@ export const readBookmarkBoundaryAttrs = (
   if (issues.length > 0 || typeof id !== "number") {
     return { ok: false, issues };
   }
-  const displacement = isDisplacedByCustomXml(displaced) ? { displacedByCustomXml: displaced } : {};
+  const displacement = isDisplacedByCustomXml(displaced)
+    ? { displacedByCustomXml: displaced }
+    : {};
   if (type === "start" && typeof name === "string") {
     return {
       ok: true,
@@ -127,14 +147,18 @@ export const readBookmarkBoundaryAttrs = (
   return { ok: true, value: { type: "end", id, ...displacement } };
 };
 
-export const expectBookmarkBoundaryAttrs = (node: PMNode): BookmarkBoundaryAttrs => {
+export const expectBookmarkBoundaryAttrs = (
+  node: PMNode,
+): BookmarkBoundaryAttrs => {
   const cached = attrsCache.get(node);
   if (cached) {
     return cached;
   }
   const result = readBookmarkBoundaryAttrs(node);
   if (!result.ok) {
-    const details = result.issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n");
+    const details = result.issues
+      .map((issue) => `${issue.path}: ${issue.message}`)
+      .join("\n");
     panic(`Invalid ProseMirror bookmark boundary attrs:\n${details}`);
   }
   attrsCache.set(node, result.value);

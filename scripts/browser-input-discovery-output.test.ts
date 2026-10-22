@@ -19,13 +19,19 @@ test("browser input discovery retains failures from every reporter output stream
       ].join("\n"),
     );
     chmodSync(executable, 0o755);
-    const json = JSON.stringify({ suites: [], errors: [{ message: "Discovery module failed" }] });
+    const json = JSON.stringify({
+      suites: [],
+      errors: [{ message: "Discovery module failed" }],
+    });
     const exercised = new Set<string>();
     for (const stream of ["stdout", "stderr", "both"] as const) {
       const stdout = stream === "stderr" ? "" : json;
       const stderr = stream === "stdout" ? "" : "Discovery loader failed";
       const result = Bun.spawnSync(
-        [process.execPath, path.join(import.meta.dir, "check-browser-input-coverage.ts")],
+        [
+          process.execPath,
+          path.join(import.meta.dir, "check-browser-input-coverage.ts"),
+        ],
         {
           env: {
             ...process.env,

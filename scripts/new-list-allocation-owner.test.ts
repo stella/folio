@@ -13,9 +13,11 @@ test("AI new-list allocation has one resolver and one batch owner", async () => 
   const deferredValueFiles: string[] = [];
   const negativePlaceholderFiles: string[] = [];
   for await (const relative of new Bun.Glob("**/*.ts").scan({ cwd: root })) {
-    if (relative.endsWith(".test.ts") || relative.endsWith(".property.test.ts")) continue;
+    if (relative.endsWith(".test.ts") || relative.endsWith(".property.test.ts"))
+      continue;
     const source = await Bun.file(path.join(root, relative)).text();
-    if (source.includes("resolveNewListOperations")) resolverFiles.push(relative);
+    if (source.includes("resolveNewListOperations"))
+      resolverFiles.push(relative);
     if (source.includes('"newList"') && source.includes("mintListInstance")) {
       newListMintFiles.push(relative);
     }
@@ -25,7 +27,10 @@ test("AI new-list allocation has one resolver and one batch owner", async () => 
     }
   }
 
-  expect(resolverFiles.toSorted()).toEqual(["ai-edits/apply.ts", "ai-edits/newListNumbering.ts"]);
+  expect(resolverFiles.toSorted()).toEqual([
+    "ai-edits/apply.ts",
+    "ai-edits/newListNumbering.ts",
+  ]);
   expect(newListMintFiles).toEqual(["ai-edits/newListNumbering.ts"]);
   expect(deferredValueFiles).toEqual(["ai-edits/newListNumbering.ts"]);
   expect(negativePlaceholderFiles).toEqual([]);
@@ -52,29 +57,45 @@ test("deferred new lists are allocated only at will-apply boundaries", async () 
     "for (const executionGroup of executionGroups)",
     "switch (item.operation.type)",
   );
-  expect(beforeSingletonSwitch.indexOf('reason: "pendingParagraphPropertyChange"')).toBeLessThan(
-    beforeSingletonSwitch.indexOf('status: "willApply"'),
-  );
+  expect(
+    beforeSingletonSwitch.indexOf('reason: "pendingParagraphPropertyChange"'),
+  ).toBeLessThan(beforeSingletonSwitch.indexOf('status: "willApply"'));
   expect(beforeSingletonSwitch).toContain('reason: "unsupportedMode"');
   // A suggested insertion whose live anchor is pending deletion is filtered
   // out of its execution group before any list is allocated.
-  expect(beforeSingletonSwitch.indexOf('reason: "pendingDeletion"')).toBeGreaterThanOrEqual(0);
-  expect(beforeSingletonSwitch.indexOf('reason: "pendingDeletion"')).toBeLessThan(
-    beforeSingletonSwitch.indexOf('status: "willApply"'),
-  );
+  expect(
+    beforeSingletonSwitch.indexOf('reason: "pendingDeletion"'),
+  ).toBeGreaterThanOrEqual(0);
+  expect(
+    beforeSingletonSwitch.indexOf('reason: "pendingDeletion"'),
+  ).toBeLessThan(beforeSingletonSwitch.indexOf('status: "willApply"'));
 
-  const allocationAfter = (caseName: string, refusal: string, nextCase: string): void => {
+  const allocationAfter = (
+    caseName: string,
+    refusal: string,
+    nextCase: string,
+  ): void => {
     const branch = between(loop, `case "${caseName}"`, `case "${nextCase}"`);
     expect(branch).toContain(refusal);
-    expect(branch.indexOf(refusal)).toBeLessThan(branch.indexOf('status: "willApply"'));
+    expect(branch.indexOf(refusal)).toBeLessThan(
+      branch.indexOf('status: "willApply"'),
+    );
   };
   allocationAfter(
     "setBlockParagraphProperties",
     "pendingParagraphMarkPropertyRefusal",
     "splitBlock",
   );
-  allocationAfter("splitBlock", 'reason: "unsupportedBlock"', "mergeBlockWithNext");
-  allocationAfter("mergeBlockWithNext", 'reason: "unsupportedBlock"', "commentOnBlock");
+  allocationAfter(
+    "splitBlock",
+    'reason: "unsupportedBlock"',
+    "mergeBlockWithNext",
+  );
+  allocationAfter(
+    "mergeBlockWithNext",
+    'reason: "unsupportedBlock"',
+    "commentOnBlock",
+  );
 
   const refusalReasons = [
     "pendingParagraphMarkDeletion",

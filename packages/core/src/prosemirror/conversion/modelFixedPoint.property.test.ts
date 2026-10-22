@@ -11,24 +11,38 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-
 import { readdirSync } from "node:fs";
 import path from "node:path";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import { fromMarkdown } from "../../markdown/fromMarkdown";
-import type { BlockContent, Document, ListLevel, Paragraph } from "../../types/document";
+import type {
+  BlockContent,
+  Document,
+  ListLevel,
+  Paragraph,
+} from "../../types/document";
 import { updateDocumentContent } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
-import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const CORPUS_DIR = path.join(import.meta.dir, "../../docx/__tests__/__fixtures__/corpus");
-const VISUAL_FIXTURES_DIR = path.join(import.meta.dir, "../../../../../tests/visual/fixtures");
+const CORPUS_DIR = path.join(
+  import.meta.dir,
+  "../../docx/__tests__/__fixtures__/corpus",
+);
+const VISUAL_FIXTURES_DIR = path.join(
+  import.meta.dir,
+  "../../../../../tests/visual/fixtures",
+);
 
 const CORPUS_FIXTURES = readdirSync(CORPUS_DIR)
   .filter((name) => name.endsWith(".docx"))
@@ -43,7 +57,10 @@ const PARAGRAPH_NORMALIZATIONS: readonly (keyof Paragraph)[] = [
   "content",
 ];
 
-const collectParagraphs = (blocks: readonly BlockContent[], into: Paragraph[]): Paragraph[] => {
+const collectParagraphs = (
+  blocks: readonly BlockContent[],
+  into: Paragraph[],
+): Paragraph[] => {
   for (const block of blocks) {
     switch (block.type) {
       case "paragraph": {
@@ -73,22 +90,31 @@ const collectParagraphs = (blocks: readonly BlockContent[], into: Paragraph[]): 
 const NORMALIZED_KEYS: ReadonlySet<string> = new Set(PARAGRAPH_NORMALIZATIONS);
 
 const comparableParagraph = (paragraph: Paragraph): Record<string, unknown> =>
-  Object.fromEntries(Object.entries(paragraph).filter(([key]) => !NORMALIZED_KEYS.has(key)));
+  Object.fromEntries(
+    Object.entries(paragraph).filter(([key]) => !NORMALIZED_KEYS.has(key)),
+  );
 
 const rebuild = (document: Document): Document =>
   updateDocumentContent(
     document,
-    toProseDoc(document, { styles: document.package.styles, theme: document.package.theme }),
+    toProseDoc(document, {
+      styles: document.package.styles,
+      theme: document.package.theme,
+    }),
   );
 
 const expectParagraphFixedPoint = (document: Document): void => {
   const before = collectParagraphs(document.package.document.content, []);
-  const after = collectParagraphs(rebuild(document).package.document.content, []);
+  const after = collectParagraphs(
+    rebuild(document).package.document.content,
+    [],
+  );
   expect(after.length).toBe(before.length);
   for (const [index, paragraph] of before.entries()) {
-    expect(comparableParagraph(after[index] ?? paragraph), `paragraph ${index}`).toEqual(
-      comparableParagraph(paragraph),
-    );
+    expect(
+      comparableParagraph(after[index] ?? paragraph),
+      `paragraph ${index}`,
+    ).toEqual(comparableParagraph(paragraph));
   }
 };
 
@@ -121,22 +147,37 @@ const listLevelArb = (ilvl: number) =>
           start,
           numFmt,
           lvlText: numFmt === "bullet" ? "•" : `%${ilvl + 1}.`,
-          pPr: { indentLeft: 720 * (ilvl + 1), indentFirstLine: -360, hangingIndent: true },
+          pPr: {
+            indentLeft: 720 * (ilvl + 1),
+            indentFirstLine: -360,
+            hangingIndent: true,
+          },
         }) satisfies ListLevel,
     );
 
 const numberedDocumentArb: fc.Arbitrary<Document> = fc
   .record({
-    itemLevels: fc.array(fc.integer({ min: 0, max: 2 }), { minLength: 1, maxLength: 5 }),
+    itemLevels: fc.array(fc.integer({ min: 0, max: 2 }), {
+      minLength: 1,
+      maxLength: 5,
+    }),
     levels: fc.tuple(listLevelArb(0), listLevelArb(1), listLevelArb(2)),
-    startOverride: fc.option(fc.integer({ min: 1, max: 9 }), { nil: undefined }),
+    startOverride: fc.option(fc.integer({ min: 1, max: 9 }), {
+      nil: undefined,
+    }),
   })
   .map(({ itemLevels, levels, startOverride }) => {
-    const markdown = itemLevels.map((_, index) => `${index + 1}. Item ${index + 1}`).join("\n");
+    const markdown = itemLevels
+      .map((_, index) => `${index + 1}. Item ${index + 1}`)
+      .join("\n");
     const model = fromMarkdown(`${markdown}\n\nTail.`);
     const paragraphs = collectParagraphs(model.package.document.content, []);
-    const numId = paragraphNumberingReferenceId(paragraphs.at(0)?.formatting?.numPr);
-    const instance = model.package.numbering?.nums.find((num) => num.numId === numId);
+    const numId = paragraphNumberingReferenceId(
+      paragraphs.at(0)?.formatting?.numPr,
+    );
+    const instance = model.package.numbering?.nums.find(
+      (num) => num.numId === numId,
+    );
     const abstract = model.package.numbering?.abstractNums.find(
       (definition) => definition.abstractNumId === instance?.abstractNumId,
     );
@@ -149,7 +190,10 @@ const numberedDocumentArb: fc.Arbitrary<Document> = fc
       if (paragraph === undefined) {
         throw new Error("generated list is shorter than its level list");
       }
-      paragraph.formatting = { ...paragraph.formatting, numPr: { kind: "reference", numId, ilvl } };
+      paragraph.formatting = {
+        ...paragraph.formatting,
+        numPr: { kind: "reference", numId, ilvl },
+      };
     }
     if (startOverride !== undefined) {
       instance.levelOverrides = [{ ilvl: 0, startOverride }];
@@ -173,7 +217,10 @@ describe("list rendering fixed point under a no-op rebuild", () => {
         expectParagraphFixedPoint(document);
         expect(markers(rebuild(document))).toEqual(markers(document));
       }),
-      { numRuns: 25, id: "generated numbering definitions keep their metadata and markers" },
+      {
+        numRuns: 25,
+        id: "generated numbering definitions keep their metadata and markers",
+      },
     );
   });
 
@@ -185,24 +232,33 @@ describe("list rendering fixed point under a no-op rebuild", () => {
         fc.boolean(),
         async (model, symbolicBullet, foldedListNum) => {
           if (symbolicBullet) {
-            for (const abstract of model.package.numbering?.abstractNums ?? []) {
+            for (const abstract of model.package.numbering?.abstractNums ??
+              []) {
               for (const level of abstract.levels) {
                 if (level.numFmt !== "bullet") continue;
                 level.lvlText = "\uF0B7";
-                level.rPr = { fontFamily: { ascii: "Symbol", hAnsi: "Symbol" } };
+                level.rPr = {
+                  fontFamily: { ascii: "Symbol", hAnsi: "Symbol" },
+                };
               }
             }
           }
           if (foldedListNum) {
-            const first = collectParagraphs(model.package.document.content, []).at(0);
-            if (first === undefined) throw new TypeError("Generated LISTNUM paragraph is missing.");
+            const first = collectParagraphs(
+              model.package.document.content,
+              [],
+            ).at(0);
+            if (first === undefined)
+              throw new TypeError("Generated LISTNUM paragraph is missing.");
             first.content.unshift(
               {
                 type: "complexField",
                 instruction: "LISTNUM",
                 fieldType: "LISTNUM",
                 fieldCode: [],
-                fieldResult: [{ type: "run", content: [{ type: "text", text: "(a)" }] }],
+                fieldResult: [
+                  { type: "run", content: [{ type: "text", text: "(a)" }] },
+                ],
               },
               { type: "run", content: [{ type: "tab" }] },
             );

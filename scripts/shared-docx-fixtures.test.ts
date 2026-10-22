@@ -1,18 +1,24 @@
-import { scanTestTimeout } from "../test/scan-timeout";
-
-import { setDefaultTimeout, expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
+import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import ts from "typescript";
-import JSZip from "jszip";
-import { buildPanelLayoutDocument } from "../tests/support/panelLayoutDocument";
-import type { PanelLayoutReview, PanelLayoutSections } from "../tests/support/panelLayoutDocument";
+
+import { scanTestTimeout } from "../test/scan-timeout";
 import {
   buildCommentSearchDocument,
   COMMENT_SEARCH_REPLY_LENGTHS,
 } from "../tests/support/commentSearchDocument";
+import { buildPanelLayoutDocument } from "../tests/support/panelLayoutDocument";
+import type {
+  PanelLayoutReview,
+  PanelLayoutSections,
+} from "../tests/support/panelLayoutDocument";
 import { buildScrollRootDocument } from "../tests/support/scrollRootDocument";
-import { generateDocxFixture, validateDocxFixture } from "../tests/support/validatedDocxFixture";
+import {
+  generateDocxFixture,
+  validateDocxFixture,
+} from "../tests/support/validatedDocxFixture";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -32,7 +38,10 @@ const fixtureCases = [
     file: "tests/support/commentSearchDocument.ts",
     build: () => buildCommentSearchDocument(sentenceCount),
   })),
-  { file: "tests/support/scrollRootDocument.ts", build: buildScrollRootDocument },
+  {
+    file: "tests/support/scrollRootDocument.ts",
+    build: buildScrollRootDocument,
+  },
   ...Object.values(reviewCases).flatMap((review) =>
     Object.values(sectionCases).map((sections) => ({
       file: "tests/support/panelLayoutDocument.ts",
@@ -42,7 +51,12 @@ const fixtureCases = [
 ];
 
 const packageCalls = (text: string) => {
-  const source = ts.createSourceFile("fixture.ts", text, ts.ScriptTarget.Latest, true);
+  const source = ts.createSourceFile(
+    "fixture.ts",
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const serializers = new Set(["createDocx"]);
   for (const statement of source.statements) {
     if (!ts.isImportDeclaration(statement)) continue;
@@ -56,7 +70,10 @@ const packageCalls = (text: string) => {
   const calls: string[] = [];
   const memberName = (node: ts.Node) => {
     if (ts.isPropertyAccessExpression(node)) return node.name.text;
-    if (ts.isElementAccessExpression(node) && ts.isStringLiteral(node.argumentExpression))
+    if (
+      ts.isElementAccessExpression(node) &&
+      ts.isStringLiteral(node.argumentExpression)
+    )
       return node.argumentExpression.text;
     return undefined;
   };
@@ -96,7 +113,10 @@ test("every shared fixture and generator uses validated package construction", (
       if (relative === "tests/support/validatedDocxFixture.ts") continue;
       const source = readFileSync(resolve(root, relative), "utf8");
       if (packageCalls(source).length > 0) unguarded.push(relative);
-      if (directory === "tests/support" && /\bgenerateDocxFixture\s*\(/u.test(source)) {
+      if (
+        directory === "tests/support" &&
+        /\bgenerateDocxFixture\s*\(/u.test(source)
+      ) {
         supportProducers.push(relative);
       }
     }
@@ -108,18 +128,30 @@ test("every shared fixture and generator uses validated package construction", (
 });
 
 test("fixture guard detects direct package generators", () => {
-  expect(packageCalls('return zip.generateAsync({type: "uint8array"})')).toEqual(["unchecked-zip"]);
-  expect(packageCalls("return createDocx(document)")).toEqual(["unchecked-serializer"]);
   expect(
-    packageCalls(`import { createDocx as serialize } from "core"; return serialize(document)`),
-  ).toEqual(["unchecked-serializer"]);
-  expect(packageCalls(`return core["createDocx"](document)`)).toEqual(["unchecked-serializer"]);
-  expect(packageCalls(`const generate = zip["generateAsync"]; return generate(options)`)).toEqual([
-    "unchecked-zip",
+    packageCalls('return zip.generateAsync({type: "uint8array"})'),
+  ).toEqual(["unchecked-zip"]);
+  expect(packageCalls("return createDocx(document)")).toEqual([
+    "unchecked-serializer",
   ]);
-  expect(packageCalls(`const { generateAsync: generate } = zip; return generate(options)`)).toEqual(
-    ["unchecked-zip"],
-  );
+  expect(
+    packageCalls(
+      `import { createDocx as serialize } from "core"; return serialize(document)`,
+    ),
+  ).toEqual(["unchecked-serializer"]);
+  expect(packageCalls(`return core["createDocx"](document)`)).toEqual([
+    "unchecked-serializer",
+  ]);
+  expect(
+    packageCalls(
+      `const generate = zip["generateAsync"]; return generate(options)`,
+    ),
+  ).toEqual(["unchecked-zip"]);
+  expect(
+    packageCalls(
+      `const { generateAsync: generate } = zip; return generate(options)`,
+    ),
+  ).toEqual(["unchecked-zip"]);
   expect(packageCalls('return generateDocxFixture(zip, "valid")')).toEqual([]);
 });
 
@@ -137,8 +169,13 @@ test("invalid fixture fails at construction with its name and schema reason", as
   const zip = await JSZip.loadAsync(await buildScrollRootDocument());
   const part = zip.file("word/document.xml");
   if (!part) throw new Error("Missing fixture document part");
-  zip.file("word/document.xml", (await part.async("string")).replace(' w:header="720"', ""));
-  await expect(generateDocxFixture(zip, "deliberately-invalid")).rejects.toThrow(
+  zip.file(
+    "word/document.xml",
+    (await part.async("string")).replace(' w:header="720"', ""),
+  );
+  await expect(
+    generateDocxFixture(zip, "deliberately-invalid"),
+  ).rejects.toThrow(
     /Invalid DOCX fixture deliberately-invalid: invalid_schema_attribute/u,
   );
 });

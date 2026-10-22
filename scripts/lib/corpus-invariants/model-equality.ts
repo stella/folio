@@ -31,13 +31,14 @@
  */
 
 import { panic } from "better-result";
+
 import type { Document } from "@stll/folio-core/types/document";
 
 import {
   type CorpusFailure,
   type CorpusInvariant,
-  MODEL_TYPE_DISCRIMINATORS,
   failureFromAssertion,
+  MODEL_TYPE_DISCRIMINATORS,
   normalizeFailureMessage,
 } from "../corpus-signature";
 import { isVocabularyToken } from "./value-vocabulary";
@@ -64,7 +65,8 @@ const CAPTURE_KEYS: ReadonlySet<string> = new Set([
   "alternateContent",
 ]);
 
-const isErased = (key: string): boolean => VOLATILE_KEYS.has(key) || CAPTURE_KEYS.has(key);
+const isErased = (key: string): boolean =>
+  VOLATILE_KEYS.has(key) || CAPTURE_KEYS.has(key);
 
 const normalizeValue = (value: unknown): unknown => {
   if (value instanceof Uint8Array) {
@@ -78,7 +80,10 @@ const normalizeValue = (value: unknown): unknown => {
   }
   if (value instanceof Map) {
     return [...value.entries()]
-      .map(([entryKey, entryValue]) => [String(entryKey), normalizeValue(entryValue)] as const)
+      .map(
+        ([entryKey, entryValue]) =>
+          [String(entryKey), normalizeValue(entryValue)] as const,
+      )
       .sort(([left], [right]) => (left < right ? -1 : 1));
   }
   if (Array.isArray(value)) {
@@ -94,7 +99,9 @@ const normalizeValue = (value: unknown): unknown => {
       if (isErased(entryKey)) {
         continue;
       }
-      record[entryKey] = normalizeValue((value as Record<string, unknown>)[entryKey]);
+      record[entryKey] = normalizeValue(
+        (value as Record<string, unknown>)[entryKey],
+      );
     }
     return record;
   }
@@ -116,7 +123,9 @@ export const normalizeDocumentPackage = (document: Document): unknown => {
     document.package === null ||
     !Object.hasOwn(document.package, "document")
   )
-    panic("Model equality requires Document inputs containing a document package.");
+    panic(
+      "Model equality requires Document inputs containing a document package.",
+    );
   const relationships = document.package.relationships;
   if (!relationships) return normalizeValue(document.package);
   // Internal targets identify OPC parts, whose names compare without casing.
@@ -129,7 +138,10 @@ export const normalizeDocumentPackage = (document: Document): unknown => {
       target: normalizeInternalPartTarget(relationship.target),
     });
   }
-  return normalizeValue({ ...document.package, relationships: normalizedRelationships });
+  return normalizeValue({
+    ...document.package,
+    relationships: normalizedRelationships,
+  });
 };
 
 /**
@@ -158,7 +170,8 @@ type StringShape = (typeof STRING_SHAPES)[keyof typeof STRING_SHAPES];
 const MAX_QUOTED_VALUE_LENGTH = 32;
 
 const URL_RE = /^[a-z][a-z0-9+.-]*:(?:\/\/|[^/])/iu;
-const BRACED_GUID_RE = /^\{?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}?$/iu;
+const BRACED_GUID_RE =
+  /^\{?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}?$/iu;
 /**
  * Bounded above as well as below: a `w14:paraId` is eight hex digits and a
  * checksum is not much longer, while a paragraph written entirely in the
@@ -215,7 +228,8 @@ const describeValue = (value: unknown): string => {
 };
 
 /** The side a shape token belongs to, when both sides reduce to the same shape. */
-const sided = (shape: string, side: "A" | "B"): string => shape.replace(/>"$/u, ` ${side}>"`);
+const sided = (shape: string, side: "A" | "B"): string =>
+  shape.replace(/>"$/u, ` ${side}>"`);
 
 /**
  * How one value became another.
@@ -228,7 +242,11 @@ const sided = (shape: string, side: "A" | "B"): string => shape.replace(/>"$/u, 
 export const describeChange = (left: unknown, right: unknown): string => {
   const before = describeValue(left);
   const after = describeValue(right);
-  if (before !== after || typeof left !== "string" || typeof right !== "string") {
+  if (
+    before !== after ||
+    typeof left !== "string" ||
+    typeof right !== "string"
+  ) {
     return `${before} became ${after}`;
   }
   return `${sided(before, "A")} became ${sided(after, "B")}`;
@@ -243,7 +261,9 @@ const discriminatorOf = (value: unknown): string | undefined => {
     return undefined;
   }
   const { type } = value;
-  return typeof type === "string" && MODEL_TYPE_DISCRIMINATORS.has(type) ? type : undefined;
+  return typeof type === "string" && MODEL_TYPE_DISCRIMINATORS.has(type)
+    ? type
+    : undefined;
 };
 
 /**
@@ -330,13 +350,20 @@ const collectDifferences = (
     }
     for (const [index, item] of left.entries()) {
       const other = right[index];
-      collectDifferences(item, other, elementSegment(path, item, other), collector);
+      collectDifferences(
+        item,
+        other,
+        elementSegment(path, item, other),
+        collector,
+      );
     }
     return;
   }
 
   if (isRecord(left) && isRecord(right)) {
-    const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort();
+    const keys = [
+      ...new Set([...Object.keys(left), ...Object.keys(right)]),
+    ].sort();
     for (const key of keys) {
       collectDifferences(left[key], right[key], `${path}.${key}`, collector);
     }
@@ -364,7 +391,11 @@ export const describePackageDifferences = (
   before: Document,
   after: Document,
 ): PackageDifferences => {
-  const collector: DifferenceCollector = { seen: new Set(), messages: [], omitted: 0 };
+  const collector: DifferenceCollector = {
+    seen: new Set(),
+    messages: [],
+    omitted: 0,
+  };
   collectDifferences(
     normalizeDocumentPackage(before),
     normalizeDocumentPackage(after),
@@ -387,9 +418,13 @@ export const differenceFailures = (
   { messages, omitted }: PackageDifferences,
   describe: (message: string) => string,
 ): CorpusFailure[] => {
-  const failures = messages.map((message) => failureFromAssertion(invariant, describe(message)));
+  const failures = messages.map((message) =>
+    failureFromAssertion(invariant, describe(message)),
+  );
   if (omitted > 0) {
-    failures.push(failureFromAssertion(invariant, omittedDifferencesMessage(omitted)));
+    failures.push(
+      failureFromAssertion(invariant, omittedDifferencesMessage(omitted)),
+    );
   }
   return failures;
 };

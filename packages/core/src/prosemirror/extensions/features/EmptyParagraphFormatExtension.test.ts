@@ -10,22 +10,24 @@
  *        it should drop to the style's `w:next` (body text).
  */
 
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
 import { createEmptyDocument } from "../../../utils/createDocument";
 import { createDocumentStylesPlugin } from "../../plugins/documentStyles";
-import { singletonManager, schema } from "../../schema";
+import { schema, singletonManager } from "../../schema";
 import { createStyleResolver } from "../../styles/styleResolver";
 import { textFormattingToMarks } from "../marks/markUtils";
 import { splitBlockClearBorders } from "./BaseKeymapExtension";
 
 const resolver = createStyleResolver(createEmptyDocument().package.styles);
 
-function markNames(marks: readonly { type: { name: string } }[] | null): string[] {
+function markNames(
+  marks: readonly { type: { name: string } }[] | null,
+): string[] {
   return (marks ?? []).map((m) => m.type.name);
 }
 
@@ -52,7 +54,9 @@ describe("EmptyParagraphFormatExtension", () => {
     // A selection change (mimicking the dropdown refocus) clears stored
     // marks; the plugin must put them back so typed text inherits the
     // heading.
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1)),
+    );
 
     expect(markNames(state.storedMarks)).toContain("bold");
     expect(markNames(state.storedMarks)).toContain("fontSize");
@@ -66,7 +70,9 @@ describe("EmptyParagraphFormatExtension", () => {
       defaultTextFormatting: { rtl: true },
     });
     let state = stateWith(schema.node("doc", null, [rtlPara]));
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1)),
+    );
 
     expect(markNames(state.storedMarks)).toContain("rtl");
   });
@@ -79,7 +85,9 @@ describe("EmptyParagraphFormatExtension", () => {
       },
     });
     let state = stateWith(schema.node("doc", null, [body]));
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1)),
+    );
 
     // No bold/color/etc. → no stored marks forced onto ordinary typed text.
     expect(state.storedMarks).toBeNull();
@@ -93,7 +101,9 @@ describe("splitBlockClearBorders — direct run formatting", () => {
       directFormatting,
       overrideFormatting: directFormatting,
     });
-    const hyperlinkMark = schema.mark("hyperlink", { href: "https://example.com" });
+    const hyperlinkMark = schema.mark("hyperlink", {
+      href: "https://example.com",
+    });
     const commentMark = schema.mark("comment", { commentId: 7 });
     const paragraph = schema.node("paragraph", null, [
       schema.text("Formatted", [...formattingMarks, hyperlinkMark]),
@@ -129,7 +139,9 @@ describe("splitBlockClearBorders — direct run formatting", () => {
       directFormatting,
       overrideFormatting: directFormatting,
     });
-    const paragraph = schema.node("paragraph", null, [schema.text("Formatted", formattingMarks)]);
+    const paragraph = schema.node("paragraph", null, [
+      schema.text("Formatted", formattingMarks),
+    ]);
     let state = stateWith(schema.node("doc", null, [paragraph]));
     state = state.apply(
       state.tr
@@ -145,7 +157,9 @@ describe("splitBlockClearBorders — direct run formatting", () => {
       panic("Enter handler did not produce a transaction");
     }
     state = state.apply(transaction);
-    state = state.apply(state.tr.setSelection(TextSelection.atStart(state.doc)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.atStart(state.doc)),
+    );
     state = state.apply(state.tr.setSelection(TextSelection.atEnd(state.doc)));
 
     const storedMarkNames = markNames(state.storedMarks);
@@ -156,11 +170,15 @@ describe("splitBlockClearBorders — direct run formatting", () => {
 
   test("keeps an explicit formatting removal after leaving and returning", () => {
     const directFormatting = { bold: false };
-    const formattingMarks = textFormattingToMarks({ bold: false, fontSize: 32 }, schema, {
-      authoredCarrier: "preserve",
-      directFormatting,
-      overrideFormatting: directFormatting,
-    });
+    const formattingMarks = textFormattingToMarks(
+      { bold: false, fontSize: 32 },
+      schema,
+      {
+        authoredCarrier: "preserve",
+        directFormatting,
+        overrideFormatting: directFormatting,
+      },
+    );
     const paragraph = schema.node(
       "paragraph",
       { defaultTextFormatting: { bold: true, fontSize: 32 } },
@@ -168,7 +186,9 @@ describe("splitBlockClearBorders — direct run formatting", () => {
     );
     let state = stateWith(schema.node("doc", null, [paragraph]), false);
     state = state.apply(
-      state.tr.setSelection(TextSelection.create(state.doc, paragraph.nodeSize - 1)),
+      state.tr.setSelection(
+        TextSelection.create(state.doc, paragraph.nodeSize - 1),
+      ),
     );
 
     let transaction: Transaction | null = null;
@@ -179,9 +199,13 @@ describe("splitBlockClearBorders — direct run formatting", () => {
       panic("Enter handler did not produce a transaction");
     }
     state = state.apply(transaction);
-    expect(state.selection.$from.parent.attrs["defaultTextFormatting"]?.bold).toBeFalse();
+    expect(
+      state.selection.$from.parent.attrs["defaultTextFormatting"]?.bold,
+    ).toBeFalse();
 
-    state = state.apply(state.tr.setSelection(TextSelection.atStart(state.doc)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.atStart(state.doc)),
+    );
     state = state.apply(state.tr.setSelection(TextSelection.atEnd(state.doc)));
 
     const storedMarkNames = markNames(state.storedMarks);
@@ -202,7 +226,12 @@ describe("splitBlockClearBorders — w:next style switch", () => {
         styleId: "Heading1",
         defaultTextFormatting: { fontSize: 40, bold: true },
       },
-      [schema.text("Heading One", [schema.mark("bold"), schema.mark("fontSize", { size: 40 })])],
+      [
+        schema.text("Heading One", [
+          schema.mark("bold"),
+          schema.mark("fontSize", { size: 40 }),
+        ]),
+      ],
     );
     let state = stateWith(schema.node("doc", null, [heading]), withResolver);
     const headingNode = state.doc.firstChild;
@@ -210,7 +239,9 @@ describe("splitBlockClearBorders — w:next style switch", () => {
       throw new Error("Expected heading paragraph");
     }
     const endOfHeading = headingNode.nodeSize - 1;
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, endOfHeading)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, endOfHeading)),
+    );
 
     const captured: { tr: Transaction | null } = { tr: null };
     splitBlockClearBorders(state, (tr) => {
@@ -253,7 +284,9 @@ describe("splitBlockClearBorders — w:next style switch", () => {
     );
     let state = stateWith(schema.node("doc", null, [heading]));
     state = state.apply(
-      state.tr.setSelection(TextSelection.create(state.doc, heading.nodeSize - 1)),
+      state.tr.setSelection(
+        TextSelection.create(state.doc, heading.nodeSize - 1),
+      ),
     );
 
     let transaction: Transaction | null = null;
@@ -264,7 +297,9 @@ describe("splitBlockClearBorders — w:next style switch", () => {
       panic("Enter handler did not produce a transaction");
     }
     state = state.apply(transaction);
-    state = state.apply(state.tr.setSelection(TextSelection.atStart(state.doc)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.atStart(state.doc)),
+    );
     state = state.apply(state.tr.setSelection(TextSelection.atEnd(state.doc)));
 
     const newParagraph = state.selection.$from.parent;
@@ -293,7 +328,9 @@ describe("splitBlockClearBorders — w:next style switch", () => {
     );
     let state = stateWith(schema.node("doc", null, [heading]));
     state = state.apply(
-      state.tr.setSelection(TextSelection.create(state.doc, heading.nodeSize - 1)),
+      state.tr.setSelection(
+        TextSelection.create(state.doc, heading.nodeSize - 1),
+      ),
     );
 
     let transaction: Transaction | null = null;
@@ -304,14 +341,19 @@ describe("splitBlockClearBorders — w:next style switch", () => {
       panic("Enter handler did not produce a transaction");
     }
     state = state.apply(transaction);
-    state = state.apply(state.tr.setSelection(TextSelection.atStart(state.doc)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.atStart(state.doc)),
+    );
     state = state.apply(state.tr.setSelection(TextSelection.atEnd(state.doc)));
 
     const newParagraph = state.selection.$from.parent;
     expect(newParagraph.attrs["styleId"]).toBe("Normal");
-    expect(newParagraph.attrs["defaultTextFormatting"]?.styleId).toBe("Emphasis");
+    expect(newParagraph.attrs["defaultTextFormatting"]?.styleId).toBe(
+      "Emphasis",
+    );
     expect(
-      state.storedMarks?.find(({ type }) => type.name === "characterStyle")?.attrs["styleId"],
+      state.storedMarks?.find(({ type }) => type.name === "characterStyle")
+        ?.attrs["styleId"],
     ).toBe("Emphasis");
   });
 
@@ -350,7 +392,10 @@ describe("splitBlockClearBorders — w:next style switch", () => {
     const heading = schema.node("paragraph", { styleId: "BorderedHeading" }, [
       schema.text("Heading"),
     ]);
-    const plugins = [...singletonManager.getPlugins(), createDocumentStylesPlugin(customResolver)];
+    const plugins = [
+      ...singletonManager.getPlugins(),
+      createDocumentStylesPlugin(customResolver),
+    ];
     let state = EditorState.create({
       doc: schema.node("doc", null, [heading]),
       schema,
@@ -361,7 +406,9 @@ describe("splitBlockClearBorders — w:next style switch", () => {
       panic("Expected heading paragraph");
     }
     state = state.apply(
-      state.tr.setSelection(TextSelection.create(state.doc, headingNode.nodeSize - 1)),
+      state.tr.setSelection(
+        TextSelection.create(state.doc, headingNode.nodeSize - 1),
+      ),
     );
 
     const captured: { tr: Transaction | null } = { tr: null };
@@ -406,7 +453,10 @@ describe("splitBlockClearBorders — w:next style switch", () => {
       },
       [schema.text("Heading")],
     );
-    const plugins = [...singletonManager.getPlugins(), createDocumentStylesPlugin(customResolver)];
+    const plugins = [
+      ...singletonManager.getPlugins(),
+      createDocumentStylesPlugin(customResolver),
+    ];
     let state = EditorState.create({
       doc: schema.node("doc", null, [heading]),
       schema,
@@ -417,7 +467,9 @@ describe("splitBlockClearBorders — w:next style switch", () => {
       panic("Expected heading paragraph");
     }
     state = state.apply(
-      state.tr.setSelection(TextSelection.create(state.doc, headingNode.nodeSize - 1)),
+      state.tr.setSelection(
+        TextSelection.create(state.doc, headingNode.nodeSize - 1),
+      ),
     );
 
     const captured: { tr: Transaction | null } = { tr: null };
@@ -452,7 +504,9 @@ describe("splitBlockClearBorders — w:next style switch", () => {
     let state = stateWith(schema.node("doc", null, [heading]));
     // Cursor between "Title" and the hard_break (offset 6 inside the doc:
     // 1 for paragraph open + 5 text chars).
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 6)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 6)),
+    );
 
     const captured: { tr: Transaction | null } = { tr: null };
     splitBlockClearBorders(state, (tr) => {

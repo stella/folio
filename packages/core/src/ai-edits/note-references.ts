@@ -19,8 +19,8 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import {
   createNoteReferenceNumbering,
-  noteReferenceMarker,
   type NoteReferenceKind,
+  noteReferenceMarker,
 } from "../utils/noteReferenceLabels";
 import type { CleanBlockText } from "./clean-text";
 import type { TextChange } from "./minimal-replacement";
@@ -40,7 +40,9 @@ export const noteReferenceOf = (node: PMNode): NoteReferenceIdentity | null => {
   if (!node.isText) {
     return null;
   }
-  const mark = node.marks.find((candidate: Mark) => candidate.type.name === NOTE_REFERENCE_MARK);
+  const mark = node.marks.find(
+    (candidate: Mark) => candidate.type.name === NOTE_REFERENCE_MARK,
+  );
   if (!mark) {
     return null;
   }
@@ -60,10 +62,14 @@ export type NoteReferenceLabels = {
   labelOf: (reference: NoteReferenceIdentity) => string | undefined;
 };
 
-const labelKey = ({ noteType, noteId }: NoteReferenceIdentity): string => `${noteType}:${noteId}`;
+const labelKey = ({ noteType, noteId }: NoteReferenceIdentity): string =>
+  `${noteType}:${noteId}`;
 
 const isOmittedFromCleanView = (node: PMNode): boolean =>
-  node.marks.some((mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK);
+  node.marks.some(
+    (mark) =>
+      mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
+  );
 
 /** Labels that grow as the blocks of a story are numbered, in reading order. */
 export type NoteReferenceLabeler = NoteReferenceLabels & {
@@ -91,9 +97,15 @@ export const createNoteReferenceLabeler = (): NoteReferenceLabeler => {
         if (reference === null || isOmittedFromCleanView(node)) {
           return true;
         }
-        const { displayNumber, first } = numbering.next(reference.noteType, reference.noteId);
+        const { displayNumber, first } = numbering.next(
+          reference.noteType,
+          reference.noteId,
+        );
         if (first) {
-          labels.set(labelKey(reference), noteReferenceMarker(reference.noteType, displayNumber));
+          labels.set(
+            labelKey(reference),
+            noteReferenceMarker(reference.noteType, displayNumber),
+          );
         }
         return true;
       });
@@ -106,14 +118,19 @@ export const createNoteReferenceLabeler = (): NoteReferenceLabeler => {
  * instead of its package id. A reference the clean view omits (a tracked
  * deletion) has no number there, and reads as an unnumbered marker.
  */
-export const readerTextOf = (node: PMNode, labels: NoteReferenceLabels): string => {
+export const readerTextOf = (
+  node: PMNode,
+  labels: NoteReferenceLabels,
+): string => {
   const reference = noteReferenceOf(node);
   if (reference === null) {
     return node.text ?? "";
   }
   return (
     labels.labelOf(reference) ??
-    (reference.noteType === "endnote" ? UNNUMBERED_ENDNOTE_MARKER : UNNUMBERED_FOOTNOTE_MARKER)
+    (reference.noteType === "endnote"
+      ? UNNUMBERED_ENDNOTE_MARKER
+      : UNNUMBERED_FOOTNOTE_MARKER)
   );
 };
 
@@ -149,7 +166,9 @@ export const cutsIntoNoteReference = (
     (boundary) =>
       boundary.type === "noteReference" &&
       [start, end].some(
-        (offset) => offset > boundary.offset && offset < boundary.offset + boundary.length,
+        (offset) =>
+          offset > boundary.offset &&
+          offset < boundary.offset + boundary.length,
       ),
   );
 
@@ -177,10 +196,12 @@ export const withComparisonNoteReferenceEdits = <T>(apply: () => T): T => {
 };
 
 /** @internal Whether the running apply belongs to a comparison (see above). */
-export const noteReferenceEditsAllowed = (): boolean => comparisonEditsNoteReferences;
+export const noteReferenceEditsAllowed = (): boolean =>
+  comparisonEditsNoteReferences;
 
 const NOTE_MARKER_PATTERN = /\[\^e?[1-9]\d*\]/gu;
-const markerCount = (text: string): number => text.match(NOTE_MARKER_PATTERN)?.length ?? 0;
+const markerCount = (text: string): number =>
+  text.match(NOTE_MARKER_PATTERN)?.length ?? 0;
 
 /** The pieces of a replacement between the markers it has to keep. */
 type NoteReferenceSegments = {
@@ -215,12 +236,18 @@ export const segmentsAroundNoteReferences = (
     if (at === -1) {
       return null;
     }
-    segments.source.push({ offset: sourceCursor, text: source.slice(sourceCursor, offset) });
+    segments.source.push({
+      offset: sourceCursor,
+      text: source.slice(sourceCursor, offset),
+    });
     segments.replacement.push(replacement.slice(replacementCursor, at));
     sourceCursor = offset + length;
     replacementCursor = at + marker.length;
   }
-  segments.source.push({ offset: sourceCursor, text: source.slice(sourceCursor) });
+  segments.source.push({
+    offset: sourceCursor,
+    text: source.slice(sourceCursor),
+  });
   segments.replacement.push(replacement.slice(replacementCursor));
   for (const [index, piece] of segments.replacement.entries()) {
     if (markerCount(piece) > markerCount(segments.source[index]?.text ?? "")) {

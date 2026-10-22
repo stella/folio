@@ -45,7 +45,10 @@ function DefaultPopoverPopup({
         side={side}
         sideOffset={sideOffset}
       >
-        <PopoverPrimitive.Popup className={cn("folio-default-popover-popup", className)} {...props}>
+        <PopoverPrimitive.Popup
+          className={cn("folio-default-popover-popup", className)}
+          {...props}
+        >
           {children}
         </PopoverPrimitive.Popup>
       </PopoverPrimitive.Positioner>

@@ -14,21 +14,29 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
+import { blockPlainText } from "../docx/blockPlainText";
 import {
   buildFontAlternates,
-  getFontAlternate,
   type FontAlternates,
+  getFontAlternate,
 } from "../fonts/fontAlternates";
-import { blockPlainText } from "../docx/blockPlainText";
-import { expectFontFamilyMarkAttrs, expectParagraphAttrs } from "../prosemirror/attrs";
-import { DEFAULT_FONT_FAMILY, isLayoutFontFamily } from "../layout-engine/measure/measureHelpers";
-import { parseFontFamilyList, resolveFontFamily } from "../utils/fontResolver";
+import {
+  DEFAULT_FONT_FAMILY,
+  isLayoutFontFamily,
+} from "../layout-engine/measure/measureHelpers";
+import {
+  expectFontFamilyMarkAttrs,
+  expectParagraphAttrs,
+} from "../prosemirror/attrs";
 import type { Document, TextFormatting } from "../types/document";
+import { parseFontFamilyList, resolveFontFamily } from "../utils/fontResolver";
 
 /** The parts of a `FontFace` layout readiness reads. */
 export type LayoutFontSetFace = Pick<FontFace, "family" | "status">;
 
-type LayoutFontSetListener = (event: { fontfaces: readonly LayoutFontSetFace[] }) => void;
+type LayoutFontSetListener = (event: {
+  fontfaces: readonly LayoutFontSetFace[];
+}) => void;
 
 /**
  * The parts of a `FontFaceSet` layout readiness uses; `document.fonts` in a
@@ -37,8 +45,14 @@ type LayoutFontSetListener = (event: { fontfaces: readonly LayoutFontSetFace[] }
 export type LayoutFontSet = Iterable<LayoutFontSetFace> & {
   load: (font: string, text?: string) => Promise<unknown>;
   readonly ready: Promise<unknown>;
-  addEventListener: (type: "loadingdone", listener: LayoutFontSetListener) => void;
-  removeEventListener: (type: "loadingdone", listener: LayoutFontSetListener) => void;
+  addEventListener: (
+    type: "loadingdone",
+    listener: LayoutFontSetListener,
+  ) => void;
+  removeEventListener: (
+    type: "loadingdone",
+    listener: LayoutFontSetListener,
+  ) => void;
 };
 
 export function getDocumentFontSet(): FontFaceSet | null {
@@ -61,7 +75,9 @@ export function getDocumentFontSet(): FontFaceSet | null {
  * measuring to name what a layout measured in. Without a font set (a server or
  * headless host) there is nothing to load and the signature is constant.
  */
-export function readFontSetSignature(fontSet: LayoutFontSet | null = getDocumentFontSet()): string {
+export function readFontSetSignature(
+  fontSet: LayoutFontSet | null = getDocumentFontSet(),
+): string {
   if (!fontSet) {
     return NO_FONT_SET_SIGNATURE;
   }
@@ -178,17 +194,24 @@ export function waitForInitialLayoutFonts(
   const text = collectLayoutText(documentModel, pmDoc);
   const loadChecks: string[] = [];
   for (const face of collectInitialLayoutFontFaces(documentModel, pmDoc)) {
-    loadChecks.push(`${face.style} ${face.weight} 16px "${escapeCssFontFamily(face.family)}"`);
+    loadChecks.push(
+      `${face.style} ${face.weight} 16px "${escapeCssFontFamily(face.family)}"`,
+    );
   }
 
   let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
-  const loadFonts = Promise.allSettled(loadChecks.map((check) => fontSet.load(check, text)))
+  const loadFonts = Promise.allSettled(
+    loadChecks.map((check) => fontSet.load(check, text)),
+  )
     .then(() => fontSet.ready)
     .then(() => true);
   return Promise.race([
     loadFonts,
     new Promise<boolean>((resolve) => {
-      timeout = globalThis.setTimeout(() => resolve(false), INITIAL_LAYOUT_FONT_TIMEOUT_MS);
+      timeout = globalThis.setTimeout(
+        () => resolve(false),
+        INITIAL_LAYOUT_FONT_TIMEOUT_MS,
+      );
     }),
   ]).finally(() => globalThis.clearTimeout(timeout));
 }
@@ -238,7 +261,11 @@ export function collectInitialLayoutFontFamilies(
   documentModel: Document | null,
   pmDoc: EditorState["doc"],
 ): Set<string> {
-  return new Set(collectInitialLayoutFontFaces(documentModel, pmDoc).map(({ family }) => family));
+  return new Set(
+    collectInitialLayoutFontFaces(documentModel, pmDoc).map(
+      ({ family }) => family,
+    ),
+  );
 }
 
 export function collectInitialLayoutFontFaces(
@@ -255,7 +282,12 @@ export function collectInitialLayoutFontFaces(
   );
 
   for (const family of documentModel?.requiredFonts ?? []) {
-    addLayoutFontFamilyFace(faces, family, REGULAR_LAYOUT_FONT_DESCRIPTOR, fontAlternates);
+    addLayoutFontFamilyFace(
+      faces,
+      family,
+      REGULAR_LAYOUT_FONT_DESCRIPTOR,
+      fontAlternates,
+    );
   }
 
   addLayoutFontFamilyFace(
@@ -324,7 +356,10 @@ function collectProseMirrorFontFaces(
   }
 
   if (node.isText) {
-    const descriptor = layoutDescriptorFromFormattingAndMarks(textFormatting, node.marks);
+    const descriptor = layoutDescriptorFromFormattingAndMarks(
+      textFormatting,
+      node.marks,
+    );
     const markFontFamily = readFontFamilyMarkAttrs(node.marks);
     addLayoutFontFamilyFace(
       faces,
@@ -340,7 +375,9 @@ function collectProseMirrorFontFaces(
   });
 }
 
-function readParagraphDefaultTextFormatting(node: PMNode): TextFormatting | undefined {
+function readParagraphDefaultTextFormatting(
+  node: PMNode,
+): TextFormatting | undefined {
   const value = node.attrs["defaultTextFormatting"];
   if (!value || typeof value !== "object") {
     return undefined;
@@ -424,8 +461,18 @@ function addLayoutFontFamilyFace(
   };
   addLayoutFontFamilyFace(faces, fontFamily.ascii, descriptor, fontAlternates);
   addLayoutFontFamilyFace(faces, fontFamily.hAnsi, descriptor, fontAlternates);
-  addLayoutFontFamilyFace(faces, fontFamily.cs, complexScriptDescriptor, fontAlternates);
-  addLayoutFontFamilyFace(faces, fontFamily.eastAsia, descriptor, fontAlternates);
+  addLayoutFontFamilyFace(
+    faces,
+    fontFamily.cs,
+    complexScriptDescriptor,
+    fontAlternates,
+  );
+  addLayoutFontFamilyFace(
+    faces,
+    fontFamily.eastAsia,
+    descriptor,
+    fontAlternates,
+  );
 }
 
 function addLayoutFontFamilyNameFace(
@@ -465,9 +512,16 @@ function addLayoutFontFamilyNameFace(
  * Parsed from the stack rather than read from a map because the stack is what
  * the painter and the measurer put in `ctx.font` and `style.fontFamily`.
  */
-function resolvedStackFamilies(family: string, alternate: string | undefined): string[] {
-  const { cssFallback } = resolveFontFamily(family, { alternateFontName: alternate });
-  return parseFontFamilyList(cssFallback).filter((name) => !CSS_GENERIC_FONT_FAMILIES.has(name));
+function resolvedStackFamilies(
+  family: string,
+  alternate: string | undefined,
+): string[] {
+  const { cssFallback } = resolveFontFamily(family, {
+    alternateFontName: alternate,
+  });
+  return parseFontFamilyList(cssFallback).filter(
+    (name) => !CSS_GENERIC_FONT_FAMILIES.has(name),
+  );
 }
 
 function addLayoutFontFace(

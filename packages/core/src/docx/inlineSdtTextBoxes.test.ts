@@ -61,7 +61,9 @@ const createSource = async (): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const firstParagraph = (document: Awaited<ReturnType<typeof parseDocx>>): Paragraph => {
+const firstParagraph = (
+  document: Awaited<ReturnType<typeof parseDocx>>,
+): Paragraph => {
   const paragraph = document.package.document.content.at(0);
   if (paragraph?.type !== "paragraph") {
     throw new Error("Expected paragraph");
@@ -69,7 +71,9 @@ const firstParagraph = (document: Awaited<ReturnType<typeof parseDocx>>): Paragr
   return paragraph;
 };
 
-const firstInlineSdt = (content: Paragraph["content"] | InlineSdt["content"]): InlineSdt => {
+const firstInlineSdt = (
+  content: Paragraph["content"] | InlineSdt["content"],
+): InlineSdt => {
   const sdt = content.find((item) => item.type === "inlineSdt");
   if (sdt?.type !== "inlineSdt") {
     throw new Error("Expected inline content control");
@@ -81,13 +85,18 @@ const textBoxRuns = (sdt: InlineSdt): Run[] =>
   sdt.content.filter(
     (item): item is Run =>
       item.type === "run" &&
-      item.content.some((content) => content.type === "shape" && content.shape.textBody),
+      item.content.some(
+        (content) => content.type === "shape" && content.shape.textBody,
+      ),
   );
 
 describe("inline content-control text boxes", () => {
   test("preserves nested controls and drawings through the editor save path", async () => {
     const source = await createSource();
-    const parsed = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+    const parsed = await parseDocx(source, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
     const outer = firstInlineSdt(firstParagraph(parsed).content);
     const inner = firstInlineSdt(outer.content);
 
@@ -102,7 +111,9 @@ describe("inline content-control text boxes", () => {
     ]);
 
     const saved = await repackDocx(
-      fromProseDoc(pmDocument, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(pmDocument, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
       {
         updateModifiedDate: false,
       },

@@ -18,23 +18,37 @@ afterEach(async () => {
 
 describe("resolveAuthor", () => {
   test("prefers --author, then FOLIO_AUTHOR, then git user.name", () => {
-    spawnSync("git", ["init", "-q", dir], { env: { ...process.env, ...ISOLATED_GIT_ENV } });
+    spawnSync("git", ["init", "-q", dir], {
+      env: { ...process.env, ...ISOLATED_GIT_ENV },
+    });
     spawnSync("git", ["-C", dir, "config", "user.name", "Git Person"]);
     const withEnv = { ...ISOLATED_GIT_ENV, FOLIO_AUTHOR: "Env Person" };
 
-    expect(resolveAuthor({ explicit: "Flag Person", env: withEnv, cwd: dir }).unwrap()).toBe(
-      "Flag Person",
-    );
-    expect(resolveAuthor({ explicit: undefined, env: withEnv, cwd: dir }).unwrap()).toBe(
-      "Env Person",
-    );
-    expect(resolveAuthor({ explicit: " ", env: ISOLATED_GIT_ENV, cwd: dir }).unwrap()).toBe(
-      "Git Person",
-    );
+    expect(
+      resolveAuthor({
+        explicit: "Flag Person",
+        env: withEnv,
+        cwd: dir,
+      }).unwrap(),
+    ).toBe("Flag Person");
+    expect(
+      resolveAuthor({ explicit: undefined, env: withEnv, cwd: dir }).unwrap(),
+    ).toBe("Env Person");
+    expect(
+      resolveAuthor({
+        explicit: " ",
+        env: ISOLATED_GIT_ENV,
+        cwd: dir,
+      }).unwrap(),
+    ).toBe("Git Person");
   });
 
   test("refuses when no author is configured anywhere", () => {
-    const result = resolveAuthor({ explicit: undefined, env: ISOLATED_GIT_ENV, cwd: dir });
+    const result = resolveAuthor({
+      explicit: undefined,
+      env: ISOLATED_GIT_ENV,
+      cwd: dir,
+    });
 
     expect(result.isErr() && result.error.code).toBe("author_required");
   });
@@ -44,7 +58,9 @@ describe("resolveTransactionDate", () => {
   test("normalizes to UTC seconds and refuses unparsable dates", () => {
     const fixed = () => new Date("2026-03-04T05:06:07.890Z");
 
-    expect(resolveTransactionDate(undefined, fixed).unwrap()).toBe("2026-03-04T05:06:07Z");
+    expect(resolveTransactionDate(undefined, fixed).unwrap()).toBe(
+      "2026-03-04T05:06:07Z",
+    );
     expect(resolveTransactionDate("2026-01-02T03:04:05+02:00").unwrap()).toBe(
       "2026-01-02T01:04:05Z",
     );

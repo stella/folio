@@ -1,8 +1,8 @@
-import { stripVTControlCharacters } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 export type FailureMarker = {
   fingerprint: string;
@@ -22,16 +22,23 @@ export type FailureMarker = {
   primary?: string;
 };
 
-export const shellQuote = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
+export const shellQuote = (value: string): string =>
+  `'${value.replaceAll("'", `'\\''`)}'`;
 
 const deepestMessage = (failure: unknown): string => {
   let current = failure;
   const seen = new Set<unknown>();
-  while (current instanceof Error && current.cause instanceof Error && !seen.has(current.cause)) {
+  while (
+    current instanceof Error &&
+    current.cause instanceof Error &&
+    !seen.has(current.cause)
+  ) {
     seen.add(current);
     current = current.cause;
   }
-  return stripVTControlCharacters(current instanceof Error ? current.message : String(current));
+  return stripVTControlCharacters(
+    current instanceof Error ? current.message : String(current),
+  );
 };
 
 /** Keep the mismatch kind while removing generated values and document prose. */
@@ -41,7 +48,9 @@ export const normalizeAssertion = (failure: unknown): string => {
     .map((line) => line.trim())
     .filter(Boolean);
   const first = lines[0] ?? "unknown failure";
-  const symptom = /the result is not what was asked/u.test(first) ? (lines[1] ?? first) : first;
+  const symptom = /the result is not what was asked/u.test(first)
+    ? (lines[1] ?? first)
+    : first;
   return symptom
     .replace(/^step\s+-?\d+:\s*/u, "")
     .replace(/\s+\{.*$/u, "")
@@ -72,7 +81,9 @@ const valueKind = (text: string, path: string): string => {
   }
   if (value.startsWith("[")) return "[]";
   // A `type` field names a kind (insertion, deletion, …), not document text.
-  const kind = /\.type$/u.test(path) ? /^…?"([\w-]*)"?/u.exec(value)?.[1] : undefined;
+  const kind = /\.type$/u.test(path)
+    ? /^…?"([\w-]*)"?/u.exec(value)?.[1]
+    : undefined;
   return kind ?? "text";
 };
 
@@ -87,7 +98,12 @@ export const diffShape = (failure: unknown): string => {
   for (const line of deepestMessage(failure).split("\n")) {
     const match = DIFFERENCE.exec(line.trim());
     if (match === null) continue;
-    const [, at, before, after] = match as unknown as [string, string, string, string];
+    const [, at, before, after] = match as unknown as [
+      string,
+      string,
+      string,
+      string,
+    ];
     // `[2]` → `[]`; a typed entry, `[2:insertion]`, keeps its type.
     const path = at.replace(/\[\d+(?::([\w-]+))?\]/gu, (_, type?: string) =>
       type === undefined ? "[]" : `[${type}]`,
@@ -97,7 +113,8 @@ export const diffShape = (failure: unknown): string => {
   return [...shapes].sort().slice(0, 12).join("; ");
 };
 
-const hash = (text: string): string => createHash("sha256").update(text).digest("hex").slice(0, 16);
+const hash = (text: string): string =>
+  createHash("sha256").update(text).digest("hex").slice(0, 16);
 
 /**
  * The marker for a failure. The fingerprint hashes the test, the symptom
@@ -123,7 +140,9 @@ export const failureMarker = ({
   const assertion = normalizeAssertion(failure);
   const diff = diffShape(failure);
   // Without differences the fingerprint is what it always was.
-  const primary = hash(diff === "" ? `${test}\0${assertion}` : `${test}\0${assertion}\0${diff}`);
+  const primary = hash(
+    diff === "" ? `${test}\0${assertion}` : `${test}\0${assertion}\0${diff}`,
+  );
   return {
     fingerprint: flow === undefined ? primary : hash(`${primary}\0${flow}`),
     test,
@@ -201,16 +220,25 @@ export const failureRecord = (
     version: 1,
     marker,
     replays: extra.replays ?? [marker.repro],
-    error: message.length > MAX_RECORD_ERROR ? `${message.slice(0, MAX_RECORD_ERROR)} …` : message,
+    error:
+      message.length > MAX_RECORD_ERROR
+        ? `${message.slice(0, MAX_RECORD_ERROR)} …`
+        : message,
     ...(extra.flow === undefined ? {} : { flow: extra.flow }),
     ...(extra.shrink === undefined ? {} : { shrink: extra.shrink }),
   };
 };
 
 /** Write `record` into `dir` as `<fingerprint>-<seed>.json`; returns the path. */
-export const writeFailureRecord = (dir: string, record: FailureRecord): string => {
+export const writeFailureRecord = (
+  dir: string,
+  record: FailureRecord,
+): string => {
   mkdirSync(dir, { recursive: true });
-  const file = join(dir, `${record.marker.fingerprint}-${record.marker.seed}.json`);
+  const file = join(
+    dir,
+    `${record.marker.fingerprint}-${record.marker.seed}.json`,
+  );
   writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
   if (record.flow !== undefined) {
     writeFileSync(

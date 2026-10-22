@@ -18,15 +18,15 @@
 
 import { panic } from "better-result";
 
+import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import {
-  hasEastAsiaSlotText,
   hasComplexScript,
+  hasEastAsiaSlotText,
   SCRIPT_CLASS,
+  type ScriptClass,
   scriptClassOf,
   segmentByScript,
-  type ScriptClass,
 } from "../../utils/scriptSegments";
-import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import {
   getCachedFontMetrics,
   getCachedTextWidth,
@@ -46,10 +46,19 @@ import {
 } from "./measureHelpers";
 import { setMeasureProvider } from "./measureProvider";
 import type { MeasureProvider } from "./measureProvider";
-import type { FontMetrics, FontStyle, RunMeasurement, TextMeasurement } from "./measureTypes";
+import type {
+  FontMetrics,
+  FontStyle,
+  RunMeasurement,
+  TextMeasurement,
+} from "./measureTypes";
 import { canPrefetchMeasurement, prefetchMeasurement } from "./measureWorker";
 import { countCodePoints } from "./measureWorkerProtocol";
-import { SMALL_CAPS_SCALE, smallCapsMask, smallCapsSegments } from "./smallCapsCasing";
+import {
+  SMALL_CAPS_SCALE,
+  smallCapsMask,
+  smallCapsSegments,
+} from "./smallCapsCasing";
 import { getFontKerningMode } from "./textMeasurementPolicy";
 
 // Default typography ratios
@@ -66,7 +75,8 @@ let canvasContext: CanvasRenderingContext2D | null = null;
 export function getCanvasContext(): CanvasRenderingContext2D {
   if (!canvasContext) {
     // Create offscreen canvas
-    const canvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
+    const canvas =
+      typeof document !== "undefined" ? document.createElement("canvas") : null;
 
     if (!canvas) {
       panic("Canvas not available. Ensure this runs in a DOM environment.");
@@ -102,7 +112,13 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
   const fontVariant = style.fontVariant;
   const fontCacheFamily = getResolvedData(fontFamily, style).cssFallback;
 
-  const cached = getCachedFontMetrics(fontCacheFamily, fontSize, bold, italic, fontVariant);
+  const cached = getCachedFontMetrics(
+    fontCacheFamily,
+    fontSize,
+    bold,
+    italic,
+    fontVariant,
+  );
   if (cached !== undefined) {
     return {
       fontSize,
@@ -183,7 +199,14 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
     fontFamily,
     singleLineRatio,
   };
-  setCachedFontMetrics(fontCacheFamily, fontSize, bold, italic, result, fontVariant);
+  setCachedFontMetrics(
+    fontCacheFamily,
+    fontSize,
+    bold,
+    italic,
+    result,
+    fontVariant,
+  );
   return result;
 }
 
@@ -290,7 +313,9 @@ function canvasMeasureTextWidth(text: string, sourceStyle: FontStyle): number {
  */
 function glyphAdvanceStyle(style: FontStyle): FontStyle {
   const result: FontStyle = {
-    ...(style.embeddedFontFamilyMap ? { embeddedFontFamilyMap: style.embeddedFontFamilyMap } : {}),
+    ...(style.embeddedFontFamilyMap
+      ? { embeddedFontFamilyMap: style.embeddedFontFamilyMap }
+      : {}),
   };
   if (style.fontFamily !== undefined) {
     result.fontFamily = style.fontFamily;
@@ -328,7 +353,10 @@ function glyphAdvanceStyle(style: FontStyle): FontStyle {
  * AND text that would select it. Keeps the all-Latin path on a single font.
  */
 function needsPerScriptFonts(style: FontStyle, measuredText: string): boolean {
-  if (style.eastAsiaFontFamily && hasEastAsiaSlotText(measuredText, style.eastAsiaHint)) {
+  if (
+    style.eastAsiaFontFamily &&
+    hasEastAsiaSlotText(measuredText, style.eastAsiaHint)
+  ) {
     return true;
   }
   return hasComplexScriptFormatting(style) && hasComplexScript(measuredText);
@@ -353,7 +381,10 @@ function scriptStyle(style: FontStyle, script: ScriptClass): FontStyle {
   return style;
 }
 
-function measureMixedScriptWidth(measuredText: string, style: FontStyle): number {
+function measureMixedScriptWidth(
+  measuredText: string,
+  style: FontStyle,
+): number {
   const letterSpacing = style.letterSpacing ?? 0;
   const horizontalScale = getHorizontalScaleFactor(style.horizontalScale);
 
@@ -439,7 +470,10 @@ function canvasMeasureText(text: string, style: FontStyle): TextMeasurement {
  * @param style - Font styling properties
  * @returns Run measurement with width and per-character widths
  */
-function canvasMeasureRun(text: string, sourceStyle: FontStyle): RunMeasurement {
+function canvasMeasureRun(
+  text: string,
+  sourceStyle: FontStyle,
+): RunMeasurement {
   const style = sourceStyle.forceComplexScript
     ? applyComplexScriptFormatting(sourceStyle, sourceStyle)
     : sourceStyle;
@@ -498,7 +532,8 @@ function canvasMeasureRun(text: string, sourceStyle: FontStyle): RunMeasurement 
   // code points `w:smallCaps` draws as shrunken, uppercased capitals. Built
   // once so a trailing space's class (see smallCapsCasing.ts) can look back at
   // the code point the loop already measured.
-  const smallCapsAt = smallCapsFont !== undefined ? smallCapsMask(text) : undefined;
+  const smallCapsAt =
+    smallCapsFont !== undefined ? smallCapsMask(text) : undefined;
 
   // Measure each character for click positioning. Iterate whole code points so
   // an astral CJK ideograph (a surrogate pair) gets the EA font and a real
@@ -510,7 +545,9 @@ function canvasMeasureRun(text: string, sourceStyle: FontStyle): RunMeasurement 
     // SAFETY: for...of over a string yields whole code points.
     const cp = char.codePointAt(0)!;
     const isSmallCap = smallCapsAt?.[codePointIndex] ?? false;
-    const measured = isSmallCap ? char.toLocaleUpperCase() : applyTextTransform(char, style);
+    const measured = isSmallCap
+      ? char.toLocaleUpperCase()
+      : applyTextTransform(char, style);
     if (isSmallCap && smallCapsFont !== undefined) {
       ctx.font = smallCapsFont;
     } else if (eastAsiaFont !== undefined || complexScriptFont !== undefined) {

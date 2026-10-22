@@ -15,7 +15,9 @@ import { executeFolioToolCallUntyped } from "./execute";
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
 
-const buildDocx = async (paragraphs: readonly string[]): Promise<ArrayBuffer> => {
+const buildDocx = async (
+  paragraphs: readonly string[],
+): Promise<ArrayBuffer> => {
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -48,10 +50,16 @@ const buildDocx = async (paragraphs: readonly string[]): Promise<ArrayBuffer> =>
   return await zip.generateAsync({ type: "arraybuffer" });
 };
 
-const acceptedTexts = async (reviewer: FolioDocxReviewer): Promise<string[]> => {
-  const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+const acceptedTexts = async (
+  reviewer: FolioDocxReviewer,
+): Promise<string[]> => {
+  const reopened = await FolioDocxReviewer.fromBuffer(
+    await reviewer.toBuffer(),
+  );
   reopened.acceptAll();
-  const accepted = await FolioDocxReviewer.fromBuffer(await reopened.toBuffer());
+  const accepted = await FolioDocxReviewer.fromBuffer(
+    await reopened.toBuffer(),
+  );
   return accepted.snapshot().blocks.map((block) => block.text);
 };
 
@@ -61,7 +69,10 @@ type SuggestSummary = {
   issues: { operationId: string; code: string; message?: string }[];
 };
 
-const suggest = (reviewer: FolioDocxReviewer, operations: unknown[]): SuggestSummary => {
+const suggest = (
+  reviewer: FolioDocxReviewer,
+  operations: unknown[],
+): SuggestSummary => {
   const call = executeFolioToolCallUntyped(
     "suggest_changes",
     { operations },
@@ -83,16 +94,26 @@ describe("suggest_changes with two operations on one block", () => {
     );
     const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
     const summary = suggest(reviewer, [
-      { id: "replace", type: "replaceInBlock", blockId, find: "Alpha", replace: "First" },
+      {
+        id: "replace",
+        type: "replaceInBlock",
+        blockId,
+        find: "Alpha",
+        replace: "First",
+      },
       { id: "delete", type: "deleteBlock", blockId },
     ]);
 
     expect(summary.applied.map(({ id }) => id)).toEqual(["replace"]);
     expect(summary.skipped).toHaveLength(1);
     expect(summary.skipped[0]?.id).toBe("delete");
-    expect(summary.skipped[0]?.reason).toContain("earlier operation in this batch");
+    expect(summary.skipped[0]?.reason).toContain(
+      "earlier operation in this batch",
+    );
     expect(summary.skipped[0]?.reason).toContain('"replace"');
-    expect(summary.issues.map(({ code }) => code)).toEqual(["overlappingOperation"]);
+    expect(summary.issues.map(({ code }) => code)).toEqual([
+      "overlappingOperation",
+    ]);
     expect(await acceptedTexts(reviewer)).toEqual([
       "First beta gamma.",
       "Second clause.",
@@ -103,11 +124,16 @@ describe("suggest_changes with two operations on one block", () => {
 
 describe("suggest_changes splitting inside an emoji", () => {
   test("refuses the offset and names the boundaries either side", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(["Party 🧑 agrees."]), {
-      author: "QA",
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildDocx(["Party 🧑 agrees."]),
+      {
+        author: "QA",
+      },
+    );
     const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
-    const summary = suggest(reviewer, [{ id: "split", type: "splitBlock", blockId, offset: 7 }]);
+    const summary = suggest(reviewer, [
+      { id: "split", type: "splitBlock", blockId, offset: 7 },
+    ]);
 
     expect(summary.applied).toEqual([]);
     expect(summary.skipped[0]?.reason).toContain("inside a single character");

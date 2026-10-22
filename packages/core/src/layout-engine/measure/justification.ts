@@ -6,9 +6,9 @@
 import type { ParagraphBlock } from "../types";
 import { measureTextWidth } from "./measureProvider";
 import type { FontStyle } from "./measureTypes";
-import { countCompressibleSpaces } from "./textMeasurementPolicy";
 import { WIDTH_TOLERANCE } from "./paragraphMeasureShared";
 import type { LineState } from "./paragraphMeasureShared";
+import { countCompressibleSpaces } from "./textMeasurementPolicy";
 
 const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
 // Modern (`compatibilityMode` 15) justified prose admits a word that overflows
@@ -61,11 +61,18 @@ export function resolveJustifyFitStrategy(
     return { type: "rounding" };
   }
   const hasTabStops = (block.attrs?.tabs?.length ?? 0) > 0;
-  if (isFirstLine && profile.hasTabRuns && (block.attrs?.indent?.hanging ?? 0) > 0) {
+  if (
+    isFirstLine &&
+    profile.hasTabRuns &&
+    (block.attrs?.indent?.hanging ?? 0) > 0
+  ) {
     return { type: "width", ratio: JUSTIFY_SHRINK_TOLERANCE_RATIO };
   }
   if (!isFirstLine && profile.hasTabRuns && !hasTabStops) {
-    return { type: "width", ratio: JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO };
+    return {
+      type: "width",
+      ratio: JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO,
+    };
   }
   if (profile.hasTabRuns && (isFirstLine || hasTabStops)) {
     return {
@@ -109,7 +116,10 @@ export function justifyFitTolerance(
   if (candidate !== undefined && !prefersSpaceShrink(line, candidate)) {
     return WIDTH_TOLERANCE;
   }
-  return Math.max(WIDTH_TOLERANCE, (line.regularSpaceWidth + candidateSpaceWidth) * strategy.ratio);
+  return Math.max(
+    WIDTH_TOLERANCE,
+    (line.regularSpaceWidth + candidateSpaceWidth) * strategy.ratio,
+  );
 }
 
 /**
@@ -122,22 +132,30 @@ export function justifyFitTolerance(
  * before the wrapped word hangs at the line end, so it does not stretch; a
  * line left with nothing to stretch defers to the shrink budget alone.
  */
-function prefersSpaceShrink(line: LineState, candidate: JustifyCandidate): boolean {
+function prefersSpaceShrink(
+  line: LineState,
+  candidate: JustifyCandidate,
+): boolean {
   const overflow = candidate.width - line.availableWidth;
   if (overflow <= WIDTH_TOLERANCE) {
     return true;
   }
-  const shrinkableSpaceWidth = line.regularSpaceWidth + candidate.innerSpaceWidth;
+  const shrinkableSpaceWidth =
+    line.regularSpaceWidth + candidate.innerSpaceWidth;
   if (shrinkableSpaceWidth <= overflow) {
     return false;
   }
-  const hangingSpaceWidth = Math.min(line.trailingWhitespaceWidth, line.regularSpaceWidth);
+  const hangingSpaceWidth = Math.min(
+    line.trailingWhitespaceWidth,
+    line.regularSpaceWidth,
+  );
   const stretchableSpaceWidth = line.regularSpaceWidth - hangingSpaceWidth;
   if (stretchableSpaceWidth <= 0) {
     return true;
   }
   const visibleWidth = line.width - line.trailingWhitespaceWidth;
-  const stretch = 1 + Math.max(0, line.availableWidth - visibleWidth) / stretchableSpaceWidth;
+  const stretch =
+    1 + Math.max(0, line.availableWidth - visibleWidth) / stretchableSpaceWidth;
   if (stretch > JUSTIFY_ALWAYS_SHRINK_STRETCH) {
     return true;
   }

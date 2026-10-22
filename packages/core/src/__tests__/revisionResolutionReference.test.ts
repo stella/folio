@@ -20,10 +20,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-
-import JSZip from "jszip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { getLocalName, parseXml, type XmlElement } from "../docx/xmlParser";
@@ -43,7 +42,9 @@ type ParagraphSummary = {
 };
 type BlockSummary = ParagraphSummary | { table: BlockSummary[][][] };
 
-type NoteSummaries = Partial<Record<"footnote" | "endnote", Record<string, BlockSummary[]>>>;
+type NoteSummaries = Partial<
+  Record<"footnote" | "endnote", Record<string, BlockSummary[]>>
+>;
 
 type ReferenceFixture = {
   origin: "constructed" | "authored";
@@ -61,13 +62,22 @@ type ReferenceFixture = {
 };
 
 type Reference = {
-  package: { styles: string; numbering: string; settings: string; sectPr: string };
+  package: {
+    styles: string;
+    numbering: string;
+    settings: string;
+    sectPr: string;
+  };
   fixtures: Record<string, ReferenceFixture>;
 };
 
 const reference = JSON.parse(
   readFileSync(
-    path.join(import.meta.dir, "__fixtures__", "revision-resolution-reference.json"),
+    path.join(
+      import.meta.dir,
+      "__fixtures__",
+      "revision-resolution-reference.json",
+    ),
     "utf8",
   ),
 ) as Reference;
@@ -83,7 +93,8 @@ const NAMESPACES =
   'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" ' +
   'mc:Ignorable="w14"';
 const MAIN = "application/vnd.openxmlformats-officedocument.wordprocessingml";
-const RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const RELATIONSHIPS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 const NOTE_SEPARATORS = (kind: "footnote" | "endnote") =>
   `<w:${kind} w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:${kind}>` +
@@ -91,7 +102,9 @@ const NOTE_SEPARATORS = (kind: "footnote" | "endnote") =>
 
 const buildPackage = async (fixture: ReferenceFixture): Promise<Uint8Array> => {
   const zip = new JSZip();
-  const notes = (["footnote", "endnote"] as const).filter((kind) => fixture[`${kind}s`]);
+  const notes = (["footnote", "endnote"] as const).filter(
+    (kind) => fixture[`${kind}s`],
+  );
   zip.file(
     "[Content_Types].xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
@@ -103,7 +116,8 @@ const buildPackage = async (fixture: ReferenceFixture): Promise<Uint8Array> => {
       `<Override PartName="/word/settings.xml" ContentType="${MAIN}.settings+xml"/>` +
       notes
         .map(
-          (kind) => `<Override PartName="/word/${kind}s.xml" ContentType="${MAIN}.${kind}s+xml"/>`,
+          (kind) =>
+            `<Override PartName="/word/${kind}s.xml" ContentType="${MAIN}.${kind}s+xml"/>`,
         )
         .join("") +
       `</Types>`,
@@ -173,7 +187,10 @@ const byCodePoint = (left: string, right: string): number => {
 };
 
 /** Deleted text reads `[-…-]` and inserted text `[+…+]`; resolved documents hold neither. */
-const withRevisionBrackets = (text: string, mode: "ins" | "del" | null): string => {
+const withRevisionBrackets = (
+  text: string,
+  mode: "ins" | "del" | null,
+): string => {
   if (mode === "del") return `[-${text}-]`;
   return mode === "ins" ? `[+${text}+]` : text;
 };
@@ -204,7 +221,9 @@ const canonical = (elements: readonly XmlElement[]): string =>
         .map(([key, value]) => ` ${key}="${value}"`)
         .join("");
       const inner = canonical(children(child));
-      return inner ? `<${name}${attributes}>${inner}</${name}>` : `<${name}${attributes}/>`;
+      return inner
+        ? `<${name}${attributes}>${inner}</${name}>`
+        : `<${name}${attributes}/>`;
     })
     .join("");
 
@@ -228,9 +247,12 @@ const runText = (run: XmlElement): string =>
     .join("");
 
 const summarizeParagraph = (paragraph: XmlElement): ParagraphSummary => {
-  const properties = children(paragraph).find((child) => getLocalName(child.name) === "pPr");
+  const properties = children(paragraph).find(
+    (child) => getLocalName(child.name) === "pPr",
+  );
   const own = (properties ? children(properties) : []).filter(
-    (child) => !["rPr", "pPrChange", "sectPr"].includes(getLocalName(child.name)),
+    (child) =>
+      !["rPr", "pPrChange", "sectPr"].includes(getLocalName(child.name)),
   );
   const markRun = (properties ? children(properties) : []).find(
     (child) => getLocalName(child.name) === "rPr",
@@ -241,8 +263,12 @@ const summarizeParagraph = (paragraph: XmlElement): ParagraphSummary => {
     for (const child of children(node)) {
       const name = getLocalName(child.name);
       if (name === "r") {
-        const runProperties = children(child).find((inner) => getLocalName(inner.name) === "rPr");
-        const formatting = runProperties ? canonical(children(runProperties)) : "";
+        const runProperties = children(child).find(
+          (inner) => getLocalName(inner.name) === "rPr",
+        );
+        const formatting = runProperties
+          ? canonical(children(runProperties))
+          : "";
         const raw = runText(child);
         if (!raw) continue;
         const value = withRevisionBrackets(raw, mode);
@@ -253,7 +279,14 @@ const summarizeParagraph = (paragraph: XmlElement): ParagraphSummary => {
       } else if (MARK_REVISIONS.has(name)) {
         walk(child, name === "del" || name === "moveFrom" ? "del" : "ins");
       } else if (
-        ["hyperlink", "smartTag", "customXml", "sdt", "sdtContent", "fldSimple"].includes(name)
+        [
+          "hyperlink",
+          "smartTag",
+          "customXml",
+          "sdt",
+          "sdtContent",
+          "fldSimple",
+        ].includes(name)
       ) {
         walk(child, mode);
       }
@@ -266,11 +299,15 @@ const summarizeParagraph = (paragraph: XmlElement): ParagraphSummary => {
     pPr: canonical(own),
     markRPr: markRun
       ? canonical(
-          children(markRun).filter((child) => !MARK_REVISIONS.has(getLocalName(child.name))),
+          children(markRun).filter(
+            (child) => !MARK_REVISIONS.has(getLocalName(child.name)),
+          ),
         )
       : "",
   };
-  const formatted = runs.filter(([, formatting]) => formatting).map(([t, f]) => `${t}|${f}`);
+  const formatted = runs
+    .filter(([, formatting]) => formatting)
+    .map(([t, f]) => `${t}|${f}`);
   if (formatted.length > 0) summary.runs = formatted;
   return summary;
 };
@@ -293,16 +330,24 @@ const summarizeBlocks = (parent: XmlElement): BlockSummary[] =>
       ];
     }
     if (name === "sdt") {
-      const content = children(child).find((inner) => getLocalName(inner.name) === "sdtContent");
+      const content = children(child).find(
+        (inner) => getLocalName(inner.name) === "sdtContent",
+      );
       return content ? summarizeBlocks(content) : [];
     }
     return [];
   });
 
 const NOTE_KINDS = ["footnote", "endnote"] as const;
-const SEPARATOR_TYPES = new Set(["separator", "continuationSeparator", "continuationNotice"]);
+const SEPARATOR_TYPES = new Set([
+  "separator",
+  "continuationSeparator",
+  "continuationNotice",
+]);
 
-const summarizeNotes = async (bytes: Uint8Array | ArrayBuffer): Promise<NoteSummaries> => {
+const summarizeNotes = async (
+  bytes: Uint8Array | ArrayBuffer,
+): Promise<NoteSummaries> => {
   const zip = await JSZip.loadAsync(bytes);
   const summaries: NoteSummaries = {};
   for (const kind of NOTE_KINDS) {
@@ -312,7 +357,8 @@ const summarizeNotes = async (bytes: Uint8Array | ArrayBuffer): Promise<NoteSumm
     const notes: Record<string, BlockSummary[]> = {};
     for (const note of root ? children(root) : []) {
       if (getLocalName(note.name) !== kind) continue;
-      if (SEPARATOR_TYPES.has(String(note.attributes?.["w:type"] ?? ""))) continue;
+      if (SEPARATOR_TYPES.has(String(note.attributes?.["w:type"] ?? "")))
+        continue;
       notes[String(note.attributes?.["w:id"] ?? "")] = summarizeBlocks(note);
     }
     if (Object.keys(notes).length > 0) summaries[kind] = notes;
@@ -320,12 +366,15 @@ const summarizeNotes = async (bytes: Uint8Array | ArrayBuffer): Promise<NoteSumm
   return summaries;
 };
 
-const summarizeBody = async (bytes: Uint8Array | ArrayBuffer): Promise<BlockSummary[]> => {
+const summarizeBody = async (
+  bytes: Uint8Array | ArrayBuffer,
+): Promise<BlockSummary[]> => {
   const zip = await JSZip.loadAsync(bytes);
   const xml = await zip.file("word/document.xml")?.async("text");
   if (!xml) throw new Error("The saved package has no main document part");
   const root = children(parseXml(xml))[0];
-  const body = root && children(root).find((child) => getLocalName(child.name) === "body");
+  const body =
+    root && children(root).find((child) => getLocalName(child.name) === "body");
   if (!body) throw new Error("The saved main document has no body");
   return summarizeBlocks(body);
 };
@@ -339,7 +388,10 @@ const notesWithoutRegeneratedIds = (
     Object.entries(notes ?? {}).map(([kind, byId]) => [
       kind,
       Object.fromEntries(
-        Object.entries(byId).map(([id, blocks]) => [id, withoutRegeneratedIds(blocks, input)]),
+        Object.entries(byId).map(([id, blocks]) => [
+          id,
+          withoutRegeneratedIds(blocks, input),
+        ]),
       ),
     ]),
   );
@@ -350,22 +402,35 @@ const withoutRegeneratedIds = (
 ): BlockSummary[] =>
   summary.map((block) =>
     "table" in block
-      ? { table: block.table.map((row) => row.map((cell) => withoutRegeneratedIds(cell, input))) }
+      ? {
+          table: block.table.map((row) =>
+            row.map((cell) => withoutRegeneratedIds(cell, input)),
+          ),
+        }
       : {
           ...block,
-          paraId: block.paraId !== null && input.has(block.paraId) ? block.paraId : null,
+          paraId:
+            block.paraId !== null && input.has(block.paraId)
+              ? block.paraId
+              : null,
         },
   );
 
 const inputParaIds = (body: string): Set<string> =>
-  new Set([...body.matchAll(/w14:paraId="([0-9A-Fa-f]{8})"/gu)].map((match) => match[1] ?? ""));
+  new Set(
+    [...body.matchAll(/w14:paraId="([0-9A-Fa-f]{8})"/gu)].map(
+      (match) => match[1] ?? "",
+    ),
+  );
 
 // ============================================================================
 // CASES
 // ============================================================================
 
 const inputIds = (fixture: ReferenceFixture): Set<string> =>
-  inputParaIds(`${fixture.body}${fixture.footnotes ?? ""}${fixture.endnotes ?? ""}`);
+  inputParaIds(
+    `${fixture.body}${fixture.footnotes ?? ""}${fixture.endnotes ?? ""}`,
+  );
 
 describe("tracked-change resolution matches the reference", () => {
   for (const [name, fixture] of Object.entries(reference.fixtures)) {
@@ -374,12 +439,15 @@ describe("tracked-change resolution matches the reference", () => {
       if (!expected) continue;
       test(`${name} › ${mode} all`, async () => {
         const document = await parseShapeDocument(await buildPackage(fixture));
-        const resolved = resolveAllChanges(createHarnessState(document, "editing"), mode);
+        const resolved = resolveAllChanges(
+          createHarnessState(document, "editing"),
+          mode,
+        );
         const saved = await saveHarnessState(resolved, document);
         const ids = inputIds(fixture);
-        expect(withoutRegeneratedIds(await summarizeBody(saved.bytes), ids)).toEqual(
-          withoutRegeneratedIds(expected, ids),
-        );
+        expect(
+          withoutRegeneratedIds(await summarizeBody(saved.bytes), ids),
+        ).toEqual(withoutRegeneratedIds(expected, ids));
       });
       const expectedNotes = fixture[`${mode}Notes`];
       if (!expectedNotes) continue;
@@ -394,24 +462,30 @@ describe("tracked-change resolution matches the reference", () => {
         expect(withoutRegeneratedIds(await summarizeBody(saved), ids)).toEqual(
           withoutRegeneratedIds(expected, ids),
         );
-        expect(notesWithoutRegeneratedIds(await summarizeNotes(saved), ids)).toEqual(
-          notesWithoutRegeneratedIds(expectedNotes, ids),
-        );
+        expect(
+          notesWithoutRegeneratedIds(await summarizeNotes(saved), ids),
+        ).toEqual(notesWithoutRegeneratedIds(expectedNotes, ids));
       });
     }
     const { rejectAuthor, rejectAuthorResult } = fixture;
-    if (rejectAuthor === undefined || rejectAuthorResult === undefined) continue;
+    if (rejectAuthor === undefined || rejectAuthorResult === undefined)
+      continue;
     test(`${name} › reject ${rejectAuthor}'s revisions`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         (await buildPackage(fixture)).slice().buffer,
       );
-      for (const change of reviewer.getChanges().filter(({ author }) => author === rejectAuthor)) {
+      for (const change of reviewer
+        .getChanges()
+        .filter(({ author }) => author === rejectAuthor)) {
         reviewer.rejectChange(change);
       }
       const ids = inputIds(fixture);
-      expect(withoutRegeneratedIds(await summarizeBody(await reviewer.toBuffer()), ids)).toEqual(
-        withoutRegeneratedIds(rejectAuthorResult, ids),
-      );
+      expect(
+        withoutRegeneratedIds(
+          await summarizeBody(await reviewer.toBuffer()),
+          ids,
+        ),
+      ).toEqual(withoutRegeneratedIds(rejectAuthorResult, ids));
     });
   }
 });

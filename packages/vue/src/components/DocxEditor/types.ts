@@ -1,27 +1,23 @@
-import type { CSSProperties, VNodeChild } from "vue";
-
-import type { ReviewDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
-import type { EditorReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
-import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import type { CSSProperties, VNodeChild } from "vue";
 import type { XmlFragment } from "yjs";
 
 import type {
   FolioAIEditApplyMode,
-  FolioUndefinedReferencePolicy,
   FolioAIEditApplyResult,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
   FolioCommentAnchor,
   FolioDocumentNavigationTarget,
-  FolioPendingSuggestionLoadResult,
-  FolioPendingSuggestionRecord,
   FolioDocumentOperationBatch,
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
   FolioDocumentOperationUndoResult,
+  FolioPendingSuggestionLoadResult,
+  FolioPendingSuggestionRecord,
   FolioReviewChange,
+  FolioUndefinedReferencePolicy,
 } from "@stll/folio-core/ai-edits";
 import type {
   ContentControlFilter,
@@ -29,14 +25,27 @@ import type {
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
+import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
+import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
+// `EditorMode` is owned by core's `EditorModeManager`.
+import type {
+  EditorMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
 import type {
   HostShortcut,
   KeyboardShortcutScope,
 } from "@stll/folio-core/managers/editorShortcuts";
-import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
-import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
-import type { ListState, SelectionState, TableContextInfo } from "@stll/folio-core/prosemirror";
+import type { ReviewDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
+import type { BlockRect } from "@stll/folio-core/paged-layout/blockGeometry";
+import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
+import type {
+  ListState,
+  SelectionState,
+  TableContextInfo,
+} from "@stll/folio-core/prosemirror";
 import type {
   FolioSuggestion,
   SuggestionAppliedAs,
@@ -46,6 +55,7 @@ import type {
   TemplateSlashMenuKeyAction,
   TemplateSlashMenuState,
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
+import type { Comment } from "@stll/folio-core/types/content";
 import type {
   Document,
   ParagraphAlignment,
@@ -53,14 +63,13 @@ import type {
   TabStop,
   Theme,
 } from "@stll/folio-core/types/document";
-import type { Comment } from "@stll/folio-core/types/content";
-import type { FindMatch, FindOptions, FindResult } from "@stll/folio-core/utils/findReplace";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
+import type {
+  FindMatch,
+  FindOptions,
+  FindResult,
+} from "@stll/folio-core/utils/findReplace";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
-import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
-import type { BlockRect } from "@stll/folio-core/paged-layout/blockGeometry";
-// `EditorMode` is owned by core's `EditorModeManager`.
-import type { EditorMode } from "@stll/folio-core/managers/EditorModeManager";
 // Re-exported so chrome SFCs (e.g. EditingModeDropdown.vue) can import the mode
 // union from the adapter's own type surface rather than reaching into core.
 export type { EditorMode };
@@ -137,7 +146,11 @@ export type DocxEditorProps = {
    * selection-bearing transaction. Atom inline nodes (tab, hard_break) collapse
    * to a single space; empty string when the selection is collapsed.
    */
-  onSelectionTextChange?: (selection: { from: number; to: number; text: string }) => void;
+  onSelectionTextChange?: (selection: {
+    from: number;
+    to: number;
+    text: string;
+  }) => void;
   /** Callback on error */
   onError?: (error: Error) => void;
   /** Callback when fonts are loaded */
@@ -319,13 +332,16 @@ export type DocxEditorProps = {
    * host mirrors per-document counts and "matching workspace terms" to the
    * inspector facet without polling the plugin state.
    */
-  onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
+  onAnonymizationMatchesChange?: (
+    matches: readonly AnonymizationMatch[],
+  ) => void;
   /**
    * Fires when the user clicks an anonymization highlight in the rendered
    * document. Hosts push the selection into a sidebar bridge so the inspector
    * facet can scroll/flash the matching row.
    */
-  onAnonymizationTermClick?: ((canonical: string, label: string) => void) | undefined;
+  onAnonymizationTermClick?:
+    ((canonical: string, label: string) => void) | undefined;
   /**
    * Canonical to mark as selected in the rendered document. The first matching
    * rect scrolls into view whenever `anonymizationSelectionSeq` increments (so
@@ -352,7 +368,8 @@ export type DocxEditorProps = {
    * open. Return `true` to let the editor swallow the key. Escape is handled
    * inside the plugin and never reaches this callback.
    */
-  onSlashMenuKeyAction?: ((action: TemplateSlashMenuKeyAction) => boolean) | undefined;
+  onSlashMenuKeyAction?:
+    ((action: TemplateSlashMenuKeyAction) => boolean) | undefined;
   /**
    * Host-provided text context-menu entries, appended after the built-ins.
    * `requiresSelection` items only render when text is selected. Selecting one
@@ -470,7 +487,10 @@ export type DocxEditorRef = {
    */
   openFind: () => void;
   /** Search all document stories without changing document content. */
-  find: (searchText: string, options?: Partial<FindOptions>) => FindResult | null;
+  find: (
+    searchText: string,
+    options?: Partial<FindOptions>,
+  ) => FindResult | null;
   findNext: () => FindMatch | null;
   findPrevious: () => FindMatch | null;
   getFindResult: () => FindResult | null;
@@ -560,7 +580,9 @@ export type DocxEditorRef = {
    * ephemeral view state: cleared on the next doc-changing transaction and by
    * {@link clearPassageHighlight}.
    */
-  highlightPassage: (options: HighlightPassageOptions) => HighlightPassageResult;
+  highlightPassage: (
+    options: HighlightPassageOptions,
+  ) => HighlightPassageResult;
   /** Clear the passage highlight painted by {@link highlightPassage}, if any. */
   clearPassageHighlight: () => void;
   /** Resolve a stable block or text-range target and reveal it in the editor. */
@@ -584,7 +606,9 @@ export type DocxEditorRef = {
   /** Export active pending suggestions for storage outside the DOCX. */
   exportPendingSuggestions: () => FolioPendingSuggestionRecord[];
   /** Revalidate and restage saved suggestions against the current document. */
-  loadPendingSuggestions: (records: readonly unknown[]) => FolioPendingSuggestionLoadResult[];
+  loadPendingSuggestions: (
+    records: readonly unknown[],
+  ) => FolioPendingSuggestionLoadResult[];
   /**
    * Accept a suggestion: convert it into a normal tracked change authored by
    * `options.author` (defaults to the editor's configured author). Whole
@@ -642,7 +666,9 @@ export type DocxEditorRef = {
   /** Painted geometry for one block, relative to this editor's scroll root. */
   getBlockRect: (blockId: string) => BlockRect | null;
   /** Painted geometry for many blocks in one layout read; missing ids are omitted. */
-  getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
+  getBlockRects: (
+    blockIds: readonly string[],
+  ) => ReadonlyMap<string, BlockRect>;
   /** The element that scrolls this editor's painted pages. */
   getScrollRoot: () => HTMLElement | null;
   /** Subscribe after a layout pass changes the painted pages. */

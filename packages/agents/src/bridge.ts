@@ -1,11 +1,11 @@
 import type {
   FolioAIEditSnapshot,
-  FolioDocumentOperationMode,
+  FolioDocumentNavigationTarget,
   FolioDocumentOperationBatch,
+  FolioDocumentOperationMode,
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
   FolioDocumentOperationUndoResult,
-  FolioDocumentNavigationTarget,
   FolioDocumentStory,
   FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
@@ -39,7 +39,9 @@ export type FolioAgentBridge = {
    * Apply a versioned operation batch against the current document. The
    * bridge decides mode (tracked-changes by default) and author internally.
    */
-  applyDocumentOperations(batch: FolioDocumentOperationBatch): FolioDocumentOperationResult;
+  applyDocumentOperations(
+    batch: FolioDocumentOperationBatch,
+  ): FolioDocumentOperationResult;
   /** Undo the latest unchanged batch when the execution surface supports it. */
   undoDocumentOperations?(
     undoHandle: FolioDocumentOperationUndoHandle,
@@ -91,7 +93,10 @@ type DecodedCommentHandlers = {
   resolveComment(commentId: FolioAgentCommentId, resolved: boolean): boolean;
 };
 
-const decodedCommentHandlers = new WeakMap<FolioAgentBridge, DecodedCommentHandlers>();
+const decodedCommentHandlers = new WeakMap<
+  FolioAgentBridge,
+  DecodedCommentHandlers
+>();
 
 export const registerDecodedCommentHandlers = (
   bridge: FolioAgentBridge,

@@ -67,22 +67,22 @@ import { panic } from "better-result";
 import { $ } from "bun";
 import { transform } from "lightningcss";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import utf8BoundariesManifest from "../packages/utf8-boundaries/package.json";
 
+import utf8BoundariesManifest from "../packages/utf8-boundaries/package.json";
 import { installCleanRoomDependencies } from "./clean-room-install";
 import { scanDistUrlTargets } from "./dist-url-targets";
+import { createLiteralChecklist } from "./lib/literal-checklist";
+import { PUBLISHED_PACKAGES } from "./lib/published-packages";
 import {
-  REACT_PEER_FLOOR,
   buildAndPack,
   hostPeerInstallArgs,
+  REACT_PEER_FLOOR,
   reactPeerInstallArgs,
 } from "./packaged-consumer-lib";
 import { findUncoveredUtilities } from "./standalone-css-coverage";
-import { PUBLISHED_PACKAGES } from "./lib/published-packages";
-import { createLiteralChecklist } from "./lib/literal-checklist";
 
 const scanReactRules = createLiteralChecklist([
   ".folio-root",
@@ -126,7 +126,9 @@ type CheckResult = { name: string; ok: boolean; detail: string };
 const results: CheckResult[] = [];
 const record = (name: string, ok: boolean, detail: string): void => {
   results.push({ name, ok, detail });
-  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
+  console.log(
+    `${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`,
+  );
 };
 
 const dirs: Record<string, string> = {
@@ -144,8 +146,12 @@ const utf8BoundariesDir = dirs["utf8-boundaries"];
 const coreDir = dirs.core;
 
 const packDir = await mkdtemp(path.join(tmpdir(), "folio-pack-"));
-const docxCorePackDir = await mkdtemp(path.join(tmpdir(), "folio-docx-core-pack-"));
-const utf8BoundariesPackDir = await mkdtemp(path.join(tmpdir(), "folio-utf8-boundaries-pack-"));
+const docxCorePackDir = await mkdtemp(
+  path.join(tmpdir(), "folio-docx-core-pack-"),
+);
+const utf8BoundariesPackDir = await mkdtemp(
+  path.join(tmpdir(), "folio-utf8-boundaries-pack-"),
+);
 const corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
 const agentsPackDir = await mkdtemp(path.join(tmpdir(), "folio-agents-pack-"));
 const vuePackDir = await mkdtemp(path.join(tmpdir(), "folio-vue-pack-"));
@@ -247,32 +253,43 @@ if (target === "utf8-boundaries") {
   );
 }
 if (target === "react") {
-  if (!coreTarball) panic("validate-dist: react needs a @stll/folio-core tarball");
+  if (!coreTarball)
+    panic("validate-dist: react needs a @stll/folio-core tarball");
   installArgs.push(coreTarball, ...reactPeerInstallArgs(), "use-intl@^4");
 }
 if (target === "agents") {
-  if (!coreTarball) panic("validate-dist: agents needs a @stll/folio-core tarball");
+  if (!coreTarball)
+    panic("validate-dist: agents needs a @stll/folio-core tarball");
   installArgs.push(coreTarball);
 }
 if (target === "cli") {
   if (!coreTarball || !agentsTarball) {
-    panic("validate-dist: cli needs @stll/folio-core and @stll/folio-agents tarballs");
+    panic(
+      "validate-dist: cli needs @stll/folio-core and @stll/folio-agents tarballs",
+    );
   }
   installArgs.push(coreTarball, agentsTarball);
 }
 if (target === "vue") {
-  if (!coreTarball) panic("validate-dist: vue needs a @stll/folio-core tarball");
+  if (!coreTarball)
+    panic("validate-dist: vue needs a @stll/folio-core tarball");
   installArgs.push(coreTarball, "vue@^3");
 }
 if (target === "nuxt") {
   if (!coreTarball || !vueTarball) {
-    panic("validate-dist: nuxt needs @stll/folio-core and @stll/folio-vue tarballs");
+    panic(
+      "validate-dist: nuxt needs @stll/folio-core and @stll/folio-vue tarballs",
+    );
   }
   installArgs.push(coreTarball, vueTarball, "vue@^3");
 }
 await installCleanRoomDependencies({ consumerDir, dependencies: installArgs });
 
-const installedDir = path.join(consumerDir, "node_modules", ...pkgName.split("/"));
+const installedDir = path.join(
+  consumerDir,
+  "node_modules",
+  ...pkgName.split("/"),
+);
 const installedDist = path.join(installedDir, "dist");
 
 // --- runtime expectations ---------------------------------------------------
@@ -287,7 +304,11 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "truncateGraphemes",
     ],
     "@stll/utf8-boundaries/oxlint": ["default"],
-    "@stll/utf8-boundaries/testing": ["astralText", "boundaryTextCases", "assertTextRoundTrip"],
+    "@stll/utf8-boundaries/testing": [
+      "astralText",
+      "boundaryTextCases",
+      "assertTextRoundTrip",
+    ],
   },
   "docx-core": {
     "@stll/docx-core": [
@@ -295,7 +316,11 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "serializeDocumentToDocx",
       "validateDocxPackage",
     ],
-    "@stll/docx-core/ops": ["applyDocumentOp", "applyDocumentOps", "DocumentOpRefusal"],
+    "@stll/docx-core/ops": [
+      "applyDocumentOp",
+      "applyDocumentOps",
+      "DocumentOpRefusal",
+    ],
     "@stll/docx-core/projection": [
       "DocxProjectionError",
       "DocxProjectionInitializationError",
@@ -307,7 +332,11 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
   },
   core: {
     "@stll/folio-core": ["createEmptyDocument", "createDocx", "deriveBlockId"],
-    "@stll/folio-core/markdown": ["toMarkdown", "fromMarkdown", "toMarkdownResult"],
+    "@stll/folio-core/markdown": [
+      "toMarkdown",
+      "fromMarkdown",
+      "toMarkdownResult",
+    ],
     "@stll/folio-core/server": [
       "deriveBlockId",
       "createEmptyDocument",
@@ -318,11 +347,21 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "applyFolioAIEditsToBuffer",
     ],
     "@stll/folio-core/redline": ["generateRedlineDocx"],
-    "@stll/folio-core/text-shaping": ["getShaper", "parseSfnt", "subsetTrueType", "BIDI_DIRECTION"],
+    "@stll/folio-core/text-shaping": [
+      "getShaper",
+      "parseSfnt",
+      "subsetTrueType",
+      "BIDI_DIRECTION",
+    ],
     "@stll/folio-core/types/block-id": ["deriveBlockId", "isFolioBlockId"],
   },
   react: {
-    "@stll/folio-react": ["DocxEditor", "FolioUIProvider", "FormattingBar", "createDocx"],
+    "@stll/folio-react": [
+      "DocxEditor",
+      "FolioUIProvider",
+      "FormattingBar",
+      "createDocx",
+    ],
     "@stll/folio-react/dialogs": [
       "WatermarkDialog",
       "HyperlinkDialog",
@@ -331,7 +370,11 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "PasteSpecialDialog",
       "SplitCellDialog",
     ],
-    "@stll/folio-react/messages": ["getFolioMessages", "FOLIO_LOCALES", "isFolioLocale"],
+    "@stll/folio-react/messages": [
+      "getFolioMessages",
+      "FOLIO_LOCALES",
+      "isFolioLocale",
+    ],
   },
   agents: {
     "@stll/folio-agents": [
@@ -357,7 +400,12 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
     "@stll/folio-cli/save": ["saveDocumentBytes"],
   },
   vue: {
-    "@stll/folio-vue": ["DocxEditor", "createDocx", "useWheelZoom", "i18nPlugin"],
+    "@stll/folio-vue": [
+      "DocxEditor",
+      "createDocx",
+      "useWheelZoom",
+      "i18nPlugin",
+    ],
     "@stll/folio-vue/composables": ["useDocxEditor", "useZoom", "useWheelZoom"],
     "@stll/folio-vue/dialogs": [
       "WatermarkDialog",
@@ -454,7 +502,9 @@ record(
 
 // --- Check 1b (cli only): the packed executable runs -----------------------
 if (target === "cli") {
-  const installed = (await Bun.file(path.join(installedDir, "package.json")).json()) as {
+  const installed = (await Bun.file(
+    path.join(installedDir, "package.json"),
+  ).json()) as {
     version: string;
   };
   const bin = path.join(consumerDir, "node_modules", ".bin", "folio");
@@ -584,7 +634,8 @@ export type Surface = ModuleOptions;
 `,
 };
 const consumerTs =
-  consumerTsByTarget[target] ?? panic(`validate-dist: no consumer.ts for ${target}`);
+  consumerTsByTarget[target] ??
+  panic(`validate-dist: no consumer.ts for ${target}`);
 await writeFile(path.join(consumerDir, "consumer.ts"), consumerTs);
 
 const baseCompilerOptions = {
@@ -595,10 +646,11 @@ const baseCompilerOptions = {
   noEmit: true,
   lib: ["es2022", "dom", "dom.iterable"],
 };
-const tsconfigs: Record<string, { module: string; moduleResolution: string }> = {
-  node16: { module: "node16", moduleResolution: "node16" },
-  bundler: { module: "preserve", moduleResolution: "bundler" },
-};
+const tsconfigs: Record<string, { module: string; moduleResolution: string }> =
+  {
+    node16: { module: "node16", moduleResolution: "node16" },
+    bundler: { module: "preserve", moduleResolution: "bundler" },
+  };
 // vue's declarations come from vite-plugin-dts, which emits extensionless
 // relative re-exports (`export * from './useZoom'`). Those resolve under
 // `bundler` (what Vite/Nuxt consumers use) but not under node16/nodenext ESM,
@@ -609,7 +661,8 @@ const typeCheckModes =
   target === "vue"
     ? Object.entries(tsconfigs).filter(([mode]) => mode === "bundler")
     : Object.entries(tsconfigs);
-const typeCheckReactVersions = target === "react" ? [REACT_PEER_FLOOR.version] : [null];
+const typeCheckReactVersions =
+  target === "react" ? [REACT_PEER_FLOOR.version] : [null];
 for (const reactVersion of typeCheckReactVersions) {
   if (reactVersion !== null) {
     await installCleanRoomDependencies({
@@ -621,7 +674,10 @@ for (const reactVersion of typeCheckReactVersions) {
   const typeChecks = await Promise.all(
     typeCheckModes.map(async ([mode, opts]) => {
       const reactSuffix = reactVersion === null ? "" : `.react-${reactVersion}`;
-      const file = path.join(consumerDir, `tsconfig.${mode}${reactSuffix}.json`);
+      const file = path.join(
+        consumerDir,
+        `tsconfig.${mode}${reactSuffix}.json`,
+      );
       await writeFile(
         file,
         `${JSON.stringify(
@@ -633,18 +689,25 @@ for (const reactVersion of typeCheckReactVersions) {
           2,
         )}\n`,
       );
-      const tc = await $`${tscBin} -p ${file}`.cwd(consumerDir).nothrow().quiet();
+      const tc = await $`${tscBin} -p ${file}`
+        .cwd(consumerDir)
+        .nothrow()
+        .quiet();
       return { mode, tc };
     }),
   );
   for (const { mode, tc } of typeChecks) {
-    const reactLabel = reactVersion === null ? "" : `, React ${reactVersion} types`;
+    const reactLabel =
+      reactVersion === null ? "" : `, React ${reactVersion} types`;
     record(
       `types: tsc --noEmit (moduleResolution: ${mode}${reactLabel})`,
       tc.exitCode === 0,
       tc.exitCode === 0
         ? "consumer typechecks against published .d.ts"
-        : `${tc.stdout.toString().trim()}${tc.stderr.toString().trim()}`.slice(0, 400),
+        : `${tc.stdout.toString().trim()}${tc.stderr.toString().trim()}`.slice(
+            0,
+            400,
+          ),
     );
   }
 }
@@ -656,7 +719,8 @@ if (target === "react") {
     record("css: dist/editor.css present", false, "missing from tarball");
   } else {
     const css = await readFile(cssPath, "utf-8");
-    const fontImports = css.match(/@import\s+["']@fontsource\/[^"']+["']/gu) ?? [];
+    const fontImports =
+      css.match(/@import\s+["']@fontsource\/[^"']+["']/gu) ?? [];
     const { missing: missingRules } = scanReactRules(css);
     // @fontsource must stay a bare @import, never inlined as font data.
     const fontsourceInlined =
@@ -686,8 +750,10 @@ if (target === "react") {
       : [
           css.length <= 10_000 && `too small (${css.length}B)`,
           !parses && `invalid CSS: ${parseDetail}`,
-          missingRules.length > 0 && `missing rules: ${missingRules.join(", ")}`,
-          fontImports.length < 20 && `only ${fontImports.length} @fontsource imports`,
+          missingRules.length > 0 &&
+            `missing rules: ${missingRules.join(", ")}`,
+          fontImports.length < 20 &&
+            `only ${fontImports.length} @fontsource imports`,
           fontsourceInlined && "@fontsource appears inlined as font data",
         ]
           .filter(Boolean)
@@ -706,12 +772,15 @@ if (target === "react") {
     record("css: dist/standalone.css present", false, "missing from tarball");
   } else {
     const css = await readFile(standalonePath, "utf-8");
-    const fontImports = css.match(/@import\s+["']@fontsource\/[^"']+["']/gu) ?? [];
+    const fontImports =
+      css.match(/@import\s+["']@fontsource\/[^"']+["']/gu) ?? [];
     // Scoped utilities (`.folio-root .<utility>`) plus low-specificity token
     // fallbacks are what make the sheet self-sufficient.
     const hasScopedUtilities = /\.folio-root \.[a-z]/u.test(css);
-    const hasTokenFallback = /:where\(\.folio-root\)/u.test(css) && css.includes("--popover:");
-    const hasDocRules = css.includes(".ProseMirror") && css.includes(".folio-default-button");
+    const hasTokenFallback =
+      /:where\(\.folio-root\)/u.test(css) && css.includes("--popover:");
+    const hasDocRules =
+      css.includes(".ProseMirror") && css.includes(".folio-default-button");
     // No Tailwind source directive may survive into the shipped file.
     const uncompiled = /@tailwind\b|@config\b|@source\b|@apply\b/u.test(css);
     const fontsourceInlined =
@@ -720,7 +789,11 @@ if (target === "react") {
     let parses = true;
     let parseDetail = "";
     try {
-      transform({ filename: "standalone.css", code: Buffer.from(css), minify: false });
+      transform({
+        filename: "standalone.css",
+        code: Buffer.from(css),
+        minify: false,
+      });
     } catch (error) {
       parses = false;
       parseDetail = error instanceof Error ? error.message : String(error);
@@ -744,12 +817,17 @@ if (target === "react") {
           !hasTokenFallback && "no `:where(.folio-root)` token fallbacks",
           !hasDocRules && "missing bundled document/chrome rules",
           uncompiled && "un-expanded Tailwind directive present",
-          fontImports.length < 20 && `only ${fontImports.length} @fontsource imports`,
+          fontImports.length < 20 &&
+            `only ${fontImports.length} @fontsource imports`,
           fontsourceInlined && "@fontsource appears inlined as font data",
         ]
           .filter(Boolean)
           .join("; ");
-    record("css: standalone.css self-sufficient (scoped utilities + tokens)", ok, detail);
+    record(
+      "css: standalone.css self-sufficient (scoped utilities + tokens)",
+      ok,
+      detail,
+    );
   }
 }
 
@@ -768,7 +846,11 @@ if (target === "vue") {
     let parses = true;
     let parseDetail = "";
     try {
-      transform({ filename: "folio-vue.css", code: Buffer.from(css), minify: false });
+      transform({
+        filename: "folio-vue.css",
+        code: Buffer.from(css),
+        minify: false,
+      });
     } catch (error) {
       parses = false;
       parseDetail = error instanceof Error ? error.message : String(error);
@@ -780,7 +862,8 @@ if (target === "vue") {
       : [
           css.length <= 5_000 && `too small (${css.length}B)`,
           !parses && `invalid CSS: ${parseDetail}`,
-          missingRules.length > 0 && `missing rules: ${missingRules.join(", ")}`,
+          missingRules.length > 0 &&
+            `missing rules: ${missingRules.join(", ")}`,
         ]
           .filter(Boolean)
           .join("; ");
@@ -809,24 +892,44 @@ const { present: leaked } = scanReactSentinels(allJs);
 const externalsByTarget: Record<string, string[]> = {
   "utf8-boundaries": ["better-result", "fast-check"],
   "docx-core": ["better-result", "jszip", "@stll/utf8-boundaries"],
-  core: ["prosemirror-state", "prosemirror-model", "jszip", "@stll/utf8-boundaries"],
-  react: ["react", "react-dom", "react/jsx-runtime", "react-compiler-runtime", "@stll/folio-core"],
+  core: [
+    "prosemirror-state",
+    "prosemirror-model",
+    "jszip",
+    "@stll/utf8-boundaries",
+  ],
+  react: [
+    "react",
+    "react-dom",
+    "react/jsx-runtime",
+    "react-compiler-runtime",
+    "@stll/folio-core",
+  ],
   agents: ["@stll/folio-core"],
-  cli: ["@stll/folio-core", "@stll/folio-agents", "@modelcontextprotocol/server"],
+  cli: [
+    "@stll/folio-core",
+    "@stll/folio-agents",
+    "@modelcontextprotocol/server",
+  ],
   vue: ["vue", "@stll/folio-core", "prosemirror-history", "prosemirror-state"],
   nuxt: ["@nuxt/kit", "@stll/folio-vue"],
 };
 const expectedExternals = externalsByTarget[target] ?? [];
 const notExternalized = expectedExternals.filter(
-  (p) => !new RegExp(`["']${p.replace(/\//gu, "\\/")}(?:/[^"']*)?["']`, "u").test(allJs),
+  (p) =>
+    !new RegExp(`["']${p.replace(/\//gu, "\\/")}(?:/[^"']*)?["']`, "u").test(
+      allJs,
+    ),
 );
 const dataFontInlined = /["']data:font|["']data:application\/font/u.test(allJs);
-const externalOk = leaked.length === 0 && notExternalized.length === 0 && !dataFontInlined;
+const externalOk =
+  leaked.length === 0 && notExternalized.length === 0 && !dataFontInlined;
 const externalLabels: Record<string, string> = {
   "utf8-boundaries": "external: better-result and fast-check stay external",
   "docx-core": "external: better-result and JSZip stay external",
   core: "external: React never bundled; deps stay external",
-  react: "external: React / compiler runtime / ProseMirror / @stll/folio-core not bundled",
+  react:
+    "external: React / compiler runtime / ProseMirror / @stll/folio-core not bundled",
   agents: "external: @stll/folio-core not bundled into JS",
   cli: "external: @stll/folio-core / @stll/folio-agents / MCP server SDK not bundled into JS",
   vue: "external: Vue / ProseMirror / @stll/folio-core not bundled into JS",
@@ -838,8 +941,10 @@ record(
   externalOk
     ? `${expectedExternals.length} externals imported by specifier; no bundled internals`
     : [
-        leaked.length > 0 && `bundled React internals found: ${leaked.join(", ")}`,
-        notExternalized.length > 0 && `not imported as external: ${notExternalized.join(", ")}`,
+        leaked.length > 0 &&
+          `bundled React internals found: ${leaked.join(", ")}`,
+        notExternalized.length > 0 &&
+          `not imported as external: ${notExternalized.join(", ")}`,
         dataFontInlined && "font data inlined in JS",
       ]
         .filter(Boolean)
@@ -847,16 +952,18 @@ record(
 );
 
 if (target === "utf8-boundaries") {
-  const declarationFiles = (await readdir(installedDist, { recursive: true })).filter((file) =>
-    file.endsWith(".d.ts"),
-  );
+  const declarationFiles = (
+    await readdir(installedDist, { recursive: true })
+  ).filter((file) => file.endsWith(".d.ts"));
   const declarationContents = await Promise.all(
     declarationFiles.map(async (file) => ({
       file,
       code: await readFile(path.join(installedDist, file), "utf-8"),
     })),
   );
-  const declarationByEntry = new Map(declarationContents.map(({ file, code }) => [file, code]));
+  const declarationByEntry = new Map(
+    declarationContents.map(({ file, code }) => [file, code]),
+  );
   const expectedTypePeers = [
     { file: "index.d.ts", peer: "jszip" },
     { file: "testing.d.ts", peer: "fast-check" },
@@ -882,7 +989,11 @@ if (target === "utf8-boundaries") {
 if (target === "react") {
   const standalonePath = path.join(installedDist, "standalone.css");
   if (!existsSync(standalonePath)) {
-    record("css: standalone.css utility coverage", false, "standalone.css missing from tarball");
+    record(
+      "css: standalone.css utility coverage",
+      false,
+      "standalone.css missing from tarball",
+    );
   } else {
     const standaloneCss = await readFile(standalonePath, "utf-8");
     const { candidates, uncovered } = findUncoveredUtilities({
@@ -911,7 +1022,9 @@ if (target === "nuxt") {
     "runtime/components/DocxEditor.js",
     "runtime/components/DocxEditor.d.ts",
   ];
-  const missingFiles = requiredFiles.filter((file) => !existsSync(path.join(installedDist, file)));
+  const missingFiles = requiredFiles.filter(
+    (file) => !existsSync(path.join(installedDist, file)),
+  );
   record(
     "nuxt: module metadata, runtime, and declarations ship",
     missingFiles.length === 0,
@@ -933,7 +1046,9 @@ if (target === "nuxt") {
     record(
       "nuxt: packed module metadata identifies the public module",
       metadataOk,
-      metadataOk ? "name and configKey match" : "module.json identity is invalid",
+      metadataOk
+        ? "name and configKey match"
+        : "module.json identity is invalid",
     );
   }
 }
@@ -969,7 +1084,9 @@ if (target === "docx-core") {
   record(
     "wasm: projection runtime ships as valid WebAssembly",
     validWasm,
-    validWasm ? `${wasmBytes.byteLength} byte artifact present` : "missing or invalid artifact",
+    validWasm
+      ? `${wasmBytes.byteLength} byte artifact present`
+      : "missing or invalid artifact",
   );
 
   const missingAttribution = ["LICENSE", "NOTICE.md"].filter(
@@ -988,30 +1105,39 @@ if (target === "docx-core") {
 if (target === "react") {
   const dtsPath = path.join(installedDist, "messages.d.ts");
   if (!existsSync(dtsPath)) {
-    record("messages: dist/messages.d.ts present", false, "missing from tarball");
+    record(
+      "messages: dist/messages.d.ts present",
+      false,
+      "missing from tarball",
+    );
   } else {
     const dts = await readFile(dtsPath, "utf-8");
     // dist ships no locale JSON (tsdown inlines it into the JS), so a
     // `./messages/*.json` import in the published declaration is unresolvable
     // for a TS consumer of `@stll/folio-react/messages`.
-    const jsonImports = dts.match(/["'][^"']*messages\/[^"']*\.json["']/gu) ?? [];
+    const jsonImports =
+      dts.match(/["'][^"']*messages\/[^"']*\.json["']/gu) ?? [];
     // The i18n surface now lives in `@stll/folio-core`; the react subpath either
     // declares the names itself or re-exports them wholesale from core (which
     // the clean room installs, so `export * from "@stll/folio-core/i18n/messages"`
     // resolves for a consumer). The runtime and tsc checks above already exercise
     // `getFolioMessages` / `FolioMessages` through this re-export; here we just
     // guard that the declaration exposes the surface with no source-JSON import.
-    const declaresNames = dts.includes("FolioMessages") && dts.includes("getFolioMessages");
-    const reexportsCore = /export\s*\*\s*from\s*["']@stll\/folio-core\/i18n\/messages["']/u.test(
-      dts,
-    );
+    const declaresNames =
+      dts.includes("FolioMessages") && dts.includes("getFolioMessages");
+    const reexportsCore =
+      /export\s*\*\s*from\s*["']@stll\/folio-core\/i18n\/messages["']/u.test(
+        dts,
+      );
     const declaresSurface = declaresNames || reexportsCore;
     const ok = jsonImports.length === 0 && declaresSurface;
     const detail = ok
       ? "getFolioMessages / FolioMessages surface exposed; no source-JSON import"
       : [
-          jsonImports.length > 0 && `imports source JSON: ${jsonImports.join(", ")}`,
-          !declaresSurface && "neither declares nor re-exports FolioMessages / getFolioMessages",
+          jsonImports.length > 0 &&
+            `imports source JSON: ${jsonImports.join(", ")}`,
+          !declaresSurface &&
+            "neither declares nor re-exports FolioMessages / getFolioMessages",
         ]
           .filter(Boolean)
           .join("; ");

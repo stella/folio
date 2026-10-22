@@ -32,7 +32,10 @@ type AstNode = Record<string, unknown> & { type: string };
 
 type RuleContext = {
   options?: unknown[];
-  report: (descriptor: { node: unknown; messageId: "handRolledXmlSplice" }) => void;
+  report: (descriptor: {
+    node: unknown;
+    messageId: "handRolledXmlSplice";
+  }) => void;
 };
 
 const isAstNode = (value: unknown): value is AstNode =>
@@ -67,7 +70,9 @@ const offsetKey = (node: unknown): string | null => {
     }
     case "UnaryExpression": {
       const argument = offsetKey(node["argument"]);
-      return argument === null ? null : `${String(node["operator"])}(${argument})`;
+      return argument === null
+        ? null
+        : `${String(node["operator"])}(${argument})`;
     }
     case "BinaryExpression": {
       const left = offsetKey(node["left"]);
@@ -90,15 +95,27 @@ const sliceRead = (node: unknown): SliceRead | null => {
     return null;
   }
   const callee = node["callee"];
-  if (!isAstNode(callee) || callee.type !== "MemberExpression" || callee["computed"] === true) {
+  if (
+    !isAstNode(callee) ||
+    callee.type !== "MemberExpression" ||
+    callee["computed"] === true
+  ) {
     return null;
   }
   const property = callee["property"];
   const object = callee["object"];
-  if (!isAstNode(property) || property.type !== "Identifier" || property["name"] !== "slice") {
+  if (
+    !isAstNode(property) ||
+    property.type !== "Identifier" ||
+    property["name"] !== "slice"
+  ) {
     return null;
   }
-  if (!isAstNode(object) || object.type !== "Identifier" || typeof object["name"] !== "string") {
+  if (
+    !isAstNode(object) ||
+    object.type !== "Identifier" ||
+    typeof object["name"] !== "string"
+  ) {
     return null;
   }
   const args = Array.isArray(node["arguments"]) ? node["arguments"] : [];
@@ -132,7 +149,11 @@ const concatenationOperands = (node: AstNode): unknown[] => {
   }
   const operands: unknown[] = [];
   const visit = (part: unknown): void => {
-    if (isAstNode(part) && part.type === "BinaryExpression" && part["operator"] === "+") {
+    if (
+      isAstNode(part) &&
+      part.type === "BinaryExpression" &&
+      part["operator"] === "+"
+    ) {
       visit(part["left"]);
       visit(part["right"]);
       return;
@@ -147,7 +168,11 @@ const concatenationOperands = (node: AstNode): unknown[] => {
 /** Whether an enclosing `+` chain already covers this node, so it reports once. */
 const isNestedConcatenation = (node: AstNode): boolean => {
   const parent = node["parent"];
-  return isAstNode(parent) && parent.type === "BinaryExpression" && parent["operator"] === "+";
+  return (
+    isAstNode(parent) &&
+    parent.type === "BinaryExpression" &&
+    parent["operator"] === "+"
+  );
 };
 
 /** The name a function is declared or bound under, walking out from `node`. */
@@ -155,7 +180,10 @@ const enclosingFunctionNames = (node: AstNode): string[] => {
   const names: string[] = [];
   let ancestor = node["parent"];
   while (isAstNode(ancestor)) {
-    if (ancestor.type === "FunctionDeclaration" || ancestor.type === "TSDeclareFunction") {
+    if (
+      ancestor.type === "FunctionDeclaration" ||
+      ancestor.type === "TSDeclareFunction"
+    ) {
       const id = ancestor["id"];
       if (isAstNode(id) && typeof id["name"] === "string") {
         names.push(id["name"]);
@@ -168,7 +196,8 @@ const enclosingFunctionNames = (node: AstNode): string[] => {
       }
     }
     if (
-      (ancestor.type === "MethodDefinition" || ancestor.type === "PropertyDefinition") &&
+      (ancestor.type === "MethodDefinition" ||
+        ancestor.type === "PropertyDefinition") &&
       isAstNode(ancestor["key"]) &&
       typeof (ancestor["key"] as AstNode)["name"] === "string"
     ) {
@@ -179,7 +208,10 @@ const enclosingFunctionNames = (node: AstNode): string[] => {
   return names;
 };
 
-const stringArrayOption = (options: Record<string, unknown>, key: string): string[] => {
+const stringArrayOption = (
+  options: Record<string, unknown>,
+  key: string,
+): string[] => {
   const value = options[key];
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
@@ -213,8 +245,12 @@ export default {
         ],
       },
       create(context: RuleContext) {
-        const options = isRecord(context.options?.[0]) ? context.options[0] : {};
-        const allowedFunctions = new Set(stringArrayOption(options, "allowedFunctions"));
+        const options = isRecord(context.options?.[0])
+          ? context.options[0]
+          : {};
+        const allowedFunctions = new Set(
+          stringArrayOption(options, "allowedFunctions"),
+        );
 
         const check = (node: AstNode): void => {
           const reads = concatenationOperands(node)
@@ -222,13 +258,20 @@ export default {
             .filter((read): read is SliceRead => read !== null);
           // One read cannot cut a region out, and reads of different strings
           // are reads, not one string rewritten.
-          if (reads.length < 2 || new Set(reads.map(({ source }) => source)).size !== 1) {
+          if (
+            reads.length < 2 ||
+            new Set(reads.map(({ source }) => source)).size !== 1
+          ) {
             return;
           }
           if (coversWholeString(reads)) {
             return;
           }
-          if (enclosingFunctionNames(node).some((name) => allowedFunctions.has(name))) {
+          if (
+            enclosingFunctionNames(node).some((name) =>
+              allowedFunctions.has(name),
+            )
+          ) {
             return;
           }
           context.report({ node, messageId: "handRolledXmlSplice" });
@@ -236,7 +279,11 @@ export default {
 
         return {
           BinaryExpression: (node: unknown) => {
-            if (isAstNode(node) && node["operator"] === "+" && !isNestedConcatenation(node)) {
+            if (
+              isAstNode(node) &&
+              node["operator"] === "+" &&
+              !isNestedConcatenation(node)
+            ) {
               check(node);
             }
           },

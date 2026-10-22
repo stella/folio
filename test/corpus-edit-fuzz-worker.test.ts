@@ -3,15 +3,20 @@ import { test } from "node:test";
 
 import { createFolioAITextRangeHandle } from "@stll/folio-core/server";
 
-import { openReviewer, plainDocument } from "./consumer-scenarios/support/documents.ts";
-import { capture } from "./consumer-scenarios/support/oracle.ts";
+import {
+  openReviewer,
+  plainDocument,
+} from "./consumer-scenarios/support/documents.ts";
 import { coreBatch } from "./consumer-scenarios/support/operations.ts";
+import { capture } from "./consumer-scenarios/support/oracle.ts";
 import { assertSavedOutcome } from "./corpus-edit-fuzz-worker.ts";
 
 test("saved-only comment loss fails the edit outcome check", async () => {
   const original = await plainDocument();
   const reviewer = await openReviewer(original);
-  const block = reviewer.getContent().find(({ text }) => text.includes("Supplier"));
+  const block = reviewer
+    .getContent()
+    .find(({ text }) => text.includes("Supplier"));
   assert.ok(block);
   const startOffset = block.text.indexOf("Supplier");
   const operation = {
@@ -25,9 +30,12 @@ test("saved-only comment loss fails the edit outcome check", async () => {
     comment: { text: "Review the supplier clause." },
   };
   const pre = await capture(reviewer, "direct");
-  const receipt = reviewer.applyDocumentOperations(coreBatch([operation], "direct") as never, {
-    undefinedReferences: "refuse",
-  });
+  const receipt = reviewer.applyDocumentOperations(
+    coreBatch([operation], "direct") as never,
+    {
+      undefinedReferences: "refuse",
+    },
+  );
   assert.equal(receipt.applied.length, 1);
 
   const saved = new Uint8Array(await reviewer.toBuffer());
@@ -64,9 +72,12 @@ test("a refused edit is checked after save and reopen", async () => {
   const reviewer = await openReviewer(await plainDocument());
   const pre = await capture(reviewer, "direct");
   const operation = { type: "deleteBlock", blockId: "missing-block" };
-  const receipt = reviewer.applyDocumentOperations(coreBatch([operation], "direct") as never, {
-    undefinedReferences: "refuse",
-  });
+  const receipt = reviewer.applyDocumentOperations(
+    coreBatch([operation], "direct") as never,
+    {
+      undefinedReferences: "refuse",
+    },
+  );
   assert.equal(receipt.applied.length, 0);
 
   assert.deepEqual(
@@ -84,7 +95,9 @@ test("a refused edit is checked after save and reopen", async () => {
 test("saved-only revision loss fails the reject check", async () => {
   const original = await plainDocument();
   const tracked = await openReviewer(original);
-  const block = tracked.getContent().find(({ text }) => text.includes("Supplier"));
+  const block = tracked
+    .getContent()
+    .find(({ text }) => text.includes("Supplier"));
   assert.ok(block);
   const operation = {
     type: "replaceInBlock",

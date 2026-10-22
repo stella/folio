@@ -1,15 +1,25 @@
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
 import { EditorState } from "prosemirror-state";
+
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import {
+  createCommentIdAllocator,
+  seedCommentAllocator,
+} from "./commentIdAllocator";
 import { schema } from "./schema";
-import { createCommentIdAllocator, seedCommentAllocator } from "./commentIdAllocator";
 
 const loadedIds = fc.uniqueArray(
-  fc.oneof(fc.integer({ min: 0, max: MAX_REVISION_ID }), fc.constant(MAX_REVISION_ID)),
+  fc.oneof(
+    fc.integer({ min: 0, max: MAX_REVISION_ID }),
+    fc.constant(MAX_REVISION_ID),
+  ),
   { maxLength: 12 },
 );
 
@@ -47,7 +57,9 @@ describe("comment ID allocation", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
         schema.text("Marked", [
-          (schema.marks["comment"] ?? panic("Expected the comment mark")).create({
+          (
+            schema.marks["comment"] ?? panic("Expected the comment mark")
+          ).create({
             commentId: MAX_REVISION_ID,
           }),
         ]),
@@ -58,7 +70,9 @@ describe("comment ID allocation", () => {
         }),
       ]),
     ]);
-    seedCommentAllocator(allocator, undefined, { state: EditorState.create({ doc }) });
+    seedCommentAllocator(allocator, undefined, {
+      state: EditorState.create({ doc }),
+    });
     const reserved = new Set([MAX_REVISION_ID, referenceId, rangeId]);
     for (let index = 0; index < 48; index += 1) {
       expect(reserved.has(allocator.next())).toBe(false);
@@ -67,7 +81,14 @@ describe("comment ID allocation", () => {
 
   test("untrusted out-of-range seeds cannot overflow the counter", () => {
     const allocator = createCommentIdAllocator();
-    for (const id of [MAX_REVISION_ID + 1, Number.MAX_SAFE_INTEGER, -1, 1.5, Infinity, NaN]) {
+    for (const id of [
+      MAX_REVISION_ID + 1,
+      Number.MAX_SAFE_INTEGER,
+      -1,
+      1.5,
+      Infinity,
+      NaN,
+    ]) {
       allocator.seedAbove(id);
     }
     expect(allocator.next()).toBeLessThanOrEqual(MAX_REVISION_ID);

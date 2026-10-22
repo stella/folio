@@ -8,10 +8,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { createDocx } from "./docx/rezip";
 import { layoutDocxHeadless } from "./headless-layout";
-import type { Document, StyleDefinitions, Theme } from "./types/document";
-import { DEFAULT_FONT_FAMILY, ptToPx } from "./layout-engine/measure/measureHelpers";
-import { getMeasureProvider, setMeasureProvider } from "./layout-engine/measure/measureProvider";
+import {
+  DEFAULT_FONT_FAMILY,
+  ptToPx,
+} from "./layout-engine/measure/measureHelpers";
+import {
+  getMeasureProvider,
+  setMeasureProvider,
+} from "./layout-engine/measure/measureProvider";
 import type { FontStyle } from "./layout-engine/measure/measureTypes";
+import type { Document, StyleDefinitions, Theme } from "./types/document";
 
 let installed = getMeasureProvider();
 let measuredFamilies = new Set<string | undefined>();
@@ -60,7 +66,9 @@ beforeEach(() => {
       const per = ptToPx(style.fontSize ?? 11) * 0.5;
       return {
         width,
-        charWidths: [...text].flatMap((char) => (char.length === 2 ? [per, 0] : [per])),
+        charWidths: [...text].flatMap((char) =>
+          char.length === 2 ? [per, 0] : [per],
+        ),
         metrics: metricsOf(style.fontSize),
       };
     },
@@ -79,7 +87,9 @@ const documentWith = (styles: StyleDefinitions, theme?: Theme): Document => ({
       content: [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "Body text" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Body text" }] },
+          ],
         },
         // An empty paragraph is sized by its mark's face.
         { type: "paragraph", content: [] },
@@ -88,7 +98,9 @@ const documentWith = (styles: StyleDefinitions, theme?: Theme): Document => ({
   },
 });
 
-const familiesMeasured = async (document: Document): Promise<Set<string | undefined>> => {
+const familiesMeasured = async (
+  document: Document,
+): Promise<Set<string | undefined>> => {
   const result = await layoutDocxHeadless(await createDocx(document));
   expect(result.isErr()).toBe(false);
   return measuredFamilies;
@@ -109,7 +121,9 @@ describe("unspecified Latin font fallback", () => {
   test("never reaches the fallback when w:docDefaults names a face", async () => {
     const families = await familiesMeasured(
       documentWith({
-        docDefaults: { rPr: { fontFamily: { ascii: "Arial", hAnsi: "Arial" } } },
+        docDefaults: {
+          rPr: { fontFamily: { ascii: "Arial", hAnsi: "Arial" } },
+        },
         styles: [],
       }),
     );
@@ -121,11 +135,21 @@ describe("unspecified Latin font fallback", () => {
       documentWith(
         {
           docDefaults: {
-            rPr: { fontFamily: { asciiTheme: "minorHAnsi", hAnsiTheme: "minorHAnsi" } },
+            rPr: {
+              fontFamily: {
+                asciiTheme: "minorHAnsi",
+                hAnsiTheme: "minorHAnsi",
+              },
+            },
           },
           styles: [],
         },
-        { fontScheme: { minorFont: { latin: "Aptos" }, majorFont: { latin: "Aptos Display" } } },
+        {
+          fontScheme: {
+            minorFont: { latin: "Aptos" },
+            majorFont: { latin: "Aptos Display" },
+          },
+        },
       ),
     );
     expect([...families]).toEqual(["Aptos"]);

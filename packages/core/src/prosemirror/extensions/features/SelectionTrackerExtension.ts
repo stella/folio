@@ -16,7 +16,10 @@ const defaultSelectionTrackerOptions: SelectionTrackerOptions = {};
 export const SelectionTrackerExtension = createExtension({
   name: "selectionTracker",
   defaultOptions: defaultSelectionTrackerOptions,
-  onSchemaReady(_ctx: ExtensionContext, options: SelectionTrackerOptions): ExtensionRuntime {
+  onSchemaReady(
+    _ctx: ExtensionContext,
+    options: SelectionTrackerOptions,
+  ): ExtensionRuntime {
     return {
       plugins: [createSelectionTrackerPlugin(options.onSelectionChange)],
     };

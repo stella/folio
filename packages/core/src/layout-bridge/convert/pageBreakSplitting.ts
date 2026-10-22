@@ -3,18 +3,19 @@
  * page-break blocks.
  */
 
-import type { Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
+import type { Node as PMNode } from "prosemirror-model";
+
 import { partitionRunsAtPageBreaks } from "../../internal/pageBreakRunPartition";
 import type {
-  ParagraphBlock,
   PageBreakBlock,
-  Run,
   ParagraphAttrs,
+  ParagraphBlock,
+  Run,
 } from "../../layout-engine/types";
 import { nextBlockId } from "./flowConversionShared";
-import type { PageBreakRunProjection } from "./paragraphRuns";
 import { hasVisibleParagraphPayload } from "./paragraphConversion";
+import type { PageBreakRunProjection } from "./paragraphRuns";
 
 function paragraphFragmentAttrs(
   source: ParagraphAttrs | undefined,
@@ -28,8 +29,12 @@ function paragraphFragmentAttrs(
     ...source,
     ...(source.indent ? { indent: { ...source.indent } } : {}),
     ...(source.spacing ? { spacing: { ...source.spacing } } : {}),
-    ...(source.automaticSpacing ? { automaticSpacing: { ...source.automaticSpacing } } : {}),
-    ...(source.spacingExplicit ? { spacingExplicit: { ...source.spacingExplicit } } : {}),
+    ...(source.automaticSpacing
+      ? { automaticSpacing: { ...source.automaticSpacing } }
+      : {}),
+    ...(source.spacingExplicit
+      ? { spacingExplicit: { ...source.spacingExplicit } }
+      : {}),
   };
   if (index > 0) {
     delete attrs.listMarker;
@@ -124,7 +129,10 @@ export const hasSingleLeadingProjectedPageBreak = (
   if (partitioned.type === "overlap") {
     return false;
   }
-  return partitioned.partitions[0]?.before.every(runIsZeroWidthBoundaryMarker) === true;
+  return (
+    partitioned.partitions[0]?.before.every(runIsZeroWidthBoundaryMarker) ===
+    true
+  );
 };
 
 export function splitParagraphAtPageBreaks({
@@ -140,7 +148,11 @@ export function splitParagraphAtPageBreaks({
   let fragmentStart = paragraph.pmStart ?? pageBreaks[0]!.pmStart;
   let emittedParagraph = false;
 
-  const appendParagraph = (runs: Run[], pmStart: number, pmEnd: number): void => {
+  const appendParagraph = (
+    runs: Run[],
+    pmStart: number,
+    pmEnd: number,
+  ): void => {
     const fragment: ParagraphBlock = {
       ...paragraph,
       id: emittedParagraph ? nextBlockId() : paragraph.id,
@@ -176,7 +188,11 @@ export function splitParagraphAtPageBreaks({
   const remainingRuns = partitioned.remaining;
   let paragraphMarkCarrier: ParagraphBlock | undefined;
   if (remainingRuns.length > 0) {
-    appendParagraph(remainingRuns, fragmentStart, paragraph.pmEnd ?? fragmentStart);
+    appendParagraph(
+      remainingRuns,
+      fragmentStart,
+      paragraph.pmEnd ?? fragmentStart,
+    );
   } else if (
     paragraph.runs.length === 0 ||
     (splitPageBreakAndParagraphMark &&
@@ -194,13 +210,19 @@ export function splitParagraphAtPageBreaks({
     }
   }
 
-  const fragments = result.filter((block): block is ParagraphBlock => block.kind === "paragraph");
+  const fragments = result.filter(
+    (block): block is ParagraphBlock => block.kind === "paragraph",
+  );
   for (let index = 0; index < fragments.length; index += 1) {
     const fragment = fragments[index];
     if (!fragment) {
       continue;
     }
-    const attrs = paragraphFragmentAttrs(fragment.attrs, index, fragments.length);
+    const attrs = paragraphFragmentAttrs(
+      fragment.attrs,
+      index,
+      fragments.length,
+    );
     if (attrs) {
       fragment.attrs = attrs;
     } else {
@@ -214,7 +236,9 @@ export function splitParagraphAtPageBreaks({
     // spacing belongs to the previous page and must not open the next one:
     // otherwise a following nextPage section cannot reuse that still-blank
     // page and strands an empty sheet.
-    paragraphMarkCarrier.attrs = withoutParagraphSpacing(paragraphMarkCarrier.attrs);
+    paragraphMarkCarrier.attrs = withoutParagraphSpacing(
+      paragraphMarkCarrier.attrs,
+    );
   }
   return result;
 }

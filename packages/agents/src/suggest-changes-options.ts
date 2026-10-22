@@ -7,6 +7,7 @@
  */
 
 import { TaggedError } from "better-result";
+
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
   type FolioDocumentOperationType,
@@ -61,14 +62,14 @@ export type ResolvedFolioSuggestChangesOptions = {
   readonly documentVersion: FolioSuggestChangesDocumentVersionOption | null;
 };
 
-const DEFAULT_EXCLUDED_OPERATION_TYPES: ReadonlySet<FolioDocumentOperationType> = new Set([
-  "commentOnBlock",
-  "insertSignatureTable",
-]);
+const DEFAULT_EXCLUDED_OPERATION_TYPES: ReadonlySet<FolioDocumentOperationType> =
+  new Set(["commentOnBlock", "insertSignatureTable"]);
 
 /** The operation types `suggest_changes` exposes when a host passes no `operationTypes`. */
 export const DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES: readonly FolioDocumentOperationType[] =
-  FOLIO_DOCUMENT_OPERATION_TYPES.filter((type) => !DEFAULT_EXCLUDED_OPERATION_TYPES.has(type));
+  FOLIO_DOCUMENT_OPERATION_TYPES.filter(
+    (type) => !DEFAULT_EXCLUDED_OPERATION_TYPES.has(type),
+  );
 
 export const DEFAULT_MAX_OPERATIONS_PER_CALL = 50;
 export const MAX_OPERATIONS_PER_CALL_LIMIT = 200;
@@ -81,14 +82,19 @@ export class InvalidFolioSuggestChangesOptionsError extends TaggedError(
   option: keyof FolioSuggestChangesOptions;
 }> {}
 
-const invalidOption = (option: keyof FolioSuggestChangesOptions, message: string): never => {
+const invalidOption = (
+  option: keyof FolioSuggestChangesOptions,
+  message: string,
+): never => {
   throw new InvalidFolioSuggestChangesOptionsError({
     message: `Invalid suggest_changes option \`${option}\`: ${message}.`,
     option,
   });
 };
 
-const isContractOperationType = (value: unknown): value is FolioDocumentOperationType =>
+const isContractOperationType = (
+  value: unknown,
+): value is FolioDocumentOperationType =>
   typeof value === "string" &&
   (FOLIO_DOCUMENT_OPERATION_TYPES as readonly string[]).includes(value);
 
@@ -99,14 +105,23 @@ const resolveOperationTypes = (
     return DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES;
   }
   if (!Array.isArray(requested)) {
-    return invalidOption("operationTypes", "expected an array of operation types");
+    return invalidOption(
+      "operationTypes",
+      "expected an array of operation types",
+    );
   }
   if (requested.length === 0) {
-    return invalidOption("operationTypes", "expected at least one operation type");
+    return invalidOption(
+      "operationTypes",
+      "expected at least one operation type",
+    );
   }
   const unknown = requested.find((type) => !isContractOperationType(type));
   if (unknown !== undefined) {
-    return invalidOption("operationTypes", `"${String(unknown)}" is not a contract operation type`);
+    return invalidOption(
+      "operationTypes",
+      `"${String(unknown)}" is not a contract operation type`,
+    );
   }
   const wanted = new Set(requested);
   return FOLIO_DOCUMENT_OPERATION_TYPES.filter((type) => wanted.has(type));
@@ -116,7 +131,11 @@ const resolveMaxOperations = (requested: number | undefined): number => {
   if (requested === undefined) {
     return DEFAULT_MAX_OPERATIONS_PER_CALL;
   }
-  if (!Number.isInteger(requested) || requested < 1 || requested > MAX_OPERATIONS_PER_CALL_LIMIT) {
+  if (
+    !Number.isInteger(requested) ||
+    requested < 1 ||
+    requested > MAX_OPERATIONS_PER_CALL_LIMIT
+  ) {
     return invalidOption(
       "maxOperations",
       `expected an integer from 1 to ${MAX_OPERATIONS_PER_CALL_LIMIT}`,
@@ -137,7 +156,10 @@ const resolveDocumentVersion = (
     typeof requested.current !== "string" ||
     requested.current.length === 0
   ) {
-    return invalidOption("documentVersion", "expected a non-empty `current` version token");
+    return invalidOption(
+      "documentVersion",
+      "expected a non-empty `current` version token",
+    );
   }
   return { current: requested.current };
 };

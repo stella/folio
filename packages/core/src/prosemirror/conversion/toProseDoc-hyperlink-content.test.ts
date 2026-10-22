@@ -105,7 +105,11 @@ describe("convertHyperlink preserves non-text run content", () => {
     }
 
     expect(hyperlink.rId).toBe("rId7");
-    expect(hyperlink.children.map((child) => child.type)).toEqual(["run", "run", "run"]);
+    expect(hyperlink.children.map((child) => child.type)).toEqual([
+      "run",
+      "run",
+      "run",
+    ]);
     expect(
       hyperlink.children.map((child) =>
         child.type === "run" ? child.content.at(0)?.type : child.type,
@@ -146,7 +150,9 @@ describe("convertHyperlink preserves non-text run content", () => {
     if (paragraph) {
       for (let i = 0; i < paragraph.childCount; i++) {
         const child = paragraph.child(i);
-        expect(child.marks.some((mark) => mark.type.name === "hyperlink")).toBe(true);
+        expect(child.marks.some((mark) => mark.type.name === "hyperlink")).toBe(
+          true,
+        );
       }
     }
   });

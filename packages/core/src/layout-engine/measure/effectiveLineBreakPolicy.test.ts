@@ -15,25 +15,38 @@ const textRun = (text: string, formatting: Partial<TextRun> = {}): TextRun => ({
 const localeCases: [label: string, run: TextRun, locale: string][] = [
   [
     "Latin",
-    textRun("text", { language: { val: "en-US", eastAsia: "ja-JP", bidi: "ar-SA" } }),
+    textRun("text", {
+      language: { val: "en-US", eastAsia: "ja-JP", bidi: "ar-SA" },
+    }),
     "en-US",
   ],
   [
     "East Asian",
-    textRun("日本", { language: { val: "en-US", eastAsia: "ja-JP", bidi: "ar-SA" } }),
+    textRun("日本", {
+      language: { val: "en-US", eastAsia: "ja-JP", bidi: "ar-SA" },
+    }),
     "ja-JP",
   ],
   [
     "bidirectional",
-    textRun("نص", { rtl: true, language: { val: "en-US", eastAsia: "ja-JP", bidi: "ar-SA" } }),
+    textRun("نص", {
+      rtl: true,
+      language: { val: "en-US", eastAsia: "ja-JP", bidi: "ar-SA" },
+    }),
     "ar-SA",
   ],
 ];
 
 describe("resolveEffectiveLineBreakPolicy", () => {
-  test.each(localeCases)("selects the %s run language", (_label, run, locale) => {
-    expect(resolveEffectiveLineBreakPolicy({ attrs: undefined, run }).provider.locale).toBe(locale);
-  });
+  test.each(localeCases)(
+    "selects the %s run language",
+    (_label, run, locale) => {
+      expect(
+        resolveEffectiveLineBreakPolicy({ attrs: undefined, run }).provider
+          .locale,
+      ).toBe(locale);
+    },
+  );
 
   test("applies only custom line-edge lists matching the active language", () => {
     const attrs: ParagraphAttrs = {
@@ -59,7 +72,12 @@ describe("resolveEffectiveLineBreakPolicy", () => {
   });
 
   test("keeps omitted provider values omitted while resolving layout defaults", () => {
-    expect(resolveEffectiveLineBreakPolicy({ attrs: undefined, run: textRun("plain") })).toEqual({
+    expect(
+      resolveEffectiveLineBreakPolicy({
+        attrs: undefined,
+        run: textRun("plain"),
+      }),
+    ).toEqual({
       provider: {},
       hangingPunctuation: true,
       automaticHyphenation: { type: "disabled" },
@@ -107,7 +125,10 @@ describe("resolveEffectiveLineBreakPolicy", () => {
     };
     const original = structuredClone(attrs);
 
-    const policy = resolveEffectiveLineBreakPolicy({ attrs, run: textRun("text") });
+    const policy = resolveEffectiveLineBreakPolicy({
+      attrs,
+      run: textRun("text"),
+    });
 
     expect(policy.automaticHyphenation).toEqual({ type: "disabled" });
     expect(policy.provider.doNotHyphenateCaps).toBe(true);

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { schema } from "./schema";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
+import { schema } from "./schema";
 
 describe("range anchor attrs", () => {
   test("rejects malformed fields before the DOCX serializer can consume them", () => {

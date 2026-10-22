@@ -20,8 +20,10 @@ import type { XmlElement } from "../xmlParser";
 import { parseXmlDocument } from "../xmlParser";
 import { serializeParagraph } from "./paragraphSerializer";
 
-const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
-const W15_NS = 'xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"';
+const W_NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W15_NS =
+  'xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"';
 
 function parseParagraphXml(xml: string): Paragraph {
   const root = parseXmlDocument(xml) as XmlElement | null;
@@ -61,7 +63,9 @@ describe("inline SDT raw-property round-trip", () => {
     expect(serialized).toContain("<w:dataBinding");
     expect(serialized).toContain('w:xpath="/ns0:root/ns0:party"');
     expect(serialized).toContain('w:storeItemID="{GUID}"');
-    expect(serialized).toContain("<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>");
+    expect(serialized).toContain(
+      "<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>",
+    );
     expect(serialized).toContain("Acme Corp");
 
     // Re-parsing the saved XML must recover an equivalent inline SDT: same
@@ -76,11 +80,15 @@ describe("inline SDT raw-property round-trip", () => {
     expect(reparsed.properties.tag).toBe("party");
     // The writer keeps CT_SdtPr's declared order: data binding precedes the
     // control-kind choice.
-    expect(reparsed.properties.preserved?.children?.map((child) => child.xml)).toEqual([
+    expect(
+      reparsed.properties.preserved?.children?.map((child) => child.xml),
+    ).toEqual([
       '<w:dataBinding w:xpath="/ns0:root/ns0:party" w:storeItemID="{GUID}"/>',
       "<w:text/>",
     ]);
-    expect(reparsed.properties.rawEndPropertiesXml).toContain("<w:rPr><w:b/></w:rPr>");
+    expect(reparsed.properties.rawEndPropertiesXml).toContain(
+      "<w:rPr><w:b/></w:rPr>",
+    );
     const innerText = reparsed.content
       .flatMap((c) => (c.type === "run" ? c.content : []))
       .map((rc) => (rc.type === "text" ? rc.text : ""))
@@ -157,9 +165,12 @@ describe("inline SDT raw-property structural validation", () => {
           type: "inlineSdt",
           properties: {
             sdtType: "richText",
-            rawEndPropertiesXml: "<w:sdtEndPr/><w:p><w:r><w:t>INJECTED</w:t></w:r></w:p>",
+            rawEndPropertiesXml:
+              "<w:sdtEndPr/><w:p><w:r><w:t>INJECTED</w:t></w:r></w:p>",
           },
-          content: [{ type: "run", content: [{ type: "text", text: "value" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "value" }] },
+          ],
         },
       ],
     };
@@ -179,9 +190,12 @@ describe("inline SDT raw-property structural validation", () => {
           properties: {
             sdtType: "richText",
             tag: "ok",
-            rawEndPropertiesXml: "<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>",
+            rawEndPropertiesXml:
+              "<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>",
           },
-          content: [{ type: "run", content: [{ type: "text", text: "value" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "value" }] },
+          ],
         },
       ],
     };
@@ -189,7 +203,9 @@ describe("inline SDT raw-property structural validation", () => {
     const serialized = serializeParagraph(paragraph);
 
     expect(serialized).toContain('<w:sdtPr><w:tag w:val="ok"/></w:sdtPr>');
-    expect(serialized).toContain("<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>");
+    expect(serialized).toContain(
+      "<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>",
+    );
   });
 });
 

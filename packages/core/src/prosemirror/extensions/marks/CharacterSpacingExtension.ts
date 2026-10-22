@@ -7,12 +7,12 @@
  * Single mark with multiple attributes to avoid mark explosion.
  */
 
-import { twipsToPixels, formatPx } from "../../../utils/units";
 import {
   getHorizontalScaleFactor,
   normalizeHorizontalScalePercent,
   parseHorizontalScalePercent,
 } from "../../../utils/horizontalScale";
+import { formatPx, twipsToPixels } from "../../../utils/units";
 import { expectCharacterSpacingMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
 
@@ -34,10 +34,16 @@ export const CharacterSpacingExtension = createMarkExtension({
       {
         tag: "span.docx-char-spacing",
         getAttrs: (dom) => ({
-          spacing: dom.dataset["spacing"] ? Number(dom.dataset["spacing"]) : null,
-          position: dom.dataset["position"] ? Number(dom.dataset["position"]) : null,
+          spacing: dom.dataset["spacing"]
+            ? Number(dom.dataset["spacing"])
+            : null,
+          position: dom.dataset["position"]
+            ? Number(dom.dataset["position"])
+            : null,
           scale: parseHorizontalScalePercent(dom.dataset["scale"]),
-          kerning: dom.dataset["kerning"] ? Number(dom.dataset["kerning"]) : null,
+          kerning: dom.dataset["kerning"]
+            ? Number(dom.dataset["kerning"])
+            : null,
         }),
       },
     ],

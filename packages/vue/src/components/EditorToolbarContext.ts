@@ -5,7 +5,7 @@
  * drilling. React uses createContext + useContext; Vue uses
  * provide / inject with a typed InjectionKey.
  */
-import { provide, inject, type InjectionKey } from "vue";
+import { inject, type InjectionKey, provide } from "vue";
 
 /**
  * Shared toolbar prop bag — mirrors React's ToolbarProps. Loosely
@@ -26,7 +26,9 @@ export function useEditorToolbar(): EditorToolbarProps {
   // casting a `null` default up to the value type.
   const ctx = inject(KEY);
   if (!ctx) {
-    throw new Error("useEditorToolbar must be used within an <EditorToolbar> component");
+    throw new Error(
+      "useEditorToolbar must be used within an <EditorToolbar> component",
+    );
   }
   return ctx;
 }

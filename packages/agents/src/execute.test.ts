@@ -11,15 +11,15 @@ import path from "node:path";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
-import { createReviewerBridge } from "./bridges/reviewer";
 import type { FolioAgentBridge } from "./bridge";
+import { createReviewerBridge } from "./bridges/reviewer";
 import { executeFolioToolCall, executeFolioToolCallUntyped } from "./execute";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type {
   FolioAgentApplyOperationsSummary,
   FolioAgentBlock,
-  FolioAgentFindTextResult,
   FolioAgentDocumentOutline,
+  FolioAgentFindTextResult,
   FolioAgentSectionRead,
   FolioAgentStoryFindTextResult,
   FolioToolCallResult,
@@ -34,7 +34,10 @@ const FIXTURE = path.join(
 
 const readFixture = (): ArrayBuffer => {
   const bytes = readFileSync(FIXTURE);
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 };
 
 const expectOk = <TResult>(result: FolioToolCallResult<TResult>): TResult => {
@@ -66,7 +69,11 @@ describe("executeFolioToolCall: argument validation", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const bridge = createReviewerBridge(reviewer);
 
-    const result = executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.findText, {}, bridge);
+    const result = executeFolioToolCall(
+      FOLIO_AGENT_TOOL_NAMES.findText,
+      {},
+      bridge,
+    );
     expect(expectError(result)).toContain("query");
   });
 
@@ -86,7 +93,11 @@ describe("executeFolioToolCall: argument validation", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const bridge = createReviewerBridge(reviewer);
 
-    const result = executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readPage, { page: 1 }, bridge);
+    const result = executeFolioToolCall(
+      FOLIO_AGENT_TOOL_NAMES.readPage,
+      { page: 1 },
+      bridge,
+    );
     const error = expectError(result);
     expect(error).toContain("read_page");
   });
@@ -96,11 +107,17 @@ describe("executeFolioToolCall: argument validation", () => {
     const bridge = createReviewerBridge(reviewer);
 
     expect(
-      expectError(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readSelection, {}, bridge)),
+      expectError(
+        executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readSelection, {}, bridge),
+      ),
     ).toContain("read_selection");
     expect(
       expectError(
-        executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.scrollToBlock, { blockId: "x" }, bridge),
+        executeFolioToolCall(
+          FOLIO_AGENT_TOOL_NAMES.scrollToBlock,
+          { blockId: "x" },
+          bridge,
+        ),
       ),
     ).toContain("scroll_to_block");
   });
@@ -135,7 +152,10 @@ describe("executeFolioToolCall: argument validation", () => {
         bridge,
       ),
     );
-    expect(received).toEqual(["reply:thread:legal-review", "resolve:thread:legal-review"]);
+    expect(received).toEqual([
+      "reply:thread:legal-review",
+      "resolve:thread:legal-review",
+    ]);
   });
 });
 
@@ -143,20 +163,30 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   test("list_stories returns typed handles that read_story accepts", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const bridge = createReviewerBridge(reviewer);
-    const stories = expectOk(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.listStories, {}, bridge));
+    const stories = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.listStories, {}, bridge),
+    );
     expect(stories.at(0)?.handle).toEqual({ type: "main" });
     const main = expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readStory, { handle: { type: "main" } }, bridge),
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.readStory,
+        { handle: { type: "main" } },
+        bridge,
+      ),
     );
     expect(main).toEqual(stories.at(0));
   });
 
   test("read_document -> find_text -> suggest_changes -> read_changes -> add_comment -> read_comments -> reply_comment -> resolve_comment", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      author: "AI Reviewer",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     // read_document
-    const blocks = expectOk(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge));
+    const blocks = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge),
+    );
     expect(blocks.length).toBeGreaterThan(0);
     const heading = blocks.find((block) => block.text.includes("Heading"));
     if (!heading) {
@@ -165,11 +195,17 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
 
     // find_text
     const findTextResult = expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.findText, { query: "heading" }, bridge),
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.findText,
+        { query: "heading" },
+        bridge,
+      ),
     );
     expect(findTextResult.truncated).toBe(false);
     expect(findTextResult.totalMatches).toBe(findTextResult.matches.length);
-    expect(findTextResult.matches.some((match) => match.blockId === heading.blockId)).toBe(true);
+    expect(
+      findTextResult.matches.some((match) => match.blockId === heading.blockId),
+    ).toBe(true);
 
     // suggest_changes: replaceInBlock
     const suggestResult = expectOk(
@@ -177,7 +213,12 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         FOLIO_AGENT_TOOL_NAMES.suggestChanges,
         {
           operations: [
-            { type: "replaceInBlock", blockId: heading.blockId, find: "Heading", replace: "Intro" },
+            {
+              type: "replaceInBlock",
+              blockId: heading.blockId,
+              find: "Heading",
+              replace: "Intro",
+            },
           ],
         },
         bridge,
@@ -203,7 +244,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     ]);
 
     // read_changes: the replace is now a pending tracked change
-    const changes = expectOk(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readChanges, {}, bridge));
+    const changes = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readChanges, {}, bridge),
+    );
     expect(changes.length).toBeGreaterThanOrEqual(2);
     expect(changes.some((change) => change.type === "insertion")).toBe(true);
     expect(changes.some((change) => change.type === "deletion")).toBe(true);
@@ -285,7 +328,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
           bridge,
         ),
       ),
-    ).toBe("reply_comment's `commentId` must be a comment id from `read_comments`.");
+    ).toBe(
+      "reply_comment's `commentId` must be a comment id from `read_comments`.",
+    );
 
     // resolve_comment
     const resolveResult = expectOk(
@@ -298,20 +343,32 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     expect(resolveResult.resolved).toBe(true);
 
     const afterResolve = expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readComments, { filter: "resolved" }, bridge),
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.readComments,
+        { filter: "resolved" },
+        bridge,
+      ),
     );
     expect(afterResolve).toHaveLength(1);
     const afterResolveOpen = expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readComments, { filter: "open" }, bridge),
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.readComments,
+        { filter: "open" },
+        bridge,
+      ),
     );
     expect(afterResolveOpen).toHaveLength(0);
   });
 
   test("suggest_changes: insertAfterBlock with multi-line text splits into paragraphs and reports a normalization", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      author: "AI Reviewer",
+    });
     const bridge = createReviewerBridge(reviewer);
 
-    const blocks = expectOk(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge));
+    const blocks = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge),
+    );
     const heading = blocks.find((block) => block.text.includes("Heading"));
     if (!heading) {
       throw new Error("expected a block containing 'Heading'");
@@ -348,10 +405,14 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     const afterInsert = expectOk(
       executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge),
     );
-    expect(afterInsert.some((block) => block.text === "6. Force Majeure")).toBe(true);
+    expect(afterInsert.some((block) => block.text === "6. Force Majeure")).toBe(
+      true,
+    );
     expect(
       afterInsert.some(
-        (block) => block.text === "Neither party shall be liable for delays beyond its control.",
+        (block) =>
+          block.text ===
+          "Neither party shall be liable for delays beyond its control.",
       ),
     ).toBe(true);
     // No block anywhere in the document carries a literal newline.
@@ -378,7 +439,11 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         },
         bridge,
       ),
-    ) as { applied: unknown[]; receipts: unknown[]; skipped: { id: string; reason: string }[] };
+    ) as {
+      applied: unknown[];
+      receipts: unknown[];
+      skipped: { id: string; reason: string }[];
+    };
     expect(result.applied).toEqual([]);
     expect(result.receipts).toEqual([]);
     expect(result.skipped).toHaveLength(1);
@@ -429,13 +494,17 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
       ),
     ) as FolioAgentApplyOperationsSummary;
     expect(second.applied).toEqual([]);
-    expect(second.skipped.at(0)?.reason).toContain("accept or reject that change");
+    expect(second.skipped.at(0)?.reason).toContain(
+      "accept or reject that change",
+    );
   });
 
   test("suggest_changes attaches a block-text precondition and explains a stale target", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const reviewerBridge = createReviewerBridge(reviewer);
-    const heading = reviewer.snapshot().blocks.find(({ text }) => text.includes("Heading"));
+    const heading = reviewer
+      .snapshot()
+      .blocks.find(({ text }) => text.includes("Heading"));
     if (!heading) {
       throw new Error("expected a heading block");
     }
@@ -471,7 +540,11 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         },
         bridge,
       ),
-    ) as { issues: unknown[]; receipts: unknown[]; skipped: { reason: string }[] };
+    ) as {
+      issues: unknown[];
+      receipts: unknown[];
+      skipped: { reason: string }[];
+    };
 
     expect(receivedPrecondition).toEqual({
       blockTextHash: reviewer.snapshot().anchors[heading.id]?.textHash,
@@ -542,7 +615,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     const freshBlocks = expectOk(
       executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge),
     ) as FolioAgentBlock[];
-    const freshHeading = freshBlocks.find((block) => block.blockId === heading.blockId);
+    const freshHeading = freshBlocks.find(
+      (block) => block.blockId === heading.blockId,
+    );
     if (!freshHeading) {
       throw new Error("expected the block to still exist");
     }
@@ -579,7 +654,10 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         version: batch.version,
         status: "committed" as const,
         applied: [],
-        skipped: batch.operations.map(({ id }) => ({ id, reason: "unsupportedMode" as const })),
+        skipped: batch.operations.map(({ id }) => ({
+          id,
+          reason: "unsupportedMode" as const,
+        })),
       }),
     };
 
@@ -641,14 +719,32 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
 
     const findTooLong = executeFolioToolCall(
       FOLIO_AGENT_TOOL_NAMES.suggestChanges,
-      { operations: [{ type: "replaceInBlock", blockId: "b1", find: tooLong, replace: "y" }] },
+      {
+        operations: [
+          {
+            type: "replaceInBlock",
+            blockId: "b1",
+            find: tooLong,
+            replace: "y",
+          },
+        ],
+      },
       bridge,
     );
     expect(expectError(findTooLong)).toContain("100,000-character limit");
 
     const replaceTooLong = executeFolioToolCall(
       FOLIO_AGENT_TOOL_NAMES.suggestChanges,
-      { operations: [{ type: "replaceInBlock", blockId: "b1", find: "x", replace: tooLong }] },
+      {
+        operations: [
+          {
+            type: "replaceInBlock",
+            blockId: "b1",
+            find: "x",
+            replace: tooLong,
+          },
+        ],
+      },
       bridge,
     );
     expect(expectError(replaceTooLong)).toContain("100,000-character limit");
@@ -662,7 +758,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
 
     const commentTooLong = executeFolioToolCall(
       FOLIO_AGENT_TOOL_NAMES.suggestChanges,
-      { operations: [{ type: "deleteBlock", blockId: "b1", comment: tooLong }] },
+      {
+        operations: [{ type: "deleteBlock", blockId: "b1", comment: tooLong }],
+      },
       bridge,
     );
     expect(expectError(commentTooLong)).toContain("100,000-character limit");
@@ -725,19 +823,35 @@ describe("find_text edge cases", () => {
       throw new Error("expected a block containing 'Heading'");
     }
     reviewer.applyOperations(
-      [{ id: "r1", type: "replaceBlock", blockId: target.id, text: "repeat repeat REPEAT" }],
+      [
+        {
+          id: "r1",
+          type: "replaceBlock",
+          blockId: target.id,
+          text: "repeat repeat REPEAT",
+        },
+      ],
       { undefinedReferences: "refuse", mode: "direct" },
     );
 
     const findTextResult = expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.findText, { query: "repeat" }, bridge),
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.findText,
+        { query: "repeat" },
+        bridge,
+      ),
     ) as FolioAgentFindTextResult;
     expect(findTextResult.matches).toHaveLength(3);
     expect(findTextResult.truncated).toBe(false);
     expect(findTextResult.totalMatches).toBe(3);
-    expect(findTextResult.matches.map((match) => match.occurrenceInBlock)).toEqual([0, 1, 2]);
     expect(
-      findTextResult.matches.map((match) => [match.range.startOffset, match.range.endOffset]),
+      findTextResult.matches.map((match) => match.occurrenceInBlock),
+    ).toEqual([0, 1, 2]);
+    expect(
+      findTextResult.matches.map((match) => [
+        match.range.startOffset,
+        match.range.endOffset,
+      ]),
     ).toEqual([
       [0, 6],
       [7, 13],
@@ -751,11 +865,17 @@ describe("find_text edge cases", () => {
     const suggested = expectOk(
       executeFolioToolCall(
         FOLIO_AGENT_TOOL_NAMES.suggestChanges,
-        { operations: [{ type: "replaceRange", range: secondMatch.range, replace: "done" }] },
+        {
+          operations: [
+            { type: "replaceRange", range: secondMatch.range, replace: "done" },
+          ],
+        },
         bridge,
       ),
     ) as FolioAgentApplyOperationsSummary;
-    expect(suggested.applied).toEqual([{ id: expect.stringMatching(/^op-[0-9a-f-]{36}-1$/) }]);
+    expect(suggested.applied).toEqual([
+      { id: expect.stringMatching(/^op-[0-9a-f-]{36}-1$/) },
+    ]);
 
     const caseSensitive = expectOk(
       executeFolioToolCall(
@@ -791,12 +911,23 @@ describe("find_text edge cases", () => {
     }
     // 250 occurrences of "x" in one block, over the 200-match cap.
     reviewer.applyOperations(
-      [{ id: "r1", type: "replaceBlock", blockId: target.id, text: "x ".repeat(250) }],
+      [
+        {
+          id: "r1",
+          type: "replaceBlock",
+          blockId: target.id,
+          text: "x ".repeat(250),
+        },
+      ],
       { undefinedReferences: "refuse", mode: "direct" },
     );
 
     const result = expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.findText, { query: "x" }, bridge),
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.findText,
+        { query: "x" },
+        bridge,
+      ),
     ) as FolioAgentFindTextResult;
     expect(result.matches).toHaveLength(200);
     expect(result.truncated).toBe(true);
@@ -868,7 +999,9 @@ describe("find_text edge cases", () => {
   test("limits main-story search to real page mappings and exposes the page on matches", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const base = createReviewerBridge(reviewer);
-    const target = reviewer.snapshot().blocks.find(({ text }) => text.includes("Heading"));
+    const target = reviewer
+      .snapshot()
+      .blocks.find(({ text }) => text.includes("Heading"));
     if (target === undefined) {
       throw new Error("expected a heading block");
     }
@@ -888,7 +1021,11 @@ describe("find_text edge cases", () => {
     ) as FolioAgentFindTextResult;
 
     expect(result.totalMatches).toBeGreaterThan(0);
-    expect(result.matches.every((match) => match.type === "main" && match.page === 2)).toBe(true);
+    expect(
+      result.matches.every(
+        (match) => match.type === "main" && match.page === 2,
+      ),
+    ).toBe(true);
   });
 
   test("searches a non-main story without inventing block handles", async () => {
@@ -907,7 +1044,10 @@ describe("find_text edge cases", () => {
         FOLIO_AGENT_TOOL_NAMES.findText,
         {
           query: "header",
-          scope: { type: "story", handle: { type: "header", relationshipId: "rId7" } },
+          scope: {
+            type: "story",
+            handle: { type: "header", relationshipId: "rId7" },
+          },
         },
         bridge,
       ),
@@ -934,11 +1074,18 @@ describe("outline-first scoped reads", () => {
       ...base,
       snapshot: () => ({
         ...snapshot,
-        blocks: [{ ...firstBlock, kind: "heading", headingLevel: 1 }, ...snapshot.blocks.slice(1)],
+        blocks: [
+          { ...firstBlock, kind: "heading", headingLevel: 1 },
+          ...snapshot.blocks.slice(1),
+        ],
       }),
     };
     const outline = expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.getDocumentOutline, {}, bridge),
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.getDocumentOutline,
+        {},
+        bridge,
+      ),
     ) as FolioAgentDocumentOutline;
     const first = outline.sections.at(0);
     if (first === undefined) {
@@ -959,11 +1106,17 @@ describe("outline-first scoped reads", () => {
       const secondPage = expectOk(
         executeFolioToolCall(
           FOLIO_AGENT_TOOL_NAMES.readSection,
-          { handle: first.handle, maxBlocks: 1, afterBlockId: firstPage.nextAfterBlockId },
+          {
+            handle: first.handle,
+            maxBlocks: 1,
+            afterBlockId: firstPage.nextAfterBlockId,
+          },
           bridge,
         ),
       ) as FolioAgentSectionRead;
-      expect(secondPage.blocks.at(0)?.blockId).not.toBe(firstPage.blocks.at(0)?.blockId);
+      expect(secondPage.blocks.at(0)?.blockId).not.toBe(
+        firstPage.blocks.at(0)?.blockId,
+      );
     }
   });
 
@@ -996,11 +1149,22 @@ describe("outline-first scoped reads", () => {
     }
 
     expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.showInDocument, { blockId: block.id }, bridge),
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.showInDocument,
+        { blockId: block.id },
+        bridge,
+      ),
     );
     expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.showInDocument, { range: match.range }, bridge),
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.showInDocument,
+        { range: match.range },
+        bridge,
+      ),
     );
-    expect(targets).toEqual([{ type: "block", story: "main", blockId: block.id }, match.range]);
+    expect(targets).toEqual([
+      { type: "block", story: "main", blockId: block.id },
+      match.range,
+    ]);
   });
 });

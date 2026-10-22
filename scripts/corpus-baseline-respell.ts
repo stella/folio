@@ -23,14 +23,24 @@
 
 import { TaggedError } from "better-result";
 
-import { type CorpusBaseline, type CorpusBaselineEntry } from "./lib/corpus-baseline";
-import { type CensusSignature, type CorpusCensus, mergeCensuses } from "./lib/corpus-census";
+import {
+  type CorpusBaseline,
+  type CorpusBaselineEntry,
+} from "./lib/corpus-baseline";
+import {
+  type CensusSignature,
+  type CorpusCensus,
+  mergeCensuses,
+} from "./lib/corpus-census";
 import {
   FAMILY_BASELINE_FAMILIES,
   type FamilyBaseline,
   loadFamilyBaseline,
 } from "./lib/corpus-family-baseline";
-import { type FamilyCensus, mergeFamilyCensuses } from "./lib/corpus-family-census";
+import {
+  type FamilyCensus,
+  mergeFamilyCensuses,
+} from "./lib/corpus-family-census";
 import { BASELINE_PATH } from "./lib/corpus-manifest";
 import { ELISION, MODEL_PATH_RE } from "./lib/corpus-signature";
 
@@ -81,7 +91,9 @@ const reduce = (row: Row): Reduced => {
   return {
     row,
     erased,
-    cut: erased.endsWith(ELISION) ? erased.slice(0, -ELISION.length) : undefined,
+    cut: erased.endsWith(ELISION)
+      ? erased.slice(0, -ELISION.length)
+      : undefined,
   };
 };
 
@@ -107,12 +119,20 @@ const matchesByPrefix = (row: Reduced, others: readonly Reduced[]): boolean =>
         (other.cut !== undefined && row.erased.startsWith(other.cut))),
   );
 
-const compareSide = (recorded: readonly Row[], observed: readonly Row[]): RespellReport => {
+const compareSide = (
+  recorded: readonly Row[],
+  observed: readonly Row[],
+): RespellReport => {
   const recordedRows = recorded.map(reduce);
   const observedRows = observed.map(reduce);
   const recordedExact = new Set(recorded.map(exactKey));
   const observedExact = new Set(observed.map(exactKey));
-  const report: RespellReport = { exact: 0, byPrefix: 0, appeared: [], vanished: [] };
+  const report: RespellReport = {
+    exact: 0,
+    byPrefix: 0,
+    appeared: [],
+    vanished: [],
+  };
   for (const row of observedRows) {
     if (recordedExact.has(exactKey(row.row))) {
       report.exact += 1;
@@ -125,7 +145,10 @@ const compareSide = (recorded: readonly Row[], observed: readonly Row[]): Respel
     report.appeared.push(row.row);
   }
   for (const row of recordedRows) {
-    if (!observedExact.has(exactKey(row.row)) && !matchesByPrefix(row, observedRows)) {
+    if (
+      !observedExact.has(exactKey(row.row)) &&
+      !matchesByPrefix(row, observedRows)
+    ) {
       report.vanished.push(row.row);
     }
   }
@@ -145,7 +168,9 @@ const renderRows = (label: string, rows: readonly Row[]): string =>
             (row) =>
               `    ${String(row.files).padStart(5)} files  ${row.invariant} | ${row.message}`,
           ),
-        ...(rows.length > REPORTED_ROWS ? [`    …and ${rows.length - REPORTED_ROWS} more`] : []),
+        ...(rows.length > REPORTED_ROWS
+          ? [`    …and ${rows.length - REPORTED_ROWS} more`]
+          : []),
       ].join("\n");
 
 const renderSide = ({ label }: Side, report: RespellReport): string =>
@@ -158,20 +183,28 @@ const renderSide = ({ label }: Side, report: RespellReport): string =>
     .join("\n");
 
 const baselineRows = (baseline: CorpusBaseline | FamilyBaseline): Row[] =>
-  baseline.entries.map(({ invariant, message, files }: CorpusBaselineEntry) => ({
+  baseline.entries.map(
+    ({ invariant, message, files }: CorpusBaselineEntry) => ({
+      invariant,
+      message,
+      files,
+    }),
+  );
+
+const censusRows = (signatures: readonly CensusSignature[]): Row[] =>
+  signatures.map(({ invariant, message, files }) => ({
     invariant,
     message,
     files,
   }));
 
-const censusRows = (signatures: readonly CensusSignature[]): Row[] =>
-  signatures.map(({ invariant, message, files }) => ({ invariant, message, files }));
-
 type CensusFile = CorpusCensus & { family: FamilyCensus };
 
 const loadCensuses = async (paths: readonly string[]): Promise<CensusFile> => {
   if (paths.length === 0) {
-    throw new RespellError({ message: "Pass the census files the nightly produced" });
+    throw new RespellError({
+      message: "Pass the census files the nightly produced",
+    });
   }
   const censuses = await Promise.all(
     paths.map(async (file) => (await Bun.file(file).json()) as CensusFile),
@@ -198,7 +231,9 @@ const main = async (paths: string[]): Promise<void> => {
     sides.push({
       side: { label: `corpus/baselines/${family}.json` },
       recorded: baselineRows(loaded),
-      observed: censusRows(census.family.signatures.filter((row) => row.family === family)),
+      observed: censusRows(
+        census.family.signatures.filter((row) => row.family === family),
+      ),
     });
   }
 
@@ -210,7 +245,8 @@ const main = async (paths: string[]): Promise<void> => {
     `${reports.map(({ side, report }) => renderSide(side, report)).join("\n")}\n`,
   );
   const unexplained = reports.reduce(
-    (total, { report }) => total + report.appeared.length + report.vanished.length,
+    (total, { report }) =>
+      total + report.appeared.length + report.vanished.length,
     0,
   );
   if (unexplained > 0) {
@@ -227,7 +263,9 @@ const main = async (paths: string[]): Promise<void> => {
 
 if (import.meta.main) {
   main(process.argv.slice(2)).catch((cause: unknown) => {
-    process.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+    process.stderr.write(
+      `${cause instanceof Error ? cause.message : String(cause)}\n`,
+    );
     process.exitCode = 1;
   });
 }

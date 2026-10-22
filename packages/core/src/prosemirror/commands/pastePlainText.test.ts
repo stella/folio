@@ -3,8 +3,8 @@ import { Schema } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { registerClipboardIntentHandler } from "../clipboardIntent";
 
+import { registerClipboardIntentHandler } from "../clipboardIntent";
 import {
   buildPlainTextSlice,
   CLIPBOARD_READ_ERROR_EVENT,
@@ -64,8 +64,13 @@ describe("buildPlainTextSlice", () => {
   });
 
   test("carries no source formatting even when text looks like markup", () => {
-    const slice = buildPlainTextSlice("**not bold** <b>either</b>", blockSchema);
-    expect(paragraphTexts(slice.content)).toEqual(["**not bold** <b>either</b>"]);
+    const slice = buildPlainTextSlice(
+      "**not bold** <b>either</b>",
+      blockSchema,
+    );
+    expect(paragraphTexts(slice.content)).toEqual([
+      "**not bold** <b>either</b>",
+    ]);
     expect(everyTextNodeIsUnmarked(slice.content)).toBe(true);
   });
 
@@ -82,7 +87,10 @@ describe("buildPlainTextSlice", () => {
 });
 
 describe("pasteWithoutFormatting dry run", () => {
-  const withClipboard = (readText: (() => Promise<string>) | undefined, run: () => void): void => {
+  const withClipboard = (
+    readText: (() => Promise<string>) | undefined,
+    run: () => void,
+  ): void => {
     const original = Object.getOwnPropertyDescriptor(globalThis, "navigator");
     Object.defineProperty(globalThis, "navigator", {
       configurable: true,
@@ -137,7 +145,9 @@ describe("pasteWithoutFormatting dry run", () => {
     withClipboard(
       () => Promise.reject(new Error("denied")),
       () => {
-        expect(pasteWithoutFormatting(fakeState, () => undefined, view)).toBe(true);
+        expect(pasteWithoutFormatting(fakeState, () => undefined, view)).toBe(
+          true,
+        );
       },
     );
 
@@ -186,7 +196,9 @@ describe("pasteWithoutFormatting dry run", () => {
     withClipboard(
       () => read.promise,
       () => {
-        expect(pasteWithoutFormatting(original, () => undefined, view)).toBe(true);
+        expect(pasteWithoutFormatting(original, () => undefined, view)).toBe(
+          true,
+        );
       },
     );
     // The read belongs to the current view, including intervening edits and selection movement.
@@ -197,7 +209,9 @@ describe("pasteWithoutFormatting dry run", () => {
     read.resolve("X\r\nY");
     await read.promise;
     await Promise.resolve();
-    expect(handled).toEqual([{ plain: true, from: 4, to: 5, texts: ["X", "Y"], unmarked: true }]);
+    expect(handled).toEqual([
+      { plain: true, from: 4, to: 5, texts: ["X", "Y"], unmarked: true },
+    ]);
     expect(paragraphTexts(view.state.doc.content)).toEqual(["ZabX", "Yd"]);
     expect(nativeDispatches).toBe(0);
   });
@@ -223,10 +237,13 @@ describe("pasteWithoutFormatting dry run", () => {
       withClipboard(
         () => read.promise,
         () => {
-          expect(pasteWithoutFormatting(fakeState, () => undefined, view)).toBe(true);
+          expect(pasteWithoutFormatting(fakeState, () => undefined, view)).toBe(
+            true,
+          );
         },
       );
-      if (status === "destroyed") Object.defineProperty(view, "isDestroyed", { value: true });
+      if (status === "destroyed")
+        Object.defineProperty(view, "isDestroyed", { value: true });
       read.resolve("pasted");
       await read.promise;
       await Promise.resolve();

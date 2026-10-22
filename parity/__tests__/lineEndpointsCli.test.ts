@@ -43,14 +43,20 @@ describe("Word line-endpoint CLI", () => {
     expect(() => parseLineEndpointCliArgs(["capture", "fixture.docx"])).toThrow(
       "capture requires --output",
     );
-    expect(() => parseLineEndpointCliArgs(["validate", "fixture.docx"])).toThrow(
-      "validate requires --manifest",
-    );
+    expect(() =>
+      parseLineEndpointCliArgs(["validate", "fixture.docx"]),
+    ).toThrow("validate requires --manifest");
   });
 
   test("rejects unknown options", () => {
     expect(() =>
-      parseLineEndpointCliArgs(["validate", "fixture.docx", "--manifest", "lines.json", "--ci"]),
+      parseLineEndpointCliArgs([
+        "validate",
+        "fixture.docx",
+        "--manifest",
+        "lines.json",
+        "--ci",
+      ]),
     ).toThrow("Unknown validate option: --ci");
   });
 });

@@ -90,7 +90,9 @@ export function isWatermarkShape(shape: XmlElement): boolean {
  * paragraph (so the serializer can replay it byte-exact), and a
  * reference to that paragraph so the regular body parser can skip it.
  */
-export function parseWatermark(header: XmlElement): ParsedWatermark | undefined {
+export function parseWatermark(
+  header: XmlElement,
+): ParsedWatermark | undefined {
   const headerXmlns = collectXmlnsDeclarations(header);
   for (const shape of collectVmlShapesWithContent(header)) {
     const watermark = readVmlWatermark(shape);
@@ -99,7 +101,9 @@ export function parseWatermark(header: XmlElement): ParsedWatermark | undefined 
       if (hosting) {
         return {
           watermark,
-          rawParagraphXml: captureVerbatimXml(cloneWithXmlnsDeclarations(hosting, headerXmlns)),
+          rawParagraphXml: captureVerbatimXml(
+            cloneWithXmlnsDeclarations(hosting, headerXmlns),
+          ),
           hostingParagraph: hosting,
           blockIndex: blockIndexOf(header, hosting),
         };
@@ -113,7 +117,9 @@ export function parseWatermark(header: XmlElement): ParsedWatermark | undefined 
       if (hosting) {
         return {
           watermark,
-          rawParagraphXml: captureVerbatimXml(cloneWithXmlnsDeclarations(hosting, headerXmlns)),
+          rawParagraphXml: captureVerbatimXml(
+            cloneWithXmlnsDeclarations(hosting, headerXmlns),
+          ),
           hostingParagraph: hosting,
           blockIndex: blockIndexOf(header, hosting),
         };
@@ -160,7 +166,10 @@ function blockIndexOf(header: XmlElement, target: XmlElement): number {
  * in that case; the original paragraph stays in `content` and
  * round-trips through the regular block parser.
  */
-function findEnclosingParagraph(header: XmlElement, target: XmlElement): XmlElement | null {
+function findEnclosingParagraph(
+  header: XmlElement,
+  target: XmlElement,
+): XmlElement | null {
   for (const child of header.elements ?? []) {
     if (child.type !== "element" || !child.name) {
       continue;
@@ -206,7 +215,10 @@ function countParagraphShapeAndBodyContent(paragraph: XmlElement): {
   let shapeCount = 0;
   let bodyContentCount = 0;
 
-  const walkParagraph = (root: XmlElement, insidePropertyContainer: boolean): void => {
+  const walkParagraph = (
+    root: XmlElement,
+    insidePropertyContainer: boolean,
+  ): void => {
     for (const child of root.elements ?? []) {
       if (child.type !== "element") {
         continue;
@@ -220,7 +232,10 @@ function countParagraphShapeAndBodyContent(paragraph: XmlElement): {
 
       const childInsidePropertyContainer =
         insidePropertyContainer || isWordprocessingPropertyContainer(local);
-      if (!childInsidePropertyContainer && !isWatermarkParagraphWrapper(local)) {
+      if (
+        !childInsidePropertyContainer &&
+        !isWatermarkParagraphWrapper(local)
+      ) {
         bodyContentCount++;
       }
 
@@ -263,7 +278,10 @@ function collectVmlShapesWithContent(header: XmlElement): XmlElement[] {
   const out: XmlElement[] = [];
   for (const pict of collectByLocalName(header, "pict")) {
     for (const shape of findChildren(pict, "v", "shape")) {
-      if (findChild(shape, "v", "textpath") || findChild(shape, "v", "imagedata")) {
+      if (
+        findChild(shape, "v", "textpath") ||
+        findChild(shape, "v", "imagedata")
+      ) {
         out.push(shape);
       }
     }
@@ -283,7 +301,10 @@ function readVmlWatermark(shape: XmlElement): Watermark | null {
   return null;
 }
 
-function readVmlTextWatermark(shape: XmlElement, textpath: XmlElement): Watermark | null {
+function readVmlTextWatermark(
+  shape: XmlElement,
+  textpath: XmlElement,
+): Watermark | null {
   const text = getAttribute(textpath, null, "string") ?? "";
   if (text.length === 0) {
     return null;
@@ -320,7 +341,10 @@ function readVmlTextWatermark(shape: XmlElement, textpath: XmlElement): Watermar
   return watermark;
 }
 
-function readVmlPictureWatermark(shape: XmlElement, imagedata: XmlElement): Watermark | null {
+function readVmlPictureWatermark(
+  shape: XmlElement,
+  imagedata: XmlElement,
+): Watermark | null {
   // Word distinguishes picture watermarks from ordinary header images by
   // stamping a `WordPictureWatermark…` id on the wrapping `<v:shape>`.
   // Without this check, a company logo dropped into the header would
@@ -330,7 +354,8 @@ function readVmlPictureWatermark(shape: XmlElement, imagedata: XmlElement): Wate
   if (!shapeId.startsWith(VML_PICTURE_WATERMARK_ID_PREFIX)) {
     return null;
   }
-  const imageRId = getAttribute(imagedata, "r", "id") ?? getAttribute(imagedata, null, "id");
+  const imageRId =
+    getAttribute(imagedata, "r", "id") ?? getAttribute(imagedata, null, "id");
   if (!imageRId) {
     return null;
   }
@@ -374,9 +399,13 @@ function readVmlPictureWatermarkScale(shape: XmlElement): number | undefined {
   }
 
   const widthScale =
-    widthPt !== undefined ? widthPt / PICTURE_WATERMARK_DEFAULT_WIDTH_PT : undefined;
+    widthPt !== undefined
+      ? widthPt / PICTURE_WATERMARK_DEFAULT_WIDTH_PT
+      : undefined;
   const heightScale =
-    heightPt !== undefined ? heightPt / PICTURE_WATERMARK_DEFAULT_HEIGHT_PT : undefined;
+    heightPt !== undefined
+      ? heightPt / PICTURE_WATERMARK_DEFAULT_HEIGHT_PT
+      : undefined;
 
   if (widthScale !== undefined && heightScale !== undefined) {
     if (Math.abs(widthScale - heightScale) > PICTURE_WATERMARK_SCALE_EPSILON) {
@@ -402,7 +431,8 @@ function readVmlPictureWatermarkDimensions(shape: XmlElement): {
 function readVmlPictureWatermarkHasWashout(imagedata: XmlElement): boolean {
   return (
     getAttribute(imagedata, null, "gain") === PICTURE_WATERMARK_WASHOUT_GAIN &&
-    getAttribute(imagedata, null, "blacklevel") === PICTURE_WATERMARK_WASHOUT_BLACKLEVEL
+    getAttribute(imagedata, null, "blacklevel") ===
+      PICTURE_WATERMARK_WASHOUT_BLACKLEVEL
   );
 }
 
@@ -455,7 +485,9 @@ function readVmlFillColor(shape: XmlElement): string | undefined {
 // DrawingML detection (w:drawing > wp:anchor with behindDoc="1")
 // ---------------------------------------------------------------------------
 
-function collectDrawingMlBehindContentAnchors(header: XmlElement): XmlElement[] {
+function collectDrawingMlBehindContentAnchors(
+  header: XmlElement,
+): XmlElement[] {
   const out: XmlElement[] = [];
   for (const drawing of collectByLocalName(header, "drawing")) {
     const anchor = findDeep(drawing, "wp", "anchor");
@@ -557,7 +589,10 @@ function parseInlineStyle(style: string, key: string): string | undefined {
   return undefined;
 }
 
-function parseInlineStyleNumber(style: string, key: string): number | undefined {
+function parseInlineStyleNumber(
+  style: string,
+  key: string,
+): number | undefined {
   const raw = parseInlineStyle(style, key);
   if (raw === undefined) {
     return undefined;
@@ -566,9 +601,13 @@ function parseInlineStyleNumber(style: string, key: string): number | undefined 
   return Number.isFinite(num) ? num : undefined;
 }
 
-const CSS_LENGTH_RE = /^(?<amount>[+-]?(?:\d+|\d*\.\d+))(?<unit>pt|in|cm|mm|px)?$/iu;
+const CSS_LENGTH_RE =
+  /^(?<amount>[+-]?(?:\d+|\d*\.\d+))(?<unit>pt|in|cm|mm|px)?$/iu;
 
-function parseInlineStyleLengthPt(style: string, key: string): number | undefined {
+function parseInlineStyleLengthPt(
+  style: string,
+  key: string,
+): number | undefined {
   const raw = parseInlineStyle(style, key);
   if (raw === undefined) {
     return undefined;

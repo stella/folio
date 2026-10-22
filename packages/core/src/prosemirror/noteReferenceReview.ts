@@ -5,16 +5,26 @@
  * resolves the reference, and this resolves the note's story to match.
  */
 
-import { addTrackedDeletionMark } from "./addTrackedDeletionMark";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { Transform } from "prosemirror-transform";
+
 import { setDocumentBodyComments } from "@stll/docx-core/model";
 
 import { withoutLostCommentThreads } from "../ai-edits/comment-lifecycle";
 import { visitCommentMarkers } from "../docx/commentAnchorIndex";
-import { isSeparatorEndnote, isSeparatorFootnote } from "../docx/footnoteParser";
+import {
+  isSeparatorEndnote,
+  isSeparatorFootnote,
+} from "../docx/footnoteParser";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
+import type {
+  BlockContent,
+  Document,
+  Endnote,
+  Footnote,
+} from "../types/document";
+import { addTrackedDeletionMark } from "./addTrackedDeletionMark";
 import { expectFootnoteRefMarkAttrs, expectParagraphAttrs } from "./attrs";
 import { rejectAIEditRevision } from "./commands/comments";
 import { proseDocToBlocks } from "./conversion/fromProseDoc";
@@ -23,7 +33,6 @@ import { createDocumentNumberingPlugin } from "./plugins/documentNumbering";
 import { createDocumentStylesPlugin } from "./plugins/documentStyles";
 import { mintRevisionId } from "./plugins/revisionIds";
 import { schema, singletonManager } from "./schema";
-import type { BlockContent, Document, Endnote, Footnote } from "../types/document";
 
 type NoteKind = "footnote" | "endnote";
 
@@ -36,14 +45,21 @@ const noteKey = (kind: NoteKind, id: number): NoteKey => `${kind}:${id}`;
  * The notes a story's text refers to, and whether each reference is pending
  * deletion: a reference is deleted when every character of it is.
  */
-export const noteReferenceStates = (doc: PMNode): Map<NoteKey, "live" | "deleted"> => {
+export const noteReferenceStates = (
+  doc: PMNode,
+): Map<NoteKey, "live" | "deleted"> => {
   const states = new Map<NoteKey, "live" | "deleted">();
   doc.descendants((node) => {
     if (!node.isText) return true;
-    const reference = node.marks.find((mark) => mark.type.name === "footnoteRef");
+    const reference = node.marks.find(
+      (mark) => mark.type.name === "footnoteRef",
+    );
     if (!reference) return false;
     const { id, noteType } = expectFootnoteRefMarkAttrs(reference);
-    const key = noteKey(noteType === "endnote" ? "endnote" : "footnote", Number(id));
+    const key = noteKey(
+      noteType === "endnote" ? "endnote" : "footnote",
+      Number(id),
+    );
     const deleted = node.marks.some((mark) => mark.type.name === "deletion");
     if (!deleted || states.get(key) === "live") {
       states.set(key, "live");
@@ -56,7 +72,10 @@ export const noteReferenceStates = (doc: PMNode): Map<NoteKey, "live" | "deleted
 };
 
 /** The notes whose reference a change took from pending deletion back to live. */
-export const noteReferencesRestored = (before: PMNode, after: PMNode): NoteKey[] => {
+export const noteReferencesRestored = (
+  before: PMNode,
+  after: PMNode,
+): NoteKey[] => {
   const was = noteReferenceStates(before);
   const now = noteReferenceStates(after);
   return [...now].flatMap(([key, state]) =>
@@ -70,14 +89,21 @@ export const noteReferencesRestored = (before: PMNode, after: PMNode): NoteKey[]
  * date. A deletion in the note made some other time is a change of its own,
  * which resolving the reference leaves alone.
  */
-export const noteDeletionRevisions = (doc: PMNode, reference: Mark): number[] => {
+export const noteDeletionRevisions = (
+  doc: PMNode,
+  reference: Mark,
+): number[] => {
   const author = String(reference.attrs["author"] ?? "");
   const date = String(reference.attrs["date"] ?? "");
   const ids = new Set<number>();
   doc.descendants((node) => {
     if (node.type.name === "paragraph") {
       const mark = expectParagraphAttrs(node).pPrMark;
-      if (mark?.kind === "del" && mark.info.author === author && mark.info.date === date) {
+      if (
+        mark?.kind === "del" &&
+        mark.info.author === author &&
+        mark.info.date === date
+      ) {
         ids.add(mark.info.id);
       }
     }
@@ -122,7 +148,10 @@ const restoredNote = <TNote extends Footnote | Endnote>(
     state = state.apply(transaction);
   });
   if (state.doc.eq(doc)) return note;
-  return { ...note, content: proseDocToBlocks(state.doc, note.content, styles) };
+  return {
+    ...note,
+    content: proseDocToBlocks(state.doc, note.content, styles),
+  };
 };
 
 /**
@@ -142,7 +171,8 @@ export const restoreNotes = (
     kind: NoteKind,
     notes: TNote[] | undefined,
   ): TNote[] | undefined => {
-    if (!notes?.some((note) => wanted.has(noteKey(kind, note.id)))) return notes;
+    if (!notes?.some((note) => wanted.has(noteKey(kind, note.id))))
+      return notes;
     return notes.map((note) => {
       const reference = deletions.get(noteKey(kind, note.id));
       return reference ? restoredNote(note, document, reference) : note;
@@ -150,7 +180,10 @@ export const restoreNotes = (
   };
   const footnotes = restore("footnote", document.package.footnotes);
   const endnotes = restore("endnote", document.package.endnotes);
-  if (footnotes === document.package.footnotes && endnotes === document.package.endnotes) {
+  if (
+    footnotes === document.package.footnotes &&
+    endnotes === document.package.endnotes
+  ) {
     return document;
   }
   return {
@@ -168,11 +201,16 @@ export const referenceDeletions = (doc: PMNode): Map<NoteKey, Mark> => {
   const deletions = new Map<NoteKey, Mark>();
   doc.descendants((node) => {
     if (!node.isText) return true;
-    const reference = node.marks.find((mark) => mark.type.name === "footnoteRef");
+    const reference = node.marks.find(
+      (mark) => mark.type.name === "footnoteRef",
+    );
     const deletion = node.marks.find((mark) => mark.type.name === "deletion");
     if (reference && deletion) {
       const { id, noteType } = expectFootnoteRefMarkAttrs(reference);
-      deletions.set(noteKey(noteType === "endnote" ? "endnote" : "footnote", Number(id)), deletion);
+      deletions.set(
+        noteKey(noteType === "endnote" ? "endnote" : "footnote", Number(id)),
+        deletion,
+      );
     }
     return false;
   });
@@ -184,7 +222,10 @@ export const referenceDeletions = (doc: PMNode): Map<NoteKey, Mark> => {
  * the reference deletion's author at its date, so resolving the reference
  * resolves them too (see {@link noteDeletionRevisions}).
  */
-export const deleteNoteWithReference = <T extends Transform>(transform: T, reference: Mark): T => {
+export const deleteNoteWithReference = <T extends Transform>(
+  transform: T,
+  reference: Mark,
+): T => {
   const doc = transform.doc;
   const markInfo = {
     id: mintRevisionId(),
@@ -194,16 +235,24 @@ export const deleteNoteWithReference = <T extends Transform>(transform: T, refer
   // The note's own deletion, by the same author at the same date: not the
   // wrappers or ancestors the reference's run has in the body.
   const { utcDate, initials } = reference.attrs;
-  const deletion = (doc.type.schema.marks["deletion"] ?? reference.type).create({
-    revisionId: mintRevisionId(),
-    author: markInfo.author,
-    date: markInfo.date,
-    ...(utcDate != null && { utcDate }),
-    ...(initials != null && { initials }),
-  });
+  const deletion = (doc.type.schema.marks["deletion"] ?? reference.type).create(
+    {
+      revisionId: mintRevisionId(),
+      author: markInfo.author,
+      date: markInfo.date,
+      ...(utcDate != null && { utcDate }),
+      ...(initials != null && { initials }),
+    },
+  );
   doc.descendants((node, position) => {
-    if (node.type.name === "paragraph" && expectParagraphAttrs(node).pPrMark == null) {
-      transform.setNodeAttribute(position, "pPrMark", { kind: "del", info: markInfo });
+    if (
+      node.type.name === "paragraph" &&
+      expectParagraphAttrs(node).pPrMark == null
+    ) {
+      transform.setNodeAttribute(position, "pPrMark", {
+        kind: "del",
+        info: markInfo,
+      });
     }
     if (node.isInline && !deletion.type.isInSet(node.marks)) {
       addTrackedDeletionMark({
@@ -236,23 +285,34 @@ const deletedNote = <TNote extends Footnote | Endnote>(
   });
   const transform = deleteNoteWithReference(new Transform(doc), reference);
   if (!transform.docChanged) return note;
-  return { ...note, content: proseDocToBlocks(transform.doc, note.content, styles) };
+  return {
+    ...note,
+    content: proseDocToBlocks(transform.doc, note.content, styles),
+  };
 };
 
 type NoteEdit = (note: Footnote | Endnote) => Footnote | Endnote;
 
-const editNotes = (document: Document, edits: ReadonlyMap<NoteKey, NoteEdit>): Document => {
+const editNotes = (
+  document: Document,
+  edits: ReadonlyMap<NoteKey, NoteEdit>,
+): Document => {
   if (edits.size === 0) return document;
   const edit = <TNote extends Footnote | Endnote>(
     kind: NoteKind,
     notes: TNote[] | undefined,
   ): TNote[] | undefined => {
     if (!notes?.some((note) => edits.has(noteKey(kind, note.id)))) return notes;
-    return notes.map((note) => (edits.get(noteKey(kind, note.id))?.(note) as TNote) ?? note);
+    return notes.map(
+      (note) => (edits.get(noteKey(kind, note.id))?.(note) as TNote) ?? note,
+    );
   };
   const footnotes = edit("footnote", document.package.footnotes);
   const endnotes = edit("endnote", document.package.endnotes);
-  if (footnotes === document.package.footnotes && endnotes === document.package.endnotes) {
+  if (
+    footnotes === document.package.footnotes &&
+    endnotes === document.package.endnotes
+  ) {
     return document;
   }
   return {
@@ -298,7 +358,10 @@ export const createNoteReferenceFollower = (): NoteReferenceFollower => {
     { restored: Footnote | Endnote; previous: Footnote | Endnote }
   >();
   // Note changes written back that the editor's document may not hold yet.
-  const pending = new Map<NoteKey, { from: Footnote | Endnote; to: Footnote | Endnote }>();
+  const pending = new Map<
+    NoteKey,
+    { from: Footnote | Endnote; to: Footnote | Endnote }
+  >();
   const recorded =
     (key: NoteKey, edit: NoteEdit): NoteEdit =>
     (note) => {
@@ -327,7 +390,8 @@ export const createNoteReferenceFollower = (): NoteReferenceFollower => {
             key,
             recorded(key, (note) => {
               const restored = restoredNote(note, document, rejectedDeletion);
-              if (restored !== note) replaced.set(key, { restored, previous: note });
+              if (restored !== note)
+                replaced.set(key, { restored, previous: note });
               return restored;
             }),
           );
@@ -377,7 +441,10 @@ export const noteKeysReferencedIn = (content: unknown): Set<NoteKey> => {
     }
     if (node === null || typeof node !== "object") return;
     const { type, id } = node as { type?: unknown; id?: unknown };
-    if ((type === "footnoteRef" || type === "endnoteRef") && typeof id === "number") {
+    if (
+      (type === "footnoteRef" || type === "endnoteRef") &&
+      typeof id === "number"
+    ) {
       keys.add(noteKey(type === "footnoteRef" ? "footnote" : "endnote", id));
     }
     for (const value of Object.values(node)) visit(value);
@@ -408,9 +475,12 @@ export const referencedNotes = (
 };
 
 /** Ids of the comments anchored anywhere in these stories. */
-const anchoredComments = (stories: readonly (readonly BlockContent[])[]): Set<number> => {
+const anchoredComments = (
+  stories: readonly (readonly BlockContent[])[],
+): Set<number> => {
   const ids = new Set<number>();
-  for (const blocks of stories) visitCommentMarkers(blocks, ({ item }) => ids.add(item.id));
+  for (const blocks of stories)
+    visitCommentMarkers(blocks, ({ item }) => ids.add(item.id));
   return ids;
 };
 
@@ -426,10 +496,14 @@ export const withoutUnreferencedNotes = (document: Document): Document => {
   const keeps = (kind: NoteKind) => (note: Footnote | Endnote) =>
     (kind === "footnote"
       ? isSeparatorFootnote(note as Footnote)
-      : isSeparatorEndnote(note as Endnote)) || referenced.has(noteKey(kind, note.id));
+      : isSeparatorEndnote(note as Endnote)) ||
+    referenced.has(noteKey(kind, note.id));
   const keptFootnotes = footnotes?.filter(keeps("footnote"));
   const keptEndnotes = endnotes?.filter(keeps("endnote"));
-  if (keptFootnotes?.length === footnotes?.length && keptEndnotes?.length === endnotes?.length) {
+  if (
+    keptFootnotes?.length === footnotes?.length &&
+    keptEndnotes?.length === endnotes?.length
+  ) {
     return document;
   }
   const removed = [
@@ -445,7 +519,9 @@ export const withoutUnreferencedNotes = (document: Document): Document => {
           ...[...(headers?.values() ?? []), ...(footers?.values() ?? [])].map(
             (part) => part.content,
           ),
-          ...[...(keptFootnotes ?? []), ...(keptEndnotes ?? [])].map((note) => note.content),
+          ...[...(keptFootnotes ?? []), ...(keptEndnotes ?? [])].map(
+            (note) => note.content,
+          ),
         ]),
       })
     : undefined;

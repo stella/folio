@@ -4,24 +4,29 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 // that same platform when another test has already imported the editor schema.
 const hostPlatform = typeof navigator === "undefined" ? "" : navigator.platform;
 GlobalRegistrator.register();
-Object.defineProperty(navigator, "platform", { configurable: true, value: hostPlatform });
+Object.defineProperty(navigator, "platform", {
+  configurable: true,
+  value: hostPlatform,
+});
 
-import { afterAll, expect, test } from "bun:test";
 import { panic } from "better-result";
-import { TextSelection } from "prosemirror-state";
+import { afterAll, expect, test } from "bun:test";
 import { closeHistory } from "prosemirror-history";
+import { TextSelection } from "prosemirror-state";
 
-const { createApp, defineComponent, h, ref, shallowRef, nextTick, toRaw } = await import("vue");
+const { createApp, defineComponent, h, ref, shallowRef, nextTick, toRaw } =
+  await import("vue");
 
-import { parseDocx } from "@stll/folio-core/docx/parser";
-import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
-import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { CanonicalSessionError } from "@stll/folio-core/controller/canonicalSession";
 import { CanonicalDocxInputError } from "@stll/folio-core/docx/canonicalSessionInput";
-import { createEmptyHeaderFooter } from "@stll/folio-core/utils/headerFooter";
+import { parseDocx } from "@stll/folio-core/docx/parser";
+import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
 import type { Comment } from "@stll/folio-core/types/content";
+import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
+import { createEmptyHeaderFooter } from "@stll/folio-core/utils/headerFooter";
 
-const { isMacPlatform } = await import("@stll/folio-core/managers/editorShortcuts");
+const { isMacPlatform } =
+  await import("@stll/folio-core/managers/editorShortcuts");
 import {
   createCanonicalHeaderFooterOperation,
   DOCUMENT_OP_TYPES,
@@ -30,21 +35,22 @@ import {
 } from "@stll/folio-core/controller/canonicalOperations";
 
 const { usePageSetupControls } = await import("./usePageSetupControls");
-import { reviewDifferences } from "../../../../test/reviewDifferences";
 import { CanonicalSaveDiagnosticError } from "@stll/folio-core/docx/canonicalSave";
 import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
-import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
-import {
-  CANONICAL_SAVE_SEEDS,
-  canonicalSaveFixture,
-  canonicalSaveSequence,
-  canonicalSaveParagraphXml,
-} from "../../../../test/canonicalSaveSequence";
 import {
   clearTrackedChanges,
   getChangedParagraphIds,
   hasStructuralChanges,
 } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+
+import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
+import {
+  CANONICAL_SAVE_SEEDS,
+  canonicalSaveFixture,
+  canonicalSaveParagraphXml,
+  canonicalSaveSequence,
+} from "../../../../test/canonicalSaveSequence";
+import { reviewDifferences } from "../../../../test/reviewDifferences";
 import { canonicalReviewBlocks } from "../../../../test/reviewProjection";
 
 const { useDocxEditor } = await import("./useDocxEditor");
@@ -59,46 +65,52 @@ test.each([
   {
     kind: "encrypted",
     bytes: new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
-    message: "Password-protected documents are unavailable in the experimental canonical session.",
+    message:
+      "Password-protected documents are unavailable in the experimental canonical session.",
   },
   {
     kind: "malformed",
     bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04]),
     message: "Failed to normalize paragraph IDs: Failed to parse DOCX archive",
   },
-])("canonical $kind loads preserve the typed input error", async ({ bytes, message }) => {
-  const container = document.createElement("div");
-  document.body.append(container);
-  const errors: Error[] = [];
-  const holder: { editor: ReturnType<typeof useDocxEditor> | null } = { editor: null };
-  const app = createApp(
-    defineComponent({
-      setup() {
-        holder.editor = useDocxEditor({
-          hiddenContainer: shallowRef(null),
-          pagesContainer: shallowRef(null),
-          experimentalSession: "canonical",
-          onError: (error) => errors.push(error),
-        });
-        return () => h("div");
-      },
-    }),
-  );
-  app.mount(container);
-  try {
-    const editor = holder.editor ?? panic("Expected mounted Vue editor");
-    await editor.loadBuffer(bytes);
-    expect(errors).toHaveLength(1);
-    expect(errors.at(0)).toBeInstanceOf(CanonicalDocxInputError);
-    expect(errors.at(0)?.message).toBe(message);
-    expect(editor.parseError.value).toBe(message);
-    expect(editor.isReady.value).toBe(false);
-    expect(editor.getDocument()).toBeNull();
-  } finally {
-    app.unmount();
-    container.remove();
-  }
-});
+])(
+  "canonical $kind loads preserve the typed input error",
+  async ({ bytes, message }) => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const errors: Error[] = [];
+    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = {
+      editor: null,
+    };
+    const app = createApp(
+      defineComponent({
+        setup() {
+          holder.editor = useDocxEditor({
+            hiddenContainer: shallowRef(null),
+            pagesContainer: shallowRef(null),
+            experimentalSession: "canonical",
+            onError: (error) => errors.push(error),
+          });
+          return () => h("div");
+        },
+      }),
+    );
+    app.mount(container);
+    try {
+      const editor = holder.editor ?? panic("Expected mounted Vue editor");
+      await editor.loadBuffer(bytes);
+      expect(errors).toHaveLength(1);
+      expect(errors.at(0)).toBeInstanceOf(CanonicalDocxInputError);
+      expect(errors.at(0)?.message).toBe(message);
+      expect(editor.parseError.value).toBe(message);
+      expect(editor.isReady.value).toBe(false);
+      expect(editor.getDocument()).toBeNull();
+    } finally {
+      app.unmount();
+      container.remove();
+    }
+  },
+);
 test.each(["canonical", "default"] as const)(
   "%s history keys have one editor owner and no document-level owner",
   async (session) => {
@@ -106,14 +118,18 @@ test.each(["canonical", "default"] as const)(
     const hidden = document.createElement("div");
     const pages = document.createElement("div");
     document.body.append(container, hidden, pages);
-    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = { editor: null };
+    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = {
+      editor: null,
+    };
     const app = createApp(
       defineComponent({
         setup() {
           holder.editor = useDocxEditor({
             hiddenContainer: shallowRef(hidden),
             pagesContainer: shallowRef(pages),
-            ...(session === "canonical" ? { experimentalSession: "canonical" as const } : {}),
+            ...(session === "canonical"
+              ? { experimentalSession: "canonical" as const }
+              : {}),
           });
           useKeyboardShortcuts({
             showFindReplace: shallowRef(false),
@@ -129,13 +145,19 @@ test.each(["canonical", "default"] as const)(
     app.mount(container);
     try {
       const editor = holder.editor ?? panic("Expected mounted Vue editor");
-      await editor.loadBuffer(await createDocx(createEmptyDocument({ initialText: "Start" })));
-      const view = editor.editorView.value ?? panic("Expected body editor view");
+      await editor.loadBuffer(
+        await createDocx(createEmptyDocument({ initialText: "Start" })),
+      );
+      const view =
+        editor.editorView.value ?? panic("Expected body editor view");
       const insert = (text: string) => {
         view.dispatch(
           closeHistory(
             view.state.tr.setSelection(
-              TextSelection.create(view.state.doc, view.state.doc.content.size - 1),
+              TextSelection.create(
+                view.state.doc,
+                view.state.doc.content.size - 1,
+              ),
             ),
           ),
         );
@@ -193,7 +215,9 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
   const errors: Error[] = [];
   let hostChanges = 0;
   let hostInputs = 0;
-  const holder: { editor: ReturnType<typeof import("./useDocxEditor").useDocxEditor> | null } = {
+  const holder: {
+    editor: ReturnType<typeof import("./useDocxEditor").useDocxEditor> | null;
+  } = {
     editor: null,
   };
   const app = createApp(
@@ -220,22 +244,29 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
   );
   app.mount(container);
   try {
-    const rendered = container.firstElementChild ?? panic("Expected mounted Vue DOM");
+    const rendered =
+      container.firstElementChild ?? panic("Expected mounted Vue DOM");
     expect(rendered.ownerDocument).toBe(document);
     expect(rendered instanceof HTMLElement).toBe(true);
     rendered.dispatchEvent(new InputEvent("input", { bubbles: true }));
     expect(hostInputs).toBe(1);
     const editor = holder.editor ?? panic("Expected mounted Vue editor");
-    const bytes = await createDocx(createEmptyDocument({ initialText: "Start" }));
+    const bytes = await createDocx(
+      createEmptyDocument({ initialText: "Start" }),
+    );
     await editor.loadBuffer(bytes);
-    const detachedRead = editor.getDocument() ?? panic("Expected canonical document snapshot");
+    const detachedRead =
+      editor.getDocument() ?? panic("Expected canonical document snapshot");
     detachedRead.package.document.content = [];
     expect(editor.getDocument()?.package.document.content).not.toHaveLength(0);
-    const unsupportedWrite = editor.getDocument() ?? panic("Expected canonical document snapshot");
+    const unsupportedWrite =
+      editor.getDocument() ?? panic("Expected canonical document snapshot");
     unsupportedWrite.package.document.content = [];
     editor.setDocument(unsupportedWrite);
     expect(editor.getDocument()?.package.document.content).not.toHaveLength(0);
-    expect(errors.at(0)?.message).toContain("Direct document model changes are unavailable");
+    expect(errors.at(0)?.message).toContain(
+      "Direct document model changes are unavailable",
+    );
     expect(editor.parseError.value).toBeNull();
     expect(editor.isReady.value).toBe(true);
     const view = editor.editorView.value ?? panic("Expected body editor view");
@@ -246,7 +277,9 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
     expect(editor.parseError.value).toBeNull();
     expect(editor.isReady.value).toBe(true);
     expect(view.state.doc.rangeHasMark(1, 6, bold)).toBe(false);
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)),
+    );
     view.dom.dispatchEvent(
       new InputEvent("beforeinput", {
         bubbles: true,
@@ -255,7 +288,8 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
         data: " edited",
       }),
     );
-    const canonical = editor.getDocument() ?? panic("Expected canonical document");
+    const canonical =
+      editor.getDocument() ?? panic("Expected canonical document");
     expect(view.state.doc.textContent).toBe("Start edited");
     expect(editor.isDirty.value).toBe(true);
     await new Promise((resolve) => window.setTimeout(resolve, 300));
@@ -268,7 +302,10 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
       preloadFonts: false,
       detectVariables: false,
     });
-    expect(reviewDifferences(canonical, reopened)).toEqual({ messages: [], omitted: 0 });
+    expect(reviewDifferences(canonical, reopened)).toEqual({
+      messages: [],
+      omitted: 0,
+    });
     expect(editor.isDirty.value).toBe(false);
   } finally {
     app.unmount();
@@ -285,7 +322,9 @@ test.each(["immediate", "deferred"] as const)(
     const hidden = document.createElement("div");
     const pages = document.createElement("div");
     document.body.append(container, hidden, pages);
-    const bytes = await createDocx(createEmptyDocument({ initialText: "Comment anchor" }));
+    const bytes = await createDocx(
+      createEmptyDocument({ initialText: "Comment anchor" }),
+    );
     const holder: {
       editor: ReturnType<typeof useDocxEditor> | null;
       comments: ReturnType<typeof useCommentManagement> | null;
@@ -314,7 +353,8 @@ test.each(["immediate", "deferred"] as const)(
             canonicalTick: stateTick,
             onCommentsChange: (next) => {
               changes.push(structuredClone(next));
-              if (feedback === "immediate") controlledComments.value = structuredClone(next);
+              if (feedback === "immediate")
+                controlledComments.value = structuredClone(next);
             },
             reLayout: () => undefined,
           });
@@ -325,7 +365,8 @@ test.each(["immediate", "deferred"] as const)(
     app.mount(container);
     try {
       const adapter = holder.editor ?? panic("Expected Vue editor");
-      const management = holder.comments ?? panic("Expected Vue comment management");
+      const management =
+        holder.comments ?? panic("Expected Vue comment management");
       await adapter.loadBuffer(bytes);
       stateTick.value += 1;
       await nextTick();
@@ -361,7 +402,13 @@ test.each(["immediate", "deferred"] as const)(
               ? created.comments[0].content[0].paraId
               : undefined,
           formatting: {},
-          content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "Updated" }] }],
+          content: [
+            {
+              type: "run",
+              formatting: {},
+              content: [{ type: "text", text: "Updated" }],
+            },
+          ],
         },
       ];
       controlledComments.value = created.comments.map((comment) =>
@@ -372,7 +419,9 @@ test.each(["immediate", "deferred"] as const)(
       await nextTick();
       await new Promise((resolve) => setTimeout(resolve, 275));
       await nextTick();
-      expect(adapter.getDocument()?.package.document.comments).toEqual(controlledComments.value);
+      expect(adapter.getDocument()?.package.document.comments).toEqual(
+        controlledComments.value,
+      );
 
       expect(adapter.editor.undo()).toBe(true);
       await new Promise((resolve) => setTimeout(resolve, 275));
@@ -383,7 +432,9 @@ test.each(["immediate", "deferred"] as const)(
       expect(changes.at(-1)).toEqual(undone);
       if (feedback === "deferred") {
         expect(controlledComments.value?.at(0)?.done).toBe(true);
-        controlledComments.value = structuredClone(toRaw(controlledComments.value));
+        controlledComments.value = structuredClone(
+          toRaw(controlledComments.value),
+        );
         await nextTick();
         expect(management.comments.value).toEqual(undone);
         expect(adapter.editor.redo()).toBe(true);
@@ -395,14 +446,19 @@ test.each(["immediate", "deferred"] as const)(
       }
       expect(controlledComments.value).toEqual(undone);
 
-      const view = adapter.editorView.value ?? panic("Expected Vue canonical view");
+      const view =
+        adapter.editorView.value ?? panic("Expected Vue canonical view");
       const committedDoc = view.state.doc;
-      view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      view.dom.dispatchEvent(
+        new CompositionEvent("compositionstart", { bubbles: true }),
+      );
       expect(adapter.editor.getCanonicalDocument).toThrow(
         "Composition must finish before taking a snapshot.",
       );
       // Every selection tick recomputes the comment projection while IME blocks snapshots.
-      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)));
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)),
+      );
       stateTick.value += 1;
       controlledComments.value = [...undone];
       await nextTick();
@@ -410,20 +466,28 @@ test.each(["immediate", "deferred"] as const)(
       expect(adapter.editor.getCanonicalDocument).toThrow(
         "Composition must finish before taking a snapshot.",
       );
-      view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+      view.dom.dispatchEvent(
+        new CompositionEvent("compositionend", { bubbles: true }),
+      );
       await new Promise((resolve) => setTimeout(resolve, 40));
       await nextTick();
       expect(view.state.doc.eq(committedDoc)).toBe(true);
-      expect(adapter.editor.getCanonicalDocument()?.package.document.comments).toEqual(undone);
+      expect(
+        adapter.editor.getCanonicalDocument()?.package.document.comments,
+      ).toEqual(undone);
 
       const expected =
-        adapter.editor.getCanonicalDocument() ?? panic("Expected canonical comments model");
+        adapter.editor.getCanonicalDocument() ??
+        panic("Expected canonical comments model");
       for (const selective of [false, true]) {
         const saved = await adapter.save({ selective });
         if (!saved) panic("Expected saved canonical comments");
         const buffer = await saved.arrayBuffer();
         expect((await validateDocx(buffer)).valid).toBe(true);
-        const reopened = await parseDocx(buffer, { preloadFonts: false, detectVariables: false });
+        const reopened = await parseDocx(buffer, {
+          preloadFonts: false,
+          detectVariables: false,
+        });
         expect(reopened.package.document.comments).toEqual(undone);
         expect(describePackageDifferences(expected, reopened)).toEqual({
           messages: [],
@@ -439,15 +503,23 @@ test.each(["immediate", "deferred"] as const)(
   },
 );
 
-test.each(["in-place resolution", "in-place content", "during composition"] as const)(
+test.each([
+  "in-place resolution",
+  "in-place content",
+  "during composition",
+] as const)(
   "Vue controlled comments apply a %s host change",
   async (change) => {
     const container = document.createElement("div");
     const hidden = document.createElement("div");
     const pages = document.createElement("div");
     document.body.append(container, hidden, pages);
-    const bytes = await createDocx(createEmptyDocument({ initialText: "Comment anchor" }));
-    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = { editor: null };
+    const bytes = await createDocx(
+      createEmptyDocument({ initialText: "Comment anchor" }),
+    );
+    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = {
+      editor: null,
+    };
     const controlledComments = ref<Comment[] | undefined>([]);
     const stateTick = ref(0);
     const app = createApp(
@@ -500,7 +572,9 @@ test.each(["in-place resolution", "in-place content", "during composition"] as c
       const committed = () =>
         adapter.editor
           .getCanonicalDocument()
-          ?.package.document.comments?.find(({ id }) => id === created.commentId);
+          ?.package.document.comments?.find(
+            ({ id }) => id === created.commentId,
+          );
       const hostComment = () =>
         controlledComments.value?.find(({ id }) => id === created.commentId) ??
         panic("Expected the host comment");
@@ -513,7 +587,8 @@ test.each(["in-place resolution", "in-place content", "during composition"] as c
           break;
         case "in-place content": {
           const paragraph = hostComment().content[0];
-          const run = paragraph?.type === "paragraph" ? paragraph.content[0] : undefined;
+          const run =
+            paragraph?.type === "paragraph" ? paragraph.content[0] : undefined;
           const text = run?.type === "run" ? run.content[0] : undefined;
           if (text?.type !== "text") panic("Expected comment text");
           text.text = "Changed in place";
@@ -522,19 +597,33 @@ test.each(["in-place resolution", "in-place content", "during composition"] as c
           break;
         }
         case "during composition": {
-          const view = adapter.editorView.value ?? panic("Expected Vue canonical view");
-          view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 9)));
-          view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
-          view.dispatch(view.state.tr.insertText("x", 9, 9).setMeta("composition", 1));
-          const requested = structuredClone(toRaw(controlledComments.value) ?? []);
+          const view =
+            adapter.editorView.value ?? panic("Expected Vue canonical view");
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.create(view.state.doc, 9)),
+          );
+          view.dom.dispatchEvent(
+            new CompositionEvent("compositionstart", { bubbles: true }),
+          );
+          view.dispatch(
+            view.state.tr.insertText("x", 9, 9).setMeta("composition", 1),
+          );
+          const requested = structuredClone(
+            toRaw(controlledComments.value) ?? [],
+          );
           const resolved =
-            requested.find(({ id }) => id === created.commentId) ?? panic("Expected comment");
+            requested.find(({ id }) => id === created.commentId) ??
+            panic("Expected comment");
           resolved.done = true;
           controlledComments.value = requested;
           await nextTick();
           // Deferred while composing; the host does not change the value again.
-          expect(adapter.editor.getCanonicalComments()?.at(0)?.done).toBeFalsy();
-          view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+          expect(
+            adapter.editor.getCanonicalComments()?.at(0)?.done,
+          ).toBeFalsy();
+          view.dom.dispatchEvent(
+            new CompositionEvent("compositionend", { bubbles: true }),
+          );
           await settle();
           expect(committed()?.done).toBe(true);
           break;
@@ -563,9 +652,13 @@ test.each([
     const notes = document.createElement("div");
     document.body.append(container, hidden, pages, notes);
     const errors: Error[] = [];
-    const editorMode = shallowRef<"editing" | "suggesting" | "viewing">("editing");
+    const editorMode = shallowRef<"editing" | "suggesting" | "viewing">(
+      "editing",
+    );
     const author = shallowRef(fixture.author);
-    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = { editor: null };
+    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = {
+      editor: null,
+    };
     const app = createApp(
       defineComponent({
         setup() {
@@ -587,14 +680,19 @@ test.each([
     try {
       const adapter = holder.editor ?? panic("Expected mounted Vue editor");
       const source =
-        createEmptyHeaderFooter(createEmptyDocument({ initialText: "Body" }), "header", false) ??
-        panic("Expected document with header");
+        createEmptyHeaderFooter(
+          createEmptyDocument({ initialText: "Body" }),
+          "header",
+          false,
+        ) ?? panic("Expected document with header");
       const rId =
-        [...(source.package.headers?.keys() ?? [])].at(0) ?? panic("Expected header identity");
+        [...(source.package.headers?.keys() ?? [])].at(0) ??
+        panic("Expected header identity");
       await adapter.loadBuffer(await createDocx(source));
       editorMode.value = "suggesting";
       await nextTick();
-      const bodyView = adapter.editorView.value ?? panic("Expected canonical body view");
+      const bodyView =
+        adapter.editorView.value ?? panic("Expected canonical body view");
       bodyView.dom.dispatchEvent(
         new InputEvent("beforeinput", {
           bubbles: true,
@@ -605,12 +703,17 @@ test.each([
       );
       let foundSuggestion = false;
       bodyView.state.doc.descendants((node) => {
-        if (node.isText && node.marks.some((mark) => mark.attrs["author"] === fixture.author)) {
+        if (
+          node.isText &&
+          node.marks.some((mark) => mark.attrs["author"] === fixture.author)
+        ) {
           foundSuggestion = true;
         }
       });
       expect(foundSuggestion).toBe(true);
-      const header = adapter.getHeaderFooterView(rId) ?? panic("Expected canonical header view");
+      const header =
+        adapter.getHeaderFooterView(rId) ??
+        panic("Expected canonical header view");
       expect(
         header.state.doc.eq(
           adapter.editor.getCanonicalStoryProjection({ kind: "header", rId }) ??
@@ -645,7 +748,8 @@ test.each([
       ).toBe(true);
       expect(header.state.doc.textContent).toBe("Header");
 
-      const beforeFooter = adapter.getDocument() ?? panic("Expected canonical document");
+      const beforeFooter =
+        adapter.getDocument() ?? panic("Expected canonical document");
       const footerOp = createCanonicalHeaderFooterOperation({
         document: beforeFooter,
         position: "footer",
@@ -653,7 +757,8 @@ test.each([
       });
       expect(adapter.editor.applyCanonicalOperations([footerOp])).toBe(true);
       const footer =
-        adapter.getHeaderFooterView(footerOp.story.rId) ?? panic("Expected first-page footer view");
+        adapter.getHeaderFooterView(footerOp.story.rId) ??
+        panic("Expected first-page footer view");
       footer.dom.dispatchEvent(
         new InputEvent("beforeinput", {
           bubbles: true,
@@ -664,7 +769,8 @@ test.each([
       );
       expect(footer.state.doc.textContent).toBe("First footer");
 
-      const beforeNote = adapter.getDocument() ?? panic("Expected canonical document");
+      const beforeNote =
+        adapter.getDocument() ?? panic("Expected canonical document");
       const paragraph = beforeNote.package.document.content.at(0);
       if (paragraph?.type !== "paragraph" || !paragraph.paraId)
         panic("Expected addressed body paragraph");
@@ -676,13 +782,18 @@ test.each([
             note: {
               type: "footnote",
               id: 1,
-              content: withCanonicalParagraphIds([{ type: "paragraph", content: [] }], beforeNote),
+              content: withCanonicalParagraphIds(
+                [{ type: "paragraph", content: [] }],
+                beforeNote,
+              ),
             },
           },
         ]),
       ).toBe(true);
       adapter.openNoteStory({ kind: "footnote", noteId: 1 });
-      const note = adapter.getActiveNoteView() ?? panic("Expected canonical footnote view");
+      const note =
+        adapter.getActiveNoteView() ??
+        panic("Expected canonical footnote view");
       note.dom.dispatchEvent(
         new InputEvent("beforeinput", {
           bubbles: true,
@@ -717,29 +828,47 @@ test.each([
         reLayout: adapter.reLayout,
         onChange: () => panic("Canonical section writes must use the journal"),
         applySectionProperties: (properties) => {
-          const result = adapter.editor.applyCanonicalSectionProperties(properties);
+          const result =
+            adapter.editor.applyCanonicalSectionProperties(properties);
           if (result === null) return "unhandled";
           return result.status;
         },
       });
-      controls.handlePageSetupApply({ marginLeft: 720, footnotePr: { numStart: 2 } });
-      const canonical = adapter.getDocument() ?? panic("Expected canonical document");
-      expect(canonical.package.document.finalSectionProperties?.marginLeft).toBe(720);
-      expect(canonical.package.document.finalSectionProperties?.titlePg).toBe(true);
-      expect(adapter.editor.undo()).toBe(true);
-      expect(adapter.getDocument()?.package.document.finalSectionProperties?.marginLeft).not.toBe(
-        720,
+      controls.handlePageSetupApply({
+        marginLeft: 720,
+        footnotePr: { numStart: 2 },
+      });
+      const canonical =
+        adapter.getDocument() ?? panic("Expected canonical document");
+      expect(
+        canonical.package.document.finalSectionProperties?.marginLeft,
+      ).toBe(720);
+      expect(canonical.package.document.finalSectionProperties?.titlePg).toBe(
+        true,
       );
+      expect(adapter.editor.undo()).toBe(true);
+      expect(
+        adapter.getDocument()?.package.document.finalSectionProperties
+          ?.marginLeft,
+      ).not.toBe(720);
       expect(adapter.editor.redo()).toBe(true);
-      expect(adapter.getDocument()?.package.document.finalSectionProperties?.marginLeft).toBe(720);
+      expect(
+        adapter.getDocument()?.package.document.finalSectionProperties
+          ?.marginLeft,
+      ).toBe(720);
       const saved = await adapter.save();
       if (!saved) panic("Expected canonical story save");
       const reopened = await parseDocx(await saved.arrayBuffer(), {
         preloadFonts: false,
         detectVariables: false,
       });
-      expect(reviewDifferences(canonical, reopened)).toEqual({ messages: [], omitted: 0 });
-      expect(reopened.package.document.content).toEqual(canonical.package.document.content);
+      expect(reviewDifferences(canonical, reopened)).toEqual({
+        messages: [],
+        omitted: 0,
+      });
+      expect(reopened.package.document.content).toEqual(
+        canonical.package.document.content,
+      );
       expect(reopened.package.document.finalSectionProperties).toEqual(
         canonical.package.document.finalSectionProperties,
       );
@@ -751,12 +880,16 @@ test.each([
       );
       for (const [identity, part] of canonical.package.headers ?? []) {
         expect(
-          canonicalReviewBlocks(reopened.package.headers?.get(identity)?.content ?? []),
+          canonicalReviewBlocks(
+            reopened.package.headers?.get(identity)?.content ?? [],
+          ),
         ).toEqual(canonicalReviewBlocks(part.content));
       }
       for (const [identity, part] of canonical.package.footers ?? []) {
         expect(
-          canonicalReviewBlocks(reopened.package.footers?.get(identity)?.content ?? []),
+          canonicalReviewBlocks(
+            reopened.package.footers?.get(identity)?.content ?? [],
+          ),
         ).toEqual(canonicalReviewBlocks(part.content));
       }
       expect((reopened.package.footnotes ?? []).map(({ id }) => id)).toEqual(
@@ -765,14 +898,19 @@ test.each([
       for (const part of canonical.package.footnotes ?? []) {
         expect(
           canonicalReviewBlocks(
-            reopened.package.footnotes?.find(({ id }) => id === part.id)?.content ?? [],
+            reopened.package.footnotes?.find(({ id }) => id === part.id)
+              ?.content ?? [],
           ),
         ).toEqual(canonicalReviewBlocks(part.content));
       }
       expect(adapter.isDirty.value).toBe(false);
       expect(
         adapter.editor.applyCanonicalOperations(
-          removeCanonicalHeaderFooterOperations({ document: canonical, position: "header", rId }),
+          removeCanonicalHeaderFooterOperations({
+            document: canonical,
+            position: "header",
+            rId,
+          }),
         ),
       ).toBe(true);
       const withoutHeader = await adapter.save();
@@ -782,7 +920,9 @@ test.each([
         detectVariables: false,
       });
       expect(removed.package.headers?.has(rId) ?? false).toBe(false);
-      expect(removed.package.document.finalSectionProperties?.headerReferences ?? []).toEqual([]);
+      expect(
+        removed.package.document.finalSectionProperties?.headerReferences ?? [],
+      ).toEqual([]);
       expect(errors).toHaveLength(2);
       for (const error of errors) {
         expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
@@ -812,9 +952,14 @@ test.each(CANONICAL_SAVE_SEEDS)(
     const pages = document.createElement("div");
     document.body.append(container, hidden, pages);
     const errors: Error[] = [];
-    const flags = { selectiveSave: true, selectiveSaveMaxBytes: seed % 2 === 0 ? undefined : 1 };
+    const flags = {
+      selectiveSave: true,
+      selectiveSaveMaxBytes: seed % 2 === 0 ? undefined : 1,
+    };
     let callbackCount = 0;
-    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = { editor: null };
+    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = {
+      editor: null,
+    };
     const app = createApp(
       defineComponent({
         setup() {
@@ -835,17 +980,28 @@ test.each(CANONICAL_SAVE_SEEDS)(
       const bytes = await createDocx(canonicalSaveFixture(seed));
       await adapter.loadBuffer(bytes);
       const api = adapter.editor;
-      const view = adapter.editorView.value ?? panic("Expected canonical body view");
-      const untouchedId = (seed + 3).toString(16).padStart(8, "0").toUpperCase();
+      const view =
+        adapter.editorView.value ?? panic("Expected canonical body view");
+      const untouchedId = (seed + 3)
+        .toString(16)
+        .padStart(8, "0")
+        .toUpperCase();
       const baselineParagraphs = new Map<string, string>();
       for (let index = 0; index < 4; index++) {
-        const paraId = (seed + index).toString(16).padStart(8, "0").toUpperCase();
-        baselineParagraphs.set(paraId, await canonicalSaveParagraphXml(bytes, paraId));
+        const paraId = (seed + index)
+          .toString(16)
+          .padStart(8, "0")
+          .toUpperCase();
+        baselineParagraphs.set(
+          paraId,
+          await canonicalSaveParagraphXml(bytes, paraId),
+        );
       }
       for (const [index, operations] of canonicalSaveSequence(seed).entries()) {
         const before = adapter.getDocument();
         expect(api.applyCanonicalOperations(operations)).toBe(true);
-        const canonical = adapter.getDocument() ?? panic("Expected canonical snapshot");
+        const canonical =
+          adapter.getDocument() ?? panic("Expected canonical snapshot");
         expect(api.undo()).toBe(true);
         expect(adapter.getDocument()).toEqual(before);
         expect(api.redo()).toBe(true);
@@ -853,7 +1009,8 @@ test.each(CANONICAL_SAVE_SEEDS)(
         view.dispatch(clearTrackedChanges(view.state));
         expect(getChangedParagraphIds(view.state).size).toBe(0);
         const changedIds = new Set(
-          api.captureCanonicalSave()?.changedBlockIds ?? panic("Expected canonical save capture"),
+          api.captureCanonicalSave()?.changedBlockIds ??
+            panic("Expected canonical save capture"),
         );
         expect(changedIds.has(untouchedId)).toBe(false);
         expect(hasStructuralChanges(view.state)).toBe(false);
@@ -870,7 +1027,9 @@ test.each(CANONICAL_SAVE_SEEDS)(
         });
         for (const [paraId, originalXml] of baselineParagraphs) {
           if (!changedIds.has(paraId))
-            expect(await canonicalSaveParagraphXml(savedBytes, paraId)).toBe(originalXml);
+            expect(await canonicalSaveParagraphXml(savedBytes, paraId)).toBe(
+              originalXml,
+            );
         }
         expect(api.undo()).toBe(true);
         expect(adapter.getDocument()).toEqual(before);
@@ -884,26 +1043,36 @@ test.each(CANONICAL_SAVE_SEEDS)(
         expect(errors.length).toBe(errorsBeforeSerialization);
         callbackCount += diagnostics.length;
         for (const diagnostic of diagnostics) {
-          expect(diagnostic).toEqual({ type: "selectiveSaveRefused", part: "word/document.xml" });
+          expect(diagnostic).toEqual({
+            type: "selectiveSaveRefused",
+            part: "word/document.xml",
+          });
         }
         if (!repeated) panic("Expected repeated canonical serialization");
         expect(
           describePackageDifferences(
             canonical,
-            await parseDocx(repeated, { preloadFonts: false, detectVariables: false }),
+            await parseDocx(repeated, {
+              preloadFonts: false,
+              detectVariables: false,
+            }),
           ),
         ).toEqual({ messages: [], omitted: 0 });
         for (const [paraId, originalXml] of baselineParagraphs) {
           if (!changedIds.has(paraId))
-            expect(await canonicalSaveParagraphXml(repeated, paraId)).toBe(originalXml);
+            expect(await canonicalSaveParagraphXml(repeated, paraId)).toBe(
+              originalXml,
+            );
         }
       }
-      const captured = api.captureCanonicalSave() ?? panic("Expected save snapshot");
+      const captured =
+        api.captureCanonicalSave() ?? panic("Expected save snapshot");
       const pendingSave = adapter.save({ selective: false });
       expect(api.updateCanonicalInputLifecycle("beginComposition")).toBe(true);
       expect(api.isCanonicalSaveCurrent(captured.version)).toBe(false);
       const capturedSave = await pendingSave;
-      if (!capturedSave) panic("Expected captured save during later composition");
+      if (!capturedSave)
+        panic("Expected captured save during later composition");
       const capturedBytes = await capturedSave.arrayBuffer();
       expect(
         describePackageDifferences(
@@ -938,7 +1107,8 @@ test.each(CANONICAL_SAVE_SEEDS)(
       expect(compositionErrors).toHaveLength(2);
       for (const error of compositionErrors) {
         expect(error).toBeInstanceOf(CanonicalSessionError);
-        if (!(error instanceof CanonicalSessionError)) panic("Expected composition save refusal");
+        if (!(error instanceof CanonicalSessionError))
+          panic("Expected composition save refusal");
         expect(error.gap).toBe("pm-save-projection");
         expect(error.reason).toBe("refused");
       }

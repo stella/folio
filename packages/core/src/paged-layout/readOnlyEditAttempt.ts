@@ -1,4 +1,7 @@
-type ReadOnlyEditKeyEvent = Pick<KeyboardEvent, "altKey" | "ctrlKey" | "key" | "metaKey">;
+type ReadOnlyEditKeyEvent = Pick<
+  KeyboardEvent,
+  "altKey" | "ctrlKey" | "key" | "metaKey"
+>;
 
 const MODIFIED_EDIT_KEYS = new Set(["b", "i", "u", "v", "x", "y", "z"]);
 const PLAIN_EDIT_KEYS = new Set(["Backspace", "Delete", "Enter"]);

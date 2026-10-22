@@ -14,13 +14,14 @@
 import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
-import { expectHyperlinkMarkAttrs } from "../attrs";
 import { normalizeUserUrl } from "../../utils/urlSecurity";
+import { expectHyperlinkMarkAttrs } from "../attrs";
 import { removeHyperlinkInRange } from "../hyperlinkRemoval";
 
 type HyperlinkRange = { start: number; end: number };
 
-const hyperlinkHref = (mark: Mark): string => expectHyperlinkMarkAttrs(mark).href;
+const hyperlinkHref = (mark: Mark): string =>
+  expectHyperlinkMarkAttrs(mark).href;
 
 /**
  * Normalize/sanitize a URL typed by a user (hyperlink popup edit) before it
@@ -76,7 +77,10 @@ const collectHyperlinkRanges = (
   return ranges;
 };
 
-const rangeAtCursor = (ranges: HyperlinkRange[], cursorPos: number): HyperlinkRange | undefined =>
+const rangeAtCursor = (
+  ranges: HyperlinkRange[],
+  cursorPos: number,
+): HyperlinkRange | undefined =>
   ranges.find((range) => range.start <= cursorPos && cursorPos <= range.end);
 
 export type EditHyperlinkInput = {
@@ -119,12 +123,19 @@ export const editHyperlinkAtCursor = (
   }
 
   const { tooltip } = expectHyperlinkMarkAttrs(linkMark);
-  const newMark = hlType.create({ href: normalizeHyperlinkInput(href), tooltip });
+  const newMark = hlType.create({
+    href: normalizeHyperlinkInput(href),
+    tooltip,
+  });
   const textNode = view.state.schema.text(displayText, [
     ...$from.marks().filter((m) => m.type !== hlType),
     newMark,
   ]);
-  const tr = view.state.tr.replaceWith(targetRange.start, targetRange.end, textNode);
+  const tr = view.state.tr.replaceWith(
+    targetRange.start,
+    targetRange.end,
+    textNode,
+  );
   view.dispatch(tr.scrollIntoView());
   return true;
 };
@@ -164,7 +175,9 @@ export const removeHyperlinkAtCursor = (
     // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
     $from.parent.forEach((node) => {
       if (!linkMark && node.isText) {
-        const found = node.marks.find((m) => m.type === hlType && hyperlinkHref(m) === popupHref);
+        const found = node.marks.find(
+          (m) => m.type === hlType && hyperlinkHref(m) === popupHref,
+        );
         if (found) {
           linkMark = found;
         }
@@ -187,7 +200,12 @@ export const removeHyperlinkAtCursor = (
     return false;
   }
 
-  const tr = removeHyperlinkInRange(view.state, view.state.tr, targetRange.start, targetRange.end);
+  const tr = removeHyperlinkInRange(
+    view.state,
+    view.state.tr,
+    targetRange.start,
+    targetRange.end,
+  );
   view.dispatch(tr.scrollIntoView());
   return true;
 };

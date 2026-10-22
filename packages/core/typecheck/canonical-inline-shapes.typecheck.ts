@@ -1,11 +1,12 @@
 import { escapeXmlText } from "@stll/docx-core";
+
 import type {
   Document,
+  NoteReferenceContent,
   Paragraph,
   ParagraphContent,
   Run,
   RunContent,
-  NoteReferenceContent,
 } from "../src/types/document";
 
 const textRun = (text: string) =>
@@ -34,8 +35,16 @@ type RunFixtureFactories = {
   >[];
 };
 
-const paragraphFixture = <Item extends ParagraphContent>(item: Item, variant = "plain") =>
-  ({ item, content: [item], variant, story: "main" }) satisfies CanonicalInlineShapeFixture<Item>;
+const paragraphFixture = <Item extends ParagraphContent>(
+  item: Item,
+  variant = "plain",
+) =>
+  ({
+    item,
+    content: [item],
+    variant,
+    story: "main",
+  }) satisfies CanonicalInlineShapeFixture<Item>;
 
 const runFixture = <Item extends RunContent>(item: Item, variant = "plain") =>
   ({
@@ -72,17 +81,30 @@ const rangeFixtures = <Item extends ParagraphContent>({
   } satisfies CanonicalInlineShapeFixture<Item>,
 ];
 
-const bookmarkStart = { type: "bookmarkStart", id: 11, name: "target" } satisfies ParagraphContent;
+const bookmarkStart = {
+  type: "bookmarkStart",
+  id: 11,
+  name: "target",
+} satisfies ParagraphContent;
 const bookmarkEnd = { type: "bookmarkEnd", id: 11 } satisfies ParagraphContent;
-const commentStart = { type: "commentRangeStart", id: 12 } satisfies ParagraphContent;
-const commentEnd = { type: "commentRangeEnd", id: 12 } satisfies ParagraphContent;
+const commentStart = {
+  type: "commentRangeStart",
+  id: 12,
+} satisfies ParagraphContent;
+const commentEnd = {
+  type: "commentRangeEnd",
+  id: 12,
+} satisfies ParagraphContent;
 const moveFromStart = {
   type: "moveFromRangeStart",
   id: 13,
   name: "source",
   author: "Reviewer",
 } satisfies ParagraphContent;
-const moveFromEnd = { type: "moveFromRangeEnd", id: 13 } satisfies ParagraphContent;
+const moveFromEnd = {
+  type: "moveFromRangeEnd",
+  id: 13,
+} satisfies ParagraphContent;
 const moveToStart = {
   type: "moveToRangeStart",
   id: 14,
@@ -100,29 +122,74 @@ export const CANONICAL_PARAGRAPH_SHAPE_FACTORIES = {
       href: "https://example.test/",
       children: [textRun(text)],
     }),
-    paragraphFixture({ type: "hyperlink", href: "https://empty.example/", children: [] }, "empty"),
+    paragraphFixture(
+      { type: "hyperlink", href: "https://empty.example/", children: [] },
+      "empty",
+    ),
   ],
   bookmarkStart: (text = "x") => [
-    ...rangeFixtures({ item: bookmarkStart, start: bookmarkStart, end: bookmarkEnd, text }),
+    ...rangeFixtures({
+      item: bookmarkStart,
+      start: bookmarkStart,
+      end: bookmarkEnd,
+      text,
+    }),
     paragraphFixture(bookmarkStart, "unpaired"),
   ],
   bookmarkEnd: (text = "x") => [
-    ...rangeFixtures({ item: bookmarkEnd, start: bookmarkStart, end: bookmarkEnd, text }),
+    ...rangeFixtures({
+      item: bookmarkEnd,
+      start: bookmarkStart,
+      end: bookmarkEnd,
+      text,
+    }),
     paragraphFixture(bookmarkEnd, "unpaired"),
   ],
   commentRangeStart: (text = "x") =>
-    rangeFixtures({ item: commentStart, start: commentStart, end: commentEnd, text }),
+    rangeFixtures({
+      item: commentStart,
+      start: commentStart,
+      end: commentEnd,
+      text,
+    }),
   commentRangeEnd: (text = "x") =>
-    rangeFixtures({ item: commentEnd, start: commentStart, end: commentEnd, text }),
-  commentReference: () => [paragraphFixture({ type: "commentReference", id: 12 })],
+    rangeFixtures({
+      item: commentEnd,
+      start: commentStart,
+      end: commentEnd,
+      text,
+    }),
+  commentReference: () => [
+    paragraphFixture({ type: "commentReference", id: 12 }),
+  ],
   moveFromRangeStart: (text = "x") =>
-    rangeFixtures({ item: moveFromStart, start: moveFromStart, end: moveFromEnd, text }),
+    rangeFixtures({
+      item: moveFromStart,
+      start: moveFromStart,
+      end: moveFromEnd,
+      text,
+    }),
   moveFromRangeEnd: (text = "x") =>
-    rangeFixtures({ item: moveFromEnd, start: moveFromStart, end: moveFromEnd, text }),
+    rangeFixtures({
+      item: moveFromEnd,
+      start: moveFromStart,
+      end: moveFromEnd,
+      text,
+    }),
   moveToRangeStart: (text = "x") =>
-    rangeFixtures({ item: moveToStart, start: moveToStart, end: moveToEnd, text }),
+    rangeFixtures({
+      item: moveToStart,
+      start: moveToStart,
+      end: moveToEnd,
+      text,
+    }),
   moveToRangeEnd: (text = "x") =>
-    rangeFixtures({ item: moveToEnd, start: moveToStart, end: moveToEnd, text }),
+    rangeFixtures({
+      item: moveToEnd,
+      start: moveToStart,
+      end: moveToEnd,
+      text,
+    }),
   simpleField: (text = "x") => [
     paragraphFixture({
       type: "simpleField",
@@ -135,7 +202,13 @@ export const CANONICAL_PARAGRAPH_SHAPE_FACTORIES = {
         type: "simpleField",
         instruction: "REF target",
         fieldType: "REF",
-        content: [{ type: "hyperlink", href: "https://example.test/", children: [textRun(text)] }],
+        content: [
+          {
+            type: "hyperlink",
+            href: "https://example.test/",
+            children: [textRun(text)],
+          },
+        ],
       },
       "structured",
     ),
@@ -145,21 +218,39 @@ export const CANONICAL_PARAGRAPH_SHAPE_FACTORIES = {
       type: "complexField",
       instruction: "REF target",
       fieldType: "REF",
-      fieldCode: [{ type: "run", content: [{ type: "instrText", text: "REF target" }] }],
+      fieldCode: [
+        { type: "run", content: [{ type: "instrText", text: "REF target" }] },
+      ],
       fieldResult: [textRun(text)],
     }),
   ],
   insertion: (text = "x") => [
-    paragraphFixture({ type: "insertion", info: revision, content: [textRun(text)] }),
+    paragraphFixture({
+      type: "insertion",
+      info: revision,
+      content: [textRun(text)],
+    }),
   ],
   deletion: (text = "x") => [
-    paragraphFixture({ type: "deletion", info: revision, content: [textRun(text)] }),
+    paragraphFixture({
+      type: "deletion",
+      info: revision,
+      content: [textRun(text)],
+    }),
   ],
   moveFrom: (text = "x") => [
-    paragraphFixture({ type: "moveFrom", info: revision, content: [textRun(text)] }),
+    paragraphFixture({
+      type: "moveFrom",
+      info: revision,
+      content: [textRun(text)],
+    }),
   ],
   moveTo: (text = "x") => [
-    paragraphFixture({ type: "moveTo", info: revision, content: [textRun(text)] }),
+    paragraphFixture({
+      type: "moveTo",
+      info: revision,
+      content: [textRun(text)],
+    }),
   ],
   inlineWrapper: (text = "x") => [
     paragraphFixture(
@@ -186,20 +277,38 @@ export const CANONICAL_PARAGRAPH_SHAPE_FACTORIES = {
         type: "inlineWrapper",
         kind: "customXml",
         element: "value",
-        content: [{ type: "insertion", info: revision, content: [textRun(text)] }],
+        content: [
+          { type: "insertion", info: revision, content: [textRun(text)] },
+        ],
       },
       "customXml",
     ),
     paragraphFixture(
-      { type: "inlineWrapper", kind: "bidi", control: "override", direction: "rtl", content: [] },
+      {
+        type: "inlineWrapper",
+        kind: "bidi",
+        control: "override",
+        direction: "rtl",
+        content: [],
+      },
       "emptyBidi",
     ),
     paragraphFixture(
-      { type: "inlineWrapper", kind: "smartTag", element: "place", content: [] },
+      {
+        type: "inlineWrapper",
+        kind: "smartTag",
+        element: "place",
+        content: [],
+      },
       "emptySmartTag",
     ),
     paragraphFixture(
-      { type: "inlineWrapper", kind: "customXml", element: "value", content: [] },
+      {
+        type: "inlineWrapper",
+        kind: "customXml",
+        element: "value",
+        content: [],
+      },
       "emptyCustomXml",
     ),
   ],
@@ -236,8 +345,14 @@ export const CANONICAL_PARAGRAPH_SHAPE_FACTORIES = {
   ],
 } satisfies ParagraphFixtureFactories;
 
-const rawFieldBegin = { type: "fieldChar", charType: "begin" } satisfies RunContent;
-const rawFieldInstruction = { type: "instrText", text: "REF target" } satisfies RunContent;
+const rawFieldBegin = {
+  type: "fieldChar",
+  charType: "begin",
+} satisfies RunContent;
+const rawFieldInstruction = {
+  type: "instrText",
+  text: "REF target",
+} satisfies RunContent;
 const rawFieldContent = (text: string) => [
   rawFieldBegin,
   rawFieldInstruction,
@@ -255,7 +370,10 @@ const adjacentReferenceFixtures = (item: NoteReferenceContent) => [
         story: "main",
         variant: `adjacentIdenticalMarks${count}`,
         content: [
-          { type: "run", content: Array.from({ length: count }, () => item) } satisfies Run,
+          {
+            type: "run",
+            content: Array.from({ length: count }, () => item),
+          } satisfies Run,
         ],
       }) satisfies CanonicalInlineShapeFixture<NoteReferenceContent>,
   ),
@@ -273,8 +391,14 @@ export const CANONICAL_RUN_SHAPE_FACTORIES = {
   footnoteRef: () => adjacentReferenceFixtures({ type: "footnoteRef", id: 1 }),
   endnoteRef: () => adjacentReferenceFixtures({ type: "endnoteRef", id: 2 }),
   noteMarker: () => [
-    { ...runFixture({ type: "noteMarker", kind: "footnote" }), story: "footnote" },
-    { ...runFixture({ type: "noteMarker", kind: "endnote" }, "endnote"), story: "endnote" },
+    {
+      ...runFixture({ type: "noteMarker", kind: "footnote" }),
+      story: "footnote",
+    },
+    {
+      ...runFixture({ type: "noteMarker", kind: "endnote" }, "endnote"),
+      story: "endnote",
+    },
   ],
   fieldChar: (text = "x") => [
     {
@@ -313,13 +437,21 @@ export const CANONICAL_RUN_SHAPE_FACTORIES = {
   drawing: () => [
     runFixture({
       type: "drawing",
-      image: { type: "image", size: { width: 914400, height: 914400 }, wrap: { type: "inline" } },
+      image: {
+        type: "image",
+        size: { width: 914400, height: 914400 },
+        wrap: { type: "inline" },
+      },
     }),
   ],
   shape: () => [
     runFixture({
       type: "shape",
-      shape: { type: "shape", shapeType: "rect", size: { width: 914400, height: 914400 } },
+      shape: {
+        type: "shape",
+        shapeType: "rect",
+        size: { width: 914400, height: 914400 },
+      },
     }),
   ],
 } satisfies RunFixtureFactories;
@@ -332,7 +464,10 @@ type ShapeDocumentOptions = {
 const paragraph = (paraId: string, content: ParagraphContent[]) =>
   ({ type: "paragraph", paraId, content }) satisfies Paragraph;
 
-export const canonicalInlineShapeDocument = ({ content, story }: ShapeDocumentOptions) => {
+export const canonicalInlineShapeDocument = ({
+  content,
+  story,
+}: ShapeDocumentOptions) => {
   const noteParagraph = (kind: "footnote" | "endnote", paraId: string) =>
     paragraph(
       paraId,
@@ -352,14 +487,34 @@ export const canonicalInlineShapeDocument = ({ content, story }: ShapeDocumentOp
     package: {
       document: {
         content: [
-          paragraph("12345678", [textRun("L"), ...(story === "main" ? content : []), textRun("R")]),
+          paragraph("12345678", [
+            textRun("L"),
+            ...(story === "main" ? content : []),
+            textRun("R"),
+          ]),
         ],
         comments: [
-          { id: 12, author: "Reviewer", content: [paragraph("22345678", [textRun("Comment")])] },
+          {
+            id: 12,
+            author: "Reviewer",
+            content: [paragraph("22345678", [textRun("Comment")])],
+          },
         ],
       },
-      footnotes: [{ type: "footnote", id: 1, content: [noteParagraph("footnote", "32345678")] }],
-      endnotes: [{ type: "endnote", id: 2, content: [noteParagraph("endnote", "42345678")] }],
+      footnotes: [
+        {
+          type: "footnote",
+          id: 1,
+          content: [noteParagraph("footnote", "32345678")],
+        },
+      ],
+      endnotes: [
+        {
+          type: "endnote",
+          id: 2,
+          content: [noteParagraph("endnote", "42345678")],
+        },
+      ],
     },
   } satisfies Document;
 };

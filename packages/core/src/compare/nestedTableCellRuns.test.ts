@@ -17,7 +17,11 @@
 
 import { expect, test } from "bun:test";
 
-import { buildBodySequenceDocx, type BodyItem, type Cell } from "./__fixtures__/body-sequence";
+import {
+  type BodyItem,
+  buildBodySequenceDocx,
+  type Cell,
+} from "./__fixtures__/body-sequence";
 import { compareDocx } from "./compare";
 
 const OPTIONS = {
@@ -26,8 +30,14 @@ const OPTIONS = {
   onUnverified: "emit",
 } as const;
 
-const INTRO = { kind: "paragraph", text: "This agreement is made between the parties." } as const;
-const OUTRO = { kind: "paragraph", text: "Signed by the parties above." } as const;
+const INTRO = {
+  kind: "paragraph",
+  text: "This agreement is made between the parties.",
+} as const;
+const OUTRO = {
+  kind: "paragraph",
+  text: "Signed by the parties above.",
+} as const;
 
 const SCHEDULE = {
   kind: "table",
@@ -46,7 +56,11 @@ type CoverCellOptions = {
 
 /** The value cell: `notes`, the nested schedule, then the closing paragraph. */
 const coverCell = ({ notes, closing }: CoverCellOptions): Cell => ({
-  content: [...notes.map(paragraph), SCHEDULE, ...(closing === null ? [] : [paragraph(closing)])],
+  content: [
+    ...notes.map(paragraph),
+    SCHEDULE,
+    ...(closing === null ? [] : [paragraph(closing)]),
+  ],
   conformance: closing === null ? "unclosed" : "conforming",
 });
 
@@ -81,7 +95,10 @@ const comparing = async (base: CoverCellOptions, target: CoverCellOptions) =>
 
 test("a cell whose paragraphs shrink around its nested table round-trips", async () => {
   expect(
-    await comparing({ notes: BASE_NOTES, closing: "" }, { notes: NEGOTIATED_NOTES, closing: "" }),
+    await comparing(
+      { notes: BASE_NOTES, closing: "" },
+      { notes: NEGOTIATED_NOTES, closing: "" },
+    ),
   ).toEqual({ status: "verified" });
 });
 
@@ -94,13 +111,19 @@ test("a cell whose closing paragraph is reworded round-trips", async () => {
   expect(
     await comparing(
       { notes: BASE_NOTES, closing: "Certificates on request." },
-      { notes: NEGOTIATED_NOTES, closing: "Certificates within ten days of request." },
+      {
+        notes: NEGOTIATED_NOTES,
+        closing: "Certificates within ten days of request.",
+      },
     ),
   ).toEqual({ status: "verified" });
 });
 
 test("a target that omits the cell's closing paragraph round-trips", async () => {
   expect(
-    await comparing({ notes: BASE_NOTES, closing: "" }, { notes: NEGOTIATED_NOTES, closing: null }),
+    await comparing(
+      { notes: BASE_NOTES, closing: "" },
+      { notes: NEGOTIATED_NOTES, closing: null },
+    ),
   ).toEqual({ status: "verified" });
 });

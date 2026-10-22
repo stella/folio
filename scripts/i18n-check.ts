@@ -18,8 +18,8 @@ import path from "node:path";
 import {
   deleteNestedValue,
   getNestedValue,
-  setNestedValue,
   type NestedObject,
+  setNestedValue,
 } from "./lib/nested-object";
 
 export type NestedMessages = NestedObject;
@@ -77,7 +77,10 @@ export const sortKeys = (obj: NestedMessages): NestedMessages => {
  * fallback), extra keys removed, and all keys sorted
  * alphabetically. Existing translations are preserved.
  */
-export const syncMessages = (source: NestedMessages, target: NestedMessages): NestedMessages => {
+export const syncMessages = (
+  source: NestedMessages,
+  target: NestedMessages,
+): NestedMessages => {
   const result: NestedMessages = structuredClone(target);
 
   const sourceKeys = new Set(flattenKeys(source));
@@ -180,8 +183,14 @@ const ALLOWED_IDENTICAL = new Set<string>([
 // locale unless it is listed there too.
 const ALLOWED_IDENTICAL_BY_LOCALE = new Map<string, ReadonlySet<string>>([
   ["cs", new Set(["Executive", "Legal", "Letter", "Text"])],
-  ["de", new Set(["Format", "Horizontal", "Legal", "Orange", "Position", "Text"])],
-  ["es", new Set(["Color", "Diagonal", "Horizontal", "Legal", "Normal", "Vertical"])],
+  [
+    "de",
+    new Set(["Format", "Horizontal", "Legal", "Orange", "Position", "Text"]),
+  ],
+  [
+    "es",
+    new Set(["Color", "Diagonal", "Horizontal", "Legal", "Normal", "Vertical"]),
+  ],
   ["et", new Set(["Executive", "Font"])],
   ["he", new Set(["Letter"])],
   [
@@ -210,7 +219,10 @@ const ALLOWED_IDENTICAL_BY_LOCALE = new Map<string, ReadonlySet<string>>([
   ["pl", new Set(["Executive", "Format", "Legal", "Letter"])],
   ["pt-BR", new Set(["Diagonal", "Horizontal", "Normal", "Vertical"])],
   ["sk", new Set(["Executive", "Legal", "Letter", "Text"])],
-  ["tr", new Set(["Executive", "Legal", "Letter", "Normal", "Sans Serif", "Serif"])],
+  [
+    "tr",
+    new Set(["Executive", "Legal", "Letter", "Normal", "Sans Serif", "Serif"]),
+  ],
 ]);
 
 const KEYBOARD_SHORTCUT = /^(?:(?:Alt|Ctrl|Meta|Shift)\+)*(?:Del|[A-Z])$/u;
@@ -252,7 +264,9 @@ const isTriviallyIdentical = (value: string): boolean => {
   // placeholder-only) or an explicit allowed token. Do NOT blanket-exempt by
   // length — short words like "To"/"as" are translatable.
   return (
-    !HAS_LETTER.test(literal) || ALLOWED_IDENTICAL.has(trimmed) || KEYBOARD_SHORTCUT.test(trimmed)
+    !HAS_LETTER.test(literal) ||
+    ALLOWED_IDENTICAL.has(trimmed) ||
+    KEYBOARD_SHORTCUT.test(trimmed)
   );
 };
 
@@ -277,7 +291,10 @@ export const findUntranslated = (
     if (typeof sourceValue !== "string" || sourceValue !== targetValue) {
       continue;
     }
-    if (isTriviallyIdentical(sourceValue) || isIdenticalInLocale(sourceValue, locale)) {
+    if (
+      isTriviallyIdentical(sourceValue) ||
+      isIdenticalInLocale(sourceValue, locale)
+    ) {
       continue;
     }
     if (baseline.identicalToSource[key]?.includes(locale)) {
@@ -349,7 +366,9 @@ export const getTranslationCoverage = ({
 };
 
 /** Map of each `common.*` value to the first `common.*` key that holds it. */
-export const buildCommonValueMap = (source: NestedMessages): Map<string, string> => {
+export const buildCommonValueMap = (
+  source: NestedMessages,
+): Map<string, string> => {
   const map = new Map<string, string>();
 
   for (const key of flattenKeys(source)) {
@@ -416,7 +435,11 @@ export const findSharedValueDuplicates = (
       continue;
     }
     const value = getNestedValue(source, key);
-    if (typeof value !== "string" || isTriviallyIdentical(value) || commonByValue.has(value)) {
+    if (
+      typeof value !== "string" ||
+      isTriviallyIdentical(value) ||
+      commonByValue.has(value)
+    ) {
       continue;
     }
     const group = keysByValue.get(value);
@@ -472,7 +495,9 @@ export const findStaleIdenticalApprovals = (
   }
 
   return stale.toSorted(
-    (left, right) => left.locale.localeCompare(right.locale) || left.key.localeCompare(right.key),
+    (left, right) =>
+      left.locale.localeCompare(right.locale) ||
+      left.key.localeCompare(right.key),
   );
 };
 
@@ -480,7 +505,8 @@ export const findStaleIdenticalApprovals = (
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  const langsDir = args.find((a) => !a.startsWith("--")) ?? "packages/react/src/i18n/messages";
+  const langsDir =
+    args.find((a) => !a.startsWith("--")) ?? "packages/react/src/i18n/messages";
   const shouldSync = args.includes("--sync");
   const shouldWriteBaseline = args.includes("--write-baseline");
 
@@ -519,14 +545,23 @@ if (import.meta.main) {
       const locale = file.replace(/\.json$/u, "");
       // oxlint-disable-next-line no-await-in-loop -- locales must be processed in sorted order so identicalToSource accumulates deterministically
       const messages = await readLang(file);
-      for (const key of findUntranslated(enMessages, messages, locale, emptyBaseline())) {
+      for (const key of findUntranslated(
+        enMessages,
+        messages,
+        locale,
+        emptyBaseline(),
+      )) {
         (identicalToSource[key] ??= []).push(locale);
       }
     }
-    const duplicatesCommon = findCommonDuplicates(enMessages, emptyBaseline()).map((o) => o.key);
-    const duplicateValues = findSharedValueDuplicates(enMessages, emptyBaseline()).map(
-      (o) => o.key,
-    );
+    const duplicatesCommon = findCommonDuplicates(
+      enMessages,
+      emptyBaseline(),
+    ).map((o) => o.key);
+    const duplicateValues = findSharedValueDuplicates(
+      enMessages,
+      emptyBaseline(),
+    ).map((o) => o.key);
     const next: CheckBaseline = {
       duplicatesCommon: duplicatesCommon.toSorted(),
       duplicateValues: duplicateValues.toSorted(),
@@ -537,7 +572,10 @@ if (import.meta.main) {
       ),
     };
     await Bun.write(baselinePath, `${JSON.stringify(next, null, 2)}\n`);
-    const localeCount = Object.values(identicalToSource).reduce((a, v) => a + v.length, 0);
+    const localeCount = Object.values(identicalToSource).reduce(
+      (a, v) => a + v.length,
+      0,
+    );
     console.log(
       `Wrote ${baselinePath}\n  ${Object.keys(identicalToSource).length} untranslated keys (${localeCount} locale entries), ${duplicatesCommon.length} common-duplicate keys, ${duplicateValues.length} shared-value keys grandfathered.`,
     );
@@ -570,7 +608,9 @@ if (import.meta.main) {
       hasIssues = true;
       console.log(`\n${path.resolve(langsDir, "en.json")}:`);
       for (const { key, reuse } of duplicates) {
-        console.log(`  = duplicate of ${reuse}: ${key} (reuse it, or baseline it)`);
+        console.log(
+          `  = duplicate of ${reuse}: ${key} (reuse it, or baseline it)`,
+        );
       }
     }
   }
@@ -599,14 +639,31 @@ if (import.meta.main) {
     const missing = [...enKeys].filter((k) => !langKeys.has(k));
     const extra = [...langKeys].filter((k) => !enKeys.has(k));
     const unsorted = !isSorted(messages);
-    const actualUntranslated = findUntranslated(enMessages, messages, locale, emptyBaseline());
-    const untranslated = shouldSync ? [] : findUntranslated(enMessages, messages, locale, baseline);
+    const actualUntranslated = findUntranslated(
+      enMessages,
+      messages,
+      locale,
+      emptyBaseline(),
+    );
+    const untranslated = shouldSync
+      ? []
+      : findUntranslated(enMessages, messages, locale, baseline);
     actualUntranslatedByLocale.set(locale, new Set(actualUntranslated));
     coverage.push(
-      getTranslationCoverage({ source: enMessages, target: messages, locale, baseline }),
+      getTranslationCoverage({
+        source: enMessages,
+        target: messages,
+        locale,
+        baseline,
+      }),
     );
 
-    if (missing.length === 0 && extra.length === 0 && !unsorted && untranslated.length === 0) {
+    if (
+      missing.length === 0 &&
+      extra.length === 0 &&
+      !unsorted &&
+      untranslated.length === 0
+    ) {
       continue;
     }
 
@@ -639,17 +696,30 @@ if (import.meta.main) {
   }
 
   if (!shouldSync) {
-    const staleIdentical = findStaleIdenticalApprovals(baseline, actualUntranslatedByLocale);
+    const staleIdentical = findStaleIdenticalApprovals(
+      baseline,
+      actualUntranslatedByLocale,
+    );
     const actualCommonDuplicates = new Set(
       findCommonDuplicates(enMessages, emptyBaseline()).map(({ key }) => key),
     );
-    const staleCommon = baseline.duplicatesCommon.filter((key) => !actualCommonDuplicates.has(key));
-    const actualSharedDuplicates = new Set(
-      findSharedValueDuplicates(enMessages, emptyBaseline()).map(({ key }) => key),
+    const staleCommon = baseline.duplicatesCommon.filter(
+      (key) => !actualCommonDuplicates.has(key),
     );
-    const staleShared = baseline.duplicateValues.filter((key) => !actualSharedDuplicates.has(key));
+    const actualSharedDuplicates = new Set(
+      findSharedValueDuplicates(enMessages, emptyBaseline()).map(
+        ({ key }) => key,
+      ),
+    );
+    const staleShared = baseline.duplicateValues.filter(
+      (key) => !actualSharedDuplicates.has(key),
+    );
 
-    if (staleIdentical.length > 0 || staleCommon.length > 0 || staleShared.length > 0) {
+    if (
+      staleIdentical.length > 0 ||
+      staleCommon.length > 0 ||
+      staleShared.length > 0
+    ) {
       hasIssues = true;
       console.log(`\n${baselinePath}:`);
       for (const { key, locale } of staleIdentical) {
@@ -666,9 +736,13 @@ if (import.meta.main) {
     console.log("\nTranslation coverage:");
     for (const row of coverage) {
       const percentage =
-        row.total === 0 ? 100 : Math.round((row.translated / row.total) * 1000) / 10;
+        row.total === 0
+          ? 100
+          : Math.round((row.translated / row.total) * 1000) / 10;
       const details = [
-        row.identical > 0 ? `${row.identical} identical (${row.approvedIdentical} approved)` : null,
+        row.identical > 0
+          ? `${row.identical} identical (${row.approvedIdentical} approved)`
+          : null,
         row.missing > 0 ? `${row.missing} missing` : null,
       ].filter((detail) => detail !== null);
       const suffix = details.length > 0 ? `; ${details.join(", ")}` : "";

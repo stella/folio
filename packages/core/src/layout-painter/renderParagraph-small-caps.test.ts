@@ -45,7 +45,10 @@ class FakeElement {
     this.children = [];
   }
 
-  getContext(): { font: string; measureText: (text: string) => { width: number } } | null {
+  getContext(): {
+    font: string;
+    measureText: (text: string) => { width: number };
+  } | null {
     if (this.tagName !== "canvas") {
       return null;
     }
@@ -101,7 +104,10 @@ describe("small-caps painting", () => {
     });
 
     // "A" full size, "lert" synthesized at 0.8 * 16px (12pt -> 16px at 96dpi).
-    expect(runElement.children.map((child) => child.textContent)).toEqual(["A", "LERT"]);
+    expect(runElement.children.map((child) => child.textContent)).toEqual([
+      "A",
+      "LERT",
+    ]);
     expect(runElement.children[0]?.style["fontSize"]).toBeUndefined();
     expect(runElement.children[1]?.style["fontSize"]).toBe("12.8px");
     expect(runElement.textContent).toBe("ALERT");
@@ -153,7 +159,11 @@ describe("small-caps painting", () => {
   });
 
   test("a run with no smallCaps formatting is unaffected", () => {
-    const runElement = renderSingleRun({ kind: "text", text: "Alert", fontSize: 12 });
+    const runElement = renderSingleRun({
+      kind: "text",
+      text: "Alert",
+      fontSize: 12,
+    });
 
     expect(runElement.children).toHaveLength(0);
     expect(runElement.textContent).toBe("Alert");

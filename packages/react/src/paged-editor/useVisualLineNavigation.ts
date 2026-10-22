@@ -12,11 +12,18 @@ export type VisualLineNavigationOptions = {
 };
 
 /** Bind the framework-neutral visual-line navigation state to React. */
-export function useVisualLineNavigation({ pagesContainerRef }: VisualLineNavigationOptions) {
+export function useVisualLineNavigation({
+  pagesContainerRef,
+}: VisualLineNavigationOptions) {
   const stateRef = useRef(createVisualLineState());
   const handlePMKeyDown = useCallback(
     (view: EditorView, event: KeyboardEvent): boolean =>
-      handleVisualLineKeyDown(stateRef.current, view, event, pagesContainerRef.current),
+      handleVisualLineKeyDown(
+        stateRef.current,
+        view,
+        event,
+        pagesContainerRef.current,
+      ),
     [pagesContainerRef],
   );
 

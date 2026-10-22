@@ -3,6 +3,7 @@ import fc from "fast-check";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
 import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
 import {
   aggregateTestTimings,
@@ -14,7 +15,8 @@ import { assignTestShards, shardLoads } from "./ci-test-shards";
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true });
+  for (const directory of temporaryDirectories.splice(0))
+    rmSync(directory, { recursive: true });
 });
 
 describe("measured test shard balancing", () => {
@@ -23,14 +25,20 @@ describe("measured test shard balancing", () => {
     () => {
       fc.assert(
         fc.property(
-          fc.array(fc.integer({ min: 1, max: 1_000 }), { minLength: 100, maxLength: 100 }),
+          fc.array(fc.integer({ min: 1, max: 1_000 }), {
+            minLength: 100,
+            maxLength: 100,
+          }),
           (weights) => {
             const timings = Object.fromEntries(
               weights.map((weight, index) => [`test-${index}`, weight]),
             );
             const mean = weights.reduce((sum, weight) => sum + weight, 0) / 4;
             fc.pre(Math.max(...weights) <= mean);
-            const loads = shardLoads(assignTestShards(Object.keys(timings), timings), timings);
+            const loads = shardLoads(
+              assignTestShards(Object.keys(timings), timings),
+              timings,
+            );
             expect(Math.max(...loads)).toBeLessThanOrEqual(mean * 1.25);
           },
         ),
@@ -42,9 +50,9 @@ describe("measured test shard balancing", () => {
 
   test("unmeasured files use the median measured weight", () => {
     const timings = { a: 10, b: 30, c: 50 };
-    expect(shardLoads(assignTestShards(["a", "b", "c", "new"], timings), timings)).toEqual([
-      50, 30, 30, 10,
-    ]);
+    expect(
+      shardLoads(assignTestShards(["a", "b", "c", "new"], timings), timings),
+    ).toEqual([50, 30, 30, 10]);
   });
 
   test("aggregation takes per-run medians, follows discovery, and is byte-stable", () => {
@@ -54,18 +62,24 @@ describe("measured test shard balancing", () => {
       { runId: "three", timings: { kept: 20 } },
     ];
     const first = aggregateTestTimings(artifacts, ["new", "kept"]);
-    expect(first).toBe(aggregateTestTimings(artifacts.toReversed(), ["kept", "new"]));
+    expect(first).toBe(
+      aggregateTestTimings(artifacts.toReversed(), ["kept", "new"]),
+    );
     expect(JSON.parse(first)).toEqual({ kept: 20, new: 15 });
     expect(first).not.toContain("vanished");
   });
 
   test("timing artifact discovery distinguishes a failed listing from no data", async () => {
     const failure = new Error("run listing failed");
-    expect(selectTimingArtifacts("stella/folio", async () => Promise.reject(failure))).rejects.toBe(
-      failure,
-    );
     expect(
-      await selectTimingArtifacts("stella/folio", async () => ({ workflow_runs: [] })),
+      selectTimingArtifacts("stella/folio", async () =>
+        Promise.reject(failure),
+      ),
+    ).rejects.toBe(failure);
+    expect(
+      await selectTimingArtifacts("stella/folio", async () => ({
+        workflow_runs: [],
+      })),
     ).toEqual([]);
   });
 
@@ -80,7 +94,10 @@ describe("measured test shard balancing", () => {
         };
       }
       return {
-        artifacts: [1, 2, 3, 4].map((id) => ({ id: 20 + id, name: `test-timings-2-${id}` })),
+        artifacts: [1, 2, 3, 4].map((id) => ({
+          id: 20 + id,
+          name: `test-timings-2-${id}`,
+        })),
       };
     };
     expect(await selectTimingArtifacts("stella/folio", fetchJson)).toEqual(
@@ -99,11 +116,15 @@ describe("measured test shard balancing", () => {
             })),
           };
         }
-        if (url.endsWith("&page=2")) return { workflow_runs: [{ event: "push", id: 5 }] };
+        if (url.endsWith("&page=2"))
+          return { workflow_runs: [{ event: "push", id: 5 }] };
         return { workflow_runs: [] };
       }
       return {
-        artifacts: [1, 2, 3, 4].map((id) => ({ id: 50 + id, name: `test-timings-5-${id}` })),
+        artifacts: [1, 2, 3, 4].map((id) => ({
+          id: 50 + id,
+          name: `test-timings-5-${id}`,
+        })),
       };
     };
     expect(await selectTimingArtifacts("stella/folio", fetchJson)).toEqual(
@@ -138,7 +159,9 @@ describe("measured test shard balancing", () => {
   test("assignment is deterministic for identical inputs", () => {
     const timings = { a: 10, b: 10, c: 5, d: 5, e: 1 };
     const assigned = () =>
-      assignTestShards(Object.keys(timings), timings).map((shard) => Array.from(shard));
+      assignTestShards(Object.keys(timings), timings).map((shard) =>
+        Array.from(shard),
+      );
     expect(assigned()).toEqual(assigned());
   });
 
@@ -147,7 +170,9 @@ describe("measured test shard balancing", () => {
     temporaryDirectories.push(directory);
     const timingFile = path.join(directory, "timings.json");
     const requestFile = path.join(directory, "request.json");
-    const timingBytes = Buffer.from(`${JSON.stringify({ sample: "x".repeat(210_000) })}\n`);
+    const timingBytes = Buffer.from(
+      `${JSON.stringify({ sample: "x".repeat(210_000) })}\n`,
+    );
     writeFileSync(timingFile, timingBytes);
 
     const args = [
@@ -164,7 +189,9 @@ describe("measured test shard balancing", () => {
       "--base",
       "0123456789abcdef0123456789abcdef01234567",
     ];
-    expect(Math.max(...args.map((argument) => Buffer.byteLength(argument)))).toBeLessThan(4_096);
+    expect(
+      Math.max(...args.map((argument) => Buffer.byteLength(argument))),
+    ).toBeLessThan(4_096);
     const result = Bun.spawnSync(args, { stderr: "pipe" });
     expect(result.exitCode, result.stderr.toString()).toBe(0);
 
@@ -178,11 +205,17 @@ describe("measured test shard balancing", () => {
       }),
     );
     expect(
-      Buffer.from(request.variables.input.fileChanges.additions[0].contents, "base64"),
+      Buffer.from(
+        request.variables.input.fileChanges.additions[0].contents,
+        "base64",
+      ),
     ).toEqual(timingBytes);
 
     const workflow = readFileSync(
-      path.resolve(import.meta.dir, "../.github/workflows/test-timing-refresh.yml"),
+      path.resolve(
+        import.meta.dir,
+        "../.github/workflows/test-timing-refresh.yml",
+      ),
       "utf8",
     );
     expect(workflow).toContain('--graphql-request "$request"');

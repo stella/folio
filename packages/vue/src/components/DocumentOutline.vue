@@ -65,10 +65,15 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+
+import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
-import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
-import { type OutlineSurface, useOutlineDrawerFocus } from "../composables/useOutlineDrawerFocus";
+
+import {
+  type OutlineSurface,
+  useOutlineDrawerFocus,
+} from "../composables/useOutlineDrawerFocus";
 import { useTranslation } from "../i18n";
 import type { OutlineItem } from "../ui/folio-ui";
 import { useFolioUI } from "../ui/folio-ui";
@@ -127,7 +132,9 @@ const items = computed<OutlineItem[]>(() =>
     id: String(heading.pmPos),
     label: heading.text,
     level: heading.level,
-    ...(typeof heading.pageNumber === "number" ? { meta: String(heading.pageNumber) } : {}),
+    ...(typeof heading.pageNumber === "number"
+      ? { meta: String(heading.pageNumber) }
+      : {}),
   })),
 );
 const pctById = computed(() => {

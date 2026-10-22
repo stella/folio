@@ -1,6 +1,12 @@
 import { test } from "@playwright/test";
 
-import { ensureLiveView, expect, forEachAdapter, openEditor, VUE_ADAPTER } from "./parity-fixture";
+import {
+  ensureLiveView,
+  expect,
+  forEachAdapter,
+  openEditor,
+  VUE_ADAPTER,
+} from "./parity-fixture";
 
 forEachAdapter(
   "find: the dialog highlights matches without changing selection",
@@ -8,7 +14,9 @@ forEachAdapter(
     await openEditor(page, adapter);
     await ensureLiveView(page);
     await page.locator(".layout-page").first().click();
-    expect(await page.evaluate(() => window.__folioParity?.selectFirstWord())).toBe(true);
+    expect(
+      await page.evaluate(() => window.__folioParity?.selectFirstWord()),
+    ).toBe(true);
     const before = await page.evaluate(() => ({
       selection: window.__folioParity?.getSelectedText(),
       text: window.__folioParity?.getDocumentText(),
@@ -21,14 +29,18 @@ forEachAdapter(
     await expect(dialog).toBeVisible();
     await dialog.locator("input").first().fill("editor");
 
-    const current = page.locator('[data-find-match-index="0"][data-current="true"]').first();
+    const current = page
+      .locator('[data-find-match-index="0"][data-current="true"]')
+      .first();
     await expect(current).toBeVisible();
     await expect(dialog).toContainText("1 / 3");
     await dialog.locator("input").first().press("Enter");
     await expect(
       page.locator('[data-find-match-index="1"][data-current="true"]').first(),
     ).toBeVisible();
-    await expect(page.locator('[data-find-match-index="0"][data-current="true"]')).toHaveCount(0);
+    await expect(
+      page.locator('[data-find-match-index="0"][data-current="true"]'),
+    ).toHaveCount(0);
     await expect(dialog).toContainText("2 / 3");
     expect(
       await page.evaluate(() => ({
@@ -39,7 +51,9 @@ forEachAdapter(
   },
 );
 
-test("find/replace: Vue replaces the current highlighted match [vue]", async ({ page }) => {
+test("find/replace: Vue replaces the current highlighted match [vue]", async ({
+  page,
+}) => {
   await openEditor(page, VUE_ADAPTER);
   await ensureLiveView(page);
   await page.locator(".layout-page").first().click();
@@ -57,6 +71,8 @@ test("find/replace: Vue replaces the current highlighted match [vue]", async ({ 
   await dialog.getByTestId("replace-current").click();
 
   await expect
-    .poll(() => page.evaluate(() => window.__folioParity?.getDocumentText() ?? ""))
+    .poll(() =>
+      page.evaluate(() => window.__folioParity?.getDocumentText() ?? ""),
+    )
     .toContain("folioReplacement");
 });

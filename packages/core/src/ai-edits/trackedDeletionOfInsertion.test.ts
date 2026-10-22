@@ -7,10 +7,10 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { paragraph } from "../docx/server/build";
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 
@@ -19,11 +19,20 @@ const TEXT = "Signed in two copies.";
 const buildDocument = async (): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
   document.package.document.content = [paragraph(TEXT)];
-  const { docx } = await ensureParaIds(new Uint8Array(await createDocx(document)));
-  return docx.buffer.slice(docx.byteOffset, docx.byteOffset + docx.byteLength) as ArrayBuffer;
+  const { docx } = await ensureParaIds(
+    new Uint8Array(await createDocx(document)),
+  );
+  return docx.buffer.slice(
+    docx.byteOffset,
+    docx.byteOffset + docx.byteLength,
+  ) as ArrayBuffer;
 };
 
-const replace = (reviewer: FolioDocxReviewer, find: string, replacement: string): void => {
+const replace = (
+  reviewer: FolioDocxReviewer,
+  find: string,
+  replacement: string,
+): void => {
   const block = reviewer.getContent()[0];
   if (!block) {
     throw new Error("the fixture paragraph is missing");
@@ -33,7 +42,13 @@ const replace = (reviewer: FolioDocxReviewer, find: string, replacement: string)
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       mode: "tracked-changes",
       operations: [
-        { id: find, type: "replaceInBlock", blockId: block.id, find, replace: replacement },
+        {
+          id: find,
+          type: "replaceInBlock",
+          blockId: block.id,
+          find,
+          replace: replacement,
+        },
       ],
     },
     { undefinedReferences: "refuse" },
@@ -42,7 +57,9 @@ const replace = (reviewer: FolioDocxReviewer, find: string, replacement: string)
 };
 
 const changesOf = (reviewer: FolioDocxReviewer) =>
-  reviewer.getChanges().map(({ type, text, author }) => ({ type, text, author }));
+  reviewer
+    .getChanges()
+    .map(({ type, text, author }) => ({ type, text, author }));
 
 describe("a tracked deletion of pending inserted text", () => {
   for (const secondAuthor of ["Reviewer", "Second Reviewer"]) {
@@ -51,14 +68,21 @@ describe("a tracked deletion of pending inserted text", () => {
         author: "Reviewer",
       });
       replace(first, "two", "three");
-      const second = await FolioDocxReviewer.fromBuffer(await first.toBuffer(), {
-        author: secondAuthor,
-      });
+      const second = await FolioDocxReviewer.fromBuffer(
+        await first.toBuffer(),
+        {
+          author: secondAuthor,
+        },
+      );
       replace(second, "three", "four");
       expect(second.getContent()[0]?.text).toBe("Signed in four copies.");
 
       const saved = await second.toBuffer();
-      const xml = await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("string");
+      const xml = await (
+        await JSZip.loadAsync(saved)
+      )
+        .file("word/document.xml")
+        ?.async("string");
       expect(xml).toMatch(
         /<w:ins [^>]*><w:del [^>]*><w:r>(?:<w:rPr\/>)?<w:delText>three<\/w:delText>/u,
       );
@@ -97,9 +121,13 @@ describe("revision wrapper enumeration", () => {
       { undefinedReferences: "refuse" },
     );
     expect(result.applied).toHaveLength(1);
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     const sorted = (target: FolioDocxReviewer) =>
-      changesOf(target).toSorted((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+      changesOf(target).toSorted((a, b) =>
+        JSON.stringify(a).localeCompare(JSON.stringify(b)),
+      );
     expect(sorted(reviewer)).toEqual(sorted(reopened));
   });
 });

@@ -1,8 +1,9 @@
-import { expect, test } from "bun:test";
 import { Glob } from "bun";
+import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+
 import { cloneModel } from "./modelClone";
 
 test("model clones isolate data and retain opaque bindings across the cloned graph", () => {
@@ -56,10 +57,18 @@ test("model clones preserve cycles and omit non-enumerable and accessor bindings
 });
 
 const primitiveReferences = (source: string): number => {
-  const file = ts.createSourceFile("fixture.ts", source, ts.ScriptTarget.Latest, true);
+  const file = ts.createSourceFile(
+    "fixture.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   let count = 0;
   const visit = (node: ts.Node): void => {
-    if ((ts.isIdentifier(node) || ts.isStringLiteral(node)) && node.text === "structuredClone")
+    if (
+      (ts.isIdentifier(node) || ts.isStringLiteral(node)) &&
+      node.text === "structuredClone"
+    )
       count++;
     ts.forEachChild(node, visit);
   };
@@ -80,7 +89,9 @@ test("model clone ownership detects raw calls, qualified calls and aliases", () 
 });
 
 test("every operation model clone goes through its binding owner", () => {
-  const files = [...new Glob("**/*.ts").scanSync({ cwd: import.meta.dir, onlyFiles: true })].filter(
+  const files = [
+    ...new Glob("**/*.ts").scanSync({ cwd: import.meta.dir, onlyFiles: true }),
+  ].filter(
     (file) =>
       file !== "modelClone.ts" &&
       !file.includes("__tests__/") &&
@@ -89,7 +100,10 @@ test("every operation model clone goes through its binding owner", () => {
   );
   expect(files.length).toBeGreaterThan(0);
   const violations = files.filter(
-    (file) => primitiveReferences(readFileSync(path.join(import.meta.dir, file), "utf8")) > 0,
+    (file) =>
+      primitiveReferences(
+        readFileSync(path.join(import.meta.dir, file), "utf8"),
+      ) > 0,
   );
   expect(violations).toEqual([]);
 });

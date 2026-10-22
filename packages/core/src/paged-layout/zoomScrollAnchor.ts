@@ -66,7 +66,10 @@ export const getViewportCenterZoomAnchorForZoomChange = ({
   });
 };
 
-export const getScrollTopForZoomAnchor = (anchor: ViewportCenterZoomAnchor, nextZoom: number) => {
+export const getScrollTopForZoomAnchor = (
+  anchor: ViewportCenterZoomAnchor,
+  nextZoom: number,
+) => {
   if (anchor.zoom <= 0 || nextZoom <= 0) {
     return anchor.scaledY - anchor.offsetY;
   }

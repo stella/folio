@@ -25,7 +25,9 @@ import { readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 const packageRoot = path.resolve(import.meta.dir, "..");
-const reactRoot = path.dirname(Bun.resolveSync("@stll/folio-react/package.json", packageRoot));
+const reactRoot = path.dirname(
+  Bun.resolveSync("@stll/folio-react/package.json", packageRoot),
+);
 const outdir = path.join(packageRoot, "dist", "vscode");
 
 // esbuild matches plugin filters as Go regular expressions, which take no flags.
@@ -46,14 +48,20 @@ const DROPPED_NAMESPACE = "folio-dropped-stylesheet";
 const dropStylesheetImports: Plugin = {
   name: "folio-drop-stylesheet-imports",
   setup: (builder) => {
-    builder.onResolve({ filter: STYLESHEET_FILTER }, ({ path: stylesheet }) => ({
-      path: stylesheet,
-      namespace: DROPPED_NAMESPACE,
-    }));
-    builder.onLoad({ filter: ANY_PATH_FILTER, namespace: DROPPED_NAMESPACE }, () => ({
-      contents: "",
-      loader: "js",
-    }));
+    builder.onResolve(
+      { filter: STYLESHEET_FILTER },
+      ({ path: stylesheet }) => ({
+        path: stylesheet,
+        namespace: DROPPED_NAMESPACE,
+      }),
+    );
+    builder.onLoad(
+      { filter: ANY_PATH_FILTER, namespace: DROPPED_NAMESPACE },
+      () => ({
+        contents: "",
+        loader: "js",
+      }),
+    );
   },
 };
 
@@ -71,7 +79,9 @@ const woff2Only: Plugin = {
       const source = await readFile(args.path, "utf8");
       const stripped = source.replace(WOFF_FALLBACK, "");
       if (stripped.includes(".woff)")) {
-        throw new Error(`${args.path} lists a .woff face this build cannot drop.`);
+        throw new Error(
+          `${args.path} lists a .woff face this build cannot drop.`,
+        );
       }
       return { contents: stripped, loader: "css" };
     });
@@ -129,7 +139,9 @@ const sizeOf = async (file: string) => (await stat(file)).size;
 const kib = (bytes: number) => `${(bytes / 1024).toFixed(1)} KiB`;
 const fonts = await readdir(path.join(outdir, "fonts"));
 const fontBytes = (
-  await Promise.all(fonts.map((font) => sizeOf(path.join(outdir, "fonts", font))))
+  await Promise.all(
+    fonts.map((font) => sizeOf(path.join(outdir, "fonts", font))),
+  )
 ).reduce((total, size) => total + size, 0);
 
 console.log(

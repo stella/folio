@@ -1,7 +1,10 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../test/property-testing";
 import { interleavingTraceArbitrary } from "./interleavingTrace";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
@@ -14,9 +17,9 @@ test("interleaving traces replay and preserve pending AI/human overlap when shri
     expect(trace.actions.at(0)?.kind).toBe("suggest");
     expect(trace.actions.at(1)?.kind).toBe("typing");
   }
-  expect(new Set(traces.flatMap(({ actions }) => actions.map(({ kind }) => kind)))).toEqual(
-    new Set(["suggest", "typing", "accept", "reject", "undo", "redo"]),
-  );
+  expect(
+    new Set(traces.flatMap(({ actions }) => actions.map(({ kind }) => kind))),
+  ).toEqual(new Set(["suggest", "typing", "accept", "reject", "undo", "redo"]));
   const failure = fc.check(
     fc.property(interleavingTraceArbitrary, () => false),
     propertyConfig({ seed: 197 }),

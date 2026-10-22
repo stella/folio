@@ -242,8 +242,9 @@ const BUILTIN_STYLES: TableStylePreset[] = [
 ];
 
 /** Get a built-in style preset by ID. */
-export const getBuiltinTableStyle = (styleId: string): TableStylePreset | undefined =>
-  BUILTIN_STYLES.find((s) => s.id === styleId);
+export const getBuiltinTableStyle = (
+  styleId: string,
+): TableStylePreset | undefined => BUILTIN_STYLES.find((s) => s.id === styleId);
 
 /** Convert a document Style (from styles.xml) to a TableStylePreset. */
 export const documentStyleToPreset = (style: Style): TableStylePreset => {
@@ -256,7 +257,14 @@ export const documentStyleToPreset = (style: Style): TableStylePreset => {
   if (style.tblPr?.borders) {
     const b = style.tblPr.borders;
     preset.tableBorders = {};
-    for (const side of ["top", "bottom", "left", "right", "insideH", "insideV"] as const) {
+    for (const side of [
+      "top",
+      "bottom",
+      "left",
+      "right",
+      "insideH",
+      "insideV",
+    ] as const) {
       const bs = b[side];
       if (bs) {
         preset.tableBorders[side] = {

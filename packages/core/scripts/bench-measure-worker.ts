@@ -52,7 +52,9 @@ import type {
 
 // --- Synthetic OffscreenCanvas for the in-process "worker" -----------
 class BenchOffscreenCanvas {
-  getContext(type: string): { font: string; measureText: (t: string) => { width: number } } | null {
+  getContext(
+    type: string,
+  ): { font: string; measureText: (t: string) => { width: number } } | null {
     if (type !== "2d") {
       return null;
     }
@@ -119,7 +121,8 @@ type DeferredBatch = {
 const deferredQueue: DeferredBatch[] = [];
 
 function deferredTransport(): MeasureWorkerTransport {
-  const messageListeners: ((event: { data: MeasureWorkerResponse }) => void)[] = [];
+  const messageListeners: ((event: { data: MeasureWorkerResponse }) => void)[] =
+    [];
   return {
     postMessage(req: MeasureWorkerRequest) {
       // Queue the request for off-band processing. In production this
@@ -135,7 +138,9 @@ function deferredTransport(): MeasureWorkerTransport {
     },
     addEventListener(type, listener) {
       if (type === "message") {
-        messageListeners.push(listener as (event: { data: MeasureWorkerResponse }) => void);
+        messageListeners.push(
+          listener as (event: { data: MeasureWorkerResponse }) => void,
+        );
       }
     },
     terminate() {
@@ -283,7 +288,9 @@ installCanvasMeasureProvider();
 console.log("=== folio measureTextWidth benchmark ===");
 console.log("fixture: 500 pages * 40 lines = 20,000 runs");
 console.log("cache:   5000 entries (smaller than fixture; triggers LRU)");
-console.log("note:    in-process bench cannot model true parallelism between the");
+console.log(
+  "note:    in-process bench cannot model true parallelism between the",
+);
 console.log("         main thread and the worker; production wall-time win is");
 console.log("         strictly larger than what this bench reports.");
 
@@ -306,4 +313,6 @@ const workerMed = median(workerRuns);
 const delta = ((baseMed - workerMed) / baseMed) * 100;
 console.log(`\nbaseline pass-2 median: ${baseMed.toFixed(1)} ms`);
 console.log(`worker   pass-2 median: ${workerMed.toFixed(1)} ms`);
-console.log(`pass-2 delta: ${delta.toFixed(1)}% (lower bound on production win)`);
+console.log(
+  `pass-2 delta: ${delta.toFixed(1)}% (lower bound on production win)`,
+);

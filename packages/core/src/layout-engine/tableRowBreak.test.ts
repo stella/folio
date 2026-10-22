@@ -9,8 +9,15 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { layoutDocument } from "./index";
 import { clearAllCaches } from "./measure";
-import { installCanvasMeasureProvider, resetCanvasContext } from "./measure/measureContainer";
-import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
+import {
+  installCanvasMeasureProvider,
+  resetCanvasContext,
+} from "./measure/measureContainer";
+import {
+  buildTableRowBreakInfo,
+  getRowContinuationSkip,
+  snapRowBreak,
+} from "./tableRowBreak";
 import type {
   FlowBlock,
   LayoutOptions,
@@ -73,7 +80,10 @@ function linesWithHeight(n: number, lineHeight: number): MeasuredLine[] {
   }));
 }
 
-function paraMeasureWithLineHeight(n: number, lineHeight: number): ParagraphMeasure {
+function paraMeasureWithLineHeight(
+  n: number,
+  lineHeight: number,
+): ParagraphMeasure {
   return {
     kind: "paragraph",
     lines: linesWithHeight(n, lineHeight),
@@ -85,7 +95,10 @@ function paraMeasure(n: number): ParagraphMeasure {
   return paraMeasureWithLineHeight(n, LINE);
 }
 
-function markMeasuredLineWithRenderedBreak(measure: TableMeasure, lineIndex: number): void {
+function markMeasuredLineWithRenderedBreak(
+  measure: TableMeasure,
+  lineIndex: number,
+): void {
   const paragraph = measure.rows.at(0)?.cells.at(0)?.blocks.at(0);
   if (paragraph?.kind !== "paragraph") {
     throw new Error("test table must start with a measured paragraph");
@@ -142,7 +155,9 @@ function tallTable(n: number): { block: TableBlock; measure: TableMeasure } {
   };
   const measure: TableMeasure = {
     kind: "table",
-    rows: [{ cells: [{ blocks: [paraMeasure(n)], width: 220, height }], height }],
+    rows: [
+      { cells: [{ blocks: [paraMeasure(n)], width: 220, height }], height },
+    ],
     columnWidths: [220],
     totalWidth: 220,
     totalHeight: height,
@@ -191,7 +206,12 @@ function tableWithVerticalMergeAndTallBody(): {
         },
         {
           id: "r-merge-continuation",
-          cells: [{ id: "c-continuation", blocks: [shortCellBlock("p-continuation")] }],
+          cells: [
+            {
+              id: "c-continuation",
+              blocks: [shortCellBlock("p-continuation")],
+            },
+          ],
         },
         {
           id: "r-tall",
@@ -213,7 +233,9 @@ function tableWithVerticalMergeAndTallBody(): {
         { cells: [shortCellMeasure, shortCellMeasure], height: LINE },
         { cells: [shortCellMeasure], height: LINE },
         {
-          cells: [{ blocks: [paraMeasure(15)], width: 220, height: tallHeight }],
+          cells: [
+            { blocks: [paraMeasure(15)], width: 220, height: tallHeight },
+          ],
           height: tallHeight,
         },
       ],
@@ -344,7 +366,9 @@ describe("buildTableRowBreakInfo / snapRowBreak", () => {
 
     const info = buildTableRowBreakInfo(block, measure);
 
-    expect(info.renderedBreakHints[0]).toEqual([{ offset: LINE, lineAdvance: LINE }]);
+    expect(info.renderedBreakHints[0]).toEqual([
+      { offset: LINE, lineAdvance: LINE },
+    ]);
   });
 
   test("shifts rendered break hints with vertical cell alignment", () => {
@@ -356,7 +380,9 @@ describe("buildTableRowBreakInfo / snapRowBreak", () => {
 
     const info = buildTableRowBreakInfo(block, measure);
 
-    expect(info.renderedBreakHints[0]).toEqual([{ offset: 3 * LINE, lineAdvance: LINE }]);
+    expect(info.renderedBreakHints[0]).toEqual([
+      { offset: 3 * LINE, lineAdvance: LINE },
+    ]);
   });
 
   test("retains a one-cell rendered break that is safe for its sibling", () => {
@@ -384,7 +410,9 @@ describe("buildTableRowBreakInfo / snapRowBreak", () => {
 
     const info = buildTableRowBreakInfo(block, measure);
 
-    expect(info.renderedBreakHints[0]).toEqual([{ offset: LINE, lineAdvance: LINE }]);
+    expect(info.renderedBreakHints[0]).toEqual([
+      { offset: LINE, lineAdvance: LINE },
+    ]);
   });
 
   test("rejects a rendered break that intersects a sibling glyph range", () => {
@@ -794,7 +822,9 @@ describe("buildTableRowBreakInfo / snapRowBreak", () => {
       (offset) => offset > nestedHeight && offset < rowHeight,
     );
 
-    expect(firstParagraphOffset).toBeGreaterThanOrEqual(nestedHeight + floatHeight);
+    expect(firstParagraphOffset).toBeGreaterThanOrEqual(
+      nestedHeight + floatHeight,
+    );
   });
 
   test("shifts unsafe ranges for vertically aligned cells", () => {
@@ -927,7 +957,9 @@ describe("buildTableRowBreakInfo / snapRowBreak", () => {
     const info = buildTableRowBreakInfo(block, measure);
 
     expect(info.breakOffsets[0]?.at(-1)).toBe(120);
-    expect(info.breakOffsets[0]?.some((offset) => offset > 0 && offset < 120)).toBe(true);
+    expect(
+      info.breakOffsets[0]?.some((offset) => offset > 0 && offset < 120),
+    ).toBe(true);
   });
 
   test("snaps to the deepest whole line that fits", () => {
@@ -961,7 +993,10 @@ describe("buildTableRowBreakInfo / snapRowBreak", () => {
                 {
                   kind: "paragraph",
                   id: "second",
-                  attrs: { spacing: { before: 16, after: 8 }, styleId: "CellText" },
+                  attrs: {
+                    spacing: { before: 16, after: 8 },
+                    styleId: "CellText",
+                  },
                   runs: [],
                 },
               ],
@@ -1047,8 +1082,16 @@ describe("buildTableRowBreakInfo / snapRowBreak", () => {
       rows: [
         {
           cells: [
-            { blocks: [paraMeasure(6), paraMeasure(1)], width: 110, height: 156 },
-            { blocks: [paraMeasure(6), paraMeasure(1)], width: 110, height: 140 },
+            {
+              blocks: [paraMeasure(6), paraMeasure(1)],
+              width: 110,
+              height: 156,
+            },
+            {
+              blocks: [paraMeasure(6), paraMeasure(1)],
+              width: 110,
+              height: 140,
+            },
           ],
           height: 156,
         },
@@ -1071,8 +1114,15 @@ const OPTIONS: LayoutOptions = {
   pageGap: 20,
 };
 
-function tableFragments(block: TableBlock, measure: TableMeasure): TableFragment[] {
-  const layout = layoutDocument([block as FlowBlock], [measure as Measure], OPTIONS);
+function tableFragments(
+  block: TableBlock,
+  measure: TableMeasure,
+): TableFragment[] {
+  const layout = layoutDocument(
+    [block as FlowBlock],
+    [measure as Measure],
+    OPTIONS,
+  );
   return layout.pages
     .flatMap((page) => page.fragments)
     .filter((f): f is TableFragment => f.kind === "table");
@@ -1220,7 +1270,11 @@ describe("RTL table placement", () => {
     measure.totalHeight *= 2;
 
     expect(
-      tableFragments(block, measure).map(({ fromRow, toRow, x }) => ({ fromRow, toRow, x })),
+      tableFragments(block, measure).map(({ fromRow, toRow, x }) => ({
+        fromRow,
+        toRow,
+        x,
+      })),
     ).toEqual([
       { fromRow: 0, toRow: 1, x: OPTIONS.margins.left + 10 },
       {
@@ -1247,7 +1301,9 @@ describe("floating table placement", () => {
     );
     const fragment = layout.pages
       .flatMap((page) => page.fragments)
-      .find((candidate): candidate is TableFragment => candidate.kind === "table");
+      .find(
+        (candidate): candidate is TableFragment => candidate.kind === "table",
+      );
 
     expect(fragment?.x).toBe(180);
   });
@@ -1276,9 +1332,12 @@ describe("floating table placement", () => {
     measure.totalWidth = 240;
 
     const fragment = tableFragments(block, measure).at(0);
-    const contentWidth = OPTIONS.pageSize.w - OPTIONS.margins.left - OPTIONS.margins.right;
+    const contentWidth =
+      OPTIONS.pageSize.w - OPTIONS.margins.left - OPTIONS.margins.right;
 
-    expect(fragment?.x).toBe(OPTIONS.margins.left + (contentWidth - measure.totalWidth) / 2);
+    expect(fragment?.x).toBe(
+      OPTIONS.margins.left + (contentWidth - measure.totalWidth) / 2,
+    );
   });
 
   test("pins a table wider than the physical page to its left edge", () => {
@@ -1313,14 +1372,17 @@ describe("floating table placement", () => {
     ["center", 40],
     ["right", 80],
     ["outside", 80],
-  ] as const)("resolves page-anchored tblpXSpec=%s against the page frame", (spec, expected) => {
-    const { block, measure } = tallTable(1);
-    block.floating = { horzAnchor: "page", tblpXSpec: spec };
+  ] as const)(
+    "resolves page-anchored tblpXSpec=%s against the page frame",
+    (spec, expected) => {
+      const { block, measure } = tallTable(1);
+      block.floating = { horzAnchor: "page", tblpXSpec: spec };
 
-    const fragment = tableFragments(block, measure).at(0);
+      const fragment = tableFragments(block, measure).at(0);
 
-    expect(fragment?.x).toBe(expected);
-  });
+      expect(fragment?.x).toBe(expected);
+    },
+  );
 });
 
 describe("oversized table row splits across pages (#570)", () => {
@@ -1336,7 +1398,9 @@ describe("oversized table row splits across pages (#570)", () => {
     const layout = layoutDocument([block], [measure], OPTIONS);
     const fragments = layout.pages
       .flatMap((page) => page.fragments)
-      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+      .filter(
+        (fragment): fragment is TableFragment => fragment.kind === "table",
+      );
 
     expect(layout.pages).toHaveLength(2);
     expect(fragments.map(({ fromRow, toRow }) => [fromRow, toRow])).toEqual([
@@ -1365,7 +1429,10 @@ describe("oversized table row splits across pages (#570)", () => {
                 {
                   kind: "paragraph",
                   id: "second",
-                  attrs: { spacing: { before: 16, after: 8 }, styleId: "CellText" },
+                  attrs: {
+                    spacing: { before: 16, after: 8 },
+                    styleId: "CellText",
+                  },
                   runs: [],
                 },
               ],
@@ -1379,7 +1446,13 @@ describe("oversized table row splits across pages (#570)", () => {
       kind: "table",
       rows: [
         {
-          cells: [{ blocks: [paraMeasure(6), paraMeasure(1)], width: 220, height: 164 }],
+          cells: [
+            {
+              blocks: [paraMeasure(6), paraMeasure(1)],
+              width: 220,
+              height: 164,
+            },
+          ],
           height: 164,
         },
       ],
@@ -1478,7 +1551,11 @@ describe("oversized table row splits across pages (#570)", () => {
     };
     const spacerMeasure = paraMeasureWithLineHeight(1, 70);
     const { block, measure } = tallTable(5);
-    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const layout = layoutDocument(
+      [spacer, block],
+      [spacerMeasure, measure],
+      OPTIONS,
+    );
     const frags = layout.pages
       .flatMap((page) => page.fragments)
       .filter((f): f is TableFragment => f.kind === "table");
@@ -1500,7 +1577,10 @@ describe("oversized table row splits across pages (#570)", () => {
     const { block, measure } = tallTable(5);
     markFirstTableParagraphWithRenderedBreak(block);
     const firstRun = block.rows.at(0)?.cells.at(0)?.blocks.at(0);
-    if (firstRun?.kind !== "paragraph" || firstRun.runs.at(0)?.kind !== "text") {
+    if (
+      firstRun?.kind !== "paragraph" ||
+      firstRun.runs.at(0)?.kind !== "text"
+    ) {
       throw new Error("test table must start with a text run");
     }
     firstRun.runs[0]!.isInsertion = true;
@@ -1512,10 +1592,22 @@ describe("oversized table row splits across pages (#570)", () => {
     );
     const frags = layout.pages
       .flatMap((page) => page.fragments)
-      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+      .filter(
+        (fragment): fragment is TableFragment => fragment.kind === "table",
+      );
 
-    expect(frags.at(0)).toMatchObject({ fromRow: 0, toRow: 1, height: 40, bottomClip: 40 });
-    expect(frags.at(1)).toMatchObject({ fromRow: 0, toRow: 1, height: 60, topClip: 40 });
+    expect(frags.at(0)).toMatchObject({
+      fromRow: 0,
+      toRow: 1,
+      height: 40,
+      bottomClip: 40,
+    });
+    expect(frags.at(1)).toMatchObject({
+      fromRow: 0,
+      toRow: 1,
+      height: 60,
+      topClip: 40,
+    });
   });
 
   test("moves a non-fitting row to its cached rendered page boundary", () => {
@@ -1528,10 +1620,16 @@ describe("oversized table row splits across pages (#570)", () => {
     const { block, measure } = tallTable(5);
     markFirstTableParagraphWithRenderedBreak(block);
 
-    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const layout = layoutDocument(
+      [spacer, block],
+      [spacerMeasure, measure],
+      OPTIONS,
+    );
     const frags = layout.pages
       .flatMap((page) => page.fragments)
-      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+      .filter(
+        (fragment): fragment is TableFragment => fragment.kind === "table",
+      );
 
     expect(frags).toHaveLength(1);
     expect(frags[0]).toMatchObject({
@@ -1554,13 +1652,22 @@ describe("oversized table row splits across pages (#570)", () => {
     const { block, measure } = tallTable(3);
     markFirstTableParagraphWithRenderedBreak(block);
 
-    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const layout = layoutDocument(
+      [spacer, block],
+      [spacerMeasure, measure],
+      OPTIONS,
+    );
     const fragment = layout.pages
       .flatMap((page) => page.fragments)
-      .find((candidate): candidate is TableFragment => candidate.kind === "table");
+      .find(
+        (candidate): candidate is TableFragment => candidate.kind === "table",
+      );
 
     expect(layout.pages).toHaveLength(1);
-    expect(fragment).toMatchObject({ y: OPTIONS.margins.top + 20, height: 3 * LINE });
+    expect(fragment).toMatchObject({
+      y: OPTIONS.margins.top + 20,
+      height: 3 * LINE,
+    });
   });
 
   test("snaps a safe internal rendered boundary near the page edge", () => {
@@ -1573,12 +1680,20 @@ describe("oversized table row splits across pages (#570)", () => {
     const { block, measure } = tallTable(5);
     markInternalTableParagraphBreak(block, measure, 2);
 
-    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const layout = layoutDocument(
+      [spacer, block],
+      [spacerMeasure, measure],
+      OPTIONS,
+    );
     const fragments = layout.pages
       .flatMap((page) => page.fragments)
-      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+      .filter(
+        (fragment): fragment is TableFragment => fragment.kind === "table",
+      );
 
-    expect(fragments.map(({ topClip, bottomClip }) => [topClip, bottomClip])).toEqual([
+    expect(
+      fragments.map(({ topClip, bottomClip }) => [topClip, bottomClip]),
+    ).toEqual([
       [undefined, 2 * LINE],
       [2 * LINE, undefined],
     ]);
@@ -1604,13 +1719,18 @@ describe("oversized table row splits across pages (#570)", () => {
     const { block, measure } = tallTable(5);
     markInternalTableParagraphBreak(block, measure, 2);
     const paragraph = block.rows.at(0)?.cells.at(0)?.blocks.at(0);
-    const textRun = paragraph?.kind === "paragraph" ? paragraph.runs.at(0) : undefined;
+    const textRun =
+      paragraph?.kind === "paragraph" ? paragraph.runs.at(0) : undefined;
     if (textRun?.kind !== "text") {
       throw new Error("test table must start with a text run");
     }
     textRun.isInsertion = true;
 
-    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const layout = layoutDocument(
+      [spacer, block],
+      [spacerMeasure, measure],
+      OPTIONS,
+    );
     const firstTableFragment = layout.pages[0]?.fragments.find(
       (fragment): fragment is TableFragment => fragment.kind === "table",
     );
@@ -1628,12 +1748,22 @@ describe("oversized table row splits across pages (#570)", () => {
     const { block, measure } = tallTable(10);
     markInternalTableParagraphBreak(block, measure, 5);
 
-    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const layout = layoutDocument(
+      [spacer, block],
+      [spacerMeasure, measure],
+      OPTIONS,
+    );
     const fragments = layout.pages
       .flatMap((page) => page.fragments)
-      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+      .filter(
+        (fragment): fragment is TableFragment => fragment.kind === "table",
+      );
 
-    expect(fragments.map(({ bottomClip }) => bottomClip)).toEqual([2 * LINE, 8 * LINE, undefined]);
+    expect(fragments.map(({ bottomClip }) => bottomClip)).toEqual([
+      2 * LINE,
+      8 * LINE,
+      undefined,
+    ]);
   });
 
   test("applies ordered internal rendered boundaries without gaps or overlaps", () => {
@@ -1647,10 +1777,16 @@ describe("oversized table row splits across pages (#570)", () => {
     markInternalTableParagraphBreak(block, measure, 4);
     markMeasuredLineWithRenderedBreak(measure, 10);
 
-    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const layout = layoutDocument(
+      [spacer, block],
+      [spacerMeasure, measure],
+      OPTIONS,
+    );
     const fragments = layout.pages
       .flatMap((page) => page.fragments)
-      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+      .filter(
+        (fragment): fragment is TableFragment => fragment.kind === "table",
+      );
     const bands = fragments.map(({ topClip, bottomClip }) => [
       topClip ?? 0,
       bottomClip ?? 16 * LINE,
@@ -1705,7 +1841,9 @@ describe("oversized table row splits across pages (#570)", () => {
         {
           kind: "paragraph",
           id: "p1",
-          runs: [{ kind: "text", text: "continues before the cached boundary" }],
+          runs: [
+            { kind: "text", text: "continues before the cached boundary" },
+          ],
         },
       ],
     });
@@ -1718,7 +1856,11 @@ describe("oversized table row splits across pages (#570)", () => {
     measure.rows[0]!.cells[0]!.width = 110;
     measure.columnWidths = [110, 110];
 
-    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const layout = layoutDocument(
+      [spacer, block],
+      [spacerMeasure, measure],
+      OPTIONS,
+    );
     const firstPageFragment = layout.pages[0]?.fragments.find(
       (fragment): fragment is TableFragment => fragment.kind === "table",
     );
@@ -1762,12 +1904,20 @@ describe("oversized table row splits across pages (#570)", () => {
     measure.rows[0]!.cells[0]!.width = 110;
     measure.columnWidths = [110, 110];
 
-    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const layout = layoutDocument(
+      [spacer, block],
+      [spacerMeasure, measure],
+      OPTIONS,
+    );
     const fragments = layout.pages
       .flatMap((page) => page.fragments)
-      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+      .filter(
+        (fragment): fragment is TableFragment => fragment.kind === "table",
+      );
 
-    expect(layout.pages[0]?.fragments.every((fragment) => fragment.kind !== "table")).toBe(true);
+    expect(
+      layout.pages[0]?.fragments.every((fragment) => fragment.kind !== "table"),
+    ).toBe(true);
     expect(fragments).toHaveLength(1);
     expect(fragments[0]).toMatchObject({
       y: OPTIONS.margins.top,
@@ -1789,14 +1939,25 @@ describe("oversized table row splits across pages (#570)", () => {
     const { block, measure } = tallTable(15);
     markFirstTableParagraphWithRenderedBreak(block);
 
-    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const layout = layoutDocument(
+      [spacer, block],
+      [spacerMeasure, measure],
+      OPTIONS,
+    );
     const frags = layout.pages
       .flatMap((page) => page.fragments)
-      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+      .filter(
+        (fragment): fragment is TableFragment => fragment.kind === "table",
+      );
 
-    expect(layout.pages[0]?.fragments.every((fragment) => fragment.kind !== "table")).toBe(true);
+    expect(
+      layout.pages[0]?.fragments.every((fragment) => fragment.kind !== "table"),
+    ).toBe(true);
     expect(frags.length).toBeGreaterThan(1);
-    expect(frags[0]).toMatchObject({ y: OPTIONS.margins.top, bottomClip: 6 * LINE });
+    expect(frags[0]).toMatchObject({
+      y: OPTIONS.margins.top,
+      bottomClip: 6 * LINE,
+    });
     expect(frags.at(-1)?.bottomClip).toBeUndefined();
   });
 
@@ -1804,12 +1965,17 @@ describe("oversized table row splits across pages (#570)", () => {
     const { block, measure } = tableWithVerticalMergeAndTallBody();
 
     const fragments = tableFragments(block, measure);
-    const mergedFragments = fragments.filter((fragment) => fragment.fromRow < 2);
-    const tallRowFragments = fragments.filter((fragment) => fragment.fromRow === 2);
+    const mergedFragments = fragments.filter(
+      (fragment) => fragment.fromRow < 2,
+    );
+    const tallRowFragments = fragments.filter(
+      (fragment) => fragment.fromRow === 2,
+    );
 
     expect(
       mergedFragments.every(
-        ({ topClip, bottomClip }) => topClip === undefined && bottomClip === undefined,
+        ({ topClip, bottomClip }) =>
+          topClip === undefined && bottomClip === undefined,
       ),
     ).toBe(true);
     expect(tallRowFragments.length).toBeGreaterThan(1);
@@ -1863,11 +2029,19 @@ describe("oversized table row splits across pages (#570)", () => {
     };
     measure.totalHeight = 8 * LINE;
 
-    const layout = layoutDocument([block as FlowBlock], [measure as Measure], OPTIONS);
+    const layout = layoutDocument(
+      [block as FlowBlock],
+      [measure as Measure],
+      OPTIONS,
+    );
     const firstPageTables =
-      layout.pages[0]?.fragments.filter((f): f is TableFragment => f.kind === "table") ?? [];
+      layout.pages[0]?.fragments.filter(
+        (f): f is TableFragment => f.kind === "table",
+      ) ?? [];
     const secondPageTables =
-      layout.pages[1]?.fragments.filter((f): f is TableFragment => f.kind === "table") ?? [];
+      layout.pages[1]?.fragments.filter(
+        (f): f is TableFragment => f.kind === "table",
+      ) ?? [];
 
     expect(firstPageTables).toHaveLength(2);
     expect(firstPageTables[0]).toMatchObject({ fromRow: 0, toRow: 2 });
@@ -1936,7 +2110,11 @@ describe("oversized table row splits across pages (#570)", () => {
     expect(pageTables[0]).toHaveLength(0);
     const frags = pageTables.flat();
     expect(frags.length).toBe(3);
-    expect(frags[0]).toMatchObject({ y: OPTIONS.margins.top, height: 120, bottomClip: 120 });
+    expect(frags[0]).toMatchObject({
+      y: OPTIONS.margins.top,
+      height: 120,
+      bottomClip: 120,
+    });
     expect(frags[0]?.topClip).toBeUndefined();
     for (const f of frags) {
       expect(f.height).toBeLessThanOrEqual(120);
@@ -1953,7 +2131,11 @@ describe("oversized table row splits across pages (#570)", () => {
     const { block, measure } = tableWithHeaderAndTallBody(15);
     block.rows[1]!.cantSplit = true;
 
-    const layout = layoutDocument([block as FlowBlock], [measure as Measure], OPTIONS);
+    const layout = layoutDocument(
+      [block as FlowBlock],
+      [measure as Measure],
+      OPTIONS,
+    );
     const pageTables = layout.pages.map((page) =>
       page.fragments.filter((f): f is TableFragment => f.kind === "table"),
     );
@@ -1961,7 +2143,11 @@ describe("oversized table row splits across pages (#570)", () => {
     // The authored header row stays at the page top with the first piece
     // below it rather than being stranded alone on the page.
     expect(pageTables[0]).toHaveLength(2);
-    expect(pageTables[0]?.[0]).toMatchObject({ fromRow: 0, toRow: 1, y: OPTIONS.margins.top });
+    expect(pageTables[0]?.[0]).toMatchObject({
+      fromRow: 0,
+      toRow: 1,
+      y: OPTIONS.margins.top,
+    });
     expect(pageTables[0]?.[1]).toMatchObject({
       fromRow: 1,
       toRow: 2,
@@ -2032,11 +2218,15 @@ describe("oversized table row splits across pages (#570)", () => {
       columns: { count: 2, gap: 20 },
     });
     const firstPageTableFragments =
-      layout.pages[0]?.fragments.filter((f): f is TableFragment => f.kind === "table") ?? [];
+      layout.pages[0]?.fragments.filter(
+        (f): f is TableFragment => f.kind === "table",
+      ) ?? [];
 
     expect(firstPageTableFragments.length).toBe(2);
     expect(firstPageTableFragments[0]?.x).toBe(OPTIONS.margins.left);
-    expect(firstPageTableFragments[1]?.x).toBeGreaterThan(firstPageTableFragments[0]?.x ?? 0);
+    expect(firstPageTableFragments[1]?.x).toBeGreaterThan(
+      firstPageTableFragments[0]?.x ?? 0,
+    );
   });
 
   test("preserves table alignment on split row fragments", () => {
@@ -2049,7 +2239,11 @@ describe("oversized table row splits across pages (#570)", () => {
     const frags = tableFragments(block, measure);
     const centeredX =
       OPTIONS.margins.left +
-      (OPTIONS.pageSize.w - OPTIONS.margins.left - OPTIONS.margins.right - 100) / 2;
+      (OPTIONS.pageSize.w -
+        OPTIONS.margins.left -
+        OPTIONS.margins.right -
+        100) /
+        2;
 
     expect(frags.length).toBeGreaterThan(1);
     expect(frags.every((f) => f.x === centeredX)).toBe(true);
@@ -2072,7 +2266,9 @@ describe("oversized table row splits across pages (#570)", () => {
       },
     );
     const firstPageTableFragments =
-      layout.pages[0]?.fragments.filter((f): f is TableFragment => f.kind === "table") ?? [];
+      layout.pages[0]?.fragments.filter(
+        (f): f is TableFragment => f.kind === "table",
+      ) ?? [];
 
     expect(firstPageTableFragments.length).toBeGreaterThan(0);
     expect(firstPageTableFragments[0]?.x).toBeGreaterThan(OPTIONS.margins.left);
@@ -2080,12 +2276,18 @@ describe("oversized table row splits across pages (#570)", () => {
 
   test("uses space below the real header before repeating headers", () => {
     const { block, measure } = tableWithHeaderAndTallBody(15);
-    const layout = layoutDocument([block as FlowBlock], [measure as Measure], OPTIONS);
+    const layout = layoutDocument(
+      [block as FlowBlock],
+      [measure as Measure],
+      OPTIONS,
+    );
     const frags = layout.pages
       .flatMap((page) => page.fragments)
       .filter((f): f is TableFragment => f.kind === "table");
     const firstPageFrags =
-      layout.pages[0]?.fragments.filter((f): f is TableFragment => f.kind === "table") ?? [];
+      layout.pages[0]?.fragments.filter(
+        (f): f is TableFragment => f.kind === "table",
+      ) ?? [];
     const bodyFrags = frags.filter((f) => f.fromRow === 1);
 
     expect(bodyFrags.length).toBeGreaterThan(1);
@@ -2094,7 +2296,8 @@ describe("oversized table row splits across pages (#570)", () => {
       [1, 2],
     ]);
 
-    const pageContentHeight = OPTIONS.pageSize.h - OPTIONS.margins.top - OPTIONS.margins.bottom;
+    const pageContentHeight =
+      OPTIONS.pageSize.h - OPTIONS.margins.top - OPTIONS.margins.bottom;
     const firstBodyFrag = bodyFrags[0]!;
     expect(firstBodyFrag.y).toBe(OPTIONS.margins.top + LINE);
     expect(firstBodyFrag.headerRowCount).toBeUndefined();
@@ -2113,7 +2316,8 @@ describe("oversized table row splits across pages (#570)", () => {
     const { block, measure } = tableWithHeaderAndTallBody(6);
     const frags = tableFragments(block, measure);
     const bodyFrags = frags.filter((f) => f.fromRow === 1);
-    const pageContentHeight = OPTIONS.pageSize.h - OPTIONS.margins.top - OPTIONS.margins.bottom;
+    const pageContentHeight =
+      OPTIONS.pageSize.h - OPTIONS.margins.top - OPTIONS.margins.bottom;
 
     expect(bodyFrags.length).toBeGreaterThan(1);
     expect(bodyFrags[0]?.headerRowCount).toBeUndefined();
@@ -2127,10 +2331,18 @@ describe("oversized table row splits across pages (#570)", () => {
 
   test("does not repeat headers after a final split-row slice in the same column", () => {
     const { block, measure } = tableWithHeaderTallBodyAndShortRow(8);
-    const layout = layoutDocument([block as FlowBlock], [measure as Measure], OPTIONS);
+    const layout = layoutDocument(
+      [block as FlowBlock],
+      [measure as Measure],
+      OPTIONS,
+    );
     const secondPageTableFragments =
-      layout.pages[1]?.fragments.filter((f): f is TableFragment => f.kind === "table") ?? [];
-    const nextRowFragment = secondPageTableFragments.find((f) => f.fromRow === 2);
+      layout.pages[1]?.fragments.filter(
+        (f): f is TableFragment => f.kind === "table",
+      ) ?? [];
+    const nextRowFragment = secondPageTableFragments.find(
+      (f) => f.fromRow === 2,
+    );
 
     expect(nextRowFragment).toBeDefined();
     expect(nextRowFragment?.headerRowCount).toBeUndefined();
@@ -2162,20 +2374,32 @@ describe("w:keepNext before a table", () => {
     const { block, measure } = tallTable(4);
     block.rows[0]!.cantSplit = cantSplit;
     return layoutDocument(
-      [paragraphBlock("body"), paragraphBlock("heading", true), block as FlowBlock],
+      [
+        paragraphBlock("body"),
+        paragraphBlock("heading", true),
+        block as FlowBlock,
+      ],
       [paraMeasureWithLineHeight(1, 40), paraMeasure(1), measure as Measure],
       OPTIONS,
     );
   };
   const pageIds = (layout: ReturnType<typeof layoutDocument>): string[][] =>
-    layout.pages.map((page) => page.fragments.map((fragment) => String(fragment.blockId)));
+    layout.pages.map((page) =>
+      page.fragments.map((fragment) => String(fragment.blockId)),
+    );
 
   test("moves the paragraph with an unbreakable first row that starts the next page", () => {
     // 60px remain below the heading; the 80px w:cantSplit row cannot start there.
-    expect(pageIds(layoutHeadingBeforeRow(true))).toEqual([["body"], ["heading", "t"]]);
+    expect(pageIds(layoutHeadingBeforeRow(true))).toEqual([
+      ["body"],
+      ["heading", "t"],
+    ]);
   });
 
   test("keeps the paragraph above a breakable first row whose first line fits", () => {
-    expect(pageIds(layoutHeadingBeforeRow(false))).toEqual([["body", "heading", "t"], ["t"]]);
+    expect(pageIds(layoutHeadingBeforeRow(false))).toEqual([
+      ["body", "heading", "t"],
+      ["t"],
+    ]);
   });
 });

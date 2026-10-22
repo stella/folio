@@ -44,7 +44,11 @@ export function hasVerticalFlip(transform: string | undefined): boolean {
 // Axis-aligned bounding box of a `w × h` rectangle rotated by `deg` degrees.
 // 90°/270° swap the dims exactly (no FP drift); 0°/180° keep them; arbitrary
 // angles use the standard |cos θ|·w + |sin θ|·h formula.
-export function rotatedBoundingBox(w: number, h: number, deg: number): BoundingBox {
+export function rotatedBoundingBox(
+  w: number,
+  h: number,
+  deg: number,
+): BoundingBox {
   if (deg === 0 || deg === 180) {
     return { width: w, height: h };
   }

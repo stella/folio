@@ -8,13 +8,14 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
+
+import type { FolioDocumentOperation } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import type { FolioDocumentOperation } from "../document-operations";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioAIBlock, FolioAIInsertFormattingScope } from "./types";
-import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 type InsertExtras = Partial<
   Pick<
@@ -23,11 +24,16 @@ type InsertExtras = Partial<
   >
 >;
 
-const numberedListDocx = async (): Promise<{ docx: Uint8Array; numId: number }> => {
+const numberedListDocx = async (): Promise<{
+  docx: Uint8Array;
+  numId: number;
+}> => {
   const model = fromMarkdown("1. Alpha\n2. Beta\n\nTail.");
   const beta = model.package.document.content.at(1);
   const numId =
-    beta?.type === "paragraph" ? paragraphNumberingReferenceId(beta.formatting?.numPr) : undefined;
+    beta?.type === "paragraph"
+      ? paragraphNumberingReferenceId(beta.formatting?.numPr)
+      : undefined;
   if (numId === undefined) {
     throw new Error("fixture must number its second paragraph");
   }
@@ -50,8 +56,12 @@ const insertAfter = async ({
   extras,
 }: InsertAfterOptions): Promise<FolioAIBlock[]> => {
   const { docx } = await numberedListDocx();
-  const reviewer = await FolioDocxReviewer.fromBuffer(docx, { author: "Agent" });
-  const anchor = reviewer.getContent().find((block) => block.text === anchorText);
+  const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+    author: "Agent",
+  });
+  const anchor = reviewer
+    .getContent()
+    .find((block) => block.text === anchorText);
   if (!anchor) {
     throw new Error(`fixture must expose the ${anchorText} anchor`);
   }
@@ -59,14 +69,24 @@ const insertAfter = async ({
     {
       version: 1,
       mode: "tracked-changes",
-      operations: [{ id: "insert", type: "insertAfterBlock", blockId: anchor.id, text, ...extras }],
+      operations: [
+        {
+          id: "insert",
+          type: "insertAfterBlock",
+          blockId: anchor.id,
+          text,
+          ...extras,
+        },
+      ],
     },
     { undefinedReferences: "refuse" },
   );
   expect(result.status).toBe("committed");
   expect(result.issues).toEqual([]);
 
-  const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  const reopened = await FolioDocxReviewer.fromBuffer(
+    await reviewer.toBuffer(),
+  );
   return reopened.getContent();
 };
 
@@ -77,13 +97,24 @@ const outlineOf = (blocks: FolioAIBlock[]): InsertedOutline =>
     marker: block.displayLabel ?? null,
   }));
 
-const insertAfterBeta = async (text: string, extras: InsertExtras): Promise<InsertedOutline> =>
+const insertAfterBeta = async (
+  text: string,
+  extras: InsertExtras,
+): Promise<InsertedOutline> =>
   outlineOf(await insertAfter({ anchorText: "Beta", text, extras }));
 
 const THREE_ITEMS = "Gamma\nDelta\nEpsilon";
 
-const listItem = (text: string, marker: string) => ({ text, kind: "listItem", marker });
-const bodyParagraph = (text: string) => ({ text, kind: "paragraph", marker: null });
+const listItem = (text: string, marker: string) => ({
+  text,
+  kind: "listItem",
+  marker,
+});
+const bodyParagraph = (text: string) => ({
+  text,
+  kind: "paragraph",
+  marker: null,
+});
 
 const LIST_HEAD = [listItem("Alpha", "1."), listItem("Beta", "2.")];
 const TAIL = [bodyParagraph("Tail.")];
@@ -97,18 +128,30 @@ describe("insertAfterBlock formattingScope", () => {
     {
       name: "copied numbering",
       extras: () => ({}),
-      expected: [listItem("Gamma", "3."), listItem("Delta", "4."), listItem("Epsilon", "5.")],
+      expected: [
+        listItem("Gamma", "3."),
+        listItem("Delta", "4."),
+        listItem("Epsilon", "5."),
+      ],
     },
     {
       name: "explicit level-only numbering",
       extras: () => ({ numbering: { kind: "levelOnly", ilvl: 0 } }),
       // This fixture has direct numbering and no style numbering to inherit.
-      expected: [bodyParagraph("Gamma"), bodyParagraph("Delta"), bodyParagraph("Epsilon")],
+      expected: [
+        bodyParagraph("Gamma"),
+        bodyParagraph("Delta"),
+        bodyParagraph("Epsilon"),
+      ],
     },
     {
       name: "explicit numbering reference",
       extras: (numId) => ({ numbering: { kind: "reference", numId, ilvl: 0 } }),
-      expected: [listItem("Gamma", "3."), listItem("Delta", "4."), listItem("Epsilon", "5.")],
+      expected: [
+        listItem("Gamma", "3."),
+        listItem("Delta", "4."),
+        listItem("Epsilon", "5."),
+      ],
     },
   ];
 
@@ -146,7 +189,10 @@ describe("insertAfterBlock formattingScope", () => {
   }
 
   test("a single paragraph continues the list in either scope", async () => {
-    for (const formattingScope of ["firstParagraph", "allParagraphs"] as const) {
+    for (const formattingScope of [
+      "firstParagraph",
+      "allParagraphs",
+    ] as const) {
       const outline = await insertAfterBeta("Gamma", { formattingScope });
       expect(outline).toEqual([...LIST_HEAD, listItem("Gamma", "3."), ...TAIL]);
     }

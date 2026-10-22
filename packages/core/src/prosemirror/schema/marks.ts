@@ -7,7 +7,6 @@
  */
 
 import type { ShadingProperties } from "../../types/colors";
-import type { TrackedCommentBoundary } from "../commentBoundaryOwnership";
 import type {
   EmphasisMark,
   Hyperlink,
@@ -22,6 +21,7 @@ import type {
   ThemeColor,
   UnderlineStyle,
 } from "../../types/document";
+import type { TrackedCommentBoundary } from "../commentBoundaryOwnership";
 
 /**
  * Text color mark attributes
@@ -134,7 +134,8 @@ export type CommentAttrs = {
  *   DOCX can only ever produce `"user"` marks.
  */
 export const TRACKED_CHANGE_PROVENANCE_VALUES = ["user", "suggested"] as const;
-export type TrackedChangeProvenance = (typeof TRACKED_CHANGE_PROVENANCE_VALUES)[number];
+export type TrackedChangeProvenance =
+  (typeof TRACKED_CHANGE_PROVENANCE_VALUES)[number];
 
 export type TrackedRevisionAncestor = {
   type: "insertion" | "deletion" | "moveFrom" | "moveTo";
@@ -216,7 +217,9 @@ export type RunIdentityMarkAttrs = {
  * a kind added to the model reaches the editor as a compile error at every
  * site that decides per kind.
  */
-type WrapperLayer<Wrapper> = Wrapper extends unknown ? Omit<Wrapper, "type" | "content"> : never;
+type WrapperLayer<Wrapper> = Wrapper extends unknown
+  ? Omit<Wrapper, "type" | "content">
+  : never;
 
 export type InlineWrapperLayer = WrapperLayer<InlineWrapper>;
 
@@ -245,9 +248,14 @@ export type InlineWrapperAttrs = {
   _docxInsideHyperlinkStackStart?: number;
 };
 
-export const COMPLEX_SCRIPT_RUN_PROPERTY_KEYS = ["boldCs", "italicCs", "fontSizeCs"] as const;
+export const COMPLEX_SCRIPT_RUN_PROPERTY_KEYS = [
+  "boldCs",
+  "italicCs",
+  "fontSizeCs",
+] as const;
 
-export type ComplexScriptRunPropertyKey = (typeof COMPLEX_SCRIPT_RUN_PROPERTY_KEYS)[number];
+export type ComplexScriptRunPropertyKey =
+  (typeof COMPLEX_SCRIPT_RUN_PROPERTY_KEYS)[number];
 
 export const RUN_FORMATTING_BOOLEAN_PROPERTIES = [
   "bold",
@@ -286,13 +294,20 @@ export const RUN_FORMATTING_VALUE_PROPERTIES = [
   "emphasisMark",
 ] as const;
 
-export type RunFormattingBooleanProperty = (typeof RUN_FORMATTING_BOOLEAN_PROPERTIES)[number];
-export type RunFormattingValueProperty = (typeof RUN_FORMATTING_VALUE_PROPERTIES)[number];
+export type RunFormattingBooleanProperty =
+  (typeof RUN_FORMATTING_BOOLEAN_PROPERTIES)[number];
+export type RunFormattingValueProperty =
+  (typeof RUN_FORMATTING_VALUE_PROPERTIES)[number];
 
 type RunFormattingPropertySpec =
-  Extract<RunFormattingBooleanProperty, RunFormattingValueProperty> extends never
+  Extract<
+    RunFormattingBooleanProperty,
+    RunFormattingValueProperty
+  > extends never
     ? {
-        [Property in keyof TextFormatting]: Property extends RunFormattingBooleanProperty
+        [
+          Property in keyof TextFormatting
+        ]: Property extends RunFormattingBooleanProperty
           ? "boolean"
           : Property extends RunFormattingValueProperty
             ? "value"
@@ -337,7 +352,9 @@ export const RUN_FORMATTING_PROPERTY_SPECS = {
   styleId: "style",
 } as const satisfies RunFormattingPropertySpec;
 
-export type AuthoredRunFormattingValues = Partial<Pick<TextFormatting, RunFormattingValueProperty>>;
+export type AuthoredRunFormattingValues = Partial<
+  Pick<TextFormatting, RunFormattingValueProperty>
+>;
 
 export type RunFormattingOverrideAttrs = {
   allCaps?: boolean;

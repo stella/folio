@@ -1,12 +1,11 @@
-import { decodeText } from "@stll/utf8-boundaries";
 import { panic } from "better-result";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import JSZip from "jszip";
-import { validatePackageGraph } from "./packageGraph";
-import { validateSchemaAttributes } from "./schemaAttributes";
 
+import { decodeText } from "@stll/utf8-boundaries";
+
+import { isNoteReferenceId } from "../model/content";
 import {
-  isOoxmlSymbolCharacter,
   type BlockContent,
   type Comment,
   type Document,
@@ -14,24 +13,26 @@ import {
   type HeaderFooterType,
   type Hyperlink,
   type Image,
+  isOoxmlSymbolCharacter,
   type Paragraph,
   type ParagraphContent,
   type Run,
   type RunContent,
   type SectionProperties,
-  type SimpleField,
   type Shape,
+  type SimpleField,
   type Table,
   type TableCell,
   type TableRow,
   type TrackedRunChange,
 } from "../model/document";
-import { isNoteReferenceId } from "../model/content";
 import {
   paragraphNumberingLevel,
   paragraphNumberingReferenceId,
 } from "../model/paragraphNumbering";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+import { validatePackageGraph } from "./packageGraph";
+import { validateSchemaAttributes } from "./schemaAttributes";
 
 declare module "jszip" {
   // oxlint-disable-next-line typescript/consistent-type-definitions -- declaration merging requires an interface
@@ -55,8 +56,7 @@ export type DocxPackageIssueCode =
   (typeof DOCX_PACKAGE_ISSUE_CODES)[keyof typeof DOCX_PACKAGE_ISSUE_CODES];
 
 export type ValidateDocxPackageResult =
-  | { valid: true }
-  | { valid: false; code: DocxPackageIssueCode; error: string };
+  { valid: true } | { valid: false; code: DocxPackageIssueCode; error: string };
 
 export type ValidateDocumentModelIssue = {
   path: string;
@@ -108,16 +108,24 @@ const packageXmlParser = new XMLParser({
   ignoreDeclaration: true,
 });
 
-type ZipEntryWithMetadata = { _data?: { uncompressedSize?: number; compressedSize?: number } };
+type ZipEntryWithMetadata = {
+  _data?: { uncompressedSize?: number; compressedSize?: number };
+};
 
-const getDeclaredUncompressedSize = (file: JSZip.JSZipObject): number | null => {
+const getDeclaredUncompressedSize = (
+  file: JSZip.JSZipObject,
+): number | null => {
   const metadata = (file as JSZip.JSZipObject & ZipEntryWithMetadata)._data;
-  return typeof metadata?.uncompressedSize === "number" ? metadata.uncompressedSize : null;
+  return typeof metadata?.uncompressedSize === "number"
+    ? metadata.uncompressedSize
+    : null;
 };
 
 const getCompressedSize = (file: JSZip.JSZipObject): number | null => {
   const metadata = (file as JSZip.JSZipObject & ZipEntryWithMetadata)._data;
-  return typeof metadata?.compressedSize === "number" ? metadata.compressedSize : null;
+  return typeof metadata?.compressedSize === "number"
+    ? metadata.compressedSize
+    : null;
 };
 
 const RATIO_BOUNDED_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -133,9 +141,14 @@ const RATIO_BOUNDED_EXTENSIONS: ReadonlySet<string> = new Set([
 ]);
 
 const isRatioBoundedPart = (path: string): boolean =>
-  RATIO_BOUNDED_EXTENSIONS.has(path.slice(path.lastIndexOf(".") + 1).toLowerCase());
+  RATIO_BOUNDED_EXTENSIONS.has(
+    path.slice(path.lastIndexOf(".") + 1).toLowerCase(),
+  );
 
-const exceedsCompressionRatio = (inflatedBytes: number, compressedBytes: number | null): boolean =>
+const exceedsCompressionRatio = (
+  inflatedBytes: number,
+  compressedBytes: number | null,
+): boolean =>
   compressedBytes !== null &&
   inflatedBytes > VALIDATE_DOCX_COMPRESSION_RATIO_GRACE_BYTES &&
   inflatedBytes > compressedBytes * VALIDATE_DOCX_MAX_COMPRESSION_RATIO;
@@ -145,11 +158,18 @@ const exceedsCompressionRatio = (inflatedBytes: number, compressedBytes: number 
  * builds an object per record: each record starts with the `PK\x01\x02`
  * signature, so JSZip cannot find more records than there are signatures.
  */
-const countCentralDirectoryRecords = (bytes: Uint8Array, stopAfter: number): number => {
+const countCentralDirectoryRecords = (
+  bytes: Uint8Array,
+  stopAfter: number,
+): number => {
   let count = 0;
   let offset = bytes.indexOf(0x50);
   while (offset !== -1 && offset + 3 < bytes.length) {
-    if (bytes[offset + 1] === 0x4b && bytes[offset + 2] === 0x01 && bytes[offset + 3] === 0x02) {
+    if (
+      bytes[offset + 1] === 0x4b &&
+      bytes[offset + 2] === 0x01 &&
+      bytes[offset + 3] === 0x02
+    ) {
       count += 1;
       if (count > stopAfter) {
         return count;
@@ -160,9 +180,13 @@ const countCentralDirectoryRecords = (bytes: Uint8Array, stopAfter: number): num
   return count;
 };
 
-type BoundedEntryRead = { ok: true; bytes: Uint8Array } | { ok: false; error: string };
+type BoundedEntryRead =
+  { ok: true; bytes: Uint8Array } | { ok: false; error: string };
 
-const concatChunks = (chunks: readonly Uint8Array[], totalBytes: number): Uint8Array => {
+const concatChunks = (
+  chunks: readonly Uint8Array[],
+  totalBytes: number,
+): Uint8Array => {
   const merged = new Uint8Array(totalBytes);
   let offset = 0;
   for (const chunk of chunks) {
@@ -201,7 +225,9 @@ const readEntryWithinBounds = async (
         }
         entryBytes += chunk.length;
         if (declaredBytes !== null && entryBytes > declaredBytes) {
-          stop(`Generated DOCX entry "${entry.name}" inflates past its declared size.`);
+          stop(
+            `Generated DOCX entry "${entry.name}" inflates past its declared size.`,
+          );
           return;
         }
         if (exceedsCompressionRatio(entryBytes, compressedBytes)) {
@@ -211,7 +237,9 @@ const readEntryWithinBounds = async (
           return;
         }
         if (entryBytes > maxBytes) {
-          stop(`Generated DOCX ${entry.name} exceeds the ${maxBytes}-byte limit.`);
+          stop(
+            `Generated DOCX ${entry.name} exceeds the ${maxBytes}-byte limit.`,
+          );
           return;
         }
         chunks.push(chunk);
@@ -241,7 +269,10 @@ const readEntryWithinBounds = async (
  * as unbounded — the per-entry cap below still bounds what an inflate call
  * can actually produce once it runs.
  */
-const checkDocxArchiveBounds = (zip: JSZip, archiveBytes: number): string | null => {
+const checkDocxArchiveBounds = (
+  zip: JSZip,
+  archiveBytes: number,
+): string | null => {
   const entries = Object.values(zip.files);
   if (entries.length > VALIDATE_DOCX_MAX_ENTRIES) {
     return `Generated DOCX declares ${entries.length} archive entries, over the ${VALIDATE_DOCX_MAX_ENTRIES}-entry limit.`;
@@ -315,7 +346,9 @@ const validateDocumentXml = (xml: string): string | null => {
   if (
     rootName === null ||
     localName(rootName) !== "document" ||
-    !WORDPROCESSINGML_NAMESPACES.has(namespaceFor(rootName, rootAttributes) ?? "")
+    !WORDPROCESSINGML_NAMESPACES.has(
+      namespaceFor(rootName, rootAttributes) ?? "",
+    )
   ) {
     return "Generated DOCX has no WordprocessingML document root.";
   }
@@ -337,14 +370,17 @@ const validateDocumentXml = (xml: string): string | null => {
       )
     );
   });
-  return hasBody ? null : "Generated DOCX document root has no WordprocessingML body.";
+  return hasBody
+    ? null
+    : "Generated DOCX document root has no WordprocessingML body.";
 };
 
 export const validateDocxPackage = async (
   buffer: ArrayBuffer | Uint8Array,
 ): Promise<ValidateDocxPackageResult> => {
   try {
-    const archiveBytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    const archiveBytes =
+      buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
     if (
       countCentralDirectoryRecords(archiveBytes, VALIDATE_DOCX_MAX_ENTRIES) >
       VALIDATE_DOCX_MAX_ENTRIES
@@ -367,7 +403,11 @@ export const validateDocxPackage = async (
       };
     }
 
-    for (const requiredPath of ["[Content_Types].xml", "_rels/.rels", "word/document.xml"]) {
+    for (const requiredPath of [
+      "[Content_Types].xml",
+      "_rels/.rels",
+      "word/document.xml",
+    ]) {
       if (!zip.file(requiredPath)) {
         return {
           valid: false,
@@ -378,7 +418,9 @@ export const validateDocxPackage = async (
     }
 
     const documentPart = zip.file("word/document.xml");
-    const declaredDocumentBytes = documentPart ? getDeclaredUncompressedSize(documentPart) : null;
+    const declaredDocumentBytes = documentPart
+      ? getDeclaredUncompressedSize(documentPart)
+      : null;
     if (
       declaredDocumentBytes !== null &&
       declaredDocumentBytes > VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES
@@ -392,7 +434,10 @@ export const validateDocxPackage = async (
       };
     }
     const documentRead = documentPart
-      ? await readEntryWithinBounds(documentPart, VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES)
+      ? await readEntryWithinBounds(
+          documentPart,
+          VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES,
+        )
       : undefined;
     if (documentRead !== undefined && !documentRead.ok) {
       return {
@@ -416,7 +461,10 @@ export const validateDocxPackage = async (
 
     const documentRelsPart = zip.file("word/_rels/document.xml.rels");
     const documentRelsRead = documentRelsPart
-      ? await readEntryWithinBounds(documentRelsPart, VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES)
+      ? await readEntryWithinBounds(
+          documentRelsPart,
+          VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES,
+        )
       : undefined;
     if (documentRelsRead !== undefined && !documentRelsRead.ok) {
       return {
@@ -425,26 +473,37 @@ export const validateDocxPackage = async (
         error: documentRelsRead.error,
       };
     }
-    const documentRelsXml = documentRelsRead ? decodeText(documentRelsRead.bytes) : undefined;
-    if (documentRelsXml?.includes("/relationships/numbering") && !zip.file("word/numbering.xml")) {
+    const documentRelsXml = documentRelsRead
+      ? decodeText(documentRelsRead.bytes)
+      : undefined;
+    if (
+      documentRelsXml?.includes("/relationships/numbering") &&
+      !zip.file("word/numbering.xml")
+    ) {
       return {
         valid: false,
         code: DOCX_PACKAGE_ISSUE_CODES.MissingNumberingPart,
-        error: "Generated DOCX references numbering.xml but does not include it.",
+        error:
+          "Generated DOCX references numbering.xml but does not include it.",
       };
     }
 
     const parts = new Map<string, string>();
     if (documentXml) parts.set("word/document.xml", documentXml);
-    if (documentRelsXml) parts.set("word/_rels/document.xml.rels", documentRelsXml);
+    if (documentRelsXml)
+      parts.set("word/_rels/document.xml.rels", documentRelsXml);
     const paths = new Set<string>();
     for (const entry of Object.values(zip.files)) {
       if (entry.dir) continue;
       paths.add(entry.name);
-      if (!entry.name.endsWith(".xml") && !entry.name.endsWith(".rels")) continue;
+      if (!entry.name.endsWith(".xml") && !entry.name.endsWith(".rels"))
+        continue;
       let xml = parts.get(entry.name);
       if (xml === undefined) {
-        const read = await readEntryWithinBounds(entry, VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES);
+        const read = await readEntryWithinBounds(
+          entry,
+          VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES,
+        );
         if (!read.ok)
           return {
             valid: false,
@@ -503,9 +562,15 @@ type ValidationContext = {
   footers: Map<string, HeaderFooter> | undefined;
 };
 
-export const validateDocumentModel = (document: Document): ValidateDocumentModelResult => {
+export const validateDocumentModel = (
+  document: Document,
+): ValidateDocumentModelResult => {
   const ctx = createValidationContext(document);
-  validateBlocks(document.package.document.content, "package.document.content", ctx);
+  validateBlocks(
+    document.package.document.content,
+    "package.document.content",
+    ctx,
+  );
 
   validateHeaderFooterMap(document.package.headers, "package.headers", ctx);
   validateHeaderFooterMap(document.package.footers, "package.footers", ctx);
@@ -552,14 +617,18 @@ export const assertValidDocumentModel = (document: Document): void => {
   }
 
   const details = result.issues
-    .flatMap((issue) => (issue.severity === "error" ? [`${issue.path}: ${issue.message}`] : []))
+    .flatMap((issue) =>
+      issue.severity === "error" ? [`${issue.path}: ${issue.message}`] : [],
+    )
     .join("\n");
   panic(`Invalid DOCX document model:\n${details}`);
 };
 
 const createValidationContext = (document: Document): ValidationContext => ({
   issues: [],
-  commentIds: new Set((document.package.document.comments ?? []).map((comment) => comment.id)),
+  commentIds: new Set(
+    (document.package.document.comments ?? []).map((comment) => comment.id),
+  ),
   referencedCommentIds: new Map(),
   commentRangeStarts: new Map(),
   commentRangeEnds: new Map(),
@@ -574,20 +643,33 @@ const createValidationContext = (document: Document): ValidationContext => ({
     endnote: new Map(),
   },
   paraIds: new Map(),
-  numberingNums: new Set((document.package.numbering?.nums ?? []).map((num) => num.numId)),
+  numberingNums: new Set(
+    (document.package.numbering?.nums ?? []).map((num) => num.numId),
+  ),
   headers: document.package.headers,
   footers: document.package.footers,
 });
 
-const addIssue = (ctx: ValidationContext, issue: ValidateDocumentModelIssue): void => {
+const addIssue = (
+  ctx: ValidationContext,
+  issue: ValidateDocumentModelIssue,
+): void => {
   ctx.issues.push(issue);
 };
 
-const addError = (ctx: ValidationContext, path: string, message: string): void => {
+const addError = (
+  ctx: ValidationContext,
+  path: string,
+  message: string,
+): void => {
   addIssue(ctx, { path, message, severity: "error" });
 };
 
-const addWarning = (ctx: ValidationContext, path: string, message: string): void => {
+const addWarning = (
+  ctx: ValidationContext,
+  path: string,
+  message: string,
+): void => {
   addIssue(ctx, { path, message, severity: "warning" });
 };
 
@@ -595,7 +677,11 @@ const increment = (map: CounterMap, id: number): void => {
   map.set(id, (map.get(id) ?? 0) + 1);
 };
 
-const recordPath = (map: Map<number, string[]>, id: number, path: string): void => {
+const recordPath = (
+  map: Map<number, string[]>,
+  id: number,
+  path: string,
+): void => {
   const existing = map.get(id);
   if (existing) {
     existing.push(path);
@@ -614,7 +700,11 @@ const validateBlocks = (
   }
 };
 
-const validateBlock = (block: BlockContent, path: string, ctx: ValidationContext): void => {
+const validateBlock = (
+  block: BlockContent,
+  path: string,
+  ctx: ValidationContext,
+): void => {
   if (block.type === "paragraph") {
     validateParagraph(block, path, ctx);
     return;
@@ -646,11 +736,19 @@ const validateBlock = (block: BlockContent, path: string, ctx: ValidationContext
   validateBlocks(block.content, `${path}.content`, ctx);
 };
 
-const validateParagraph = (paragraph: Paragraph, path: string, ctx: ValidationContext): void => {
+const validateParagraph = (
+  paragraph: Paragraph,
+  path: string,
+  ctx: ValidationContext,
+): void => {
   if (paragraph.paraId) {
     const existingPath = ctx.paraIds.get(paragraph.paraId);
     if (existingPath) {
-      addWarning(ctx, `${path}.paraId`, `Duplicate paragraph id also appears at ${existingPath}.`);
+      addWarning(
+        ctx,
+        `${path}.paraId`,
+        `Duplicate paragraph id also appears at ${existingPath}.`,
+      );
     } else {
       ctx.paraIds.set(paragraph.paraId, path);
     }
@@ -658,7 +756,11 @@ const validateParagraph = (paragraph: Paragraph, path: string, ctx: ValidationCo
 
   validateNumbering(paragraph, path, ctx);
   if (paragraph.sectionProperties) {
-    validateSectionProperties(paragraph.sectionProperties, `${path}.sectionProperties`, ctx);
+    validateSectionProperties(
+      paragraph.sectionProperties,
+      `${path}.sectionProperties`,
+      ctx,
+    );
   }
 
   for (const [index, content] of paragraph.content.entries()) {
@@ -776,7 +878,11 @@ const validateParagraphContent = (
   // empty capture is a node that writes nothing back.
   if (content.type === "preservedInline") {
     if (content.xml.trim() === "") {
-      addError(ctx, `${path}.xml`, "Preserved inline markup must not be empty.");
+      addError(
+        ctx,
+        `${path}.xml`,
+        "Preserved inline markup must not be empty.",
+      );
     }
     return;
   }
@@ -812,7 +918,11 @@ const validateFieldChild = (
   validateHyperlink(child, path, ctx);
 };
 
-const validateRuns = (runs: readonly Run[], path: string, ctx: ValidationContext): void => {
+const validateRuns = (
+  runs: readonly Run[],
+  path: string,
+  ctx: ValidationContext,
+): void => {
   for (const [index, run] of runs.entries()) {
     validateRun(run, `${path}[${index}]`, ctx);
   }
@@ -824,7 +934,11 @@ const validateRun = (run: Run, path: string, ctx: ValidationContext): void => {
   }
 };
 
-const validateRunContent = (content: RunContent, path: string, ctx: ValidationContext): void => {
+const validateRunContent = (
+  content: RunContent,
+  path: string,
+  ctx: ValidationContext,
+): void => {
   if (content.type === "text") {
     // A model built in memory, rather than parsed out of a package, is the one
     // way a character XML 1.0 cannot represent reaches a writer. The serializer
@@ -865,14 +979,26 @@ const validateRunContent = (content: RunContent, path: string, ctx: ValidationCo
     // an empty string here is the parser's record of an absent attribute, and
     // the serializer writes absence back as absence.
     if (content.char !== "" && !isOoxmlSymbolCharacter(content.char)) {
-      addError(ctx, `${path}.char`, "Symbol character must be exactly four hexadecimal digits.");
+      addError(
+        ctx,
+        `${path}.char`,
+        "Symbol character must be exactly four hexadecimal digits.",
+      );
     }
   }
 };
 
-const validateHyperlink = (hyperlink: Hyperlink, path: string, ctx: ValidationContext): void => {
+const validateHyperlink = (
+  hyperlink: Hyperlink,
+  path: string,
+  ctx: ValidationContext,
+): void => {
   if (!hyperlink.rId && !hyperlink.href && !hyperlink.anchor) {
-    addWarning(ctx, path, "Hyperlink has no relationship, href, or internal anchor.");
+    addWarning(
+      ctx,
+      path,
+      "Hyperlink has no relationship, href, or internal anchor.",
+    );
   }
 
   for (const [index, child] of hyperlink.children.entries()) {
@@ -932,7 +1058,11 @@ const validateImage = (
   ctx: ValidationContext,
   options: { hasPreservedRawDrawing?: boolean } = {},
 ): void => {
-  if (!image.rId && !image.src?.startsWith("data:") && !options.hasPreservedRawDrawing) {
+  if (
+    !image.rId &&
+    !image.src?.startsWith("data:") &&
+    !options.hasPreservedRawDrawing
+  ) {
     addError(ctx, `${path}.rId`, "Image must have a relationship id.");
   }
 
@@ -940,7 +1070,11 @@ const validateImage = (
   validateNonNegativeSize(image.size.height, `${path}.size.height`, ctx);
 };
 
-const validateShape = (shape: Shape, path: string, ctx: ValidationContext): void => {
+const validateShape = (
+  shape: Shape,
+  path: string,
+  ctx: ValidationContext,
+): void => {
   validateNonNegativeSize(shape.size.width, `${path}.size.width`, ctx);
   validateNonNegativeSize(shape.size.height, `${path}.size.height`, ctx);
 
@@ -949,7 +1083,11 @@ const validateShape = (shape: Shape, path: string, ctx: ValidationContext): void
   }
 };
 
-const validateNonNegativeSize = (value: number, path: string, ctx: ValidationContext): void => {
+const validateNonNegativeSize = (
+  value: number,
+  path: string,
+  ctx: ValidationContext,
+): void => {
   if (value < 0) {
     addError(ctx, path, "Size must be zero or greater.");
     return;
@@ -960,7 +1098,11 @@ const validateNonNegativeSize = (value: number, path: string, ctx: ValidationCon
   }
 };
 
-const validateTable = (table: Table, path: string, ctx: ValidationContext): void => {
+const validateTable = (
+  table: Table,
+  path: string,
+  ctx: ValidationContext,
+): void => {
   if (table.rows.length === 0) {
     addError(ctx, `${path}.rows`, "Table must contain at least one row.");
     return;
@@ -971,7 +1113,11 @@ const validateTable = (table: Table, path: string, ctx: ValidationContext): void
   }
 };
 
-const validateTableRow = (row: TableRow, path: string, ctx: ValidationContext): void => {
+const validateTableRow = (
+  row: TableRow,
+  path: string,
+  ctx: ValidationContext,
+): void => {
   if (row.cells.length === 0) {
     addError(ctx, `${path}.cells`, "Table row must contain at least one cell.");
     return;
@@ -982,7 +1128,11 @@ const validateTableRow = (row: TableRow, path: string, ctx: ValidationContext): 
   }
 };
 
-const validateTableCell = (cell: TableCell, path: string, ctx: ValidationContext): void => {
+const validateTableCell = (
+  cell: TableCell,
+  path: string,
+  ctx: ValidationContext,
+): void => {
   if (cell.content.length === 0) {
     addError(ctx, `${path}.content`, "Table cell must contain block content.");
     return;
@@ -1001,7 +1151,11 @@ const validateParagraphs = (
   }
 };
 
-const validateNumbering = (paragraph: Paragraph, path: string, ctx: ValidationContext): void => {
+const validateNumbering = (
+  paragraph: Paragraph,
+  path: string,
+  ctx: ValidationContext,
+): void => {
   const numPr = paragraph.formatting?.numPr;
   if (!numPr) {
     return;
@@ -1010,7 +1164,11 @@ const validateNumbering = (paragraph: Paragraph, path: string, ctx: ValidationCo
   const ilvl = paragraphNumberingLevel(numPr);
   if (ilvl !== undefined) {
     if (ilvl < 0) {
-      addError(ctx, `${path}.formatting.numPr.ilvl`, "List level must be zero or greater.");
+      addError(
+        ctx,
+        `${path}.formatting.numPr.ilvl`,
+        "List level must be zero or greater.",
+      );
     } else if (ilvl > 8) {
       addWarning(
         ctx,
@@ -1068,7 +1226,11 @@ const validateHeaderFooterReferences = (
 ): void => {
   for (const [index, ref] of refs.entries()) {
     if (!map?.has(ref.rId)) {
-      addError(ctx, `${path}[${index}].rId`, `Section references missing ${label} ${ref.rId}.`);
+      addError(
+        ctx,
+        `${path}[${index}].rId`,
+        `Section references missing ${label} ${ref.rId}.`,
+      );
     }
   }
 };
@@ -1087,7 +1249,10 @@ const validateHeaderFooterMap = (
   }
 };
 
-const validateComments = (comments: readonly Comment[], ctx: ValidationContext): void => {
+const validateComments = (
+  comments: readonly Comment[],
+  ctx: ValidationContext,
+): void => {
   const seen = new Set<number>();
   for (const [index, comment] of comments.entries()) {
     const path = `package.document.comments[${index}]`;
@@ -1097,11 +1262,22 @@ const validateComments = (comments: readonly Comment[], ctx: ValidationContext):
     seen.add(comment.id);
 
     if (comment.author !== "" && comment.author.trim() === "") {
-      addError(ctx, `${path}.author`, "Comment author cannot be whitespace-only.");
+      addError(
+        ctx,
+        `${path}.author`,
+        "Comment author cannot be whitespace-only.",
+      );
     }
 
-    if (comment.parentId !== undefined && !ctx.commentIds.has(comment.parentId)) {
-      addError(ctx, `${path}.parentId`, `Parent comment ${comment.parentId} is missing.`);
+    if (
+      comment.parentId !== undefined &&
+      !ctx.commentIds.has(comment.parentId)
+    ) {
+      addError(
+        ctx,
+        `${path}.parentId`,
+        `Parent comment ${comment.parentId} is missing.`,
+      );
     }
 
     validateParagraphs(comment.content, `${path}.content`, ctx);
@@ -1153,7 +1329,11 @@ const validateNoteCollection = ({
   const ids = new Set<number>();
   for (const [index, note] of notes.entries()) {
     if (ids.has(note.id)) {
-      addError(ctx, `${path}[${index}].id`, `Duplicate ${label} id ${note.id}.`);
+      addError(
+        ctx,
+        `${path}[${index}].id`,
+        `Duplicate ${label} id ${note.id}.`,
+      );
     }
     ids.add(note.id);
     validateBlocks(note.content, `${path}[${index}].content`, ctx);
@@ -1209,7 +1389,13 @@ type ValidateCounterPairsOptions = {
 const validateCounterPairs = (
   starts: CounterMap,
   ends: CounterMap,
-  { label, startName, endName, ctx, severity = "error" }: ValidateCounterPairsOptions,
+  {
+    label,
+    startName,
+    endName,
+    ctx,
+    severity = "error",
+  }: ValidateCounterPairsOptions,
 ): void => {
   const ids = new Set([...starts.keys(), ...ends.keys()]);
   for (const id of ids) {
