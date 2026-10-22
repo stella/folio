@@ -36,6 +36,9 @@ export const paragraphMarkOutcome = ({
   containerStillEndsWithParagraph,
   followingTableCanReceiveRunIn,
   tableRemovalIsTrackable = true,
+  removedSectionProperties = false,
+  precedingSectionOwner = "unavailable",
+  followingHasSectionProperties = false,
 }: {
   follows: "paragraph" | "table" | "nothing";
   holdsContent: boolean;
@@ -48,25 +51,48 @@ export const paragraphMarkOutcome = ({
   containerStillEndsWithParagraph: boolean;
   followingTableCanReceiveRunIn: boolean;
   tableRemovalIsTrackable?: boolean;
+  removedSectionProperties?: boolean;
+  precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
+  followingHasSectionProperties?: boolean;
 }):
-  | { kind: "join" }
-  | { kind: "remove" }
-  | { kind: "run-in" }
-  | { kind: "keep" }
-  | { kind: "refuse"; reason: "untrackable" } => {
+  | ({ kind: "join" } & SectionTransfer)
+  | ({ kind: "remove" } & SectionTransfer)
+  | ({ kind: "run-in" } & SectionTransfer)
+  | ({ kind: "keep" } & SectionTransfer)
+  | ({ kind: "refuse"; reason: "untrackable" } & SectionTransfer) => {
+  let sectionDestination: SectionTransfer["sectionDestination"] = "none";
+  if (removedSectionProperties && precedingSectionOwner === "available") {
+    sectionDestination = "preceding";
+  } else if (
+    removedSectionProperties &&
+    precedingSectionOwner !== "same" &&
+    !followingHasSectionProperties
+  ) {
+    sectionDestination = "following";
+  }
   switch (follows) {
     case "paragraph":
-      return { kind: "join" };
+      return { kind: "join", sectionDestination };
     case "table":
       if (!tableRemovalIsTrackable)
-        return { kind: "refuse", reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE };
-      if (!holdsContent) return { kind: "remove" };
-      return followingTableCanReceiveRunIn ? { kind: "run-in" } : { kind: "keep" };
+        return {
+          kind: "refuse",
+          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          sectionDestination,
+        };
+      if (!holdsContent) return { kind: "remove", sectionDestination };
+      return followingTableCanReceiveRunIn
+        ? { kind: "run-in", sectionDestination }
+        : { kind: "keep", sectionDestination };
     case "nothing":
       return !holdsContent && markWasAdded && containerStillEndsWithParagraph
-        ? { kind: "remove" }
-        : { kind: "keep" };
+        ? { kind: "remove", sectionDestination }
+        : { kind: "keep", sectionDestination };
   }
+};
+
+type SectionTransfer = {
+  sectionDestination: "none" | "preceding" | "following";
 };
 
 export const deleteBlocks = ({
