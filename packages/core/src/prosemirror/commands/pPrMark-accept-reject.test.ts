@@ -496,7 +496,7 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       expect(view.state.doc.childCount).toBe(1);
       expect(view.state.doc.child(0).textContent).toBe("inserted sectionfollowing section");
-      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toBeNull();
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({ columns: 2 });
     });
 
     test("authorizes only the exact endpoint-removal direction", () => {

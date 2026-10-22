@@ -641,6 +641,20 @@ function resolveChange(
         if (joinable) follows = "paragraph";
         else if (nextNode?.type.spec["tableRole"] === "table") follows = "table";
         const resolved = tr.doc.resolve(mappedPos);
+        const sectionProperties = expectParagraphAttrs(paragraph)._sectionProperties;
+        const preceding = resolved.parent.maybeChild(resolved.index() - 1);
+        const precedingProperties =
+          preceding?.type.name === "paragraph"
+            ? expectParagraphAttrs(preceding)._sectionProperties
+            : undefined;
+        let precedingSectionOwner: "unavailable" | "available" | "same" | "occupied" =
+          "unavailable";
+        if (preceding?.type.name === "paragraph") {
+          if (precedingProperties == null) precedingSectionOwner = "available";
+          else if (JSON.stringify(precedingProperties) === JSON.stringify(sectionProperties))
+            precedingSectionOwner = "same";
+          else precedingSectionOwner = "occupied";
+        }
         const outcome = paragraphMarkOutcome({
           follows,
           holdsContent: !holdsNoContent(paragraph),
@@ -653,6 +667,10 @@ function resolveChange(
             boundaries.length === 0 &&
             !pendingTables.some((position) => tr.mapping.map(position) === nextPos) &&
             !ownsSectionEndpoint(paragraph),
+          removedSectionProperties: op.markWasAdded && sectionProperties != null,
+          precedingSectionOwner,
+          followingHasSectionProperties:
+            nextNode?.type.name === "paragraph" && ownsSectionEndpoint(nextNode),
         });
         const ranIn =
           outcome.kind === "run-in"
@@ -708,15 +726,21 @@ function resolveChange(
         // The next paragraph's own `pPrMark` travels with its attrs: it is a
         // different revision, and resolving this one must not resolve it.
         //
-        // Section properties live on the paragraph mark. Resolving that mark
-        // away removes its section endpoint, so the joined paragraph keeps
-        // only a section endpoint already owned by the following paragraph.
+        // Section properties live on the removed paragraph mark. The shared
+        // paragraph-mark rule chooses the surviving mark that inherits them.
         try {
+          if (outcome.sectionDestination === "preceding" && preceding?.type.name === "paragraph") {
+            const precedingPos = mappedPos - preceding.nodeSize;
+            tr.setNodeAttribute(precedingPos, "_sectionProperties", sectionProperties);
+          } else if (outcome.sectionDestination === "following") {
+            tr.setNodeAttribute(nextPos, "_sectionProperties", sectionProperties);
+          }
+          const destination = tr.doc.nodeAt(nextPos);
           joinAtParagraphMark({
             tr,
             paragraphPos: mappedPos,
             paragraph,
-            next: nextNode,
+            next: destination?.type.name === "paragraph" ? destination : nextNode,
             styleResolver,
           });
           joinSeams.push({
@@ -1317,7 +1341,7 @@ const paragraphMarkWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
   kind === "ins" || kind === "moveTo";
 
 const ownsSectionEndpoint = (paragraph: PMNode): boolean =>
-  expectParagraphAttrs(paragraph)._sectionProperties !== undefined;
+  expectParagraphAttrs(paragraph)._sectionProperties != null;
 
 const sectionReferencesOf = (paragraph: PMNode): RemovedSectionReference[] => {
   const sectionProperties = expectParagraphAttrs(paragraph)._sectionProperties;
