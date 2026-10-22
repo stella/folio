@@ -1,5 +1,11 @@
 import { stripVTControlCharacters } from "node:util";
 
+import {
+  FAILURE_INVARIANTS,
+  type FailureInvariant,
+  invariantOfFailure,
+} from "../test/consumer-scenarios/support/failure-invariants";
+
 /** Stable reporting classes; fingerprints still identify individual replay cases. */
 export const normalizeFailureMessage = (message: string): string =>
   stripVTControlCharacters(message)
@@ -102,6 +108,23 @@ type Semantic = { area: string; message: string };
 const semanticOf = (assertion: string): Semantic | undefined =>
   semanticClasses.find(({ pattern }) => pattern.test(assertion));
 
+/** Legacy consumer-flow messages the invariant classifier now owns. */
+export const LEGACY_MESSAGE_INVARIANTS = {
+  "listLevel mismatch": "numberingLevel",
+  "Missing numbering format for displayed label": "numberingLabel",
+  "accepted tracked batches differ from direct batches": "directTracked",
+  "rejected tracked batches differ from fixture": "rejectAll",
+  "saving reopened package changes XML": "saveIdempotent",
+  "batch differs from sequential operations": "batchSequential",
+  "content reads differ after save": "readerStability",
+} as const satisfies Record<string, FailureInvariant>;
+const legacyMessageInvariants = new Map<string, FailureInvariant>(
+  Object.entries(LEGACY_MESSAGE_INVARIANTS),
+);
+
+const invariantKey = (invariant: FailureInvariant) =>
+  JSON.stringify(["consumer-invariant", invariant]);
+
 const consumerClass = (
   semantic: Semantic | undefined,
   assertion: string,
@@ -109,6 +132,20 @@ const consumerClass = (
   mode: string,
 ) => {
   const message = semantic?.message ?? normalizeFailureMessage(assertion);
+  // A legacy message and the assertion it summarized are one class.
+  const invariant = invariantOfFailure(assertion) ?? legacyMessageInvariants.get(message) ?? null;
+  if (invariant !== null) {
+    const title = FAILURE_INVARIANTS[invariant].title;
+    return {
+      key: invariantKey(invariant),
+      area: "Consumer invariant",
+      message: title,
+      flow: "",
+      fixture,
+      mode,
+      title: `Consumer invariant: ${title}`,
+    };
+  }
   const area = semantic?.area ?? "Consumer flow";
   // One failure is one class wherever it shows: the fixture and the mode are
   // rows of the report, not part of its identity.
@@ -138,14 +175,36 @@ export const failureClass = (test: string, assertion: string): FailureClass => {
  * were part of the key carried four parts: kind, fixture or test, mode, message.
  */
 export const upgradeClassKey = (parts: readonly string[]): string => {
-  if (parts.length !== 4) return JSON.stringify(parts);
-  return parts[0] === "consumer-flow"
-    ? JSON.stringify(["consumer-flow", parts[3]])
-    : JSON.stringify(["fuzz-check", parts[1], parts[3]]);
+  if (parts[0] === "consumer-flow") {
+    const message = parts.at(-1) ?? "";
+    // The classifier owns consumer keys, so a marker and a fresh failure agree.
+    const semantic = semanticOf(message) ?? { area: "Consumer flow", message };
+    return consumerClass(semantic, message, "", "all").key;
+  }
+  return parts.length === 4
+    ? JSON.stringify(["fuzz-check", parts[1], parts[3]])
+    : JSON.stringify(parts);
 };
 
 /** Legacy automated and human titles remain discoverable until they close. */
 export const classOfTitle = (title: string): FailureClass | null => {
+  const invariantTitle = /^Consumer invariant: (.*)$/u.exec(title)?.at(1);
+  if (invariantTitle !== undefined) {
+    const invariant = Object.entries(FAILURE_INVARIANTS)
+      .find(([, value]) => value.title === invariantTitle)
+      ?.at(0);
+    if (invariant !== undefined) {
+      return {
+        key: JSON.stringify(["consumer-invariant", invariant]),
+        area: "Consumer invariant",
+        message: invariantTitle,
+        flow: "",
+        fixture: "",
+        mode: "all",
+        title,
+      };
+    }
+  }
   const automated = /^Fuzz failure \[[0-9a-f]{16}\]: (consumer flow .+? \/ [^:]+): (.*)$/u.exec(
     title,
   );

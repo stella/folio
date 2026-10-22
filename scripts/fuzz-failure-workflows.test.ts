@@ -236,6 +236,8 @@ test("shared reporter queues writes, preserves matrix artifacts, and requires fa
   });
   if (!Array.isArray(job["steps"])) throw new TypeError("Missing report steps");
   const steps = job["steps"].map((step) => record(step, "step"));
+  const checkout = steps.find((step) => String(step["uses"]).startsWith("actions/checkout@"));
+  expect(record(checkout?.["with"], "checkout inputs")["fetch-depth"]).toBe(0);
   const download = steps.find((step) =>
     String(step["uses"]).startsWith("actions/download-artifact@"),
   );
@@ -246,6 +248,7 @@ test("shared reporter queues writes, preserves matrix artifacts, and requires fa
   );
   expect(filing?.["run"]).toContain('--lane "$LANE" --result "$RESULT" --trigger "$TRIGGER"');
   expect(filing?.["run"]).toContain('--run-url "$RUN_URL"');
+  expect(filing?.["run"]).toContain('--sha "$RUN_SHA"');
   expect(record(filing?.["env"], "filing env")["TRIGGER"]).toBe(
     "${{ github.event_name == 'schedule' && 'scheduled' || 'manual' }}",
   );

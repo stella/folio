@@ -3,6 +3,7 @@ import fixtures from "./fuzz-failure-class.fixtures.json";
 import {
   classOfTitle,
   failureClass,
+  LEGACY_MESSAGE_INVARIANTS,
   normalizeFailureMessage,
   upgradeClassKey,
 } from "./fuzz-failure-class";
@@ -24,6 +25,21 @@ test("volatile assertion data does not split a reporting class", () => {
     failureClass("consumer flow emoji / suggested", '"other": listLevel is undefined, expected 4')
       .key,
   );
+});
+
+test("a legacy summary message and the assertion it summarized are one class", () => {
+  expect(failureClass("consumer flow lists / direct", "listLevel mismatch").key).toBe(
+    failureClass("consumer flow lists / direct", "listLevel is 2, expected 1").key,
+  );
+});
+
+test("classifying a legacy message agrees with upgrading its legacy key", () => {
+  for (const [message, invariant] of Object.entries(LEGACY_MESSAGE_INVARIANTS)) {
+    const current = JSON.stringify(["consumer-invariant", invariant]);
+    expect(failureClass("consumer flow plain / direct", message).key).toBe(current);
+    expect(upgradeClassKey(["consumer-flow", message])).toBe(current);
+    expect(upgradeClassKey(["consumer-flow", "lists", "direct", message])).toBe(current);
+  }
 });
 
 test("a consumer-flow failure is one class across fixtures and modes", () => {
@@ -85,6 +101,6 @@ test("class markers written with a fixture and a mode resolve to today's key", (
   expect(upgradeClassKey(["<path>::keeps structure", name, "all", "boom"])).toBe(
     failureClass(name, "boom").key,
   );
-  const current = ["consumer-flow", "no comment"];
+  const current = ["consumer-flow", "unexpected item <n>"];
   expect(upgradeClassKey(current)).toBe(JSON.stringify(current));
 });
