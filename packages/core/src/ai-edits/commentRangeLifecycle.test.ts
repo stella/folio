@@ -212,6 +212,139 @@ describe("a comment in a note whose reference is pending deletion", () => {
     expect(threads(reviewer.getComments())).toEqual([NOTE_COMMENT]);
     expect(threads((await reopen(reviewer)).getComments())).toEqual([NOTE_COMMENT]);
   });
+
+  test("keeps only the note comment when unrelated commented text is deleted directly", async () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            paragraph("31000001", [{ type: "run", content: [{ type: "footnoteRef", id: 1 }] }]),
+            paragraph("31000002", [
+              { type: "commentRangeStart", id: 1 },
+              run("Other"),
+              { type: "commentRangeEnd", id: 1 },
+              { type: "commentReference", id: 1 },
+              run(" text."),
+            ]),
+          ],
+        },
+        footnotes: [
+          {
+            type: "footnote",
+            id: 1,
+            noteType: "normal",
+            content: [paragraph("32000001", [run("Footnote text.")])],
+          },
+        ],
+        comments: [comment(1, "On other text.")],
+      },
+    };
+    let reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document), {
+      author: "Editor",
+    });
+    const story = { type: "footnote", noteId: 1 } as const;
+    const [note] = reviewer.snapshotStory(story)!.blocks;
+    const noteCommented = reviewer.applyDocumentOperationsToStory({
+      story,
+      batch: {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "comment-note",
+            type: "commentOnRange",
+            range: createFolioAITextRangeHandle({
+              blockId: note!.id,
+              text: note!.text,
+              startOffset: 0,
+              endOffset: 8,
+            }),
+            comment: { text: "On note text." },
+          },
+        ],
+      },
+      undefinedReferences: "refuse",
+    });
+    expect(noteCommented.applied).toHaveLength(1);
+    reviewer = await reopen(reviewer);
+    const [reference, other] = reviewer.snapshot().blocks;
+    const commented = reviewer.applyOperations(
+      [
+        {
+          id: "comment-other",
+          type: "commentOnRange",
+          range: createFolioAITextRangeHandle({
+            blockId: other!.id,
+            text: other!.text,
+            startOffset: 0,
+            endOffset: 5,
+          }),
+          comment: { text: "On other text." },
+        },
+      ],
+      { undefinedReferences: "refuse", mode: "direct" },
+    );
+    expect(commented.applied).toHaveLength(1);
+    const tracked = reviewer.applyOperations(
+      [{ id: "delete-reference", type: "deleteBlock", blockId: reference!.id }],
+      { undefinedReferences: "refuse", mode: "tracked-changes" },
+    );
+    expect(tracked.applied).toHaveLength(1);
+    reviewer = await reopen(reviewer);
+    const direct = reviewer.applyOperations(
+      [
+        {
+          id: "delete-other",
+          type: "replaceInBlock",
+          blockId: other!.id,
+          find: "Other text.",
+          replace: "",
+        },
+      ],
+      { undefinedReferences: "refuse", mode: "direct" },
+    );
+    expect(direct.applied).toHaveLength(1);
+
+    expect(threads(reviewer.getComments())).toEqual([NOTE_COMMENT]);
+    expect(threads((await reopen(reviewer)).getComments())).toEqual([NOTE_COMMENT]);
+  });
+
+  test("retires comments from a loaded note after its reference is deleted directly", async () => {
+    const reviewer = await footnoteComment();
+    const story = { type: "footnote", noteId: 1 } as const;
+    const [note] = reviewer.snapshotStory(story)!.blocks;
+    const edited = reviewer.applyDocumentOperationsToStory({
+      story,
+      batch: {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "edit-note",
+            type: "insertAfterBlock",
+            blockId: note!.id,
+            text: "Edited note.",
+          },
+        ],
+      },
+      undefinedReferences: "refuse",
+    });
+    expect(edited.applied).toHaveLength(1);
+    const [reference] = reviewer.snapshot().blocks;
+    const deleted = reviewer.applyOperations(
+      [{ id: "delete-reference", type: "deleteBlock", blockId: reference!.id }],
+      { undefinedReferences: "refuse", mode: "direct" },
+    );
+    expect(deleted.applied).toHaveLength(1);
+
+    expect(reviewer.getComments()).toEqual([]);
+    expect((await reopen(reviewer)).getComments()).toEqual([]);
+  });
+});
+
+test("pending note retention never promotes every previous anchor", async () => {
+  const source = await Bun.file(`${import.meta.dir}/headless.ts`).text();
+  expect(source).not.toContain("addAll(anchoredNow, anchoredBefore)");
 });
 
 test("a batch insertion and deletion keep a comment on another block", async () => {

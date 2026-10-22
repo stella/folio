@@ -3602,11 +3602,19 @@ export class FolioDocxReviewer {
         target.add(id);
       }
     };
+    const referenceStates = noteReferenceStates(mainState.doc);
     // Read every loaded story directly. Its current document still owns anchors
     // inside pending tracked deletions, even when another projection no longer
     // lists the story as reachable.
     for (const entry of loaded.values()) {
       addAll(anchoredBefore, anchoredCommentIdsInProseDoc(entry.initialState.doc));
+      if (
+        (entry.handle.type === "footnote" || entry.handle.type === "endnote") &&
+        this.removedNoteStories.has(noteStoryKey(entry.handle)) &&
+        referenceStates.get(noteStoryKey(entry.handle)) !== "deleted"
+      ) {
+        continue;
+      }
       addAll(anchoredNow, anchoredCommentIdsInProseDoc(entry.state.doc, entry.initialState.doc));
     }
     for (const handle of this.listStoryHandlesInternal()) {
@@ -3627,7 +3635,7 @@ export class FolioDocxReviewer {
     for (const handle of this.removedNoteStories.values()) {
       const entry = loaded.get(secondaryStoryKey(handle));
       if (entry) {
-        if (noteReferenceStates(mainState.doc).get(noteStoryKey(handle)) === "deleted") {
+        if (referenceStates.get(noteStoryKey(handle)) === "deleted") {
           const source = (
             handle.type === "footnote"
               ? this.baseDocument.package.footnotes
@@ -3637,18 +3645,24 @@ export class FolioDocxReviewer {
         }
         continue;
       }
-      addAll(
-        anchoredBefore,
-        anchoredCommentIdsInBlocks(
-          (handle.type === "footnote"
-            ? this.baseDocument.package.footnotes
-            : this.baseDocument.package.endnotes
-          )?.find((note) => note.id === handle.noteId)?.content ?? [],
-        ),
+      const removed = anchoredCommentIdsInBlocks(
+        (handle.type === "footnote"
+          ? this.baseDocument.package.footnotes
+          : this.baseDocument.package.endnotes
+        )?.find((note) => note.id === handle.noteId)?.content ?? [],
       );
+      addAll(anchoredBefore, removed);
+      if (referenceStates.get(noteStoryKey(handle)) === "deleted") {
+        addAll(anchoredNow, removed);
+      }
     }
-    if ([...noteReferenceStates(mainState.doc).values()].includes("deleted")) {
-      addAll(anchoredNow, anchoredBefore);
+    // A note whose reference is pending deletion keeps the comments anchored in
+    // it until the deletion is resolved, also when it is not loaded.
+    for (const [key, state] of referenceStates) {
+      if (state !== "deleted") continue;
+      const handle = noteStoryHandleOf(key);
+      if (!handle || loaded.has(secondaryStoryKey(handle))) continue;
+      addAll(anchoredNow, anchoredCommentIdsInBlocks(this.getNoteStory(handle)?.content ?? []));
     }
     return withoutLostCommentThreads(comments, { anchoredBefore, anchoredNow });
   }
