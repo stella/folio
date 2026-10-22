@@ -226,6 +226,13 @@ function resolveChange(
       const tableCellStructuralOps: TableCellStructuralOp[] = [];
       let removedSectionEndpointCount = 0;
       const removedSectionReferences: RemovedSectionReference[] = [];
+      const countedSectionEndpoints = new Set<PMNode>();
+      const countRemovedSectionEndpoint = (paragraph: PMNode): void => {
+        if (!ownsSectionEndpoint(paragraph) || countedSectionEndpoints.has(paragraph)) return;
+        countedSectionEndpoints.add(paragraph);
+        removedSectionEndpointCount++;
+        removedSectionReferences.push(...sectionReferencesOf(paragraph));
+      };
       // A selective rejection restores properties on their current carrier.
       // If its break still goes, the eventual survivor must read them too.
       const carryRestoredProperties = (position: number): void => {
@@ -268,6 +275,9 @@ function resolveChange(
           });
 
           if (nextAttrs) {
+            if (nextAttrs["_sectionProperties"] == null) {
+              countRemovedSectionEndpoint(node);
+            }
             const styleChanged = nextAttrs["styleId"] !== node.attrs["styleId"];
             if (styleChanged && styleResolver) {
               setParagraphAttrsWithRebasedRunFormatting({
@@ -630,6 +640,20 @@ function resolveChange(
         if (joinable) follows = "paragraph";
         else if (nextNode?.type.spec["tableRole"] === "table") follows = "table";
         const resolved = tr.doc.resolve(mappedPos);
+        const sectionProperties = expectParagraphAttrs(paragraph)._sectionProperties;
+        const preceding = resolved.parent.maybeChild(resolved.index() - 1);
+        const precedingProperties =
+          preceding?.type.name === "paragraph"
+            ? expectParagraphAttrs(preceding)._sectionProperties
+            : undefined;
+        let precedingSectionOwner: "unavailable" | "available" | "same" | "occupied" =
+          "unavailable";
+        if (preceding?.type.name === "paragraph") {
+          if (precedingProperties == null) precedingSectionOwner = "available";
+          else if (JSON.stringify(precedingProperties) === JSON.stringify(sectionProperties))
+            precedingSectionOwner = "same";
+          else precedingSectionOwner = "occupied";
+        }
         const outcome = paragraphMarkOutcome({
           follows,
           holdsContent: !holdsNoContent(paragraph),
@@ -642,6 +666,10 @@ function resolveChange(
             boundaries.length === 0 &&
             !pendingTables.some((position) => tr.mapping.map(position) === nextPos) &&
             !ownsSectionEndpoint(paragraph),
+          removedSectionProperties: op.markWasAdded && sectionProperties != null,
+          precedingSectionOwner,
+          followingHasSectionProperties:
+            nextNode?.type.name === "paragraph" && ownsSectionEndpoint(nextNode),
         });
         const ranIn =
           outcome.kind === "run-in"
@@ -675,14 +703,21 @@ function resolveChange(
           // A container must contain a paragraph either way, so its parent's
           // only child stays blank whatever its mark says.
           //
-          // Section properties belong to the paragraph mark being resolved.
-          // Removing that mark removes its section endpoint; transferring the
-          // properties backward would retain the section the revision deleted.
+          // Section properties live on the removed paragraph mark. The shared
+          // paragraph-mark rule decides whether the preceding mark inherits
+          // them, as it does for a join.
           if (outcome.kind === "remove") {
-            if (ownsSectionEndpoint(paragraph)) {
-              removedSectionEndpointCount++;
-              removedSectionReferences.push(...sectionReferencesOf(paragraph));
+            if (
+              outcome.sectionDestination === "preceding" &&
+              preceding?.type.name === "paragraph"
+            ) {
+              tr.setNodeAttribute(
+                mappedPos - preceding.nodeSize,
+                "_sectionProperties",
+                sectionProperties,
+              );
             }
+            countRemovedSectionEndpoint(paragraph);
             tr.delete(mappedPos, mappedPos + paragraph.nodeSize);
             continue;
           }
@@ -697,25 +732,28 @@ function resolveChange(
         // The next paragraph's own `pPrMark` travels with its attrs: it is a
         // different revision, and resolving this one must not resolve it.
         //
-        // Section properties live on the paragraph mark. Resolving that mark
-        // away removes its section endpoint, so the joined paragraph keeps
-        // only a section endpoint already owned by the following paragraph.
+        // Section properties live on the removed paragraph mark. The shared
+        // paragraph-mark rule chooses the surviving mark that inherits them.
         try {
+          if (outcome.sectionDestination === "preceding" && preceding?.type.name === "paragraph") {
+            const precedingPos = mappedPos - preceding.nodeSize;
+            tr.setNodeAttribute(precedingPos, "_sectionProperties", sectionProperties);
+          } else if (outcome.sectionDestination === "following") {
+            tr.setNodeAttribute(nextPos, "_sectionProperties", sectionProperties);
+          }
+          const destination = tr.doc.nodeAt(nextPos);
           joinAtParagraphMark({
             tr,
             paragraphPos: mappedPos,
             paragraph,
-            next: nextNode,
+            next: destination?.type.name === "paragraph" ? destination : nextNode,
             styleResolver,
           });
           joinSeams.push({
             position: mappedPos + 1 + paragraph.content.size,
             step: tr.steps.length,
           });
-          if (ownsSectionEndpoint(paragraph)) {
-            removedSectionEndpointCount++;
-            removedSectionReferences.push(...sectionReferencesOf(paragraph));
-          }
+          countRemovedSectionEndpoint(paragraph);
         } catch {
           // PM rejects the join if the two blocks aren't structurally
           // compatible (e.g. paragraph followed by a table). Leaving the
@@ -1306,7 +1344,7 @@ const paragraphMarkWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
   kind === "ins" || kind === "moveTo";
 
 const ownsSectionEndpoint = (paragraph: PMNode): boolean =>
-  expectParagraphAttrs(paragraph)._sectionProperties !== undefined;
+  expectParagraphAttrs(paragraph)._sectionProperties != null;
 
 const sectionReferencesOf = (paragraph: PMNode): RemovedSectionReference[] => {
   const sectionProperties = expectParagraphAttrs(paragraph)._sectionProperties;

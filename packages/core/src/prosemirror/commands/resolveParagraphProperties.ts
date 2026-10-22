@@ -189,7 +189,8 @@ export const resolveParagraphChangeAttrs = ({
         restored.propertyChanges = remaining;
       }
       nextAttrs = nextAttrs ?? { ...node.attrs };
-      nextAttrs["_sectionProperties"] = restored;
+      nextAttrs["_sectionProperties"] =
+        mode === "reject" && Object.keys(restored).length === 0 ? null : restored;
     }
   }
   return nextAttrs;

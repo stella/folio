@@ -18,6 +18,7 @@ import { panic, Result } from "better-result";
 
 import { MAX_REVISION_ID } from "../model/document";
 import type {
+  BlockContent,
   Document,
   Deletion,
   Paragraph,
@@ -71,6 +72,17 @@ export type ApplyOps = (
 
 const refusal = (op: ResolveRevisionOp, reason: DocumentOpRefusal["reason"], message: string) =>
   new DocumentOpRefusal({ message, reason, opType: op.type });
+
+const precedingSectionOwner = (
+  previous: BlockContent | undefined,
+  paragraph: Paragraph,
+): "unavailable" | "available" | "same" | "occupied" => {
+  if (previous?.type !== "paragraph") return "unavailable";
+  if (previous.sectionProperties === undefined) return "available";
+  return JSON.stringify(previous.sectionProperties) === JSON.stringify(paragraph.sectionProperties)
+    ? "same"
+    : "occupied";
+};
 
 /** Prepends a retired paragraph's content to the paragraph in a table's first cell. */
 const runParagraphIntoTable = (paragraph: Paragraph, table: Table): Table | undefined => {
@@ -1248,6 +1260,7 @@ const joinOps = (
   const { paragraph } = location;
   const blocks = blockListAt(body.content, location.list);
   const next = blocks[location.index + 1];
+  const previous = blocks[location.index - 1];
   const empty = paragraphLength(paragraph) === 0;
   if (next?.type === "paragraph") {
     const outcome = paragraphMarkOutcome({
@@ -1256,6 +1269,9 @@ const joinOps = (
       markWasAdded: added,
       containerStillEndsWithParagraph: true,
       followingTableCanReceiveRunIn: false,
+      removedSectionProperties: added && paragraph.sectionProperties !== undefined,
+      precedingSectionOwner: precedingSectionOwner(previous, paragraph),
+      followingHasSectionProperties: next.sectionProperties !== undefined,
     });
     if (outcome.kind !== "join") return panic("A following paragraph always receives a join.");
     // The mark that goes takes the paragraph's properties with it: the next
@@ -1298,13 +1314,23 @@ const joinOps = (
     // A record left as it was keeps its identity through the merge; an emptied
     // one folded into its neighbour is rebuilt, and is no longer empty.
     ends.set(nextId, emptiedEndsOf(merged, emptied));
-    const survivor: Paragraph = { ...next, content: asParagraphContent(merged) };
+    const survivor: Paragraph = {
+      ...next,
+      content: asParagraphContent(merged),
+      ...(outcome.sectionDestination === "following"
+        ? { sectionProperties: paragraph.sectionProperties }
+        : {}),
+    };
+    const transfersToPrevious =
+      outcome.sectionDestination === "preceding" && previous?.type === "paragraph";
     return Result.ok([
       {
         type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
         story,
-        expected: [paragraph, next],
-        blocks: [survivor],
+        expected: transfersToPrevious ? [previous, paragraph, next] : [paragraph, next],
+        blocks: transfersToPrevious
+          ? [{ ...previous, sectionProperties: paragraph.sectionProperties }, survivor]
+          : [survivor],
         ...(paragraph.sectionProperties === undefined
           ? {}
           : { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }),
@@ -1338,6 +1364,9 @@ const joinOps = (
     tableRemovalIsTrackable:
       next?.type !== "table" ||
       (blocks.at(-1)?.type === "paragraph" && tableCanReceiveParagraphRunIn(paragraph, next)),
+    removedSectionProperties: added && paragraph.sectionProperties !== undefined,
+    precedingSectionOwner: precedingSectionOwner(previous, paragraph),
+    followingHasSectionProperties: false,
   });
   if (outcome.kind === "refuse") {
     return Result.err(
@@ -1393,13 +1422,21 @@ const joinOps = (
       (block, index): block is Paragraph => index !== location.index && block.type === "paragraph",
     );
     if (anchor !== undefined) {
+      const replacementBlocks = blocks.filter((_, index) => index !== location.index);
+      if (outcome.sectionDestination === "preceding" && previous?.type === "paragraph") {
+        const previousIndex = replacementBlocks.indexOf(previous);
+        replacementBlocks[previousIndex] = {
+          ...previous,
+          sectionProperties: paragraph.sectionProperties,
+        };
+      }
       return Result.ok([
         {
           type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
           story,
           blockId: anchor.paraId ?? "",
           expected: blocks,
-          blocks: blocks.filter((_, index) => index !== location.index),
+          blocks: replacementBlocks,
         },
       ]);
     }
