@@ -1,0 +1,155 @@
+name: Package quarantine prune
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: "Runner labels as a JSON array"
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+    secrets:
+      CHANGELOG_APP_ID:
+        description: GitHub App ID used to maintain the removal PR.
+        required: true
+      CHANGELOG_APP_PRIVATE_KEY:
+        description: GitHub App private key used to maintain the removal PR.
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: quarantine-prune-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  PRUNE_BRANCH: chore/prune-quarantine-excludes
+
+jobs:
+  # Enforcement can fail without preventing the independent removal PR jobs.
+  enforce:
+    if: github.repository_owner == 'stella' && (github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    permissions:
+      contents: read
+    uses: ./.github/workflows/quarantine-policy.yml
+    with:
+      runs-on: ${{ inputs.runs-on }}
+
+  prepare:
+    name: Prepare expired exception removal
+    if: github.repository_owner == 'stella' && (github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.prune.outputs.changed }}
+      patch: ${{ steps.patch.outputs.patch }}
+      source-sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Checkout caller default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+      - id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Checkout immutable policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarantine-policy
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.1"
+      - name: Prune expired exceptions
+        id: prune
+        run: |
+          set -euo pipefail
+          bun .quarantine-policy/.github/actions/quarantine-policy/check.ts --prune
+          if git diff --quiet -- bunfig.toml pnpm-workspace.yaml .cargo/quarantine.toml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          bun .quarantine-policy/.github/actions/quarantine-policy/check.ts \
+            "${{ job.workflow_sha }}" \
+            "${{ github.repository }}"
+          git diff --binary -- bunfig.toml pnpm-workspace.yaml .cargo/quarantine.toml > "$RUNNER_TEMP/quarantine.patch"
+      - name: Encode exact removal patch
+        id: patch
+        if: steps.prune.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          patch_path="$RUNNER_TEMP/quarantine.patch"
+          patch_size=$(wc -c < "$patch_path")
+          if (( patch_size > 65536 )); then
+            echo "Removal patch is ${patch_size} bytes; maximum is 65536 bytes" >&2
+            exit 1
+          fi
+          printf 'patch=%s\n' "$(base64 -w0 < "$patch_path")" >> "$GITHUB_OUTPUT"
+
+  propose:
+    name: Propose expired exception removal
+    needs: prepare
+    if: (github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && needs.prepare.outputs.changed == 'true'
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.prepare.outputs.source-sha }}
+      - name: Checkout immutable policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarantine-policy
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.1"
+      - name: Decode exact removal patch
+        env:
+          PATCH: ${{ needs.prepare.outputs.patch }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PATCH" | base64 --decode > "$RUNNER_TEMP/quarantine.patch"
+      - name: Validate exact removal
+        run: |
+          set -euo pipefail
+          git apply --check "$RUNNER_TEMP/quarantine.patch"
+          git apply "$RUNNER_TEMP/quarantine.patch"
+          bun .quarantine-policy/.github/actions/quarantine-policy/check.ts \
+            "${{ job.workflow_sha }}" \
+            "${{ github.repository }}"
+          test -n "$(git diff --name-only)"
+          test -z "$(git diff --name-only | grep -Ev '^(bunfig.toml|pnpm-workspace.yaml|.cargo/quarantine.toml)$')"
+          git diff --check
+      - name: Mint narrow release app token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.CHANGELOG_APP_ID }}
+          private-key: ${{ secrets.CHANGELOG_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Open or update removal PR
+        uses: ./.quarantine-policy/.github/actions/signed-commit
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          mode: refresh-pr
+          branch: ${{ env.PRUNE_BRANCH }}
+          base: ${{ github.event.repository.default_branch }}
+          paths: bunfig.toml pnpm-workspace.yaml .cargo/quarantine.toml
+          commit-message: "chore(deps): remove expired quarantine excludes"
+          pr-title: "chore(deps): remove expired quarantine excludes"
+          pr-body: "Expired temporary exceptions are removed once the ecosystem's normal five-day release-age gate admits the pinned versions."
