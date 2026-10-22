@@ -51,7 +51,11 @@ import {
   effectiveParagraphNumberingReference,
 } from "../../numberingAttr";
 import { autospacingMatchesBase } from "../../autospacingBase";
-import { removeSectionBreakAtSelection, setSectionBreakType } from "../../commands/sectionBreak";
+import {
+  removeSectionBreakAtSelection,
+  sectionBreakSelectionIsTopLevel,
+  setSectionBreakType,
+} from "../../commands/sectionBreak";
 import {
   mintSectionProperties,
   parseSectionBreakType,
@@ -1197,13 +1201,15 @@ export const ParagraphExtension = createNodeExtension({
             { styleId: null },
           ),
         insertSectionBreak: (breakType: SectionBreakType) =>
-          withCanonicalCommand(setSectionBreakType(breakType), () => [
-            { type: "setSectionBreak", breakType },
-          ]),
+          withCanonicalCommand(setSectionBreakType(breakType), (state) =>
+            sectionBreakSelectionIsTopLevel(state)
+              ? [{ type: "setSectionBreak", breakType }]
+              : undefined,
+          ),
         removeSectionBreak: () =>
-          withCanonicalCommand(removeSectionBreakAtSelection, () => [
-            { type: "removeSectionBreak" },
-          ]),
+          withCanonicalCommand(removeSectionBreakAtSelection, (state) =>
+            sectionBreakSelectionIsTopLevel(state) ? [{ type: "removeSectionBreak" }] : undefined,
+          ),
         generateTOC: ({ title }: GenerateTableOfContentsOptions) =>
           withCanonicalCommand(
             (state: EditorState, dispatch?: (tr: Transaction) => void) => {

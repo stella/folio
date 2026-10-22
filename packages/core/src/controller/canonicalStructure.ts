@@ -51,11 +51,16 @@ const noChange = (message: string) =>
     new CanonicalSessionError({ gap: CANONICAL_GAP.commands, message, reason: "noChange" }),
   );
 
-const selectedParagraphs = (session: CanonicalSession, state: EditorState) => {
+const selectedParagraphs = (
+  session: CanonicalSession,
+  state: EditorState,
+  topLevelOnly = false,
+) => {
   const ids = new Set<string>();
   const paragraphs: Paragraph[] = [];
-  state.doc.nodesBetween(state.selection.from, state.selection.to, (node) => {
+  state.doc.nodesBetween(state.selection.from, state.selection.to, (node, position) => {
     if (node.type.name !== "paragraph" || typeof node.attrs["paraId"] !== "string") return;
+    if (topLevelOnly && state.doc.resolve(position).depth !== 0) return;
     const id = node.attrs["paraId"];
     if (ids.has(id)) return;
     ids.add(id);
@@ -170,13 +175,13 @@ export const prepareCanonicalCommands = (
   commands: readonly CanonicalCommandIntent[],
 ): Result<CanonicalCommit, CanonicalSessionError> => {
   const intents: EditorIntent[] = [];
-  const paragraphs = selectedParagraphs(session, state);
   const sectionCommands = commands.filter(
     (command) => command.type === "setSectionBreak" || command.type === "removeSectionBreak",
   );
   if (sectionCommands.length > 0) {
     if (sectionCommands.length !== commands.length || sectionCommands.length !== 1)
       return refuse("A section change must be prepared on its own.");
+    const paragraphs = selectedParagraphs(session, state, true);
     if (paragraphs.length === 0)
       return refuse("Section breaks require a top-level document paragraph.");
     const command = sectionCommands.at(0) ?? panic("A section command was counted.");
@@ -203,6 +208,7 @@ export const prepareCanonicalCommands = (
       }),
     );
   }
+  const paragraphs = selectedParagraphs(session, state);
   const noteCommands = commands.filter(
     (command) => command.type === "insertNote" || command.type === "deleteNote",
   );

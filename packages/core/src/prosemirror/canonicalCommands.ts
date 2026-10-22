@@ -39,7 +39,9 @@ export type CanonicalCommandIntent =
   | { type: "deleteNote"; from: number; kind: "footnote" | "endnote"; id: number }
   | { type: "insertBreak"; from: number; to: number; breakType: "page" | "textWrapping" };
 
-type CanonicalCommandDescriptor = (state: EditorState) => readonly CanonicalCommandIntent[];
+type CanonicalCommandDescriptor = (
+  state: EditorState,
+) => readonly CanonicalCommandIntent[] | undefined;
 const descriptors = new WeakMap<Command, CanonicalCommandDescriptor>();
 
 /** Registration leaves execution and side-effect-free command probes unchanged. */
