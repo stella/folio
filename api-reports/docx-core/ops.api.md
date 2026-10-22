@@ -772,6 +772,27 @@ export const paragraphLength: (paragraph: Paragraph) => number;
 export const paragraphLogicalText: (paragraph: Paragraph) => string;
 
 // @public
+export const paragraphMarkOutcome: (input: {
+    follows: "paragraph" | "table" | "nothing";
+    holdsContent: boolean;
+    markWasAdded: boolean;
+    containerStillEndsWithParagraph: boolean;
+    followingTableCanReceiveRunIn: boolean;
+    tableRemovalIsTrackable?: boolean;
+}) => {
+    kind: "join";
+} | {
+    kind: "remove";
+} | {
+    kind: "run-in";
+} | {
+    kind: "keep";
+} | {
+    kind: "refuse";
+    reason: "untrackable";
+};
+
+// @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
 
 // @public
