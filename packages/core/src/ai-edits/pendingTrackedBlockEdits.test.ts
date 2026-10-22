@@ -93,6 +93,86 @@ const resolved = async (reviewer: FolioDocxReviewer, resolution: "accept" | "rej
 
 const MODES = ["direct", "tracked-changes", "suggested"] as const;
 
+test("rejected adjacent deletions keep direct run sizes after save", async () => {
+  const document = fromMarkdown("# Delivery Terms\n\nSecond paragraph.\n\nCarrier.");
+  const bytes = toArrayBuffer(
+    (await ensureParaIds(new Uint8Array(await createDocx(document)))).docx,
+  );
+  const reviewer = await open(bytes);
+  const heading = blockId(reviewer, "Delivery Terms");
+  expect(
+    apply(reviewer, "tracked-changes", [
+      {
+        id: "italicize",
+        type: "formatRange",
+        range: {
+          type: "textRange",
+          story: "main",
+          blockId: heading,
+          startOffset: 9,
+          endOffset: 14,
+          selectedTextHash: hashFolioAIBlockText("Terms"),
+        },
+        formatting: { italic: true },
+      },
+    ]).applied,
+  ).toHaveLength(1);
+  reviewer.acceptAll();
+  expect(
+    apply(reviewer, "direct", [
+      {
+        id: "comment",
+        type: "commentOnRange",
+        range: {
+          type: "textRange",
+          story: "main",
+          blockId: heading,
+          startOffset: 0,
+          endOffset: 8,
+          selectedTextHash: hashFolioAIBlockText("Delivery"),
+        },
+        comment: { text: "Review this heading." },
+      },
+    ]).applied,
+  ).toHaveLength(1);
+  const targets = [heading, blockId(reviewer, "Second paragraph.")];
+  expect(
+    apply(
+      reviewer,
+      "tracked-changes",
+      targets.map((id, index) => ({
+        id: `style-${index}`,
+        type: "setBlockParagraphProperties",
+        blockId: id,
+        properties: { styleId: "Heading2" },
+      })),
+    ).applied,
+  ).toHaveLength(2);
+  expect(
+    apply(
+      reviewer,
+      "tracked-changes",
+      targets.map((id, index) => ({ id: `delete-${index}`, type: "deleteBlock", blockId: id })),
+    ).applied,
+  ).toHaveLength(2);
+
+  const liveFormatting = reviewer
+    .toResolvedDocument("reject")
+    .package.document.content.filter(({ type }) => type === "paragraph")
+    .flatMap((entry) =>
+      entry.type === "paragraph" ? entry.content.filter(({ type }) => type === "run") : [],
+    )
+    .map(({ formatting }) => formatting);
+
+  const rejectedRuns = (await reopen(reviewer))
+    .toResolvedDocument("reject")
+    .package.document.content.filter(({ type }) => type === "paragraph")
+    .flatMap((entry) =>
+      entry.type === "paragraph" ? entry.content.filter(({ type }) => type === "run") : [],
+    );
+  expect(rejectedRuns.map(({ formatting }) => formatting)).toEqual(liveFormatting);
+});
+
 describe("suggested insertion admission uses the live anchor for every gap run", () => {
   test("refuses an insertion after its inserted anchor is retracted before a table", async () => {
     const reviewer = await open(await tableDocument());
