@@ -1385,6 +1385,7 @@ export const compileEditorIntent = (
             ];
       const anchors = new Set(anchorDeletions);
       const deletionOps: DocumentOp[] = [];
+      const movedNoteBodies: DocumentOp[] = [];
       let afterDeletion = document;
       for (const planned of logicalDeletions) {
         let op = planned;
@@ -1407,6 +1408,40 @@ export const compileEditorIntent = (
         if (applied.isErr()) return Result.err(applied.error);
         afterDeletion = applied.value.document;
         deletionOps.push(op);
+        for (const inverse of applied.value.inverse) {
+          if (
+            inverse.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS &&
+            (inverse.parts.footnotes !== undefined || inverse.parts.endnotes !== undefined)
+          )
+            movedNoteBodies.push({
+              type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+              expected: {
+                ...(inverse.expected.footnotes === undefined
+                  ? {}
+                  : { footnotes: inverse.expected.footnotes }),
+                ...(inverse.expected.endnotes === undefined
+                  ? {}
+                  : { endnotes: inverse.expected.endnotes }),
+              },
+              parts: {
+                ...(inverse.parts.footnotes === undefined
+                  ? {}
+                  : { footnotes: inverse.parts.footnotes }),
+                ...(inverse.parts.endnotes === undefined
+                  ? {}
+                  : { endnotes: inverse.parts.endnotes }),
+              },
+            });
+        }
+      }
+      if (movedNoteBodies.length > 0) {
+        // Each restoration expects the note parts its own deletion left, so
+        // they undo the deletions newest first.
+        const restorations = movedNoteBodies.toReversed();
+        const restored = applyDocumentOps(afterDeletion, restorations);
+        if (restored.isErr()) return Result.err(restored.error);
+        afterDeletion = restored.value.document;
+        deletionOps.push(...restorations);
       }
       let target = intent.target;
       for (const op of logicalDeletions) {

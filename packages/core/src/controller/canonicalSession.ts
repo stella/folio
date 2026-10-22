@@ -15,6 +15,7 @@ import {
 } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import {
+  applyDocumentOp,
   applyDocumentOps,
   combineEdits,
   commentDocumentIssue,
@@ -27,6 +28,7 @@ import {
   normalizeForOps,
   OP_STORIES,
   packageParagraphIds,
+  paragraphIdsIn,
   validateOpsDocument,
   createEditorIntentIdAllocator,
   findStoryBody,
@@ -944,6 +946,28 @@ class CanonicalSession {
     return Result.ok(this.nextBlockId.toString(16).padStart(8, "0").toUpperCase());
   }
 
+  /**
+   * Paragraph identities for one prepared batch, one group per requested count;
+   * none matches a live or retired identity and no two groups overlap. Nothing is
+   * reserved until the batch applies, so a batch asks once for all its groups.
+   */
+  freshBlockIds(counts: readonly number[]): Result<string[][], CanonicalSessionError> {
+    const total = counts.reduce((sum, count) => sum + count, 0);
+    const ids: string[] = [];
+    for (let candidate = this.nextBlockId; ids.length < total; candidate += 1) {
+      if (candidate > 0x7fffffff) return refuse("The paragraph identity space is exhausted.");
+      const id = candidate.toString(16).padStart(8, "0").toUpperCase();
+      if (!this.allocatedBlockIds.has(id)) ids.push(id);
+    }
+    const groups: string[][] = [];
+    let offset = 0;
+    for (const count of counts) {
+      groups.push(ids.slice(offset, offset + count));
+      offset += count;
+    }
+    return Result.ok(groups);
+  }
+
   private intentMode(document: Document, intent: EditorIntent): EditorIntentMode {
     if (this.mode.type === "editing" && !this.intentNeedsIdentityIds(document, intent))
       return { type: "editing", reservedBlockIds: this.allocatedBlockIds };
@@ -1545,21 +1569,97 @@ class CanonicalSession {
     if (ops.length === 0) return refuse("The operation batch is empty.");
     const selected = this.projection.selectionAt(state);
     if (selected.isErr()) return selected;
+    let preparedOps = ops;
+    if (
+      ops.every(
+        (op) => op.type === DOCUMENT_OP_TYPES.ADD_NOTE || op.type === DOCUMENT_OP_TYPES.REMOVE_NOTE,
+      )
+    ) {
+      const tracked: DocumentOp[] = [];
+      let document = this.currentDocument;
+      for (const op of ops) {
+        if (op.type !== DOCUMENT_OP_TYPES.ADD_NOTE && op.type !== DOCUMENT_OP_TYPES.REMOVE_NOTE)
+          panic("A note operation batch contains only note operations.");
+        const allocation = this.allocateIntentIds(document, {
+          type: "replaceFragment",
+          from: { ...op.at, offset: 0 },
+          to: { ...op.at, offset: Number.MAX_SAFE_INTEGER },
+          paragraphs: [
+            {
+              type: "paragraph",
+              content: [{ type: "run", content: [{ type: "break", breakType: "page" }] }],
+            },
+          ],
+          openStart: 0,
+          openEnd: 0,
+        });
+        const next = {
+          ...op,
+          ...(this.mode.type === "suggesting"
+            ? {
+                revision: {
+                  id: allocation.revisionId,
+                  author: this.mode.author,
+                  date: new Date().toISOString(),
+                },
+              }
+            : {}),
+          newIds: allocation.newIds,
+        } as const;
+        if (ops.length > 1) {
+          const applied = applyDocumentOp(
+            cloneDocumentWithParagraphPropertySources(document),
+            structuredClone(next),
+          );
+          if (applied.isErr()) return refuse(applied.error.message);
+          document = applied.value.document;
+        }
+        tracked.push(next);
+      }
+      preparedOps = tracked;
+    }
+    const addedNotes = preparedOps.filter((op) => op.type === DOCUMENT_OP_TYPES.ADD_NOTE);
+    // The caret follows the reference inserted at the selection's end, past every
+    // reference the batch inserts at or before it in the same paragraph.
+    const atSelection = addedNotes.find(({ at }) =>
+      [selected.value.anchor, selected.value.head].some(
+        (end) =>
+          sameStory(at.story, end.story) && at.blockId === end.blockId && at.offset === end.offset,
+      ),
+    );
+    const caret =
+      atSelection === undefined
+        ? undefined
+        : {
+            ...atSelection.at,
+            offset:
+              atSelection.at.offset +
+              addedNotes.filter(
+                ({ at }) =>
+                  sameStory(at.story, atSelection.at.story) &&
+                  at.blockId === atSelection.at.blockId &&
+                  at.offset <= atSelection.at.offset,
+              ).length,
+          };
+    const postSelection =
+      addedNotes.length === preparedOps.length && caret !== undefined
+        ? { type: "text" as const, anchor: caret, head: caret }
+        : selected.value;
     const preDocument = this.currentDocument;
     return this.stage({
       state,
-      ops,
-      selection: selected.value,
+      ops: preparedOps,
+      selection: postSelection,
       origin: "input",
       onPublish: (inverse, version) => {
         this.applied.push({
           entries: [
             {
               type: "applied",
-              ops,
+              ops: preparedOps,
               inverse,
               preSelection: selected.value,
-              postSelection: selected.value,
+              postSelection,
               preDocument,
               postDocument: this.currentDocument,
               version,
@@ -1572,7 +1672,7 @@ class CanonicalSession {
           ],
           undo: { type: "entries" },
           preSelection: selected.value,
-          postSelection: selected.value,
+          postSelection,
         });
         this.undone.length = 0;
       },
@@ -1782,6 +1882,10 @@ class CanonicalSession {
         for (const op of ops) {
           if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK)
             this.allocatedBlockIds.add(op.newBlockId.toUpperCase());
+          if (op.type === DOCUMENT_OP_TYPES.ADD_NOTE) {
+            for (const blockId of paragraphIdsIn(op.note.content))
+              this.allocatedBlockIds.add(blockId.toUpperCase());
+          }
         }
         this.advanceBlockId();
         this.rememberSources(applied.value.document);

@@ -57,6 +57,74 @@ const undone = (document: Document, inverse: readonly DocumentOp[]): Document =>
   return result.value.document;
 };
 
+describe("tracked note lifecycle", () => {
+  const revision = { id: 41, author: "Reviewer", date: "2026-10-15T00:00:00Z" };
+
+  for (const kind of ["footnote", "endnote"] as const) {
+    test(`${kind} insertion and removal resolve to their direct edits`, () => {
+      const original = documentOf({
+        type: "paragraph",
+        paraId: "00000001",
+        content: [run("abcd")],
+      });
+      const note = {
+        type: kind,
+        id: 1,
+        content: [{ type: "paragraph" as const, paraId: "00000002", content: [run("note")] }],
+      };
+      const add = {
+        type: DOCUMENT_OP_TYPES.ADD_NOTE,
+        at: at("00000001", 2),
+        note,
+      } as const;
+      const directAdd = applied(original, add).document;
+      const trackedAdd = applied(original, { ...add, revision });
+      expect(undone(trackedAdd.document, trackedAdd.inverse)).toStrictEqual(original);
+      expect(
+        applied(trackedAdd.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [revision.id],
+          decision: "reject",
+        }).document,
+      ).toStrictEqual(original);
+      expect(
+        applied(trackedAdd.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [revision.id],
+          decision: "accept",
+        }).document,
+      ).toStrictEqual(directAdd);
+
+      const remove = {
+        type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
+        at: at("00000001", 2),
+        story: { kind, id: 1 },
+      } as const;
+      const directRemove = applied(directAdd, remove).document;
+      const trackedRemove = applied(directAdd, { ...remove, revision });
+      expect(undone(trackedRemove.document, trackedRemove.inverse)).toStrictEqual(directAdd);
+      expect(
+        applied(trackedRemove.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [revision.id],
+          decision: "reject",
+        }).document,
+      ).toStrictEqual(directAdd);
+      expect(
+        applied(trackedRemove.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [revision.id],
+          decision: "accept",
+        }).document,
+      ).toStrictEqual(directRemove);
+    });
+  }
+});
+
 describe("insertText", () => {
   test("inherited text joins the run before it and is undone by a deletion", () => {
     const first = run("ab", true);

@@ -122,6 +122,37 @@ describe("canonical command descriptors", () => {
     ).toEqual([{ type: "continueNumbering" }]);
   });
 
+  test("section and note factories describe their complete canonical meaning", () => {
+    const state = stateWithSelection();
+    expect(
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("insertSectionBreak")("continuous"),
+        state,
+      ),
+    ).toEqual([{ type: "setSectionBreak", breakType: "continuous" }]);
+    expect(
+      getCanonicalCommandIntents(singletonManager.requireCommand("removeSectionBreak")(), state),
+    ).toEqual([{ type: "removeSectionBreak" }]);
+    const content = [
+      {
+        type: "paragraph" as const,
+        content: [{ type: "run" as const, content: [{ type: "text" as const, text: "Note" }] }],
+      },
+    ];
+    expect(
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("insertFootnote")(7, content),
+        state,
+      ),
+    ).toEqual([{ type: "insertNote", kind: "footnote", id: 7, content, at: 10 }]);
+    expect(
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("insertEndnote")(8, content),
+        state,
+      ),
+    ).toEqual([{ type: "insertNote", kind: "endnote", id: 8, content, at: 10 }]);
+  });
+
   test("formats each selected paragraph using its own indentation", () => {
     const state = stateWithSelection();
     expect(
