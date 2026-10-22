@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
+import { applyDocumentOp, applyDocumentOps, combineEdits } from "@stll/docx-core/ops";
 
 import { rejectAIEditRevision } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -64,4 +65,65 @@ test("resolving a nested revision promotes its comment boundary ownership to the
   ).not.toThrow();
   const saved = fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } });
   expect(saved.package.document.comments?.map(({ id }) => id)).toEqual([7]);
+});
+
+test("deleting a whole comment range retires its definition before composing the inverse", () => {
+  const document: Document = {
+    package: {
+      document: {
+        comments: [
+          {
+            id: 7,
+            author: "Reviewer",
+            anchorKind: "range",
+            content: [
+              {
+                type: "paragraph",
+                paraId: "00000003",
+                content: [{ type: "run", content: [{ type: "text", text: "Comment body" }] }],
+              },
+            ],
+          },
+        ],
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              { type: "commentRangeStart", id: 7 },
+              { type: "run", content: [{ type: "text", text: "Commented text" }] },
+              { type: "commentRangeEnd", id: 7 },
+              { type: "commentReference", id: 7 },
+            ],
+          },
+          {
+            type: "paragraph",
+            paraId: "00000002",
+            content: [{ type: "run", content: [{ type: "text", text: "After" }] }],
+          },
+        ],
+      },
+    },
+  };
+  const deletion = applyDocumentOp(document, {
+    type: "deleteBlocks",
+    story: "main",
+    blockIds: ["00000001"],
+    newIds: { revision: [], control: [] },
+  }).unwrap();
+  const edits = [deletion];
+  if (deletion.document.package.document.comments?.some(({ id }) => id === 7)) {
+    edits.push(
+      applyDocumentOp(deletion.document, {
+        type: "deleteComment",
+        id: 7,
+        scope: "thread",
+      }).unwrap(),
+    );
+  }
+  const composed = combineEdits(document, edits);
+
+  expect(composed.document.package.document.comments).toBeUndefined();
+  const restored = applyDocumentOps(composed.document, composed.inverse).unwrap().document;
+  expect(restored.package.document).toStrictEqual(document.package.document);
 });

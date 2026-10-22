@@ -1,5 +1,6 @@
 ---
 "@stll/folio-core": patch
+"@stll/docx-core": patch
 ---
 
-Keep tracked comment boundary ownership when nested revisions are resolved.
+Keep comment boundary ownership through revision resolution and whole-range deletion.
