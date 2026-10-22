@@ -875,11 +875,15 @@ export type AddNoteOp = {
   type: typeof DOCUMENT_OP_TYPES.ADD_NOTE;
   at: TextPosition;
   note: Footnote | Endnote;
+  revision?: RevisionStamp;
+  newIds?: NewIds;
 };
 export type RemoveNoteOp = {
   type: typeof DOCUMENT_OP_TYPES.REMOVE_NOTE;
   at: TextPosition;
   story: NoteStory;
+  revision?: RevisionStamp;
+  newIds?: NewIds;
 };
 export type SetSectionPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_SECTION_PROPS;

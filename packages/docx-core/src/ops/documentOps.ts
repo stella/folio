@@ -172,7 +172,7 @@ export {
   type TouchedBlocks,
 } from "./types";
 
-export { idKey, packageParagraphIds } from "./ids";
+export { idKey, packageParagraphIds, paragraphIdsIn } from "./ids";
 
 export {
   commentDocumentIssue,

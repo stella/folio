@@ -65,6 +65,11 @@
       "seed": 1446885207,
       "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": -1992771917,
+      "note": "A direct edit that removes a final note reference must include the note body in its exact inverse.",
+      "date": "2026-10-20"
     }
   ],
   "blocks an operation does not touch are the same objects": [
@@ -73,6 +78,12 @@
       "path": "109:0:0:0:0:0:0:0:0:4:2:2:2:2:2:3:3:3:3:3:3:3:3:2:2:2:2:2:2:2:2:2:5:2:2:2:7:8:2:2:2:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:3:3:3:3:3:3:3:3:3:3",
       "date": "2026-10-02",
       "note": "Lossy JSON fixture cloning dropped own undefined fields in package resources and detached section content; preserve exact structural copies."
+    },
+    {
+      "seed": -1560478319,
+      "path": "8:0:0:0:0:0:0:0:0:4:3:3:3:3:3:3:7:7:7:7:7:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:9:9:9:9:9:9:9:9:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:11:6:2:6:6:5:7:13:6:5:5:7:6:7:7:7:7:7:7:7:7:7:38:38:15:31:30:30:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57",
+      "note": "A removed final-reference note is an explicitly named touched story in the locality oracle.",
+      "date": "2026-10-20"
     }
   ],
   "coalesced formatting keeps the first baseline and latest author": [
@@ -294,6 +305,17 @@
       "path": "9:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:32:30:30:30:30:31:31:31:31:31:31:31:31",
       "date": "2026-10-02",
       "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": 234934348,
+      "path": "14:0:0:0:0:0:0:1:3:3:2:4:4:4:4:4:4:4:4:4:4:4:4:5:5:4:31:31:31:31:31:31:31:31:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36",
+      "note": "Note lifecycle ownership must not depend on object sharing in an equal document.",
+      "date": "2026-10-20"
+    },
+    {
+      "seed": -1059443971,
+      "note": "The inverse of a first reference to a loaded note must preserve that pre-existing note body.",
+      "date": "2026-10-20"
     }
   ],
   "generated clipboard fragments preserve history and accepted tracked content": [

@@ -166,6 +166,19 @@ const selectedParagraphs = (state: EditorState): { position: number; node: PMNod
   return paragraphs;
 };
 
+/** Section endpoints are valid only on paragraphs directly owned by the document body. */
+export const sectionBreakSelectionIsTopLevel = (state: EditorState): boolean => {
+  let found = false;
+  let topLevel = true;
+  state.doc.nodesBetween(state.selection.from, state.selection.to, (node, position) => {
+    if (node.type.name !== "paragraph") return true;
+    found = true;
+    if (state.doc.resolve(position).depth !== 0) topLevel = false;
+    return false;
+  });
+  return found && topLevel;
+};
+
 /**
  * Rewrite the section record of every paragraph the selection touches.
  *
@@ -181,6 +194,7 @@ const selectedParagraphs = (state: EditorState): { position: number; node: PMNod
 const rewriteSelectedSectionRecords =
   (rewrite: SectionRecordRewrite): Command =>
   (state, dispatch) => {
+    if (!sectionBreakSelectionIsTopLevel(state)) return false;
     const selected = selectedParagraphs(state);
     if (selected.length === 0) {
       return false;

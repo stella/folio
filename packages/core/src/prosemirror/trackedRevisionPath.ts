@@ -88,6 +88,15 @@ export const retainedTrackedRevisionMark = (
   const name = active.type === "insertion" || active.type === "moveTo" ? "insertion" : "deletion";
   const type = mark.type.schema.marks[name];
   if (!type) panic("A nested tracked revision has no editor mark type");
+  const attrs = expectTrackedChangeMarkAttrs(mark);
+  const commentRangeBoundaries = attrs._docxCommentRangeBoundaries?.map((boundary) =>
+    Object.assign({}, boundary, {
+      owner:
+        boundary.owner === "revision" && active.revisionId !== attrs.revisionId
+          ? "parent"
+          : boundary.owner,
+    }),
+  );
   return type.create({
     revisionId: active.revisionId,
     author: active.author,
@@ -98,5 +107,9 @@ export const retainedTrackedRevisionMark = (
     _historicalFormatting: active.type === "deletion" || active.type === "moveFrom" ? true : null,
     _docxOuterWrapperCount: active.outerWrapperCount,
     _docxRevisionAncestors: remaining.length > 1 ? remaining.slice(0, -1) : null,
+    _docxCommentRangeBoundaries:
+      commentRangeBoundaries && commentRangeBoundaries.length > 0
+        ? commentRangeBoundaries
+        : undefined,
   });
 };

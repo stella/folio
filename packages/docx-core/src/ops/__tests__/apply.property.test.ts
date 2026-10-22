@@ -50,6 +50,8 @@ import { finalizeParagraphFormatting } from "../../model/canonical";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { sameBlockList, storyBody, storyParagraphs } from "../blocks";
 import { contractViolation, normalizeForOps } from "../contract";
+import { removedNoteStories } from "../noteMarks";
+import { findStoryBody } from "../stories";
 import { paragraphIdsIn, identityKeysIn, packageIdentityKeys, IDENTITY_SPACES } from "../ids";
 import { sameRunFormatting } from "../inline";
 import { compareGaps, isCommentAnchor, leafSpans, zeroWidthLeavesAt } from "../leaves";
@@ -163,18 +165,18 @@ const INVERSE_KINDS = {
   insertRow: ["setTableRows"],
   deleteRow: ["setTableRows", "replaceInline", "setParagraphReview"],
   setTableRows: ["setTableRows"],
-  insertText: ["deleteRange"],
-  insertContent: ["deleteRange"],
-  deleteRange: ["insertContent"],
-  splitInline: ["joinInline"],
-  joinInline: ["splitInline"],
+  insertText: ["deleteRange", "restoreStoryParts"],
+  insertContent: ["deleteRange", "restoreStoryParts"],
+  deleteRange: ["insertContent", "restoreStoryParts"],
+  splitInline: ["joinInline", "restoreStoryParts"],
+  joinInline: ["splitInline", "restoreStoryParts"],
   setRunProps: ["setRunProps"],
   setParagraphProps: ["setParagraphProps"],
-  splitBlock: ["joinBlocks", "replaceInline", "setParagraphReview"],
-  joinBlocks: ["splitBlock", "replaceInline", "setParagraphReview"],
-  replaceBlocks: ["replaceBlocks"],
+  splitBlock: ["joinBlocks", "replaceInline", "setParagraphReview", "restoreStoryParts"],
+  joinBlocks: ["splitBlock", "replaceInline", "setParagraphReview", "restoreStoryParts"],
+  replaceBlocks: ["replaceBlocks", "restoreStoryParts"],
   setParagraphReview: ["setParagraphReview"],
-  replaceInline: ["replaceInline"],
+  replaceInline: ["replaceInline", "restoreStoryParts"],
   resolveRevision: ["replaceInline", "setParagraphReview", "joinBlocks", "replaceBlocks"],
   createNumberingInstance: ["deleteNumberingInstance"],
   deleteNumberingInstance: ["createNumberingInstance"],
@@ -2779,6 +2781,12 @@ describe("document operations", () => {
         const next = applied.value.document;
         const touched = touchedIds(applied.value);
         const named = namedIds(op);
+        const touchedNotes = removedNoteStories(document, next);
+        for (const story of touchedNotes) {
+          for (const { paragraph } of storyParagraphs(findStoryBody(document, story))) {
+            if (paragraph.paraId !== undefined) named.add(paragraph.paraId);
+          }
+        }
         for (const id of touched) {
           expect(named.has(id)).toBe(true);
         }
@@ -2842,7 +2850,8 @@ describe("document operations", () => {
         }
 
         for (const key of Object.keys(document.package)) {
-          if (key !== "document") {
+          const ownsNotes = touchedNotes.some(({ kind }) => `${kind}s` === key);
+          if (key !== "document" && !ownsNotes) {
             expect(Reflect.get(next.package, key)).toBe(Reflect.get(document.package, key));
           }
         }

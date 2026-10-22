@@ -145,6 +145,47 @@
         "story": "main",
         "revisionIds": [42],
         "decision": "accept"
+      },
+      {
+        "type": "addNote",
+        "at": {
+          "story": "main",
+          "blockId": "00000001",
+          "offset": 0
+        },
+        "note": {
+          "type": "footnote",
+          "id": 7,
+          "content": [
+            {
+              "type": "paragraph",
+              "paraId": "00000007",
+              "content": [
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Note"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "removeNote",
+        "at": {
+          "story": "main",
+          "blockId": "00000001",
+          "offset": 0
+        },
+        "story": {
+          "kind": "footnote",
+          "id": 7
+        }
       }
     ]
   },

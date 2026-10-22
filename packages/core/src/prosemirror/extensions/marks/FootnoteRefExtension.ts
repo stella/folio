@@ -10,9 +10,9 @@ import {
 } from "../../noteReferenceOccurrences";
 
 import { panic } from "better-result";
-import type { Command } from "prosemirror-state";
-
+import { TextSelection, type Command } from "prosemirror-state";
 import { expectFootnoteRefMarkAttrs } from "../../attrs";
+import { withCanonicalCommand } from "../../canonicalCommands";
 import { suggestRangeDeletion, suggestionModeKey } from "../../plugins/suggestionMode";
 import { createMarkExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
@@ -123,7 +123,9 @@ export const FootnoteRefExtension = createMarkExtension({
             vertAlign: "superscript",
           });
           const text = schema.text(String(id), [mark]);
-          const tr = state.tr.replaceSelectionWith(text, false);
+          const insertionEnd = state.selection.to + text.nodeSize;
+          const tr = state.tr.insert(state.selection.to, text);
+          tr.setSelection(TextSelection.create(tr.doc, insertionEnd));
           dispatch(tr.scrollIntoView());
           return true;
         };
@@ -164,9 +166,38 @@ export const FootnoteRefExtension = createMarkExtension({
         Delete: deleteWholeNoteReference("forward"),
       },
       commands: {
-        insertFootnote: makeInsertNote("footnote"),
-        insertEndnote: makeInsertNote("endnote"),
-        deleteNoteRef: () => deleteNoteRef,
+        insertFootnote: (id, content = [{ type: "paragraph", content: [] }]) =>
+          withCanonicalCommand(makeInsertNote("footnote")(id), (state) => [
+            { type: "insertNote", at: state.selection.to, kind: "footnote", id, content },
+          ]),
+        insertEndnote: (id, content = [{ type: "paragraph", content: [] }]) =>
+          withCanonicalCommand(makeInsertNote("endnote")(id), (state) => [
+            { type: "insertNote", at: state.selection.to, kind: "endnote", id, content },
+          ]),
+        deleteNoteRef: () =>
+          withCanonicalCommand(deleteNoteRef, (state) => {
+            const { from, to, empty } = state.selection;
+            return noteReferenceRanges(
+              state.doc,
+              empty ? Math.max(0, from - 1) : from,
+              empty ? Math.min(state.doc.content.size, to + 1) : to,
+            ).flatMap((range) => {
+              const node = state.doc.nodeAt(range.from);
+              const mark = node?.marks.find((candidate) => candidate.type.name === "footnoteRef");
+              if (!mark) return [];
+              const attrs = expectFootnoteRefMarkAttrs(mark);
+              const id = Number(attrs.id);
+              if (!Number.isSafeInteger(id) || id <= 0) return [];
+              return [
+                {
+                  type: "deleteNote" as const,
+                  from: range.from,
+                  kind: attrs.noteType ?? "footnote",
+                  id,
+                },
+              ];
+            });
+          }),
       },
     };
   },
