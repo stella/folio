@@ -94,6 +94,7 @@ import {
   noteReferencesRestored,
   referenceDeletions,
   referencedNotes,
+  type NoteKey,
 } from "../prosemirror/noteReferenceReview";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
@@ -823,7 +824,7 @@ const MAIN_STORY = Object.freeze({ type: "main" } as const);
 const headerFooterStoryKey = ({ type, relationshipId }: FolioHeaderFooterStoryHandle): string =>
   `${type}:${relationshipId}`;
 
-const noteStoryKey = ({ type, noteId }: FolioNoteStoryHandle): string => `${type}:${noteId}`;
+const noteStoryKey = ({ type, noteId }: FolioNoteStoryHandle): NoteKey => `${type}:${noteId}`;
 
 /** The note story a {@link noteStoryKey} key names. */
 const noteStoryHandleOf = (key: string): FolioNoteStoryHandle | null => {
@@ -3601,14 +3602,27 @@ export class FolioDocxReviewer {
         target.add(id);
       }
     };
+    const referenceStates = noteReferenceStates(mainState.doc);
+    // Read every loaded story directly. Its current document still owns anchors
+    // inside pending tracked deletions, even when another projection no longer
+    // lists the story as reachable.
+    for (const entry of loaded.values()) {
+      addAll(anchoredBefore, anchoredCommentIdsInProseDoc(entry.initialState.doc));
+      if (
+        (entry.handle.type === "footnote" || entry.handle.type === "endnote") &&
+        this.removedNoteStories.has(noteStoryKey(entry.handle)) &&
+        referenceStates.get(noteStoryKey(entry.handle)) !== "deleted"
+      ) {
+        continue;
+      }
+      addAll(anchoredNow, anchoredCommentIdsInProseDoc(entry.state.doc, entry.initialState.doc));
+    }
     for (const handle of this.listStoryHandlesInternal()) {
       if (handle.type === "main") {
         continue;
       }
       const entry = loaded.get(secondaryStoryKey(handle));
       if (entry) {
-        addAll(anchoredBefore, anchoredCommentIdsInProseDoc(entry.initialState.doc));
-        addAll(anchoredNow, anchoredCommentIdsInProseDoc(entry.state.doc));
         continue;
       }
       const source =
@@ -3620,17 +3634,35 @@ export class FolioDocxReviewer {
     // A note that went with its reference takes the comments anchored in it.
     for (const handle of this.removedNoteStories.values()) {
       const entry = loaded.get(secondaryStoryKey(handle));
-      addAll(
-        anchoredBefore,
-        entry
-          ? anchoredCommentIdsInProseDoc(entry.initialState.doc)
-          : anchoredCommentIdsInBlocks(
-              (handle.type === "footnote"
-                ? this.baseDocument.package.footnotes
-                : this.baseDocument.package.endnotes
-              )?.find((note) => note.id === handle.noteId)?.content ?? [],
-            ),
+      if (entry) {
+        if (referenceStates.get(noteStoryKey(handle)) === "deleted") {
+          const source = (
+            handle.type === "footnote"
+              ? this.baseDocument.package.footnotes
+              : this.baseDocument.package.endnotes
+          )?.find((note) => note.id === handle.noteId);
+          addAll(anchoredNow, anchoredCommentIdsInBlocks(source?.content ?? []));
+        }
+        continue;
+      }
+      const removed = anchoredCommentIdsInBlocks(
+        (handle.type === "footnote"
+          ? this.baseDocument.package.footnotes
+          : this.baseDocument.package.endnotes
+        )?.find((note) => note.id === handle.noteId)?.content ?? [],
       );
+      addAll(anchoredBefore, removed);
+      if (referenceStates.get(noteStoryKey(handle)) === "deleted") {
+        addAll(anchoredNow, removed);
+      }
+    }
+    // A note whose reference is pending deletion keeps the comments anchored in
+    // it until the deletion is resolved, also when it is not loaded.
+    for (const [key, state] of referenceStates) {
+      if (state !== "deleted") continue;
+      const handle = noteStoryHandleOf(key);
+      if (!handle || loaded.has(secondaryStoryKey(handle))) continue;
+      addAll(anchoredNow, anchoredCommentIdsInBlocks(this.getNoteStory(handle)?.content ?? []));
     }
     return withoutLostCommentThreads(comments, { anchoredBefore, anchoredNow });
   }
@@ -3642,15 +3674,31 @@ export class FolioDocxReviewer {
    */
   private commentAnchors(): Map<number, FolioCommentAnchor> {
     const anchors = new Map<number, FolioCommentAnchor>();
+    const add = (doc: PMNode, story: FolioEditableDocumentStoryHandle) => {
+      for (const anchor of getCommentAnchorsFromDoc(doc)) {
+        if (!anchors.has(anchor.commentId)) {
+          anchors.set(anchor.commentId, {
+            text: anchor.quote,
+            blockId: anchor.blockId,
+            story,
+          });
+        }
+      }
+    };
     for (const story of this.listStoryHandlesInternal()) {
       const doc = story.type === "main" ? this.state.doc : this.readSecondaryStoryDoc(story);
       if (!doc) {
         continue;
       }
-      for (const anchor of getCommentAnchorsFromDoc(doc)) {
-        if (!anchors.has(anchor.commentId)) {
-          anchors.set(anchor.commentId, { text: anchor.quote, blockId: anchor.blockId, story });
-        }
+      add(doc, story);
+    }
+    for (const story of this.removedNoteStories.values()) {
+      if (noteReferenceStates(this.state.doc).get(noteStoryKey(story)) !== "deleted") {
+        continue;
+      }
+      const entry = this.secondaryStoryStates.get(secondaryStoryKey(story));
+      if (entry) {
+        add(entry.initialState.doc, story);
       }
     }
     return anchors;
