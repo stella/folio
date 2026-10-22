@@ -57,6 +57,27 @@ describe("resolveNumberingLevel", () => {
     expect(resolution.kind === "level" ? resolution.level.start : undefined).toBe(7);
   });
 
+  test("start overrides patch the start on a full level override", () => {
+    const resolution = resolveNumberingLevel(
+      definitions({
+        nums: [
+          {
+            numId: 1,
+            abstractNumId: 1,
+            levelOverrides: [{ ilvl: 0, lvl: level(0, { start: 1 }), startOverride: 7 }],
+          },
+        ],
+      }),
+      1,
+      0,
+    );
+    expect(resolution).toMatchObject({
+      kind: "level",
+      level: { start: 7 },
+      source: "override",
+    });
+  });
+
   test("follows style links and reports an unresolved link", () => {
     const linked = definitions({
       abstractNums: [

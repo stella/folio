@@ -30,7 +30,7 @@ const firstById = <Value>(values: readonly Value[], idOf: (value: Value) => numb
  * ECMA-376 §17.9.3 and §17.9.6 restrict `ilvl` to 0..8; an invalid or
  * undefined level remains authored but is not materialised. Sections
  * §17.9.8 and §17.9.9 make a full `lvlOverride/lvl` authoritative while a
- * `startOverride` only changes the matching abstract level's start. Sections
+ * `startOverride` changes the selected full or abstract level's start. Sections
  * §17.9.21 and §17.9.27 link a level-less abstract through `numStyleLink` to
  * the first document-order abstract whose `styleLink` matches.
  *
@@ -55,7 +55,16 @@ export const resolveNumberingLevel = (
   if (!abstract) return { kind: "undefined", reason: "noAbstract" };
 
   const override = instance.levelOverrides?.find((candidate) => candidate.ilvl === ilvl);
-  if (override?.lvl) return { kind: "level", level: override.lvl, source: "override" };
+  if (override?.lvl) {
+    return {
+      kind: "level",
+      level:
+        override.startOverride === undefined
+          ? override.lvl
+          : { ...override.lvl, start: override.startOverride },
+      source: "override",
+    };
+  }
 
   let levelOwner = abstract;
   let source: "abstract" | "styleLink" = "abstract";

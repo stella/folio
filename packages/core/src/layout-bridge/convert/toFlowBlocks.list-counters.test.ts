@@ -259,6 +259,46 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     expect(nextLabel(attrs).label).toBe("(2)");
   });
 
+  test("a tracked style change uses the current style while retaining the previous stream", () => {
+    const streams = { final: createListCounterState(), original: createListCounterState() };
+    const nextLabel = createListLabelCounter(
+      createNumberingMap({
+        abstractNums: [
+          { abstractNumId: 1, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+          { abstractNumId: 2, levels: [{ ilvl: 0, numFmt: "bullet", lvlText: "•" }] },
+        ],
+        nums: [
+          { numId: 1, abstractNumId: 1 },
+          { numId: 2, abstractNumId: 2 },
+        ],
+      }),
+      streams,
+    );
+    const attrs = {
+      numPr: paragraphNumberingAttr({ kind: "levelOnly", ilvl: 0 }),
+      numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 2, ilvl: 0 }),
+      _propertyChanges: [
+        {
+          type: "paragraphPropertyChange",
+          info: INS_MARK.info,
+          previousFormatting: {
+            numPr: paragraphNumberingAttr({ kind: "levelOnly", ilvl: 0 }),
+            numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: 0 }),
+          },
+        },
+      ],
+    } satisfies ParagraphAttrs;
+
+    expect(nextLabel(attrs)).toMatchObject({
+      kind: "marker",
+      label: "•",
+      numbering: { kind: "reference", numId: 2, ilvl: 0 },
+    });
+    expect(streams.final.counters.has(1)).toBe(false);
+    expect(streams.original.counters.has(1)).toBe(true);
+    expect(streams.original.counters.has(2)).toBe(false);
+  });
+
   test("hidden parent levels advance before a visible child", () => {
     const nextLabel = createListLabelCounter(
       createNumberingMap({

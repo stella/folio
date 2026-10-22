@@ -76,7 +76,16 @@ const visibleLabel = (
   return staticMarker(counterAttrs);
 };
 
-const inheritedNumberingReference = (attrs: Readonly<ParagraphAttrs>) => {
+const inheritedNumberingReference = (
+  attrs: Readonly<ParagraphAttrs>,
+  sources: ParagraphNumberingSources,
+) => {
+  // A tracked previous reference is only the missing numId for a current
+  // level-only override. A current style reference already supplies that id
+  // and must remain the owner of the current marker.
+  if (sources.numPr?.kind !== "levelOnly" || sources.numPrFromStyle !== undefined) {
+    return undefined;
+  }
   const previous = attrs._propertyChanges?.at(-1)?.previousFormatting;
   if (!previous) return undefined;
   return effectiveParagraphNumberingReference(
@@ -169,7 +178,7 @@ export const createListLabelCounter = (
       (attrs.listMarker != null || attrs.listIsBullet === true || attrs.listNumFmt != null
         ? listRenderingFromAttrs({ attrs, numId: effective?.numId ?? 1 })
         : undefined);
-    const inheritedReference = inheritedNumberingReference(attrs);
+    const inheritedReference = inheritedNumberingReference(attrs, sources);
     const list = resolveParagraphList(
       { ...sources, ...(inheritedReference ? { inheritedReference } : {}) },
       numbering,
@@ -241,7 +250,7 @@ export const createListLabelCounter = (
       counterInput._propertyChanges?.length && counterAttrs !== counterInput && numbering === null
         ? listRenderingFromAttrs({ attrs: counterAttrs, numId: countedNumbering?.numId ?? 1 })
         : undefined;
-    const countedInheritedReference = inheritedNumberingReference(counterAttrs);
+    const countedInheritedReference = inheritedNumberingReference(counterAttrs, countedSources);
     const countedList = resolveParagraphList(
       {
         ...countedSources,

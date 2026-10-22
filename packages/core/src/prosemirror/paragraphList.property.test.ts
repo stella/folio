@@ -184,6 +184,48 @@ describe("paragraph list reader agreement", () => {
     ).toBe("marker");
   });
 
+  test("full level overrides use startOverride in definitions and rendered labels", async () => {
+    const document = fromMarkdown("seed");
+    document.package.numbering = {
+      abstractNums: [
+        {
+          abstractNumId: 1,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1.", start: 1 }],
+        },
+      ],
+      nums: [
+        {
+          numId: 1,
+          abstractNumId: 1,
+          levelOverrides: [
+            {
+              ilvl: 0,
+              lvl: { ilvl: 0, numFmt: "decimal", lvlText: "%1.", start: 1 },
+              startOverride: 7,
+            },
+          ],
+        },
+      ],
+    };
+    document.package.document.content = [paragraph("Overridden", 1, 0)];
+
+    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document), {
+      author: "Reviewer",
+    });
+
+    expect(reviewer.readNumberingDefinitions()).toContainEqual({
+      numId: 1,
+      level: 0,
+      format: "decimal",
+      levelText: "%1.",
+      start: 7,
+    });
+    expect(reviewer.getContent().at(0)).toMatchObject({
+      kind: "listItem",
+      displayLabel: "7.",
+    });
+  });
+
   test("a reference to an undefined level retains provenance without becoming a list", () => {
     const numbering = createNumberingMap({
       abstractNums: [
