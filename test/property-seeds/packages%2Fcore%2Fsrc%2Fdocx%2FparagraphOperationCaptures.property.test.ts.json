@@ -29,6 +29,12 @@
       "path": "0:0:0:0:0:0:0:0:0:0:0:0",
       "note": "Default model saves must not consult canonical body replay captures.",
       "date": "2026-10-04"
+    },
+    {
+      "seed": -172955385,
+      "path": "2:0:0:0:0:0:0:0",
+      "note": "Whole-block deletion must retire an exhausted comment before its inverse is composed with later comment operations.",
+      "date": "2026-10-22"
     }
   ]
 }

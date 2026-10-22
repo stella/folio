@@ -108,25 +108,27 @@ export const captureStoryParts = (document: Document, owned: StoryParts): StoryP
 };
 
 /** Immutable operations share unowned fields; section content is a derived mirror. */
-const changedParts = (before: Document, after: Document): StoryParts => {
+const changedParts = (before: Document, after: Document, semantic = false): StoryParts => {
+  const changed = (left: unknown, right: unknown) =>
+    semantic ? !structurallyEqual(left, right) : left !== right;
   const oldBody = before.package.document;
   const newBody = after.package.document;
   const body: NonNullable<StoryParts["body"]> = {};
-  if (oldBody.content !== newBody.content) body.content = oldBody.content;
-  if (oldBody.background !== newBody.background) body.background = oldBody.background ?? null;
-  if (oldBody.finalSectionProperties !== newBody.finalSectionProperties)
+  if (changed(oldBody.content, newBody.content)) body.content = oldBody.content;
+  if (changed(oldBody.background, newBody.background)) body.background = oldBody.background ?? null;
+  if (changed(oldBody.finalSectionProperties, newBody.finalSectionProperties))
     body.finalSectionProperties = oldBody.finalSectionProperties ?? null;
-  if (oldBody.comments !== newBody.comments) body.comments = oldBody.comments ?? null;
+  if (changed(oldBody.comments, newBody.comments)) body.comments = oldBody.comments ?? null;
   const sections: NonNullable<StoryParts["sections"]>[number][] = [];
   if (oldBody.sections !== newBody.sections)
     for (const [index, section] of (oldBody.sections ?? []).entries()) {
       const next = newBody.sections?.at(index);
       if (section === next) continue;
       const changes: NonNullable<StoryParts["sections"]>[number] = { index };
-      if (section.properties !== next?.properties) changes.properties = section.properties;
-      if (section.headers !== next?.headers)
+      if (changed(section.properties, next?.properties)) changes.properties = section.properties;
+      if (changed(section.headers, next?.headers))
         changes.headers = section.headers ? [...section.headers] : null;
-      if (section.footers !== next?.footers)
+      if (changed(section.footers, next?.footers))
         changes.footers = section.footers ? [...section.footers] : null;
       if (Object.keys(changes).length > 1) sections.push(changes);
     }
@@ -137,11 +139,11 @@ const changedParts = (before: Document, after: Document): StoryParts => {
     parts.headers = before.package.headers ? [...before.package.headers] : null;
   if (before.package.footers !== after.package.footers)
     parts.footers = before.package.footers ? [...before.package.footers] : null;
-  if (before.package.footnotes !== after.package.footnotes)
+  if (changed(before.package.footnotes, after.package.footnotes))
     parts.footnotes = before.package.footnotes ?? null;
-  if (before.package.endnotes !== after.package.endnotes)
+  if (changed(before.package.endnotes, after.package.endnotes))
     parts.endnotes = before.package.endnotes ?? null;
-  if (before.package.settings !== after.package.settings)
+  if (changed(before.package.settings, after.package.settings))
     parts.settings = before.package.settings ?? null;
   return captureStoryParts(before, parts);
 };
@@ -340,13 +342,14 @@ export const storyLifecycleEdit = (
   before: Document,
   after: Document,
   op: DocumentOp,
+  semantic = false,
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   const invalid = contractViolation(after);
   if (invalid)
     return Result.err(
       new DocumentOpRefusal({ opType: op.type, reason: invalid.reason, message: invalid.message }),
     );
-  const prior = changedParts(before, after);
+  const prior = changedParts(before, after, semantic);
   const next = captureStoryParts(after, prior);
   const { oldParagraphs, newParagraphs } = changedParagraphs(before, after);
   const oldIds = new Set(oldParagraphs.keys());

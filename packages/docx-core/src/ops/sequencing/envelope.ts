@@ -258,6 +258,13 @@ const paragraph = object({
   formatting: optional(paragraphProps),
   content: array(inline),
 });
+const note = object({
+  type: literal("footnote", "endnote"),
+  id: natural,
+  noteType: optional(literal("normal", "separator", "continuationSeparator", "continuationNotice")),
+  content: array(paragraph),
+});
+const noteStory = object({ kind: literal("footnote", "endnote"), id: natural });
 
 /**
  * The unknown-input decoder accepts these operation kinds with scalar
@@ -380,10 +387,22 @@ const operationFields = {
   deleteComment: undefined,
   restoreCommentState: undefined,
   setPackageResources: undefined,
-  addNote: undefined,
+  addNote: {
+    type: literal("addNote"),
+    at: position,
+    note,
+    revision,
+    newIds,
+  } satisfies OperationFields<"addNote">,
   createHeaderFooter: undefined,
   removeHeaderFooter: undefined,
-  removeNote: undefined,
+  removeNote: {
+    type: literal("removeNote"),
+    at: position,
+    story: noteStory,
+    revision,
+    newIds,
+  } satisfies OperationFields<"removeNote">,
   restoreStoryParts: undefined,
   setSectionProps: undefined,
   insertColumn: undefined,

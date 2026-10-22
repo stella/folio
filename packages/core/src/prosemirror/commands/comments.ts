@@ -275,17 +275,6 @@ function resolveChange(
                 paragraphPosition: pos,
                 styleResolver,
                 tr,
-                ...(mode === "reject" && {
-                  // A direct override is already authored against the source
-                  // context that reject restores. Inherited marks must rebase.
-                  shouldRebase: (inline) => {
-                    const deleted = inline.marks.some(({ type }) => type.name === "deletion");
-                    const direct = inline.marks.some(
-                      ({ type }) => type.name === "runFormattingOverride",
-                    );
-                    return !deleted || !direct;
-                  },
-                }),
               });
             } else {
               tr.setNodeMarkup(pos, undefined, nextAttrs);

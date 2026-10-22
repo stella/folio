@@ -4189,8 +4189,29 @@ const applyFolioAIEditOperationsInternal = ({
     }
     moveSideCounts.set(moveId, counts);
   }
+  const refusedMoveIds = new Set<string>();
+  if (isSuggested) {
+    for (const candidate of executableResolved) {
+      if (
+        candidate.operation.type !== "insertBeforeBlock" ||
+        candidate.operation.moveId === undefined
+      ) {
+        continue;
+      }
+      const moveId = candidate.operation.moveId;
+      const sourceRunsBeforeDestination = executableResolved.some(
+        ({ operation, blockFrom }) =>
+          operation.type === "deleteBlock" &&
+          operation.moveId === moveId &&
+          blockFrom === candidate.blockFrom,
+      );
+      if (sourceRunsBeforeDestination) {
+        refusedMoveIds.add(moveId);
+      }
+    }
+  }
   const isPairedMove = (moveId: string | undefined): moveId is string => {
-    if (moveId === undefined) {
+    if (moveId === undefined || refusedMoveIds.has(moveId)) {
       return false;
     }
     const counts = moveSideCounts.get(moveId);
@@ -4333,7 +4354,50 @@ const applyFolioAIEditOperationsInternal = ({
   const executionGroups = groupInsertionRuns(executionOrder, (candidate) =>
     isBatchableParagraphInsertion(candidate, mode) ? candidate.from : null,
   );
-  for (const insertionRun of executionGroups) {
+  for (const executionGroup of executionGroups) {
+    // Recheck every insertion against the live anchor, including insertions
+    // sharing a gap. Earlier edits can delete its text or its containing row.
+    const insertionState = tr;
+    const insertionRun = executionGroup.filter((candidate) => {
+      if (
+        !isSuggested ||
+        (candidate.operation.type !== "insertAfterBlock" &&
+          candidate.operation.type !== "insertBeforeBlock")
+      ) {
+        return true;
+      }
+      const mapped = insertionState.mapping.mapResult(candidate.blockFrom);
+      const block = mapped.deletedAcross ? null : insertionState.doc.nodeAt(mapped.pos);
+      const paraId: unknown = candidate.blockNode.attrs["paraId"];
+      if (
+        !block?.isTextblock ||
+        block.type !== candidate.blockNode.type ||
+        (typeof paraId === "string" && block.attrs["paraId"] !== paraId)
+      ) {
+        if (candidate.operation.moveId !== undefined) {
+          refusedMoveIds.add(candidate.operation.moveId);
+        }
+        skipped.push({ id: candidate.operation.id, reason: "pendingDeletion" });
+        return false;
+      }
+      const blockFrom = mapped.pos;
+      if (
+        !isPendingDeletion(
+          insertionState.doc,
+          blockFrom,
+          block,
+          buildCleanBlockText(block, blockFrom, {
+            fieldResults: "text",
+            noteReferences,
+          }).text,
+        )
+      ) {
+        return true;
+      }
+      skipped.push({ id: candidate.operation.id, reason: "pendingDeletion" });
+      return false;
+    });
+    if (insertionRun.length === 0) continue;
     const item = insertionRun.at(0);
     if (!item) {
       panic("The operation execution group was empty");
@@ -4834,21 +4898,6 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "insertAfterBlock":
       case "insertBeforeBlock": {
-        if (
-          isSuggested &&
-          isPendingDeletion(
-            tr.doc,
-            item.blockFrom,
-            item.blockNode,
-            buildCleanBlockText(item.blockNode, item.blockFrom, {
-              fieldResults: "text",
-              noteReferences,
-            }).text,
-          )
-        ) {
-          skipped.push({ id: item.operation.id, reason: "pendingDeletion" });
-          continue;
-        }
         allocateNewLists({ status: "willApply", items: [item] });
         assertNewListsAllocated(item.operation);
         const built = buildInsertedParagraphs({
