@@ -1,0 +1,7 @@
+{
+  "seed": 740097169,
+  "steps": 20,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "batch deletion keeps comments on surviving blocks"
+}

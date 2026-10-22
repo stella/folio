@@ -53,13 +53,52 @@ export const isCommentAnchorCarrier = (node: PMNode): boolean => {
   return isCommentAnchorCarrierType(type);
 };
 
-/** Ids of the comments an editor document anchors: by mark, reference or point anchor. */
-export const anchoredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {
+/**
+ * Ids of the comments an editor document anchors: by mark, reference or point anchor.
+ * `beforePendingDeletions` supplies markers displaced by a deletion mark at the
+ * same position; those markers remain anchored until that deletion is accepted.
+ */
+export const anchoredCommentIdsInProseDoc = (
+  doc: PMNode,
+  beforePendingDeletions?: PMNode,
+): Set<number> => {
   const ids = new Set<number>();
-  doc.descendants((node) => {
-    for (const id of commentAnchorIdsForNode(node)) ids.add(id);
+  const addNode = (node: PMNode, target = ids) => {
+    for (const id of commentAnchorIdsForNode(node)) target.add(id);
+  };
+  const pendingDeletionRanges: { from: number; to: number }[] = [];
+  let liveText = false;
+  let pendingDeletedText = false;
+  doc.descendants((node, position) => {
+    addNode(node);
+    const pendingDeletion = node.marks.some(({ type }) => type.name === "deletion");
+    if (node.isText) {
+      pendingDeletedText ||= pendingDeletion;
+      liveText ||= !pendingDeletion;
+    }
+    if (pendingDeletion) {
+      pendingDeletionRanges.push({ from: position, to: position + node.nodeSize });
+    }
     return true;
   });
+  if (beforePendingDeletions && pendingDeletionRanges.length > 0) {
+    beforePendingDeletions.descendants((node, position) => {
+      const end = position + node.nodeSize;
+      if (pendingDeletionRanges.some(({ from, to }) => position < to && end > from)) {
+        addNode(node);
+      }
+      return true;
+    });
+    // Structural tracked deletions can re-segment a story's inline nodes, so
+    // position overlap alone cannot recover every displaced marker. When the
+    // complete story is pending deletion, every prior anchor remains pending.
+    if (pendingDeletedText && !liveText) {
+      beforePendingDeletions.descendants((node) => {
+        addNode(node);
+        return true;
+      });
+    }
+  }
   return ids;
 };
 
