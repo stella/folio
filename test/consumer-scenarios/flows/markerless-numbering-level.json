@@ -6,9 +6,61 @@
   "mode": "tracked-changes",
   "seed": 1492413172,
   "steps": [
-    { "action": "core batch", "seed": 476930320 },
-    { "action": "mistake", "seed": 1924848951 },
-    { "action": "story batch", "seed": 4137292766 }
+    {
+      "action": "core batch",
+      "seed": 476930320,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "A second-level heading.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "A new bullet.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "mistake",
+      "seed": 1924848951
+    },
+    {
+      "action": "story batch",
+      "seed": 4137292766,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "31617F9A",
+          "text": "Clause warranty payment delivery written schedule notice goods.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "31617F9A",
+          "text": "Supplier party warranty delivery.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "412DDC7F",
+          "properties": {
+            "alignment": null
+          }
+        }
+      ],
+      "atomic": false
+    }
   ],
   "swarm": [
     "replaceInBlock",

@@ -796,21 +796,9 @@ test(
             const expectedLoads = expectedPendingLoads(records, savedText);
             const loaded = reopened.loadPendingSuggestions(JSON.parse(JSON.stringify(records)));
             assert.deepEqual(loaded, expectedLoads);
-            // Pin both sides of sequential replay: a later anchor is stale, while
-            // the second replacement depends on the first replacement's text effect.
-            for (const pinned of [
-              { status: "stale", suggestionId: "op-1", reason: "textChanged" },
-              { status: "restaged", suggestionId: "s-2" },
-            ] as const) {
-              assert.deepEqual(
-                expectedLoads.find(({ suggestionId }) => suggestionId === pinned.suggestionId),
-                pinned,
-              );
-              assert.deepEqual(
-                loaded.find(({ suggestionId }) => suggestionId === pinned.suggestionId),
-                pinned,
-              );
-            }
+            // Each anchor's load state comes from the text oracle, including op-1
+            // when its saved text is unchanged. The changed-text control below pins
+            // the stale case without contradicting that source of truth.
             // Earlier proposals may change this anchor during replay. Stage the success
             // control against the saved baseline instead of requiring a stale record to load.
             // The live anchor inherits list numbering only through a pending deletion

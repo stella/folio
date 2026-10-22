@@ -110,12 +110,6 @@ const resolveProperties = ({
         const carrier = expandRunFormattingCarrier(inline, pos);
         if (!carrier) return !inline.isAtom;
         for (const { node: representation } of carrier.representations) {
-          if (
-            mode === "reject" &&
-            representation.marks.some(({ type }) => type.name === "deletion") &&
-            representation.marks.some(({ type }) => type.name === "runFormattingOverride")
-          )
-            continue;
           const authoredFormatting = readAuthoredRunFormatting({
             context: previousContext,
             marks: representation.marks,

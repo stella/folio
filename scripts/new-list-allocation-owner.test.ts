@@ -44,25 +44,30 @@ test("deferred new lists are allocated only at will-apply boundaries", async () 
   const source = await Bun.file(path.join(root, "ai-edits/apply.ts")).text();
   const loop = between(
     source,
-    "for (const insertionRun of executionGroups)",
+    "for (const executionGroup of executionGroups)",
     "removeRowsWithoutCellsAfterBatch(tr, emptiedRows)",
   );
   const beforeSingletonSwitch = between(
     loop,
-    "for (const insertionRun of executionGroups)",
+    "for (const executionGroup of executionGroups)",
     "switch (item.operation.type)",
   );
   expect(beforeSingletonSwitch.indexOf('reason: "pendingParagraphPropertyChange"')).toBeLessThan(
     beforeSingletonSwitch.indexOf('status: "willApply"'),
   );
   expect(beforeSingletonSwitch).toContain('reason: "unsupportedMode"');
+  // A suggested insertion whose live anchor is pending deletion is filtered
+  // out of its execution group before any list is allocated.
+  expect(beforeSingletonSwitch.indexOf('reason: "pendingDeletion"')).toBeGreaterThanOrEqual(0);
+  expect(beforeSingletonSwitch.indexOf('reason: "pendingDeletion"')).toBeLessThan(
+    beforeSingletonSwitch.indexOf('status: "willApply"'),
+  );
 
   const allocationAfter = (caseName: string, refusal: string, nextCase: string): void => {
     const branch = between(loop, `case "${caseName}"`, `case "${nextCase}"`);
     expect(branch).toContain(refusal);
     expect(branch.indexOf(refusal)).toBeLessThan(branch.indexOf('status: "willApply"'));
   };
-  allocationAfter("insertAfterBlock", 'reason: "pendingDeletion"', "insertSignatureTable");
   allocationAfter(
     "setBlockParagraphProperties",
     "pendingParagraphMarkPropertyRefusal",
