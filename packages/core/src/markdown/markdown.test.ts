@@ -573,7 +573,9 @@ describe("toMarkdown — block structure", () => {
 
   test("a package-free paragraph carrying only its list projection exports as a list", () => {
     expect(
-      md([{ type: "paragraph", content: [run("text")], listRendering: list(0, false, "1.") }]),
+      toMarkdown(
+        doc([{ type: "paragraph", content: [run("text")], listRendering: list(0, false, "1.") }]),
+      ),
     ).toBe("1. text");
   });
 

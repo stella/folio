@@ -18,12 +18,7 @@ import {
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { createListLabelCounter } from "../prosemirror/listLabels";
 import type { NumberingMap } from "../docx/numberingParser";
-import {
-  effectiveParagraphNumberingReference,
-  paragraphNumberingAttr,
-  paragraphNumberingSourcesFromBoundary,
-  readParagraphNumberingAttr,
-} from "../prosemirror/numberingAttr";
+import { paragraphNumberingAttr, readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
 import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphIndentation } from "../prosemirror/paragraphIndentation";
@@ -881,15 +876,7 @@ const createFolioAIEditSnapshotInternal = (
       node.type.name === "paragraph"
         ? expectParagraphAttrs(node)._originalFormatting?.outlineLevel
         : undefined;
-    const numberedListReference =
-      listAttrs === undefined
-        ? undefined
-        : effectiveParagraphNumberingReference(
-            paragraphNumberingSourcesFromBoundary({
-              numPr: listAttrs.numPr,
-              numPrFromStyle: listAttrs.numPrFromStyle,
-            }),
-          );
+    const numberedListReference = visibleList?.numbering;
     const listReference =
       visibleList?.kind !== "marker" || numberedListReference === undefined
         ? undefined
