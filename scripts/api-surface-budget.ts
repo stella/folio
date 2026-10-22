@@ -16,7 +16,7 @@ import { keyDifferences, validateExactObjectKeys } from "./lib/exact-object";
 import { PUBLISHED_PACKAGES } from "./lib/published-packages";
 import { installFrozenRepositoryDependencies } from "./clean-room-install";
 
-const REPORT_ROOT = path.resolve(import.meta.dir, "../api-reports");
+const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_PATH = path.join(import.meta.dir, "api-surface-budget.json");
 const PACKAGES = PUBLISHED_PACKAGES.map(({ slug }) => slug);
 const HEADROOM = 1.05;
@@ -77,15 +77,15 @@ const measureFiles = (directory: string, files: readonly string[]): FileSize => 
   return { bytes, lines };
 };
 
-const measurePackage = (name: PackageName): SurfaceSize => {
-  const reportDirectory = path.join(REPORT_ROOT, name);
+const measurePackage = (name: PackageName, root: string = REPOSITORY_ROOT): SurfaceSize => {
+  const reportDirectory = path.join(root, "api-reports", name);
   const reportFiles = readdirSync(reportDirectory)
     .filter((file) => file.endsWith(".api.md"))
     .toSorted();
   if (reportFiles.length === 0) {
     throw new Error(`No API reports found for ${name}`);
   }
-  const distDirectory = path.resolve(REPORT_ROOT, "../packages", name, "dist");
+  const distDirectory = path.join(root, "packages", name, "dist");
   const declarationFiles = readdirSync(distDirectory, { recursive: true })
     .filter(
       (file): file is string =>
@@ -107,6 +107,10 @@ const measurePackage = (name: PackageName): SurfaceSize => {
 };
 
 const measureAll = (): Baseline => new Map(PACKAGES.map((name) => [name, measurePackage(name)]));
+
+/** A package without API reports in the base had no published surface there. */
+const measureBasePackage = (name: PackageName, root: string): SurfaceSize =>
+  existsSync(path.join(root, "api-reports", name)) ? measurePackage(name, root) : EMPTY_SURFACE;
 
 const sizeFor = (baseline: Baseline, name: PackageName): SurfaceSize =>
   baseline.get(name) ?? panic("Missing measured API surface", { name });
@@ -278,41 +282,29 @@ const measureBase = (revision: string): Baseline => {
       stderr: "inherit",
     });
     if (build.exitCode !== 0) throw new Error("Cannot build the base API declaration surface.");
-    const sizes = new Map<PackageName, SurfaceSize>();
-    for (const name of PACKAGES) {
-      const packageDirectory = path.join(worktree, "packages", name);
-      if (!existsSync(packageDirectory)) {
-        sizes.set(name, EMPTY_SURFACE);
-        continue;
-      }
-      const reportDirectory = path.join(worktree, "api-reports", name);
-      const reports = measureFiles(
-        reportDirectory,
-        readdirSync(reportDirectory)
-          .filter((file) => file.endsWith(".api.md"))
-          .toSorted(),
-      );
-      const distDirectory = path.join(packageDirectory, "dist");
-      const declarations = measureFiles(
-        distDirectory,
-        readdirSync(distDirectory, { recursive: true })
-          .filter(
-            (file): file is string =>
-              typeof file === "string" && /\.d\.(?:ts|mts|cts)$/u.test(file),
-          )
-          .toSorted(),
-      );
-      sizes.set(name, {
-        reportBytes: reports.bytes,
-        reportLines: reports.lines,
-        declarationBytes: declarations.bytes,
-        declarationLines: declarations.lines,
-      });
-    }
-    return sizes;
+    return new Map(PACKAGES.map((name) => [name, measureBasePackage(name, worktree)]));
   } finally {
     Bun.spawnSync(["git", "worktree", "remove", "--force", worktree], { cwd: root });
     rmSync(worktree, { recursive: true, force: true });
+  }
+};
+
+const baseMeasurementSelfTest = (): boolean => {
+  const cacheRoot = path.join(REPOSITORY_ROOT, ".cache");
+  mkdirSync(cacheRoot, { recursive: true });
+  const root = mkdtempSync(path.join(cacheRoot, "api-budget-self-test-"));
+  try {
+    const name = PACKAGES[0] ?? panic("api-surface-budget: no published packages");
+    mkdirSync(path.join(root, "packages", name, "dist"), { recursive: true });
+    const unpublished = measureBasePackage(name, root);
+    mkdirSync(path.join(root, "api-reports", name), { recursive: true });
+    const emptyReportsFail = Result.try(() => measureBasePackage(name, root)).isErr();
+    return (
+      METRIC_NAMES.every((metric) => unpublished[metric] === EMPTY_SURFACE[metric]) &&
+      emptyReportsFail
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 };
 
@@ -342,7 +334,7 @@ const selfTest = (): number => {
   }
 
   const publishedPackageSlugs: string[] = [];
-  const packagesRoot = path.resolve(REPORT_ROOT, "../packages");
+  const packagesRoot = path.join(REPOSITORY_ROOT, "packages");
   for (const directory of readdirSync(packagesRoot, { withFileTypes: true })) {
     if (!directory.isDirectory()) {
       continue;
@@ -365,6 +357,10 @@ const selfTest = (): number => {
         `missing: ${packageCoverage.missing.join(", ") || "none"}; ` +
         `extra: ${packageCoverage.extra.join(", ") || "none"}`,
     );
+    return 1;
+  }
+  if (!baseMeasurementSelfTest()) {
+    console.error("api-surface-budget: base-measurement self-test failed");
     return 1;
   }
   console.log("api-surface-budget: self-test passed");
