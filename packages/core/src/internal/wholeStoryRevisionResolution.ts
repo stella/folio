@@ -46,9 +46,9 @@ const resolveProperties = ({
   steps,
   changedRanges,
 }: ResolvePropertiesOptions) => {
+  const removedMark = doc.type.schema.marks[mode === "accept" ? "deletion" : "insertion"];
   const collector = createResolvedCommentPointCollector({
-    removes: (node) =>
-      mode === "accept" && doc.type.schema.marks["deletion"]?.isInSet(node.marks) !== undefined,
+    removes: (node) => removedMark?.isInSet(node.marks) !== undefined,
     retiresStructure: () => mode === "accept",
   });
   let structural = false;
@@ -164,7 +164,12 @@ const resolveProperties = ({
     return changed ? rebuild(resolved, { content: children }) : resolved;
   };
   const resolved = walk({ node: doc, position: -1 });
-  return { resolved, structural, runsIntoTable, pointComments: new Set(collector.finish().keys()) };
+  return {
+    resolved,
+    structural,
+    runsIntoTable,
+    pointComments: mode === "accept" ? new Set(collector.finish().keys()) : new Set<number>(),
+  };
 };
 
 type StructuralContext = {
