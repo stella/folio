@@ -133,6 +133,25 @@ test("rejecting an empty inserted final paragraph after a table keeps it as the 
   expect(result.resolved.lastChild?.type.name).toBe("paragraph");
 });
 
+test("rejecting an inserted boundary after a table keeps its section on the joined paragraph", () => {
+  const sectionProperties = { sectionStart: "nextPage", pageWidth: 10_000 };
+  const doc = schema.node("doc", null, [
+    table([row([cell("cell")])]),
+    schema.node(
+      "paragraph",
+      { pPrMark: insertedParagraphMark, _sectionProperties: sectionProperties },
+      [schema.text("before")],
+    ),
+    paragraph("after"),
+  ]);
+
+  const result = resolveWholeStory({ doc, mode: "reject", styleResolver: null, numbering: null });
+
+  expect(result.failed).toBe(false);
+  expect(result.resolved.lastChild?.textContent).toBe("beforeafter");
+  expect(result.resolved.lastChild?.attrs["_sectionProperties"]).toEqual(sectionProperties);
+});
+
 test("rejecting an empty inserted final paragraph in a cell leaves the paragraph before it last", () => {
   const terminator = schema.node("paragraph", { pPrMark: insertedParagraphMark });
   const doc = schema.node("doc", null, [
