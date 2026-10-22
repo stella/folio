@@ -1,0 +1,14 @@
+name: Package quarantine prune
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps: []

@@ -17,6 +17,7 @@
     "packages/*"
   ],
   "type": "module",
+  "trustedDependencies": [],
   "scripts": {
     "clean": "git clean -xdf packages/*/dist .cache .turbo node_modules",
     "hooks:install": "lefthook install",
