@@ -94,6 +94,32 @@ test("a recorded inverse symptom cannot hide a new scope violation", () => {
   expect(unexpectedFailure({ kind: "insertText", failures: [inverse] })).toBe(inverse);
 });
 
+test(
+  "block deletion does not own comments whose ranges it leaves untouched",
+  () => {
+    const before = fc.sample(packageDocumentArbitrary, { seed: 1336, numRuns: 1 }).at(0);
+    if (!before) throw new OperationPackageLawError({ message: "Missing law fixture" });
+    const target = before.package.document.content.at(1);
+    if (target?.type !== "paragraph" || !target.paraId)
+      throw new OperationPackageLawError({ message: "Missing block deletion target" });
+    const document = structuredClone(before);
+    delete document.package.document.comments;
+    const failures = localityStepFailures({
+      before,
+      op: { type: DOCUMENT_OP_TYPES.DELETE_BLOCKS, story: "main", blockIds: [target.paraId] },
+      edit: {
+        document,
+        inverse: [],
+        touched: { modified: [], inserted: [], removed: [] },
+      },
+    });
+    expect(failures).toContain(
+      "deleteBlocks changed records outside its declared story and section fields",
+    );
+  },
+  propertyTestTimeout(10_000),
+);
+
 const assertPackageOperationLaws = async ({
   kind,
   document,
