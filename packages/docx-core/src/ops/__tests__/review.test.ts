@@ -177,7 +177,7 @@ describe("tracked text", () => {
     expect(resolved(tracked.document, [1], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
   });
 
-  test("rejecting a tracked insertion exhausts a comment that only covered inserted text", () => {
+  test("rejecting a tracked insertion retires a comment that only covered inserted text", () => {
     const document = commentedDocument([
       run("before "),
       { type: "commentRangeStart", id: 40 },
@@ -192,7 +192,7 @@ describe("tracked text", () => {
 
     const rejected = resolved(document, [1], REVISION_DECISIONS.REJECT);
 
-    expect(isCommentExhausted({ type: "document", document: rejected, id: 40 })).toBe(true);
+    expect(rejected.package.document.comments).toBeUndefined();
   });
 
   test("rejecting a tracked insertion keeps a comment that also covered original text", () => {
@@ -451,7 +451,7 @@ describe("tracked text", () => {
     ]);
   });
 
-  test("accepting deletion of a comment's whole range exhausts it", () => {
+  test("accepting deletion of a comment's whole range retires it", () => {
     const document = commentedDocument([
       { type: "commentRangeStart", id: 40 },
       run("x"),
@@ -471,10 +471,9 @@ describe("tracked text", () => {
       document,
     );
     const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
-    expect(isCommentExhausted({ type: "document", document: accepted, id: 40 })).toBe(true);
+    expect(accepted.package.document.comments).toBeUndefined();
 
-    const direct = applied(document, directly(deletion));
-    expect(direct.document).toStrictEqual(accepted);
+    expect(blocks(accepted)).toEqual([paragraph("00000001", [run(" remains")])]);
   });
 
   test("accepting deletion keeps a range that still covers an inline object", () => {
@@ -525,7 +524,7 @@ describe("tracked text", () => {
 
     const accepted = resolved(document, [9, 10], REVISION_DECISIONS.ACCEPT);
 
-    expect(isCommentExhausted({ type: "document", document: accepted, id: 40 })).toBe(true);
+    expect(accepted.package.document.comments).toBeUndefined();
     expect(blocks(accepted)).toHaveLength(2);
   });
 

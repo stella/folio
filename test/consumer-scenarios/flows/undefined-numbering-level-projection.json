@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 1492413172,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 476930320,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Warranty period period.",
+          "numbering": {
+            "kind": "reference",
+            "numId": 5,
+            "ilvl": 0
+          }
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "1BF99289",
+          "text": "Supplier agreement supplier warranty written written clause agreement.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "7735D914",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "core batch",
+      "seed": 1924848951,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@9",
+          "text": "x",
+          "numbering": {
+            "kind": "reference",
+            "numId": 5,
+            "ilvl": 8
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "deleteTableRow"
+  ],
+  "title": "Undefined numbering levels preserve resolved indentation across save"
+}

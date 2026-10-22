@@ -356,6 +356,61 @@ test("reject restores heading properties when an insertion interrupts a pending 
   expect(read(saved)).toEqual(original);
 });
 
+test("a run inserted after a pending merge resolves both ways without moving properties", async () => {
+  const original = read(await open());
+  const edited = async () => {
+    const reviewer = await open();
+    const anchor = reviewer.getContent().at(1);
+    if (!anchor) throw new Error("Missing merge anchor");
+    expect(
+      apply(reviewer, "tracked-changes", {
+        type: "mergeBlockWithNext",
+        blockId: anchor.id,
+        separator: " ",
+      }),
+    ).toBe(true);
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "heading",
+            type: "insertAfterBlock",
+            blockId: anchor.id,
+            text: "A second-level heading.",
+            styleId: "Heading2",
+          },
+          {
+            id: "bullet",
+            type: "insertAfterBlock",
+            blockId: anchor.id,
+            text: "A new bullet.",
+            numbering: { kind: "newList", format: "bullet" },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    expect(result.applied).toHaveLength(2);
+    return reviewer;
+  };
+
+  const rejecting = await edited();
+  rejecting.rejectAll();
+  expect(read(rejecting)).toEqual(original);
+  expect(read(await reopen(rejecting))).toEqual(original);
+
+  const accepting = await edited();
+  accepting.acceptAll();
+  const accepted = accepting.getContent();
+  expect(accepted.find(({ text }) => text === "A second-level heading.")?.kind).toBe("heading");
+  expect(
+    accepted.find(({ text }) => text.startsWith("A new bullet."))?.text.startsWith("A new bullet."),
+  ).toBe(true);
+  expect(read(await reopen(accepting))).toEqual(read(accepting));
+});
+
 for (const tableDeletion of ["deleteTable", "deleteTableRow"] as const) {
   test(`terminal paragraph deletions resolve like direct after ${tableDeletion}`, async () => {
     const original = read(await open());

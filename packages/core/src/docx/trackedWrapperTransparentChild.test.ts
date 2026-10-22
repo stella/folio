@@ -109,12 +109,12 @@ describe("a revision keeps the wrapper it was authored around", () => {
     expect(xml).toContain("<w:sdtContent><w:r><w:t>x</w:t></w:r></w:sdtContent></w:sdt></w:ins>");
   });
 
-  test("content the revision may not hold still splits it", () => {
+  test("a range start stays in the revision run sequence", () => {
     const xml = roundTrip(
       `<w:ins ${ATTRS}><w:r><w:t>a</w:t></w:r><w:commentRangeStart w:id="1"/><w:r><w:t>b</w:t></w:r></w:ins>`,
     );
     expect(xml).toContain(
-      `<w:ins ${ATTRS}><w:r><w:t>a</w:t></w:r></w:ins><w:commentRangeStart w:id="1"/><w:ins ${ATTRS}><w:r><w:t>b</w:t></w:r></w:ins>`,
+      `<w:ins ${ATTRS}><w:r><w:t>a</w:t></w:r><w:commentRangeStart w:id="1"/><w:r><w:t>b</w:t></w:r></w:ins>`,
     );
   });
 });

@@ -28,6 +28,23 @@ import { RANGE_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/RangeAnc
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import type { BlockContent, Comment } from "../types/document";
 
+/** Comment ids anchored by one editor node, regardless of anchor representation. */
+export const commentAnchorIdsForNode = (node: PMNode): readonly number[] => {
+  const ids: number[] = [];
+  if (node.type.name === COMMENT_REFERENCE_NODE_NAME) {
+    const attrs = readCommentReferenceAttrs(node);
+    if (attrs.ok) ids.push(attrs.value.commentId);
+  } else if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+    const attrs = readRangeAnchorAttrs(node);
+    if (attrs.ok && attrs.value.start.type === "commentRangeStart") ids.push(attrs.value.start.id);
+  }
+  for (const mark of node.marks) {
+    const commentId = mark.attrs["commentId"];
+    if (mark.type.name === "comment" && typeof commentId === "number") ids.push(commentId);
+  }
+  return ids;
+};
+
 /** Whether an inline node only locates a comment rather than being covered content. */
 export const isCommentAnchorCarrier = (node: PMNode): boolean => {
   let type = node.type.name;
@@ -47,23 +64,7 @@ export const anchoredCommentIdsInProseDoc = (
 ): Set<number> => {
   const ids = new Set<number>();
   const addNode = (node: PMNode, target = ids) => {
-    if (node.type.name === COMMENT_REFERENCE_NODE_NAME) {
-      const attrs = readCommentReferenceAttrs(node);
-      if (attrs.ok) {
-        target.add(attrs.value.commentId);
-      }
-    } else if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
-      const attrs = readRangeAnchorAttrs(node);
-      if (attrs.ok && attrs.value.start.type === "commentRangeStart") {
-        target.add(attrs.value.start.id);
-      }
-    }
-    for (const mark of node.marks) {
-      const commentId = mark.attrs["commentId"];
-      if (mark.type.name === "comment" && typeof commentId === "number") {
-        target.add(commentId);
-      }
-    }
+    for (const id of commentAnchorIdsForNode(node)) target.add(id);
   };
   const pendingDeletionRanges: { from: number; to: number }[] = [];
   let liveText = false;

@@ -919,7 +919,13 @@ export const applyCommentOp = (
   const comments = document.package.document.comments ?? [];
   const comment = comments.find(({ id }) => id === op.id);
   if (!comment) return fail(op, "The comment does not exist.");
-  if (orphans.has(comment.id))
+  if (
+    orphans.has(comment.id) &&
+    !(
+      op.type === DOCUMENT_OP_TYPES.DELETE_COMMENT &&
+      isCommentExhausted({ type: "document", document, id: comment.id })
+    )
+  )
     return fail(op, "A comment without a source anchor is preserved read-only.");
   if (op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT) {
     if (

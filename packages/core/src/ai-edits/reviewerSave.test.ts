@@ -1,9 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import JSZip from "jszip";
 
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
+import { createDocx } from "../docx/rezip";
 import { toMarkdown } from "../markdown";
-import { FolioDocxReviewer } from "./headless";
+import type { Document } from "../types/document";
+import { FolioDocxReviewer, type FolioEditableDocumentStoryHandle } from "./headless";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14_NS = "http://schemas.microsoft.com/office/word/2010/wordml";
@@ -48,6 +50,147 @@ const firstBlockId = (reviewer: FolioDocxReviewer): string => {
 };
 
 describe("FolioDocxReviewer.save", () => {
+  test("rejecting an insertion drops its exhausted comment before and after save", async () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "60000001",
+              content: [
+                { type: "run", content: [{ type: "text", text: "Before " }] },
+                {
+                  type: "insertion",
+                  info: { id: 7, author: "Reviewer" },
+                  content: [
+                    { type: "commentRangeStart", id: 9 },
+                    { type: "run", content: [{ type: "text", text: "inserted" }] },
+                    { type: "commentRangeEnd", id: 9 },
+                    { type: "commentReference", id: 9 },
+                  ],
+                },
+                { type: "run", content: [{ type: "text", text: " after" }] },
+              ],
+            },
+          ],
+          comments: [
+            {
+              id: 9,
+              author: "Reviewer",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "run", content: [{ type: "text", text: "Check." }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
+
+    expect(reviewer.rejectAll()).toBe(1);
+    const beforeSave = reviewer.getComments();
+    expect(beforeSave).toEqual([]);
+
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(reopened.getComments()).toEqual(beforeSave);
+  });
+
+  test("retiring a header comment leaves repeated saves and public story reads stable", async () => {
+    const headerId = "rIdHeader";
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "61000001",
+              content: [{ type: "run", content: [{ type: "text", text: "Body" }] }],
+            },
+          ],
+          comments: [
+            {
+              id: 9,
+              author: "Reviewer",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "run", content: [{ type: "text", text: "Remove this." }] }],
+                },
+              ],
+            },
+          ],
+          finalSectionProperties: {
+            headerReferences: [{ type: "default", rId: headerId }],
+          },
+        },
+        headers: new Map([
+          [
+            headerId,
+            {
+              type: "header",
+              hdrFtrType: "default",
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "62000001",
+                  content: [
+                    { type: "commentRangeStart", id: 9 },
+                    { type: "run", content: [{ type: "text", text: "Header clause" }] },
+                    { type: "commentRangeEnd", id: 9 },
+                    { type: "commentReference", id: 9 },
+                  ],
+                },
+              ],
+            },
+          ],
+        ]),
+      },
+    };
+    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
+    const story: FolioEditableDocumentStoryHandle = { type: "header", relationshipId: headerId };
+    const headerBlock = reviewer.snapshotStory(story)?.blocks.at(0);
+    if (!headerBlock) throw new Error("header block is missing");
+    const receipt = reviewer.applyDocumentOperationsToStory({
+      story,
+      undefinedReferences: "refuse",
+      batch: {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [{ id: "delete", type: "deleteBlock", blockId: headerBlock.id }],
+      },
+    });
+    expect(receipt.applied).toHaveLength(1);
+    const retiredHeader = reviewer.snapshotStory(story)?.blocks;
+
+    setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    const first = await reviewer.toBuffer();
+    const second = await reviewer.toBuffer();
+    setSystemTime();
+    expect(new Uint8Array(second)).toEqual(new Uint8Array(first));
+    expect(reviewer.snapshotStory(story)?.blocks).toEqual(retiredHeader);
+
+    const bodyBlock = reviewer.snapshot().blocks.at(0);
+    if (!bodyBlock) throw new Error("body block is missing");
+    reviewer.applyOperations(
+      [
+        {
+          id: "unrelated",
+          type: "replaceInBlock",
+          blockId: bodyBlock.id,
+          find: "Body",
+          replace: "Updated body",
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
+    await reviewer.toBuffer();
+    expect(reviewer.snapshotStory(story)?.blocks).toEqual(retiredHeader);
+  });
+
   test("a new reply has the same live and saved range", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(["Clause."]));
     reviewer.applyOperations(
