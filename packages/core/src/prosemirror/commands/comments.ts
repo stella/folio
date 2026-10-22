@@ -226,6 +226,13 @@ function resolveChange(
       const tableCellStructuralOps: TableCellStructuralOp[] = [];
       let removedSectionEndpointCount = 0;
       const removedSectionReferences: RemovedSectionReference[] = [];
+      const countedSectionEndpoints = new Set<PMNode>();
+      const countRemovedSectionEndpoint = (paragraph: PMNode): void => {
+        if (!ownsSectionEndpoint(paragraph) || countedSectionEndpoints.has(paragraph)) return;
+        countedSectionEndpoints.add(paragraph);
+        removedSectionEndpointCount++;
+        removedSectionReferences.push(...sectionReferencesOf(paragraph));
+      };
       // A selective rejection restores properties on their current carrier.
       // If its break still goes, the eventual survivor must read them too.
       const carryRestoredProperties = (position: number): void => {
@@ -268,6 +275,9 @@ function resolveChange(
           });
 
           if (nextAttrs) {
+            if (nextAttrs["_sectionProperties"] == null) {
+              countRemovedSectionEndpoint(node);
+            }
             const styleChanged = nextAttrs["styleId"] !== node.attrs["styleId"];
             if (styleChanged && styleResolver) {
               setParagraphAttrsWithRebasedRunFormatting({
@@ -697,10 +707,7 @@ function resolveChange(
           // Removing that mark removes its section endpoint; transferring the
           // properties backward would retain the section the revision deleted.
           if (outcome.kind === "remove") {
-            if (ownsSectionEndpoint(paragraph)) {
-              removedSectionEndpointCount++;
-              removedSectionReferences.push(...sectionReferencesOf(paragraph));
-            }
+            countRemovedSectionEndpoint(paragraph);
             tr.delete(mappedPos, mappedPos + paragraph.nodeSize);
             continue;
           }
@@ -736,10 +743,7 @@ function resolveChange(
             position: mappedPos + 1 + paragraph.content.size,
             step: tr.steps.length,
           });
-          if (ownsSectionEndpoint(paragraph)) {
-            removedSectionEndpointCount++;
-            removedSectionReferences.push(...sectionReferencesOf(paragraph));
-          }
+          countRemovedSectionEndpoint(paragraph);
         } catch {
           // PM rejects the join if the two blocks aren't structurally
           // compatible (e.g. paragraph followed by a table). Leaving the
