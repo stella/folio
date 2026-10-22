@@ -1,0 +1,7 @@
+{
+  "seed": 1595037224,
+  "steps": 10,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "numbering zero defaults stay absent across save"
+}

@@ -19,6 +19,7 @@ import {
   ParagraphChangeTrackerExtension,
 } from "./extensions/features/ParagraphChangeTrackerExtension";
 import { sectionPropertiesOf } from "./sectionCarrier";
+import { sectionMarkEditsOf } from "./sectionMarkEdits";
 
 const schema = new Schema({
   nodes: {
@@ -93,6 +94,140 @@ const paragraphs = (state: EditorState) => {
 };
 
 describe("editing across a section break", () => {
+  test("splitting a section-ending paragraph keeps the break on the trailing half", () => {
+    const state = threeSections();
+    const next = state.apply(state.tr.split(textStart(state, 0) + 2));
+
+    expect(paragraphs(next)).toEqual([
+      { text: "On", record: null },
+      { text: "e.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "Three.", record: null },
+    ]);
+    expect(getTrackedSectionEndpointRemoval(next)).toBeNull();
+  });
+
+  test("splitting the leading half again keeps only the authored trailing mark", () => {
+    const state = threeSections();
+    const transaction = state.tr.split(textStart(state, 0) + 2).split(textStart(state, 0) + 1);
+    const next = state.apply(transaction);
+
+    expect(paragraphs(next)).toEqual([
+      { text: "O", record: null },
+      { text: "n", record: null },
+      { text: "e.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "Three.", record: null },
+    ]);
+  });
+
+  test("a break set on a paragraph and then split stays on the trailing half", () => {
+    const state = threeSections();
+    const added: SectionProperties = { sectionStart: "continuous" };
+    const transaction = state.tr
+      .setNodeAttribute(textStart(state, 2) - 1, "_sectionProperties", added)
+      .split(textStart(state, 2) + 2);
+    const next = state.apply(transaction);
+
+    expect(paragraphs(next)).toEqual([
+      { text: "One.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "Th", record: null },
+      { text: "ree.", record: added },
+    ]);
+  });
+
+  test("a pasted break on the last pasted paragraph survives a paste inside a paragraph", () => {
+    const state = threeSections();
+    const pasted: SectionProperties = { sectionStart: "continuous" };
+    const slice = new Slice(
+      schema.node("doc", null, [paragraph("A"), paragraph("B", pasted)]).content,
+      1,
+      1,
+    );
+    const next = run(state, { anchor: textStart(state, 2) + 2 }, (current, dispatch) => {
+      dispatch(current.tr.replaceSelection(slice));
+      return true;
+    });
+
+    expect(paragraphs(next)).toEqual([
+      { text: "One.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "ThA", record: null },
+      { text: "Bree.", record: pasted },
+    ]);
+  });
+
+  test("deleting the text beside a split still clears the leading copy", () => {
+    const state = threeSections();
+    const split = textStart(state, 0) + 2;
+    const next = state.apply(state.tr.split(split).delete(split - 1, split));
+
+    expect(paragraphs(next)).toEqual([
+      { text: "O", record: null },
+      { text: "e.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "Three.", record: null },
+    ]);
+  });
+
+  test.each([
+    ["replaced", { sectionStart: "continuous" } satisfies SectionProperties],
+    ["cleared", null],
+  ] as const)(
+    "a split whose trailing break is then %s leaves the leading half without one",
+    (_, trailing) => {
+      const state = threeSections();
+      const split = textStart(state, 0) + 2;
+      const transaction = state.tr.split(split);
+      const next = state.apply(
+        transaction.setNodeAttribute(
+          transaction.doc.child(0).nodeSize,
+          "_sectionProperties",
+          trailing,
+        ),
+      );
+
+      expect(paragraphs(next).slice(0, 2)).toEqual([
+        { text: "On", record: null },
+        { text: "e.", record: trailing },
+      ]);
+    },
+  );
+
+  test("Enter at the end of a section-ending paragraph moves the break to the new paragraph", () => {
+    const state = threeSections();
+    const end = textStart(state, 0) + "One.".length;
+    const next = state.apply(state.tr.split(end, 1, [{ type: schema.nodes.paragraph }]));
+
+    expect(paragraphs(next).slice(0, 2)).toEqual([
+      { text: "One.", record: null },
+      { text: "", record: sectionOne },
+    ]);
+  });
+
+  test("split ownership is preserved across a batch of transactions", () => {
+    const state = threeSections();
+    const first = state.tr.split(textStart(state, 0) + 2);
+    const afterFirst = state.apply(first);
+    const second = afterFirst.tr.split(textStart(afterFirst, 0) + 1);
+    const edits = sectionMarkEditsOf([first, second], second.doc);
+    const untracked = EditorState.create({ schema, doc: second.doc });
+    let correction = untracked.tr;
+    for (const { position, record } of edits.carriers) {
+      correction = correction.setNodeAttribute(position, "_sectionProperties", record);
+    }
+    const corrected = untracked.apply(correction);
+
+    expect(paragraphs(corrected)).toEqual([
+      { text: "O", record: null },
+      { text: "n", record: null },
+      { text: "e.", record: sectionOne },
+      { text: "Two.", record: sectionTwo },
+      { text: "Three.", record: null },
+    ]);
+  });
+
   test("Backspace at the start of the next paragraph merges the section into the next", () => {
     const state = threeSections();
     const next = run(state, { anchor: textStart(state, 1) }, joinBackward);

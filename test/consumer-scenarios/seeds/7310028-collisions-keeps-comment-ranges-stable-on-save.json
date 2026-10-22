@@ -1,0 +1,7 @@
+{
+  "seed": 7310028,
+  "steps": 10,
+  "kind": "collisions",
+  "generation": "legacy",
+  "title": "keeps comment ranges stable on save"
+}

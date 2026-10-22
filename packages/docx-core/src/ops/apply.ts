@@ -156,6 +156,7 @@ import {
   namesMarkFormatting,
   paragraphPropertiesOf,
   foldedParagraphPropertyChange,
+  isRemovedRevisionNode,
   paragraphPropertyChange,
   reviewFieldsOf,
   sameMarkFormatting,
@@ -861,6 +862,27 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
   if (removed.content.length === 0) {
     return unchanged(document);
   }
+  const protectedMark = automaticNoteMarkBetween(story, paragraph, from, to);
+  let content = remaining;
+  if (protectedMark !== undefined) {
+    // A leaf counts when the range covers any part of it, including part of a text leaf.
+    const hasOtherSurvivingContent = leafSpans(paragraph.content).some(
+      ({ node, ancestors, before, after }) =>
+        compareGaps(before, to) < 0 &&
+        compareGaps(from, after) < 0 &&
+        node.type !== "noteMarker" &&
+        !ancestors.some(isRemovedRevisionNode),
+    );
+    if (!hasOtherSurvivingContent) {
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+        "The range contains only the note story's automatic marker.",
+      );
+    }
+    const afterRemoved = deleteBetween(paragraph.content, protectedMark.after, to).content;
+    content = deleteBetween(afterRemoved, from, protectedMark.before).content;
+  }
   if (op.revision !== undefined) {
     const wrapped = wrappedContent(op, {
       items: paragraph.content,
@@ -887,12 +909,6 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
       },
       (result) => Result.ok([contentRestoring(story, result, paragraph)]),
     );
-  }
-  const protectedMark = automaticNoteMarkBetween(story, paragraph, from, to);
-  let content = remaining;
-  if (protectedMark !== undefined) {
-    const afterRemoved = deleteBetween(paragraph.content, protectedMark.after, to).content;
-    content = deleteBetween(afterRemoved, from, protectedMark.before).content;
   }
   let retired: NewIds = {};
   if (join > 0) {
@@ -1717,7 +1733,7 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   }
   if (
     op.expectedSurvivor !== undefined &&
-    !equalForStaleness(reviewFieldsOf(survivor), op.expectedSurvivor)
+    !equalForStaleness(reviewFieldsOf(survivor), reviewFieldsOf(op.expectedSurvivor))
   ) {
     return refuse(
       op,
@@ -2025,7 +2041,7 @@ const setParagraphReview = (document: Document, op: SetParagraphReviewOp): Appli
     return Result.err(located.error);
   }
   const { paragraph } = located.value;
-  if (!equalForStaleness(reviewFieldsOf(paragraph), op.expected)) {
+  if (!equalForStaleness(reviewFieldsOf(paragraph), reviewFieldsOf(op.expected))) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,

@@ -37,6 +37,7 @@ import {
   type FolioDocumentOperation,
 } from "../document-operations";
 import { fromMarkdown } from "../markdown";
+import { readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
 import type { Comment, ParagraphContent } from "../types/document";
 import { changesFromSegments, planTextChanges, type TextChange } from "./minimal-replacement";
 import { createFolioAITextRangeHandle } from "./snapshot";
@@ -71,6 +72,47 @@ const markdownAfter = async (source: string, mode: Mode, find: string, replace: 
 };
 
 describe("a replacement across a formatting boundary", () => {
+  test("a whole-block replacement inherits from the replaced block, not its predecessor", async () => {
+    const reviewer = await openReviewer(
+      await paragraphsDocx([[textRun("Heading", { fontSize: 40 })], [textRun("🚀")]]),
+    );
+    const blockId = reviewer.snapshot().blocks.at(1)?.id ?? "";
+    const headingId = reviewer.snapshot().blocks.at(0)?.id ?? "";
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "empty-heading",
+            type: "replaceInBlock",
+            blockId: headingId,
+            find: "Heading",
+            replace: "",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          { id: "replace", type: "replaceInBlock", blockId, find: "🚀", replace: "Customer" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+
+    expect(reviewer.snapshot().blocks.at(1)?.previewRuns).toEqual([
+      expect.objectContaining({ text: "Customer", fontSizePt: 11 }),
+    ]);
+    expect((await reopened(reviewer)).snapshot().blocks.at(1)?.previewRuns).toEqual([
+      expect.objectContaining({ text: "Customer", fontSizePt: 11 }),
+    ]);
+  });
+
   test.each([
     [
       "a link",
@@ -364,6 +406,41 @@ const replacedSpan = (
 };
 
 describe("an edit applied directly and the same edit accepted", () => {
+  test("allocates several new-list insertions alike in both modes", async () => {
+    const property = fc.asyncProperty(fc.integer({ min: 2, max: 6 }), async (count) => {
+      const base = await openReviewer(
+        await paragraphsDocx(
+          Array.from({ length: count }, (_, index) => [textRun(`Anchor ${String(index)}`)]),
+        ),
+      );
+      const operations = base.snapshot().blocks.map(({ id }, index) => ({
+        id: `insert-${String(index)}`,
+        type: "insertAfterBlock" as const,
+        blockId: id,
+        text: `List ${String(index)}`,
+        numbering: { kind: "newList" as const, format: "bullet" as const },
+      }));
+      const direct = new OperationSession(base.state);
+      const tracked = new OperationSession(base.state);
+      expect(direct.apply("direct", operations).skipped).toEqual([]);
+      expect(tracked.apply("tracked-changes", operations).skipped).toEqual([]);
+      tracked.acceptAll();
+
+      const instances = (session: OperationSession) => {
+        const result: Record<string, number> = {};
+        session.state.doc.descendants((node) => {
+          if (node.type.name !== "paragraph" || !node.textContent.startsWith("List ")) return true;
+          const numbering = readParagraphNumberingAttr(node.attrs["numPr"]);
+          if (numbering?.kind === "reference") result[node.textContent] = numbering.numId;
+          return false;
+        });
+        return result;
+      };
+      expect(instances(tracked)).toEqual(instances(direct));
+    });
+    await fc.assert(property, propertyConfig({ numRuns: 30, seed: 1101252625 }));
+  });
+
   test("carries disjoint comments across a saved tracked replacement", async () => {
     const { content, comments } = paragraphOf([
       { kind: "comment", text: "Seller " },

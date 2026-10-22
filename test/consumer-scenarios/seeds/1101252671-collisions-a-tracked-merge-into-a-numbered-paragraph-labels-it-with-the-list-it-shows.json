@@ -1,0 +1,7 @@
+{
+  "seed": 1101252671,
+  "steps": 16,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "a tracked merge into a numbered paragraph labels it with the list it shows"
+}

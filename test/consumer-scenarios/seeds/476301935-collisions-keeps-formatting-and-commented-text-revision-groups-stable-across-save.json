@@ -1,0 +1,7 @@
+{
+  "seed": 476301935,
+  "steps": 16,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "keeps formatting and commented text revision groups stable across save"
+}

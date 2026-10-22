@@ -1,15 +1,19 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
   applyConsolidation,
   type ConsolidationStore,
   evidenceOf,
+  GitHubPause,
   identityOf,
   lanesOfWorkflow,
   planConsolidation,
   reproOf,
+  pauseOnGitHubRefusal,
   summarize,
 } from "./consolidate-fuzz-issues";
 import {
@@ -69,6 +73,80 @@ const open = (number: number, title: string, body: string): Issue => ({
   body,
   state: "open",
   closedAt: null,
+});
+
+test("apply resumes from its checkpoint without repeating completed writes", async () => {
+  const issues = fixture();
+  const fake = fakeStore(issues);
+  const plan = await planConsolidation(fake.store);
+  const directory = mkdtempSync(path.join(tmpdir(), "fuzz-consolidation-"));
+  const checkpoint = path.join(directory, "checkpoint.json");
+  let calls = 0;
+  const interrupted = {
+    edit: async (number: number, content: IssueContent) => {
+      calls += 1;
+      if (calls === 2) throw new Error("simulated interruption");
+      await fake.store.edit(number, content);
+    },
+    close: fake.store.close,
+  };
+  await expect(applyConsolidation(plan, interrupted, checkpoint)).rejects.toThrow(
+    "simulated interruption",
+  );
+  const completedCalls = calls;
+  await applyConsolidation(plan, interrupted, checkpoint);
+  expect(calls).toBeGreaterThan(completedCalls);
+  expect(fake.edits.filter(({ number }) => number === plan.groups.at(0)?.keep.number)).toHaveLength(
+    1,
+  );
+  rmSync(directory, { recursive: true });
+});
+
+test("a changed retry plan folds new evidence into the keeper before closing it", async () => {
+  const issues = fixture();
+  const fake = fakeStore(issues);
+  const originalPlan = await planConsolidation(fake.store);
+  const directory = mkdtempSync(path.join(tmpdir(), "fuzz-consolidation-"));
+  const checkpoint = path.join(directory, "checkpoint.json");
+  let closes = 0;
+  const interrupted = {
+    edit: fake.store.edit,
+    close: async (number: number, reason: CloseReason) => {
+      closes += 1;
+      if (closes === 1) throw new Error("simulated interruption");
+      await fake.store.close(number, reason);
+    },
+  };
+  await expect(applyConsolidation(originalPlan, interrupted, checkpoint)).rejects.toThrow(
+    "simulated interruption",
+  );
+
+  const newDuplicate = open(
+    1910,
+    `Fuzz failure [1910191019101910]: ${TEST}`,
+    fingerprintBody([1910], 31, "Missing numbering format for displayed label <n>"),
+  );
+  issues.push(newDuplicate);
+  const retryPlan = await planConsolidation(fake.store);
+  await applyConsolidation(retryPlan, interrupted, checkpoint);
+
+  const keeper = issues.find(({ number }) => number === retryPlan.groups.at(0)?.keep.number);
+  if (keeper === undefined) throw new Error("The retry plan has no keeper");
+  expect(parseSignatureState(keeper)?.seeds).toContain(1910);
+  expect(issues.find(({ number }) => number === newDuplicate.number)?.state).toBe("closed");
+  rmSync(directory, { recursive: true });
+});
+
+test("a GitHub refusal becomes a typed pause", () => {
+  expect(() => pauseOnGitHubRefusal(new Error("HTTP 429 secondary rate limit"))).toThrow(
+    "HTTP 429",
+  );
+});
+
+test("a permission refusal remains a failure", () => {
+  const refusal = new Error("HTTP 403: Resource not accessible by integration");
+  expect(() => pauseOnGitHubRefusal(refusal)).toThrow(refusal);
+  expect(() => pauseOnGitHubRefusal(refusal)).not.toThrow(GitHubPause);
 });
 
 const fakeStore = (issues: Issue[], comments: Record<number, string[]> = {}) => {
@@ -204,6 +282,23 @@ test("consolidation keeps the oldest issue per signature and closes the rest as 
   await applyConsolidation(await planConsolidation(rerun.store), rerun.store);
   expect(rerun.edits).toEqual([]);
   expect(rerun.closes).toEqual([]);
+});
+
+test("an issue with a legacy summary and a fresh failure consolidate into one invariant class", async () => {
+  const issues = [
+    open(1838, `Fuzz failure [0bdfe57beea291ae]: ${TEST}: listLevel mismatch`, ""),
+    open(
+      1990,
+      `Fuzz failure [4626ec0e549c5464]: ${TEST}`,
+      fingerprintBody([740097500], 30, "listLevel is 2, expected 1"),
+    ),
+  ];
+  const fake = fakeStore(issues);
+  const plan = await planConsolidation(fake.store);
+  expect(plan.unparsed).toEqual([]);
+  expect(plan.groups).toHaveLength(1);
+  expect(plan.groups[0]?.keep.number).toBe(1838);
+  expect(plan.groups[0]?.duplicates.map(({ number }) => number)).toEqual([1990]);
 });
 
 test("lanes come from the reporter jobs and inline filer runs of a workflow", () => {

@@ -1,0 +1,7 @@
+{
+  "seed": 1595037222,
+  "steps": 10,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "style-numbered headings keep levels in suggestions"
+}
