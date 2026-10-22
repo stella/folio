@@ -1,5 +1,6 @@
 import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
+import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 import { Mapping, StepMap, ReplaceStep, Transform, type Step } from "prosemirror-transform";
 import {
@@ -491,10 +492,30 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       continue;
     }
     flushBookmarks();
+    let follows: "paragraph" | "table" | "nothing" = "nothing";
+    if (chain) follows = "paragraph";
+    else if (followingContainerChild) follows = "table";
+    // With a table after it, the container must still end with a paragraph;
+    // as the container's final paragraph, the block before it becomes last,
+    // so it must be a paragraph (a cell or body never ends with a table).
+    let containerStillEndsWithParagraph = true;
+    if (follows === "table") {
+      containerStillEndsWithParagraph = node.lastChild?.type.name === "paragraph";
+    } else if (follows === "nothing") {
+      containerStillEndsWithParagraph = entries[index - 1]?.original.type.name === "paragraph";
+    }
+    const outcome = paragraphMarkOutcome({
+      follows,
+      holdsContent: !holdsNoContent(paragraph),
+      markWasAdded,
+      containerStillEndsWithParagraph,
+      followingTableCanReceiveRunIn: false,
+    });
     if (
-      joins &&
+      marker &&
       holdsNoContent(paragraph) &&
-      (markWasAdded || followingContainerChild) &&
+      outcome.kind === "remove" &&
+      joins &&
       index + reversed.length + 1 > 1
     ) {
       context.deleted.push({ from: entry.position, to: entry.position + paragraph.nodeSize });

@@ -347,6 +347,58 @@ type Fields = { [Key in (typeof KEPT_FIELDS)[number] | "directAlignment"]?: Row[
 
 type Story = FolioDocumentStoryHandle;
 const MAIN: Story = { type: "main" };
+type NoteStory = Extract<Story, { type: "footnote" | "endnote" }>;
+const noteStoryKey = ({ type, noteId }: NoteStory): string => `${type}:${String(noteId)}`;
+
+/**
+ * Operations that leave every note reference in their target block where it
+ * is: formatting, comments and insertions beside the block. Any other edit of
+ * a block holding a reference leaves that note's comments unpredicted.
+ */
+export const KEEPS_NOTE_REFERENCES: ReadonlySet<string> = new Set([
+  "formatRange",
+  "setBlockParagraphProperties",
+  "commentOnRange",
+  "commentOnBlock",
+  "insertAfterBlock",
+  "insertBeforeBlock",
+]);
+
+/**
+ * Update `references` (the note references each live block holds) for one
+ * operation that removed `removal`, and return the note stories whose last
+ * reference it removed. A merge moves the next block's content, and the note
+ * references in it, into the surviving block, so those notes stay.
+ */
+export const retireNoteReferences = (
+  references: Map<string, readonly Story[]>,
+  operationType: string,
+  blockId: string,
+  removal: readonly string[],
+): string[] => {
+  const candidates = new Set<string>();
+  for (const removedBlockId of removal) {
+    const held = references.get(removedBlockId) ?? [];
+    references.delete(removedBlockId);
+    if (operationType === "mergeBlockWithNext" && removedBlockId !== blockId) {
+      references.set(blockId, [...(references.get(blockId) ?? []), ...held]);
+      continue;
+    }
+    for (const story of held) {
+      if (story.type === "footnote" || story.type === "endnote")
+        candidates.add(noteStoryKey(story));
+    }
+  }
+  // A note stays while any live block still references it.
+  for (const held of references.values()) {
+    for (const story of held) {
+      if (story.type === "footnote" || story.type === "endnote") {
+        candidates.delete(noteStoryKey(story));
+      }
+    }
+  }
+  return [...candidates];
+};
 
 /** The blocks of `story` (the body by default) a reader lists. */
 export const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] => {
@@ -513,6 +565,15 @@ export type Model = {
   liveTextById: ReadonlyMap<string, string>;
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
   deletedBlockIds: Set<string>;
+  /** Note stories whose references were removed by applied structural operations. */
+  removedNoteStories: Set<string>;
+  /**
+   * Note stories whose references an operation other than a removal may have
+   * moved or deleted; their comments are not predicted either way.
+   */
+  uncertainNoteStories: Set<string>;
+  /** Note story containing each comment-addressable block in the pre-state. */
+  noteStoryByBlockId: ReadonlyMap<string, string>;
   /** Paragraph style ids the saved package must define. */
   styles: Set<string>;
   /** Comments that must exist, with their anchored text when it is known. */
@@ -573,6 +634,9 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
     ),
     liveTextById: new Map(live.map(({ id, text }) => [id, text])),
     deletedBlockIds: new Set(),
+    removedNoteStories: new Set(),
+    uncertainNoteStories: new Set(),
+    noteStoryByBlockId: new Map(),
     styles: new Set(),
     comments: [],
     unmodelled: [],
@@ -1694,12 +1758,31 @@ export const compareComments = (
   const remaining = [...after];
   const kept: Comment[] = [];
   const gone: { entry: Comment; located: Comment }[] = [];
+  const storyBlockIds = new Set(
+    model.rows.flatMap((row) => (row.pre === undefined ? [] : [row.pre.id])),
+  );
   for (const entry of before) {
     const live = liveBefore.find(({ id }) => id === entry.id);
     // The accepted quote belongs to the accepted model. Use a live quote
     // only when a pending paragraph join moved its anchor to another block.
     const located = live && live.blockId !== entry.blockId ? live : entry;
-    const disposition = mode === "suggested" ? "kept" : anchorDisposition(model, located);
+    let disposition = mode === "suggested" ? "kept" : anchorDisposition(model, located);
+    // A suggested removal stays pending and rejectable, so its comments stay.
+    if (
+      mode !== "suggested" &&
+      ((model.story === "removed" &&
+        located.blockId !== null &&
+        storyBlockIds.has(located.blockId)) ||
+        (located.blockId !== null &&
+          model.removedNoteStories.has(model.noteStoryByBlockId.get(located.blockId) ?? "")))
+    )
+      disposition = "removed";
+    if (
+      mode !== "suggested" &&
+      located.blockId !== null &&
+      model.uncertainNoteStories.has(model.noteStoryByBlockId.get(located.blockId) ?? "")
+    )
+      disposition = "ambiguous";
     if (disposition === "removed") gone.push({ entry, located });
     else if (disposition === "kept") kept.push(entry);
   }
@@ -2051,9 +2134,20 @@ export const assertRequestedOutcome = async (
     }
   }
   model.inTextBox = pre.targets.inTextBox;
+  model.noteStoryByBlockId = new Map(
+    [...pre.targets.noteStoryByBlockId].flatMap(([blockId, story]) =>
+      story.type === "footnote" || story.type === "endnote"
+        ? [[blockId, noteStoryKey(story)] as const]
+        : [],
+    ),
+  );
   model.mode = pre.mode;
   model.story = pre.resolvedStory;
   const removedBlocksBy = new Map<string, { id: string; type: string }>();
+  // The note references each live block holds, followed through merges.
+  const noteReferences = new Map<string, readonly FolioDocumentStoryHandle[]>(
+    pre.targets.noteReferences,
+  );
   for (const [index, operation] of outcome.applied.entries()) {
     const range = operation["range"];
     const targetBlockId =
@@ -2123,6 +2217,19 @@ export const assertRequestedOutcome = async (
           return [];
       }
     })();
+    const removedIds = [...removal];
+    for (const story of retireNoteReferences(noteReferences, operation.type, blockId, removedIds)) {
+      model.removedNoteStories.add(story);
+    }
+    if (removedIds.length === 0 && !KEEPS_NOTE_REFERENCES.has(operation.type)) {
+      // A split, replacement or other edit of a block may move or delete the
+      // note references it holds; the oracle does not follow them.
+      for (const story of noteReferences.get(blockId) ?? []) {
+        if (story.type === "footnote" || story.type === "endnote") {
+          model.uncertainNoteStories.add(noteStoryKey(story));
+        }
+      }
+    }
     for (const removedBlockId of removal) {
       if (!removedBlocksBy.has(removedBlockId)) {
         removedBlocksBy.set(removedBlockId, {

@@ -43,6 +43,34 @@ const documentXml = async (bytes: ArrayBuffer): Promise<string> => {
   return xml;
 };
 
+const markParagraphBreakDeleted = async (
+  bytes: ArrayBuffer,
+  text: string,
+): Promise<ArrayBuffer> => {
+  const zip = await JSZip.loadAsync(bytes);
+  const part = zip.file("word/document.xml");
+  if (!part) throw new Error("no document part");
+  const xml = await part.async("string");
+  const run = `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+  const marked =
+    `<w:p><w:pPr><w:rPr>` +
+    `<w:del w:id="7" w:author="Reviewer" w:date="2026-10-19T00:00:00Z"/>` +
+    `</w:rPr></w:pPr>${run}</w:p>`;
+  if (!xml.includes(`<w:p>${run}</w:p>`)) throw new Error("paragraph not found");
+  zip.file("word/document.xml", xml.replace(`<w:p>${run}</w:p>`, marked));
+  return await zip.generateAsync({ type: "arraybuffer" });
+};
+
+const firstCellParagraph = (reviewer: FolioDocxReviewer) => {
+  const table = reviewer
+    .toDocument()
+    .package.document.content.find((block) => block.type === "table");
+  const paragraph =
+    table?.type === "table" ? table.rows.at(0)?.cells.at(0)?.content.at(0) : undefined;
+  if (paragraph?.type !== "paragraph") throw new Error("no first cell paragraph");
+  return paragraph;
+};
+
 /** Each top-level paragraph's text and whether it ends a section, in order. */
 const sectionsOf = (reviewer: FolioDocxReviewer): { text: string; endsSection: boolean }[] =>
   reviewer.getContent().flatMap((block) => {
@@ -61,6 +89,31 @@ const sectionsOf = (reviewer: FolioDocxReviewer): { text: string; endsSection: b
   });
 
 describe("deleting the paragraph that ends a section", () => {
+  test("direct block deletion before a table removes the selected paragraph", async () => {
+    const source = await buildSectionsDocx();
+    const direct = await open(source);
+    expect(deleteBlock(direct, SECTIONS_FIXTURE_TEXT.twoOpens, "direct").applied).toHaveLength(1);
+    expect(sectionsOf(direct).some(({ text }) => text === SECTIONS_FIXTURE_TEXT.twoOpens)).toBe(
+      false,
+    );
+  });
+
+  test("accepting only the paragraph-mark deletion runs its text into the table", async () => {
+    const reviewer = await open(
+      await markParagraphBreakDeleted(await buildSectionsDocx(), SECTIONS_FIXTURE_TEXT.twoOpens),
+    );
+    const cellId = firstCellParagraph(reviewer).paraId;
+
+    reviewer.acceptAll();
+
+    const survivor = firstCellParagraph(reviewer);
+    expect(survivor.paraId).toBe(cellId);
+    expect(survivor.pPrMark).toBeUndefined();
+    expect(reviewer.getContent().find((block) => block.table)?.text).toBe(
+      SECTIONS_FIXTURE_TEXT.twoOpens + SECTIONS_FIXTURE_TEXT.cell,
+    );
+  });
+
   test("merges its section into the next one and saves, in direct mode", async () => {
     const reviewer = await open(await buildSectionsDocx());
 
