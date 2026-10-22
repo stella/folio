@@ -1435,10 +1435,13 @@ export const compileEditorIntent = (
         }
       }
       if (movedNoteBodies.length > 0) {
-        const restored = applyDocumentOps(afterDeletion, movedNoteBodies);
+        // Each restoration expects the note parts its own deletion left, so
+        // they undo the deletions newest first.
+        const restorations = movedNoteBodies.toReversed();
+        const restored = applyDocumentOps(afterDeletion, restorations);
         if (restored.isErr()) return Result.err(restored.error);
         afterDeletion = restored.value.document;
-        deletionOps.push(...movedNoteBodies);
+        deletionOps.push(...restorations);
       }
       let target = intent.target;
       for (const op of logicalDeletions) {
