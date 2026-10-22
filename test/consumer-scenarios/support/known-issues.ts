@@ -25,14 +25,10 @@ export const FINDINGS = {
     "insertAfterBlock on a block whose tracked merge with the next is pending lists the new paragraph between them, but accepting joins the new paragraph onto the merged block and leaves the block the merge named apart",
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
-  BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
-    "#1356 (closed, still reproduces): in suggested mode, a batch applies insertBeforeBlock on a table-cell paragraph whose row has a pending suggested deletion, which the same operation alone refuses (pendingDeletion)",
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
     "#1408 (closed, still reproduces): a suggested paragraph inserted after a table cell's paragraph and a suggested deletion of the paragraph holding a comment's range end: accepted, the comment's anchored text takes in the inserted paragraph, which direct editing leaves out",
   COLUMN_CELL_IN_ROW_PENDING_DELETION:
     "#1415: insertTableColumn on a table whose header row has a pending tracked deletion: the oracle expects the new column's cell in that row to be listed, the reader leaves it out with the row",
-  MERGE_INTO_BLOCK_THE_BATCH_DELETES:
-    "#1415: a batch merges a block with the next and deletes that next block; the legacy path applies the batch in reverse, so the merge joins the block after the deleted one, where the oracle expects the separator with nothing joined",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -66,19 +62,20 @@ export const KNOWN_FAILING_FLOWS: readonly {
   generation?: "targeted" | "legacy";
   /** Required relation for a finding; the scenario is omitted when disabled. */
   relation?: Relation;
-}[] = [
-  {
-    seed: 18568230,
-    steps: 16,
-    finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES",
-    reason: "a tracked merge targets the block another operation in the batch deletes",
-  },
-];
+}[] = [];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 type FailureSymptom = RegExp | ((failure: unknown) => boolean);
 
-export const matchesFailureSymptom = (symptom: FailureSymptom, failure: unknown): boolean => {
+export const matchesFailureSymptom = (
+  finding: string,
+  symptom: FailureSymptom | undefined,
+  failure: unknown,
+): boolean => {
+  assert.ok(
+    Object.hasOwn(FINDINGS, finding) && symptom !== undefined,
+    `Unknown expected-failure finding: ${String(finding)}`,
+  );
   if (typeof symptom === "function") return symptom(failure);
   return symptom.test(failure instanceof Error ? failure.message : String(failure));
 };
@@ -90,16 +87,11 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
     /legacy (?:setTabs|addTabStop|removeTabStop) serialization retains original paragraph tabs/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
-  BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
-    /\[batchSequential\] the batch \(suggested: [^)]*\) leaves otherwise than its operations one at a time:\n\s*op-\d+ refused one at a time: pendingDeletion/u,
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
     /\[directTracked\] the flow's batches replayed tracked and accepted read otherwise than replayed direct[^\n]*\n\s*\{"type":"main"\}: \.comments\[\d+\]: /u,
   // The expected texts list the new cell; the reader's do not.
   COLUMN_CELL_IN_ROW_PENDING_DELETION:
     /not what was asked \(insertTableColumn\):\n\s*block texts differ:\n\s*expected \[[^\n]*"Column cell 1"[^\n]*\n\s*got +\[(?![^\n]*"Column cell 1")/u,
-  // A batch with both operations, whose expected block ends in the merge's separator.
-  MERGE_INTO_BLOCK_THE_BATCH_DELETES:
-    /not what was asked \((?=[^)]*mergeBlockWithNext)(?=[^)]*deleteBlock)[^)]*\):\n\s*block texts differ:\n\s*expected \[[^\n]* ","/u,
 };
 
 /**
@@ -107,8 +99,6 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
  * finding; they run as expected failures there.
  */
 export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> = {
-  "batch-after-table-row-delete.json": "BATCH_INSERT_BEFORE_ROW_PENDING_DELETION",
-  "merge-with-next-block-the-batch-deletes.json": "MERGE_INTO_BLOCK_THE_BATCH_DELETES",
   "suggested-story-insert-and-delete.json": "COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT",
   "tracked-story-row-delete-and-column-insert.json": "COLUMN_CELL_IN_ROW_PENDING_DELETION",
 };
@@ -121,6 +111,9 @@ export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> =
  * change to how the fixture serializes detaches every flow on it.
  */
 export const VACUOUS_CHECKED_IN_FLOWS: Readonly<Record<string, readonly number[]>> = {
+  // The recorded reply step finds no unresolved comment; the later list edits
+  // and rejection are the behavior this flow guards.
+  "issue-1770-list-review-sequence.json": [4],
   // The separate patch intentionally refuses pendingParagraphMarkDeletion;
   // known-issues.test.ts asserts the refusal and unchanged document explicitly.
   "restyle-paragraph-pending-deletion.json": [1],
@@ -178,7 +171,7 @@ export const settleExpectedFailure = async (
         "Make it a plain scenario and drop the entry from support/known-issues.ts.",
     );
   }
-  if (!matchesFailureSymptom(symptom, failure)) {
+  if (!matchesFailureSymptom(issue, symptom, failure)) {
     // It fails, but not the way the issue does: a real regression.
     release();
     throw failure;

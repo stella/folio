@@ -8,11 +8,14 @@ import { Fragment, type Node as PMNode } from "prosemirror-model";
 import {
   AllSelection,
   NodeSelection,
+  Selection,
   TextSelection,
   type EditorState,
   type Transaction,
 } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 import {
+  applyDocumentOp,
   applyDocumentOps,
   combineEdits,
   commentDocumentIssue,
@@ -25,11 +28,13 @@ import {
   normalizeForOps,
   OP_STORIES,
   packageParagraphIds,
+  paragraphIdsIn,
   validateOpsDocument,
   createEditorIntentIdAllocator,
   findStoryBody,
   documentStories,
   sameStory,
+  survivingComments,
   type OpStory,
   type DocumentOp,
   type EditorIntent,
@@ -44,6 +49,8 @@ import {
 } from "./canonicalInlineProjection";
 import { hasIllegalXmlCharacters } from "@stll/docx-core";
 import { rangedCommentIds, visitCommentMarkers } from "../docx/commentAnchorIndex";
+import { isCellMergeContinuation } from "../docx/tableParser";
+import { calculateRowSpans } from "../docx/verticalMergeProjection";
 
 import { splitsGraphemeCluster, splitsSurrogatePair } from "../ai-edits/character-boundaries";
 import {
@@ -54,6 +61,7 @@ import {
 } from "../docx/paragraphPropertySource";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
+  canonicalCellSelectionRanges,
   canonicalContentPosition,
   canonicalSelectionRange,
 } from "../prosemirror/canonicalSelectionRange";
@@ -64,7 +72,7 @@ import {
   footnoteToProseDoc,
   collectPairedBookmarkIds,
 } from "../prosemirror/conversion/toProseDoc";
-import type { Document, Paragraph, StyleDefinitions } from "../types/document";
+import type { BlockContent, Document, Paragraph, StyleDefinitions } from "../types/document";
 
 export class CanonicalSessionError extends TaggedError("CanonicalSessionError")<{
   message: string;
@@ -203,7 +211,7 @@ const operationChangesBodyProjection = (op: DocumentOp): boolean => {
 };
 
 export type CanonicalSelection = {
-  type: "text" | "inlineNode" | "all";
+  type: "text" | "inlineNode" | "cell" | "all";
   anchor: TextPosition;
   head: TextPosition;
 };
@@ -213,6 +221,7 @@ export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
 
 type ParagraphAddress = {
   blockId: string;
+  container: readonly BlockContent[];
   start: number;
   text: string;
   boundaries: readonly (readonly CanonicalInlineGap[])[];
@@ -316,7 +325,17 @@ class CanonicalProjection {
     let anchorPosition = selection.anchor;
     let headPosition = selection.head;
     if (selection instanceof TextSelection) type = "text";
-    else if (
+    else if (selection instanceof CellSelection) {
+      type = "cell";
+      anchorPosition =
+        Selection.atStart(selection.$anchorCell.nodeAfter ?? panic("Missing anchor cell")).from +
+        selection.$anchorCell.pos +
+        1;
+      headPosition =
+        Selection.atEnd(selection.$headCell.nodeAfter ?? panic("Missing head cell")).to +
+        selection.$headCell.pos +
+        1;
+    } else if (
       selection instanceof NodeSelection &&
       selection.node.isInline &&
       selection.node.isAtom &&
@@ -341,6 +360,14 @@ class CanonicalProjection {
 
   paragraph(blockId: string): ParagraphAddress | undefined {
     return this.paragraphsById.get(blockId);
+  }
+
+  nextParagraphInContainer(blockId: string): ParagraphAddress | undefined {
+    const index = this.paragraphs.findIndex((paragraph) => paragraph.blockId === blockId);
+    if (index < 0) return undefined;
+    const paragraph = this.paragraphs.at(index);
+    const next = this.paragraphs.at(index + 1);
+    return paragraph?.container === next?.container ? next : undefined;
   }
 }
 
@@ -385,20 +412,37 @@ const preservePropertySources = ({
   stories = documentStories(source),
   indentation = "derive",
 }: PreservePropertySourcesOptions): void => {
+  const collectParagraphs = (blocks: readonly BlockContent[]): Paragraph[] => {
+    const paragraphs: Paragraph[] = [];
+    for (const block of blocks) {
+      if (block.type === "paragraph") {
+        paragraphs.push(block);
+        continue;
+      }
+      if (block.type !== "table") continue;
+      for (const row of block.rows) {
+        for (const cell of row.cells) paragraphs.push(...collectParagraphs(cell.content));
+      }
+    }
+    return paragraphs;
+  };
   for (const story of stories) {
     const originals = findStoryBody(source, story)?.content ?? [];
     const derived = findStoryBody(target, story)?.content ?? [];
     if (originals === derived) continue;
+    const originalParagraphs = collectParagraphs(originals);
+    const derivedParagraphs = collectParagraphs(derived);
     const paragraphs = new Map(
-      derived.flatMap((block) =>
-        block.type === "paragraph" ? [[block.paraId, block] as const] : [],
+      derivedParagraphs.flatMap((paragraph) =>
+        paragraph.paraId === undefined ? [] : [[paragraph.paraId, paragraph] as const],
       ),
     );
-    for (const [index, original] of originals.entries()) {
-      if (original.type !== "paragraph") continue;
+    for (const [index, original] of originalParagraphs.entries()) {
       const next =
-        original.paraId === undefined ? derived.at(index) : paragraphs.get(original.paraId);
-      if (next?.type === "paragraph" && next !== original) {
+        original.paraId === undefined
+          ? derivedParagraphs.at(index)
+          : paragraphs.get(original.paraId);
+      if (next !== undefined && next !== original) {
         copyParagraphPropertySource(next, original);
         if (indentation === "restore")
           restoreParagraphIndentationProjection({ target: next, source: original });
@@ -425,8 +469,28 @@ const unsupportedSeedReason = (
     const content = body?.content;
     if (!content || content.length === 0)
       return "Canonical sessions require a nonempty paragraph story.";
-    for (const paragraph of content) {
-      if (paragraph.type !== "paragraph" || paragraph.reviewCarrier !== undefined)
+    const paragraphs: Paragraph[] = [];
+    const collect = (blocks: readonly BlockContent[]): string | null => {
+      for (const block of blocks) {
+        if (block.type === "paragraph") {
+          paragraphs.push(block);
+          continue;
+        }
+        if (block.type !== "table")
+          return "Canonical sessions currently require paragraphs, tables and supported inline atoms.";
+        for (const row of block.rows) {
+          for (const cell of row.cells) {
+            const issue = collect(cell.content);
+            if (issue !== null) return issue;
+          }
+        }
+      }
+      return null;
+    };
+    const blockIssue = collect(content);
+    if (blockIssue !== null) return blockIssue;
+    for (const paragraph of paragraphs) {
+      if (paragraph.reviewCarrier !== undefined)
         return "Canonical sessions currently require plain paragraphs and supported inline atoms.";
       const issue = canonicalInlineSourceIssue(paragraph.content);
       if (issue !== null) return issue;
@@ -480,20 +544,44 @@ const project = ({
     if (item.type === "commentReference" && !commentContext.rangedIds.has(item.id))
       commentContext.pointIds.add(item.id);
   });
-  const paragraphs: ParagraphAddress[] = [];
-  let failure: CanonicalSessionError | undefined;
-  converted.value.forEach((node, offset, index) => {
-    if (failure !== undefined) return;
-    const source = body.content.at(index);
-    if (source?.type !== "paragraph" || source.paraId === undefined) {
-      failure = new CanonicalSessionError({
-        gap: CANONICAL_GAP.dispatch,
-        reason: "refused",
-        message: "The projection changed paragraph structure.",
-      });
-      return;
+  const sources = new Map<string, { source: Paragraph; container: readonly BlockContent[] }>();
+  const allSources = new Set<Paragraph>();
+  const continuationSources = new Set<Paragraph>();
+  const collectSources = (
+    blocks: readonly BlockContent[],
+    insideSkippedContinuation = false,
+  ): void => {
+    for (const block of blocks) {
+      if (block.type === "paragraph") {
+        allSources.add(block);
+        if (insideSkippedContinuation) continuationSources.add(block);
+        if (block.paraId !== undefined)
+          sources.set(block.paraId, { source: block, container: blocks });
+        continue;
+      }
+      if (block.type !== "table") continue;
+      const rowSpans = calculateRowSpans(block);
+      for (const [rowIndex, row] of block.rows.entries()) {
+        let column = row.formatting?.gridBefore ?? 0;
+        for (const cell of row.cells) {
+          const skippedContinuation =
+            isCellMergeContinuation(cell) && (rowSpans.get(`${rowIndex}-${column}`)?.skip ?? false);
+          collectSources(cell.content, insideSkippedContinuation || skippedContinuation);
+          column += cell.formatting?.gridSpan ?? 1;
+        }
+      }
     }
-    if (node.type.name !== "paragraph" || node.attrs["paraId"] !== source.paraId) {
+  };
+  collectSources(body.content);
+  const paragraphs: ParagraphAddress[] = [];
+  const projectedSources = new Set<Paragraph>();
+  let failure: CanonicalSessionError | undefined;
+  converted.value.descendants((node, offset) => {
+    if (failure !== undefined) return;
+    if (node.type.name !== "paragraph") return;
+    const paraId = node.attrs["paraId"];
+    const located = typeof paraId === "string" ? sources.get(paraId) : undefined;
+    if (typeof paraId !== "string" || located === undefined) {
       failure = new CanonicalSessionError({
         gap: CANONICAL_GAP.storyContentProjection,
         reason: "refused",
@@ -501,6 +589,16 @@ const project = ({
       });
       return;
     }
+    const { source, container } = located;
+    if (projectedSources.has(source)) {
+      failure = new CanonicalSessionError({
+        gap: CANONICAL_GAP.storyContentProjection,
+        reason: "refused",
+        message: "The projection changed paragraph structure.",
+      });
+      return;
+    }
+    projectedSources.add(source);
     const inline = projectCanonicalInline({
       source,
       paragraph: node,
@@ -515,14 +613,24 @@ const project = ({
       });
       return;
     }
-    paragraphs.push({ blockId: source.paraId, start: offset + 1, ...inline.value, node, source });
+    paragraphs.push({
+      blockId: paraId,
+      container,
+      start: offset + 1,
+      ...inline.value,
+      node,
+      source,
+    });
     visitCommentMarkers([source], ({ item }) => {
       if (item.type === "commentRangeStart") commentContext.openIds.add(item.id);
       if (item.type === "commentRangeEnd") commentContext.openIds.delete(item.id);
     });
   });
   if (failure !== undefined) return Result.err(failure);
-  if (paragraphs.length !== body.content.length) {
+  if (
+    projectedSources.size + continuationSources.size !== allSources.size ||
+    [...projectedSources].some((source) => continuationSources.has(source))
+  ) {
     return refuse("The projection changed paragraph structure.");
   }
   return Result.ok(new CanonicalProjection({ doc: converted.value, paragraphs, story }));
@@ -805,7 +913,7 @@ class CanonicalSession {
 
   /** Render only the committed comment projection while provisional IME blocks document snapshots. */
   getCommittedComments() {
-    return structuredClone(this.currentDocument.package.document.comments ?? []);
+    return structuredClone(survivingComments(this.currentDocument));
   }
 
   setMode(mode: CanonicalSessionMode): void {
@@ -836,6 +944,28 @@ class CanonicalSession {
   private freshBlockId(): Result<string, CanonicalSessionError> {
     if (this.nextBlockId > 0x7fffffff) return refuse("The paragraph identity space is exhausted.");
     return Result.ok(this.nextBlockId.toString(16).padStart(8, "0").toUpperCase());
+  }
+
+  /**
+   * Paragraph identities for one prepared batch, one group per requested count;
+   * none matches a live or retired identity and no two groups overlap. Nothing is
+   * reserved until the batch applies, so a batch asks once for all its groups.
+   */
+  freshBlockIds(counts: readonly number[]): Result<string[][], CanonicalSessionError> {
+    const total = counts.reduce((sum, count) => sum + count, 0);
+    const ids: string[] = [];
+    for (let candidate = this.nextBlockId; ids.length < total; candidate += 1) {
+      if (candidate > 0x7fffffff) return refuse("The paragraph identity space is exhausted.");
+      const id = candidate.toString(16).padStart(8, "0").toUpperCase();
+      if (!this.allocatedBlockIds.has(id)) ids.push(id);
+    }
+    const groups: string[][] = [];
+    let offset = 0;
+    for (const count of counts) {
+      groups.push(ids.slice(offset, offset + count));
+      offset += count;
+    }
+    return Result.ok(groups);
   }
 
   private intentMode(document: Document, intent: EditorIntent): EditorIntentMode {
@@ -1019,13 +1149,28 @@ class CanonicalSession {
       return refuse("Canonical input accepts a well-formed text replacement.");
     }
     if (from === to && text.length === 0) return noChange("The input makes no text change.");
-    const replacesAll =
+    const replacesStructuralSelection =
       state.selection instanceof AllSelection &&
       from === state.selection.from &&
       to === state.selection.to;
+    if (state.selection instanceof CellSelection) {
+      if (from !== state.selection.from || to !== state.selection.to)
+        return refuse("A replacement range cannot partially address a cell selection.");
+      if (text.length > 0)
+        return refuse("Replacing a cell selection requires a per-cell replacement.");
+      const intents: EditorIntent[] = [];
+      for (const range of canonicalCellSelectionRanges(state.selection)) {
+        const cellFrom = projection.inputAddressAt(range.from);
+        if (cellFrom.isErr()) return cellFrom;
+        const cellTo = projection.inputAddressAt(range.to);
+        if (cellTo.isErr()) return cellTo;
+        intents.push({ type: "replaceText", from: cellFrom.value, to: cellTo.value, text: "" });
+      }
+      return this.prepareIntents(state, { intents, semantic });
+    }
     const range = canonicalSelectionRange(state);
-    const inputFrom = replacesAll ? range.from : from;
-    const inputTo = replacesAll ? range.to : to;
+    const inputFrom = replacesStructuralSelection ? range.from : from;
+    const inputTo = replacesStructuralSelection ? range.to : to;
     const start = projection.inputAddressAt(inputFrom);
     if (start.isErr()) return start;
     const end = projection.inputAddressAt(inputTo);
@@ -1050,7 +1195,10 @@ class CanonicalSession {
       intent,
       mode: this.intentMode(this.currentDocument, intent),
     });
-    if (compiled.isErr()) return refuse(compiled.error.message);
+    if (compiled.isErr())
+      return compiled.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE
+        ? noChange(compiled.error.message)
+        : refuse(compiled.error.message);
     const { ops, selection: caret } = compiled.value;
     const postSelection = {
       type: "text",
@@ -1173,6 +1321,8 @@ class CanonicalSession {
         firstBlockId: this.nextBlockId,
       });
       if (compiled.isErr()) {
+        if (compiled.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE)
+          return noChange(compiled.error.message);
         if (
           compiled.error.reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE &&
           (intent.type === "setHyperlink" ||
@@ -1189,7 +1339,10 @@ class CanonicalSession {
         return refuse(compiled.error.message);
       }
       const applied = applyDocumentOps(document, compiled.value.ops);
-      if (applied.isErr()) return refuse(applied.error.message);
+      if (applied.isErr())
+        return applied.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE
+          ? noChange(applied.error.message)
+          : refuse(applied.error.message);
       document = applied.value.document;
       edits.push(applied.value);
       ops.push(...compiled.value.ops);
@@ -1333,7 +1486,16 @@ class CanonicalSession {
     const second = secondGroup?.paragraphs.at(0);
     if (!first?.paraId || !second?.paraId)
       return noChange("There is no adjacent paragraph to join.");
-    if (!isCanonicalJoinBoundary(state, direction))
+    if (
+      this.projection.paragraph(first.paraId)?.container !==
+      this.projection.paragraph(second.paraId)?.container
+    )
+      return noChange("There is no adjacent paragraph to join.");
+    const current = this.projection.paragraph(at.value.blockId);
+    if (
+      current === undefined ||
+      at.value.offset !== (direction === "backward" ? 0 : current.text.length)
+    )
       return refuse("Join requires a caret at a paragraph boundary.");
     return this.prepareIntent(state, {
       type: "joinParagraphs",
@@ -1407,21 +1569,97 @@ class CanonicalSession {
     if (ops.length === 0) return refuse("The operation batch is empty.");
     const selected = this.projection.selectionAt(state);
     if (selected.isErr()) return selected;
+    let preparedOps = ops;
+    if (
+      ops.every(
+        (op) => op.type === DOCUMENT_OP_TYPES.ADD_NOTE || op.type === DOCUMENT_OP_TYPES.REMOVE_NOTE,
+      )
+    ) {
+      const tracked: DocumentOp[] = [];
+      let document = this.currentDocument;
+      for (const op of ops) {
+        if (op.type !== DOCUMENT_OP_TYPES.ADD_NOTE && op.type !== DOCUMENT_OP_TYPES.REMOVE_NOTE)
+          panic("A note operation batch contains only note operations.");
+        const allocation = this.allocateIntentIds(document, {
+          type: "replaceFragment",
+          from: { ...op.at, offset: 0 },
+          to: { ...op.at, offset: Number.MAX_SAFE_INTEGER },
+          paragraphs: [
+            {
+              type: "paragraph",
+              content: [{ type: "run", content: [{ type: "break", breakType: "page" }] }],
+            },
+          ],
+          openStart: 0,
+          openEnd: 0,
+        });
+        const next = {
+          ...op,
+          ...(this.mode.type === "suggesting"
+            ? {
+                revision: {
+                  id: allocation.revisionId,
+                  author: this.mode.author,
+                  date: new Date().toISOString(),
+                },
+              }
+            : {}),
+          newIds: allocation.newIds,
+        } as const;
+        if (ops.length > 1) {
+          const applied = applyDocumentOp(
+            cloneDocumentWithParagraphPropertySources(document),
+            structuredClone(next),
+          );
+          if (applied.isErr()) return refuse(applied.error.message);
+          document = applied.value.document;
+        }
+        tracked.push(next);
+      }
+      preparedOps = tracked;
+    }
+    const addedNotes = preparedOps.filter((op) => op.type === DOCUMENT_OP_TYPES.ADD_NOTE);
+    // The caret follows the reference inserted at the selection's end, past every
+    // reference the batch inserts at or before it in the same paragraph.
+    const atSelection = addedNotes.find(({ at }) =>
+      [selected.value.anchor, selected.value.head].some(
+        (end) =>
+          sameStory(at.story, end.story) && at.blockId === end.blockId && at.offset === end.offset,
+      ),
+    );
+    const caret =
+      atSelection === undefined
+        ? undefined
+        : {
+            ...atSelection.at,
+            offset:
+              atSelection.at.offset +
+              addedNotes.filter(
+                ({ at }) =>
+                  sameStory(at.story, atSelection.at.story) &&
+                  at.blockId === atSelection.at.blockId &&
+                  at.offset <= atSelection.at.offset,
+              ).length,
+          };
+    const postSelection =
+      addedNotes.length === preparedOps.length && caret !== undefined
+        ? { type: "text" as const, anchor: caret, head: caret }
+        : selected.value;
     const preDocument = this.currentDocument;
     return this.stage({
       state,
-      ops,
-      selection: selected.value,
+      ops: preparedOps,
+      selection: postSelection,
       origin: "input",
       onPublish: (inverse, version) => {
         this.applied.push({
           entries: [
             {
               type: "applied",
-              ops,
+              ops: preparedOps,
               inverse,
               preSelection: selected.value,
-              postSelection: selected.value,
+              postSelection,
               preDocument,
               postDocument: this.currentDocument,
               version,
@@ -1434,7 +1672,7 @@ class CanonicalSession {
           ],
           undo: { type: "entries" },
           preSelection: selected.value,
-          postSelection: selected.value,
+          postSelection,
         });
         this.undone.length = 0;
       },
@@ -1644,6 +1882,10 @@ class CanonicalSession {
         for (const op of ops) {
           if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK)
             this.allocatedBlockIds.add(op.newBlockId.toUpperCase());
+          if (op.type === DOCUMENT_OP_TYPES.ADD_NOTE) {
+            for (const blockId of paragraphIdsIn(op.note.content))
+              this.allocatedBlockIds.add(blockId.toUpperCase());
+          }
         }
         this.advanceBlockId();
         this.rememberSources(applied.value.document);
@@ -1693,18 +1935,6 @@ export const createCanonicalSession = (
   document: Document,
   styles?: StyleDefinitions | null,
 ): Result<CanonicalSession, CanonicalSessionError> => {
-  if (
-    documentStories(document).some((story) =>
-      findStoryBody(document, story)?.content.some((block) => block.type === "table"),
-    )
-  )
-    return Result.err(
-      new CanonicalSessionError({
-        gap: CANONICAL_GAP.tableActivation,
-        reason: "refused",
-        message: "Canonical sessions cannot activate documents containing tables.",
-      }),
-    );
   const unsupported = unsupportedSeedReason(document);
   if (unsupported !== null) return refuse(unsupported);
   const owned = cloneDocumentWithParagraphPropertySources(document);
@@ -1734,18 +1964,24 @@ const hasDeletedParagraphMark = (node: PMNode): boolean => {
 /** Visible graphemes concatenate across retained deletions and deleted paragraph marks. */
 const visibleDeletionContext = (state: EditorState) => {
   const { selection } = state;
-  const index = selection.$from.index(0);
+  const paragraphDepth = selection.$from.depth;
+  const containerDepth = paragraphDepth - 1;
+  if (containerDepth < 0 || selection.$from.node(paragraphDepth).type.name !== "paragraph")
+    return refuse("Canonical deletion requires a caret inside a paragraph.");
+  const container = selection.$from.node(containerDepth);
+  const containerStart = selection.$from.start(containerDepth);
+  const index = selection.$from.index(containerDepth);
   let first = index;
-  while (first > 0 && hasDeletedParagraphMark(state.doc.child(first - 1))) first -= 1;
+  while (first > 0 && hasDeletedParagraphMark(container.child(first - 1))) first -= 1;
   let last = index;
-  while (last + 1 < state.doc.childCount && hasDeletedParagraphMark(state.doc.child(last)))
+  while (last + 1 < container.childCount && hasDeletedParagraphMark(container.child(last)))
     last += 1;
   let text = "";
   const physicalStarts: number[] = [];
   const physicalEnds: number[] = [];
   let visibleOffset = 0;
   let issue: CanonicalSessionError | undefined;
-  state.doc.forEach((paragraph, paragraphOffset, paragraphIndex) => {
+  container.forEach((paragraph, paragraphOffset, paragraphIndex) => {
     if (paragraphIndex < first || paragraphIndex > last) return;
     const native = canonicalNativeCells(paragraph);
     if (native.isErr()) {
@@ -1763,8 +1999,8 @@ const visibleDeletionContext = (state: EditorState) => {
       )
         continue;
       const value = cell.type === "text" ? cell.text : "\uFFFC";
-      const from = paragraphOffset + 1 + cell.from;
-      const to = paragraphOffset + 1 + cell.to;
+      const from = containerStart + paragraphOffset + 1 + cell.from;
+      const to = containerStart + paragraphOffset + 1 + cell.to;
       if (cell.type !== "text" && selection.from > from && selection.from < to) {
         issue = new CanonicalSessionError({
           gap: CANONICAL_GAP.dispatch,
@@ -1810,6 +2046,8 @@ export const deletionRange = (
     selection.node.isAtom &&
     selection.node.type.name !== "noteMarker"
   )
+    return Result.ok({ from: selection.from, to: selection.to });
+  if (selection instanceof CellSelection)
     return Result.ok({ from: selection.from, to: selection.to });
   if (selection instanceof AllSelection) return Result.ok(canonicalSelectionRange(state));
   if (!(selection instanceof TextSelection))

@@ -1,4 +1,6 @@
-import { expect, test } from "bun:test";
+import { scanTestTimeout } from "../test/scan-timeout";
+
+import { setDefaultTimeout, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import ts from "typescript";
@@ -11,6 +13,8 @@ import {
 } from "../tests/support/commentSearchDocument";
 import { buildScrollRootDocument } from "../tests/support/scrollRootDocument";
 import { generateDocxFixture, validateDocxFixture } from "../tests/support/validatedDocxFixture";
+
+setDefaultTimeout(scanTestTimeout(30_000));
 
 const root = resolve(import.meta.dir, "..");
 const sharedRoots = ["tests/support", "tests/visual/fixtures"];
@@ -119,11 +123,15 @@ test("fixture guard detects direct package generators", () => {
   expect(packageCalls('return generateDocxFixture(zip, "valid")')).toEqual([]);
 });
 
-test("every shared fixture variant passes schema validation at setup", async () => {
-  for (const { file, build } of fixtureCases) {
-    await validateDocxFixture(await build(), file);
-  }
-}, 60_000);
+test(
+  "every shared fixture variant passes schema validation at setup",
+  async () => {
+    for (const { file, build } of fixtureCases) {
+      await validateDocxFixture(await build(), file);
+    }
+  },
+  scanTestTimeout(30_000),
+);
 
 test("invalid fixture fails at construction with its name and schema reason", async () => {
   const zip = await JSZip.loadAsync(await buildScrollRootDocument());

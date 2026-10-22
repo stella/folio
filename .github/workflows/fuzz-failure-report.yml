@@ -12,13 +12,21 @@ on:
         default: "**/*.log"
         required: false
         type: string
+      lane:
+        description: The reporting lane whose clean scheduled runs count toward closing its signatures
+        required: true
+        type: string
+      result:
+        description: The fuzz job's result, success or failure
+        required: true
+        type: string
 
 permissions: {}
 
 jobs:
   report:
-    name: File fuzz failures by fingerprint
-    runs-on: ubuntu-latest
+    name: File fuzz failures by signature
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
       group: fuzz-failure-issues
@@ -31,8 +39,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -47,11 +56,16 @@ jobs:
       - name: Open or update findings
         run: >-
           bun scripts/fuzz-failure-issues.ts
-          --artifact-root fuzz-results --require-failures
-          --log-pattern "$LOG_PATTERN" --run-url "$RUN_URL"
+          --artifact-root fuzz-results --log-pattern "$LOG_PATTERN"
+          --lane "$LANE" --result "$RESULT" --trigger "$TRIGGER" --run-url "$RUN_URL"
+          --sha "$RUN_SHA"
         env:
           LOG_PATTERN: ${{ inputs.log-pattern }}
+          LANE: ${{ inputs.lane }}
+          RESULT: ${{ inputs.result }}
+          TRIGGER: ${{ github.event_name == 'schedule' && 'scheduled' || 'manual' }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_URL: >-
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_SHA: ${{ github.sha }}

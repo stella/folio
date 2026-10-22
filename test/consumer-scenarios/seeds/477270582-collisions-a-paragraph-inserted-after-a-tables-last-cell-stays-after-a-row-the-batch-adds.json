@@ -1,0 +1,7 @@
+{
+  "seed": 477270582,
+  "steps": 10,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "a paragraph inserted after a table's last cell stays after a row the batch adds"
+}

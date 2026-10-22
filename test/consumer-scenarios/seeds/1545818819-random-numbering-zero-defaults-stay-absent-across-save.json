@@ -1,0 +1,7 @@
+{
+  "seed": 1545818819,
+  "steps": 10,
+  "kind": "random",
+  "generation": "targeted",
+  "title": "numbering zero defaults stay absent across save"
+}

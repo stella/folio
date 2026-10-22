@@ -118,6 +118,12 @@ describe("insertSectionBreak commands", () => {
     });
     expect(ran).toBe(false);
     expect(state).toBe(before);
+    expect(
+      setSectionBreakType("continuous")(state, (tr) => {
+        state = state.apply(tr);
+      }),
+    ).toBe(false);
+    expect(state).toBe(before);
   });
 });
 

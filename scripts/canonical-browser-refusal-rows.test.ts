@@ -51,7 +51,7 @@ test("canonical browser refusal matching rejects unknown and mismatched refusals
     matchCanonicalRefusalRow({
       rows,
       refusal: {
-        gap: CANONICAL_GAP.tableActivation,
+        gap: CANONICAL_GAP.commands,
         message: "Clipboard tables and embedded blocks require canonical table editing.",
       },
     }),

@@ -12,6 +12,8 @@ export type AddNoteOp = {
     type: typeof DOCUMENT_OP_TYPES.ADD_NOTE;
     at: TextPosition;
     note: Footnote | Endnote;
+    revision?: RevisionStamp;
+    newIds?: NewIds;
 };
 
 // @public
@@ -50,6 +52,30 @@ export const BATCH_REJECTION_REASONS: {
 
 // @public (undocumented)
 export const BATCH_WIRE_OP_TYPES: readonly string[];
+
+// @public
+export type BatchOrderAddress = {
+    type: "annotation";
+    position: number;
+    inputIndex: number;
+} | {
+    type: "content";
+    position: number;
+    rank: number;
+    inputIndex: number;
+} | {
+    type: "cell";
+    tablePosition: number;
+    bottom: number;
+    right: number;
+    inputIndex: number;
+} | {
+    type: "column";
+    tablePosition: number;
+    columnIndex: number;
+    insertion: boolean;
+    inputIndex: number;
+};
 
 // @public (undocumented)
 export class BatchRejection extends BatchRejection_base<{
@@ -98,6 +124,17 @@ export type CommentAnchor = {
 // @public
 export const commentDocumentIssue: (document: Document_2, allowedOrphans?: ReadonlySet<number> | "all") => string | undefined;
 
+// @public (undocumented)
+export type CommentExhaustionInput = {
+    type: "document";
+    document: Document_2;
+    id: number;
+} | {
+    type: "coverage";
+    anchorKind: Comment_2["anchorKind"];
+    survivingNonCarrierContent: boolean;
+};
+
 // @public
 export type CommentState = {
     relationshipPresence: "absent" | "undefined" | "present";
@@ -119,10 +156,18 @@ export type CommentState = {
 };
 
 // @public
+export const compareBatchOrder: (left: BatchOrderAddress, right: BatchOrderAddress) => number;
+
+// @public
 export const compareGaps: (left: Gap, right: Gap) => number;
 
 // @public
 export const compileEditorIntent: (document: Document_2, input: CompileEditorIntentOptions) => Result<CompiledEditorIntent, DocumentOpRefusal>;
+
+// @public
+export const contentRank: (operation: ContentRankOperation, target: {
+    hasDeletedSplit: boolean;
+}) => number;
 
 // @public
 export const createClient: (document: Document_2) => {
@@ -484,6 +529,9 @@ export type FormattingPatch<Formatting> = { readonly [Key in keyof Formatting]?:
 export const freshCommentId: (document: Document_2) => Result<number, DocumentOpRefusal>;
 
 // @public
+export const groupInsertionRuns: <T>(operations: readonly T[], insertionPositionOf: (operation: T) => number | null) => T[][];
+
+// @public
 export type HeaderFooterStory = {
     kind: "header" | "footer";
     rId: string;
@@ -575,6 +623,12 @@ export type InsertTextOp = {
 };
 
 // @public
+export const isCommentAnchorCarrierType: (type: string) => boolean;
+
+// @public
+export const isCommentExhausted: (input: CommentExhaustionInput) => boolean;
+
+// @public
 export function isTextOnlyRun(run: Run): boolean;
 
 // @public
@@ -659,6 +713,9 @@ export const OP_STORIES: Readonly<{
 export type OpStory = typeof OP_STORIES.MAIN | HeaderFooterStory | NoteStory;
 
 // @public
+export const orderBatchOperations: <T>(operations: readonly T[], addressOf: (operation: T) => BatchOrderAddress) => T[];
+
+// @public
 export const packageParagraphIds: (pkg: DocxPackage) => string[];
 
 // @public (undocumented)
@@ -711,10 +768,34 @@ export const packageResourcesOpOf: (input: PackageResourcesOpOptions) => SetPack
 export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
 
 // @public
+export const paragraphIdsIn: (value: unknown) => string[];
+
+// @public
 export const paragraphLength: (paragraph: Paragraph) => number;
 
 // @public
 export const paragraphLogicalText: (paragraph: Paragraph) => string;
+
+// @public
+export const paragraphMarkOutcome: (input: {
+    follows: "paragraph" | "table" | "nothing";
+    holdsContent: boolean;
+    markWasAdded: boolean;
+    containerStillEndsWithParagraph: boolean;
+    followingTableCanReceiveRunIn: boolean;
+    tableRemovalIsTrackable?: boolean;
+}) => {
+    kind: "join";
+} | {
+    kind: "remove";
+} | {
+    kind: "run-in";
+} | {
+    kind: "keep";
+} | {
+    kind: "refuse";
+    reason: "untrackable";
+};
 
 // @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
@@ -788,6 +869,8 @@ export type RemoveNoteOp = {
     type: typeof DOCUMENT_OP_TYPES.REMOVE_NOTE;
     at: TextPosition;
     story: NoteStory;
+    revision?: RevisionStamp;
+    newIds?: NewIds;
 };
 
 // @public
@@ -1077,6 +1160,9 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 
 // @public (undocumented)
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
+
+// @public
+export const survivingComments: (document: Document_2) => Comment_2[];
 
 // @public (undocumented)
 export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;

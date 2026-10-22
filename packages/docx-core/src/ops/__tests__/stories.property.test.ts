@@ -2,7 +2,11 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { Document, Paragraph, HeaderFooter, SectionProperties } from "../../model/document";
 import { DEFAULT_TAB_STOP_TWIPS } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
@@ -10,6 +14,7 @@ import { applyStoryLifecycle } from "../storyLifecycle";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { contractViolation, normalizeForOps } from "../contract";
 import { documentStories, findStoryBody, sameStory } from "../stories";
+import { noteStoriesTouchedByReferences } from "../noteMarks";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -123,7 +128,7 @@ describe("all-story operation laws", () => {
 
   test("the existing rich operation generator exercises every other story with the same inverse and locality oracle", () => {
     let appliedCount = 0;
-    fc.assert(
+    assertProperty(
       fc.property(documentArbitrary, opSeedArbitrary, (source, seed) => {
         const stories = [
           { kind: "header", rId: "rIdGenerated" },
@@ -181,21 +186,34 @@ describe("all-story operation laws", () => {
           })();
           const op = opForStory({ document, seed, story });
           const result = applyDocumentOp(document, op);
-          expect(result).toEqual(
-            applyDocumentOp(structuredClone(document), JSON.parse(JSON.stringify(op))),
+          const outcome = (candidate: typeof result) =>
+            candidate.isOk()
+              ? candidate.value
+              : {
+                  reason: candidate.error.reason,
+                  opType: candidate.error.opType,
+                  message: candidate.error.message,
+                };
+          expect(outcome(result)).toEqual(
+            outcome(applyDocumentOp(structuredClone(document), JSON.parse(JSON.stringify(op)))),
           );
           if (result.isErr()) continue;
           appliedCount += 1;
           const applied = expectExact(document, op);
+          const touchedNotes = noteStoriesTouchedByReferences(document, applied.document);
           for (const untouched of documentStories(document)) {
             if (sameStory(story, untouched)) continue;
+            if (touchedNotes.some((touched) => sameStory(touched, untouched))) continue;
             expect(findStoryBody(applied.document, untouched)).toBe(
               findStoryBody(document, untouched),
             );
           }
         }
       }),
-      propertyConfig({ numRuns: 100 }),
+      {
+        numRuns: 100,
+        id: "the existing rich operation generator exercises every other story with the same inverse and locality oracle",
+      },
     );
     expect(appliedCount).toBeGreaterThan(50);
   });
@@ -389,6 +407,49 @@ describe("all-story operation laws", () => {
       const after = findStoryBody(edited.document, { kind, id: 1 })?.content.at(0);
       if (after?.type !== "paragraph") return panic("The edited note has a paragraph.");
       expect(after.content.at(0)).toEqual(note.content.at(0));
+    }
+  });
+
+  test("direct and tracked deletions of only an automatic note mark refuse as no change", () => {
+    for (const kind of ["footnote", "endnote"] as const) {
+      const document = normalizeForOps(seedDocument("body"));
+      const story = { kind, id: 1 } as const;
+      const from = { story, blockId: kind === "footnote" ? "00000004" : "00000005", offset: 0 };
+      for (const revision of [undefined, { id: 40, author: "Reviewer" }]) {
+        const result = applyDocumentOp(document, {
+          type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+          from: { ...from, zeroWidthBefore: 0 },
+          to: { ...from, zeroWidthBefore: 1 },
+          ...(revision === undefined ? {} : { revision }),
+        });
+        expect(result.isErr()).toBe(true);
+        if (result.isErr()) expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE);
+        expect(findStoryBody(document, story)?.content.at(0)).toEqual(
+          findStoryBody(normalizeForOps(seedDocument("body")), story)?.content.at(0),
+        );
+      }
+    }
+  });
+
+  test("a deletion from an automatic note mark into its text removes the text and keeps the mark", () => {
+    for (const kind of ["footnote", "endnote"] as const) {
+      const document = normalizeForOps(seedDocument("body"));
+      const story = { kind, id: 1 } as const;
+      const blockId = kind === "footnote" ? "00000004" : "00000005";
+      const before = JSON.stringify(findStoryBody(document, story)?.content.at(0));
+      for (const revision of [undefined, { id: 40, author: "Reviewer" }]) {
+        const result = applyDocumentOp(document, {
+          type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+          from: { story, blockId, offset: 0, zeroWidthBefore: 0 },
+          to: { story, blockId, offset: 1 },
+          ...(revision === undefined ? {} : { revision }),
+        });
+        expect(result.isOk()).toBe(true);
+        if (result.isErr()) continue;
+        const after = JSON.stringify(findStoryBody(result.value.document, story)?.content.at(0));
+        expect(after).not.toBe(before);
+        expect(after).toContain('"noteMarker"');
+      }
     }
   });
 
@@ -626,6 +687,31 @@ describe("all-story operation laws", () => {
       expect(leaves.map((leaf) => (leaf.type === "text" ? leaf.text : "")).join("")).toBe("ab");
       expect(removed.document.package.document.content).toBe(normalized.package.document.content);
     }
+  });
+
+  test("a direct final-reference deletion owns the removed note body and its exact inverse", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [{ type: "run", content: [{ type: "footnoteRef", id: 7 }] }],
+            },
+          ],
+        },
+        footnotes: [{ type: "footnote", id: 7, content: [paragraph("00000002", "owned note")] }],
+      },
+    };
+    const applied = expectExact(document, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: { story: "main", blockId: "00000001", offset: 0 },
+      to: { story: "main", blockId: "00000001", offset: 1 },
+    });
+    expect(applied.document.package.footnotes).toEqual([]);
+    expect(applied.touched.removed).toContain("00000002");
+    expectExact(applied.document, applied.inverse.at(0) ?? panic("Missing lifecycle inverse."));
   });
 
   test("missing stories and stale note references refuse atomically", () => {

@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   corpus-flows:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -72,10 +72,12 @@ jobs:
   report:
     name: File public corpus findings
     needs: corpus-flows
-    if: failure() && github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (failure() || github.event_name == 'schedule') }}
     permissions:
       contents: read
       issues: write
     uses: ./.github/workflows/fuzz-failure-report.yml
     with:
       artifact-pattern: public-corpus-full-flows
+      lane: nightly-public-corpus-flows
+      result: ${{ needs.corpus-flows.result }}

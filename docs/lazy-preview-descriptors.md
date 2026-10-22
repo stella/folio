@@ -24,10 +24,10 @@ descriptor, and a descriptor has to travel every path `src` travels today.
 ```ts
 /** How a drawing with no image data is drawn, without drawing it. */
 export type PreviewDescriptor = {
-  kind: "diagram";
+  kind: "chart" | "diagram";
   /** The drawing's extent, in the units `shapes` coordinates use (EMU). */
   extent: { width: number; height: number };
-  /** Shapes already clipped to `MAX_PREVIEW_SHAPES`, in paint order. */
+  /** Shapes bounded by `MAX_PREVIEW_SHAPES` and `MAX_PREVIEW_POINTS`, in paint order. */
   shapes: readonly PreviewShape[];
 };
 ```
@@ -36,9 +36,9 @@ It carries no raster dimensions: nothing rasterises, so there is no grid for an
 edge to be rounded onto. A backend maps the extent onto the box it is drawing
 in.
 
-Kept as a discriminated union on `kind` rather than a diagram-shaped record:
-chart frames and OLE previews are the same problem and will want the same
-field, and a `kind` now is cheaper than migrating a bare `diagram` later.
+The union is discriminated on `kind`: diagrams and charts retain their source
+identity while sharing the same renderer path. Exhaustive switches ensure a
+new preview source requires an explicit rendering decision.
 
 `shapes` is the intermediate the rasteriser already computes before it paints;
 it is small (hundreds of bytes per shape against megabytes of raster) and it
@@ -90,9 +90,9 @@ happens is the decision that matters:
   produced. Largest diff, best result, and it is the only option that also
   improves PDF output, which today embeds a bitmap of a vector drawing.
 
-The third is what shipped, by the shortest route available: a diagram's shapes
-are axis-aligned filled rectangles, and `rect` is a primitive both backends
-already draw. So `paintImage` emits a backdrop plus one `rect` per shape
+The third is what shipped. Preview shapes are filled rectangles, filled
+polygons, and stroked polylines; all are primitives the display list backends
+draw natively. So `paintImage` emits a backdrop plus primitives for each shape
 (`display-list/build/previewPrimitives.ts`) rather than interning anything, and
 `DisplayImageSource` never grew a variant. The DOM backend paints the
 absolutely positioned divs it paints every rectangle as; the PDF backend emits

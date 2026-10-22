@@ -4,7 +4,7 @@ name: Continuous Fuzz
 # fresh seeds every run: consumer-scenario flows (fresh random and collision
 # flows plus mutants of a corpus of flows that reached new states; see
 # test/consumer-scenarios/support/fuzz-loop.ts) and the property suite. A
-# failure is shrunk and filed as one issue per fingerprint.
+# failure is shrunk and filed as one issue per signature.
 on:
   schedule:
     # Every two hours at :41, off the scheduler's peak minutes.
@@ -43,7 +43,7 @@ jobs:
   consumer-fuzz:
     if: ${{ !inputs.long_flows && !inputs.public_corpus_flows }}
     name: Consumer-scenario fuzz
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 50
     permissions:
       contents: read
@@ -52,7 +52,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -169,7 +169,7 @@ jobs:
   property-fuzz:
     if: ${{ !inputs.long_flows && !inputs.public_corpus_flows }}
     name: Property fuzz
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -178,7 +178,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -236,10 +236,10 @@ jobs:
   # Separate so the fuzz jobs never hold a write token. Main only: a dispatch
   # on a branch reports in its run, not in the issue tracker.
   report:
-    name: File failures by fingerprint
+    name: File failures by signature
     needs: [consumer-fuzz, property-fuzz]
-    if: failure() && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (failure() || github.event_name == 'schedule') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
       group: fuzz-failure-issues
@@ -251,8 +251,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -262,14 +263,17 @@ jobs:
           pattern: continuous-fuzz-*
           path: fuzz-results
 
-      - name: Open or update one issue per fingerprint
+      - name: Open, update or close one issue per signature
         run: >-
           bun scripts/fuzz-failure-issues.ts
           --log fuzz-results/continuous-fuzz-consumer/continuous-fuzz.log
           --records fuzz-results/continuous-fuzz-consumer/fuzz-failures
           --log fuzz-results/continuous-fuzz-property/property-fuzz.log
+          --lane continuous-fuzz --result "${RESULT}" --trigger "${TRIGGER}"
           --source "continuous fuzz" --run-url "${RUN_URL}" --sha "${GITHUB_SHA}"
         env:
+          RESULT: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+          TRIGGER: ${{ github.event_name == 'schedule' && 'scheduled' || 'manual' }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

@@ -11,6 +11,8 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import { commentAnchorIdsForNode } from "./comment-lifecycle";
+
 import type { RunPropertyChange } from "../types/document";
 import {
   expectRunPropertyChangeMarkAttrs,
@@ -588,6 +590,15 @@ export const getCommentAnchorsFromDoc = (doc: PMNode): FolioCommentAnchor[] => {
     if (node.isTextblock) {
       currentBlockId = blockStarts.get(pos) ?? null;
       return true;
+    }
+    for (const commentId of commentAnchorIdsForNode(node)) {
+      if (!ranges.has(commentId)) {
+        ranges.set(commentId, {
+          blockId: currentBlockId,
+          start: bodyText.length,
+          end: bodyText.length,
+        });
+      }
     }
     if (!node.isInline || node.text === undefined) {
       return undefined;

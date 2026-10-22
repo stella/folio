@@ -75,6 +75,21 @@ export type FlowStep = {
   expectedApplied?: number;
 };
 
+/** Replace a step's operations and keep operation-count assertions bound to that list. */
+export const rebindStepOperations = (
+  step: FlowStep,
+  operations: FlowStep["operations"],
+): FlowStep => {
+  const { expectedApplied: _expectedApplied, operations: _operations, ...rest } = step;
+  return {
+    ...rest,
+    ...(operations === undefined ? {} : { operations }),
+    ...(step.expectedApplied === undefined || operations === undefined
+      ? {}
+      : { expectedApplied: operations.length }),
+  };
+};
+
 export type FlowFile = {
   version: 1;
   kind: FlowKind;

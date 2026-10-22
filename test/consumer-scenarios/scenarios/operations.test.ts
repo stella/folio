@@ -67,7 +67,11 @@ describe("applyDocumentOperations", () => {
           try {
             await body();
           } catch (error) {
-            if (known && matchesFailureSymptom(FINDING_SYMPTOMS[known.finding], error)) throw error;
+            if (
+              known &&
+              matchesFailureSymptom(known.finding, FINDING_SYMPTOMS[known.finding], error)
+            )
+              throw error;
             reportScenarioFailure({
               test: `operation matrix ${name} / ${mode}`,
               seed,

@@ -1,7 +1,8 @@
 import type { ParagraphPropsPatch, RunPropsPatch } from "@stll/docx-core/ops";
+import type { BlockContent } from "../types/document";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
-import { canonicalSelectionRange } from "./canonicalSelectionRange";
+import { canonicalSelectionRanges } from "./canonicalSelectionRange";
 
 /** Command meaning before canonical positions are resolved by the session. */
 export type CanonicalCommandIntent =
@@ -23,9 +24,24 @@ export type CanonicalCommandIntent =
   | { type: "removeList" }
   | { type: "restartNumbering"; start?: number }
   | { type: "continueNumbering" }
+  | {
+      type: "setSectionBreak";
+      breakType: "nextPage" | "nextColumn" | "continuous" | "evenPage" | "oddPage";
+    }
+  | { type: "removeSectionBreak" }
+  | {
+      type: "insertNote";
+      at: number;
+      kind: "footnote" | "endnote";
+      id: number;
+      content: BlockContent[];
+    }
+  | { type: "deleteNote"; from: number; kind: "footnote" | "endnote"; id: number }
   | { type: "insertBreak"; from: number; to: number; breakType: "page" | "textWrapping" };
 
-type CanonicalCommandDescriptor = (state: EditorState) => readonly CanonicalCommandIntent[];
+type CanonicalCommandDescriptor = (
+  state: EditorState,
+) => readonly CanonicalCommandIntent[] | undefined;
 const descriptors = new WeakMap<Command, CanonicalCommandDescriptor>();
 
 /** Registration leaves execution and side-effect-free command probes unchanged. */
@@ -41,7 +57,12 @@ export const getCanonicalCommandIntents = (command: Command, state: EditorState)
   descriptors.get(command)?.(state);
 
 export const canonicalRunFormatting = (state: EditorState, patch: RunPropsPatch) =>
-  [{ type: "formatRun", ...canonicalSelectionRange(state), patch }] as const;
+  canonicalSelectionRanges(state).map(({ from, to }) => ({
+    type: "formatRun" as const,
+    from,
+    to,
+    patch,
+  }));
 
 const canonicalParagraphFormatting = (
   state: EditorState,

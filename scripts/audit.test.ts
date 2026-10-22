@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { isStillRequired, staleIgnoreReason } from "./audit";
+import { fetchLatestManifest, isStillRequired, staleIgnoreReason } from "./audit";
 
 const ignore = {
   advisory: "GHSA-test",
@@ -86,5 +86,50 @@ describe("self-expiring audit ignores", () => {
       false,
     );
     expect(isStillRequired(throughIgnore, { version, dependencies: {} })).toBe(false);
+  });
+});
+
+describe("registry lookups for expiring ignores", () => {
+  const answer = (status: number, body: unknown = { version: "1.5.0" }) =>
+    new Response(JSON.stringify(body), { status });
+  const scripted = (responses: (Response | Error)[]) => {
+    const calls: string[] = [];
+    const fetcher = (url: string): Promise<Response> => {
+      calls.push(url);
+      const next = responses.shift();
+      if (next === undefined) throw new Error("no scripted response left");
+      return next instanceof Error ? Promise.reject(next) : Promise.resolve(next);
+    };
+    return { calls, fetcher };
+  };
+
+  test("an outage keeps the ignore until its expiry date, which still applies", () => {
+    expect(staleIgnoreReason(ignore, undefined, "2026-10-22")).toBeUndefined();
+    expect(staleIgnoreReason(ignore, undefined, "2026-11-02")).toContain("expired on 2026-11-01");
+  });
+
+  test("a transient 503 is retried and the next answer is used", async () => {
+    const { calls, fetcher } = scripted([answer(503), answer(200)]);
+    expect(await fetchLatestManifest("vulnerable", fetcher, [0, 0])).toEqual({
+      type: "manifest",
+      manifest: { version: "1.5.0" },
+    });
+    expect(calls).toHaveLength(2);
+  });
+
+  test("an outage that outlasts every retry is reported as unavailable", async () => {
+    const { calls, fetcher } = scripted([answer(503), new Error("socket hang up"), answer(502)]);
+    expect(await fetchLatestManifest("vulnerable", fetcher, [0, 0])).toEqual({
+      type: "unavailable",
+      reason: "npm registry returned 502",
+    });
+    expect(calls).toHaveLength(3);
+  });
+
+  test("a client error is not an outage", async () => {
+    const { fetcher } = scripted([answer(404)]);
+    await expect(fetchLatestManifest("missing", fetcher, [0, 0])).rejects.toThrow(
+      "returned 404 for missing",
+    );
   });
 });

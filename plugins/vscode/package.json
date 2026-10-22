@@ -40,7 +40,8 @@
     "test:smoke": "bun test/smoke/run.ts"
   },
   "devDependencies": {
-    "@types/node": "26.6.4",
+    "@stll/fuzzy-search-wasm": "1.1.5",
+    "@types/node": "26.6.5",
     "@types/vscode": "1.86.0",
     "@vscode/test-electron": "3.1.0",
     "@vscode/vsce": "4.0.0",
@@ -48,6 +49,9 @@
     "esbuild": "0.28.2",
     "ovsx": "1.2.0",
     "vscode-previous-types": "npm:@types/vscode@1.85.0"
+  },
+  "overrides": {
+    "@napi-rs/wasm-runtime": "1.1.6"
   },
   "contributes": {
     "commands": [

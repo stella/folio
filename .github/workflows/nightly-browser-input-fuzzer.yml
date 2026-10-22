@@ -11,22 +11,22 @@ permissions: {}
 jobs:
   browser-input-fuzzer:
     name: Browser input fuzzer (nightly seeds)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
     outputs:
-      findings: ${{ steps.fuzz.outcome == 'failure' }}
-      host_api_findings: ${{ steps.host-api.outcome == 'failure' }}
-      canonical_findings: ${{ steps.canonical.outcome == 'failure' }}
-      interleaving_findings: ${{ steps.interleaving.outcome == 'failure' }}
+      fuzz_outcome: ${{ steps.fuzz.outcome }}
+      host_api_outcome: ${{ steps.host-api.outcome }}
+      canonical_outcome: ${{ steps.canonical.outcome }}
+      interleaving_outcome: ${{ steps.interleaving.outcome }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
         with:
           bun-version-file: "package.json"
 
@@ -149,7 +149,7 @@ jobs:
   report:
     name: File browser fuzz findings
     needs: browser-input-fuzzer
-    if: always() && github.ref == 'refs/heads/main' && needs.browser-input-fuzzer.outputs.findings == 'true'
+    if: always() && github.ref == 'refs/heads/main' && (needs.browser-input-fuzzer.outputs.fuzz_outcome == 'failure' || (needs.browser-input-fuzzer.outputs.fuzz_outcome == 'success' && github.event_name == 'schedule'))
     permissions:
       contents: read
       issues: write
@@ -157,11 +157,13 @@ jobs:
     with:
       artifact-pattern: browser-input-fuzzer
       log-pattern: "**/fuzz-artifacts/browser/*.log"
+      lane: nightly-browser-input
+      result: ${{ needs.browser-input-fuzzer.outputs.fuzz_outcome }}
 
   interleaving-report:
     name: File AI and human revision interleaving findings
     needs: browser-input-fuzzer
-    if: always() && github.ref == 'refs/heads/main' && needs.browser-input-fuzzer.outputs.interleaving_findings == 'true'
+    if: always() && github.ref == 'refs/heads/main' && (needs.browser-input-fuzzer.outputs.interleaving_outcome == 'failure' || (needs.browser-input-fuzzer.outputs.interleaving_outcome == 'success' && github.event_name == 'schedule'))
     permissions:
       contents: read
       issues: write
@@ -169,11 +171,13 @@ jobs:
     with:
       artifact-pattern: interleaving-findings
       log-pattern: "**/fuzz-artifacts/interleaving/*.log"
+      lane: nightly-interleaving
+      result: ${{ needs.browser-input-fuzzer.outputs.interleaving_outcome }}
 
   report-host-api:
     name: File host API findings
     needs: browser-input-fuzzer
-    if: always() && github.ref == 'refs/heads/main' && needs.browser-input-fuzzer.outputs.host_api_findings == 'true'
+    if: always() && github.ref == 'refs/heads/main' && (needs.browser-input-fuzzer.outputs.host_api_outcome == 'failure' || (needs.browser-input-fuzzer.outputs.host_api_outcome == 'success' && github.event_name == 'schedule'))
     permissions:
       contents: read
       issues: write
@@ -181,11 +185,13 @@ jobs:
     with:
       artifact-pattern: host-api-fuzz
       log-pattern: "**/fuzz-artifacts/host-api/*.log"
+      lane: nightly-host-api
+      result: ${{ needs.browser-input-fuzzer.outputs.host_api_outcome }}
 
   report-canonical:
     name: File canonical session findings
     needs: browser-input-fuzzer
-    if: always() && github.ref == 'refs/heads/main' && needs.browser-input-fuzzer.outputs.canonical_findings == 'true'
+    if: always() && github.ref == 'refs/heads/main' && (needs.browser-input-fuzzer.outputs.canonical_outcome == 'failure' || (needs.browser-input-fuzzer.outputs.canonical_outcome == 'success' && github.event_name == 'schedule'))
     permissions:
       contents: read
       issues: write
@@ -193,3 +199,5 @@ jobs:
     with:
       artifact-pattern: browser-input-fuzzer
       log-pattern: "**/fuzz-artifacts/canonical/*.log"
+      lane: nightly-canonical-session
+      result: ${{ needs.browser-input-fuzzer.outputs.canonical_outcome }}

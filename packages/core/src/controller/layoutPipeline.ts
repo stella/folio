@@ -1,4 +1,5 @@
 import type { EditorState } from "prosemirror-state";
+import { survivingComments } from "@stll/docx-core/ops";
 
 import { resolveDocumentGridLinePitch } from "../docx/documentGrid";
 import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
@@ -1458,7 +1459,7 @@ function runLayoutPipelineMeasured<THfPMs>(
           doc: pagesContainer.ownerDocument,
           ...(document?.package.document.comments === undefined
             ? {}
-            : { comments: displayCommentsFrom(document.package.document.comments) }),
+            : { comments: displayCommentsFrom(survivingComments(document)) }),
           ...displayListFurnitureFrom(renderOpts),
           // Footnote bodies never reach `RenderPageOptions`: the existing
           // painter takes them per page through `footnotesByPage`, so the

@@ -1,0 +1,7 @@
+{
+  "seed": 407184130,
+  "steps": 10,
+  "kind": "random",
+  "generation": "targeted",
+  "title": "accepted paragraph merges keep run formatting across save"
+}

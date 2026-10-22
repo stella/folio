@@ -7,7 +7,7 @@
  * Imports nothing from folio.
  */
 
-import { BATCH_ACTIONS, type FlowFile, type FlowStep } from "./flow-file.ts";
+import { BATCH_ACTIONS, type FlowFile, type FlowStep, rebindStepOperations } from "./flow-file.ts";
 
 /** How much replaying a shrink may spend. */
 export type ShrinkBudget = { maxAttempts: number; deadline: number };
@@ -68,7 +68,7 @@ const shrinkOperations = async (
   if (!BATCH_ACTIONS.has(step.action) || (step.operations?.length ?? 0) < 2) return flow;
   const withOperations = (operations: FlowStep["operations"]): FlowFile => {
     const steps = [...flow.steps];
-    steps[index] = { ...step, operations };
+    steps[index] = rebindStepOperations(step, operations);
     return withSteps(flow, steps);
   };
   const operations = await shrinkSequence(

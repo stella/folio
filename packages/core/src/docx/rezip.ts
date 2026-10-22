@@ -75,7 +75,7 @@ import {
   visitInlineContentSlots,
   visitParagraphRuns,
 } from "./paragraphTraversal";
-import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
+import { withoutExhaustedComments, withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import {
   type DocumentSectionFacts,
   type HeaderFooterReference,
@@ -1698,7 +1698,7 @@ async function repackDocxWithSectionEndpointRemoval({
     modifiedBy,
     changedNoteParaIds,
   } = options;
-  const exportDocument = withoutOrphanCommentRanges(doc);
+  const exportDocument = withoutExhaustedComments(withoutOrphanCommentRanges(doc));
 
   // Load the original ZIP
   const originalZip = await JSZip.loadAsync(doc.originalBuffer);
@@ -1763,7 +1763,9 @@ export async function repackDocxFromRaw(
     modifiedBy,
     changedNoteParaIds,
   } = options;
-  let exportDocument = withoutOrphanCommentRanges(cloneExportDocument(doc));
+  let exportDocument = withoutExhaustedComments(
+    withoutOrphanCommentRanges(cloneExportDocument(doc)),
+  );
 
   // Create a new ZIP with all original files
   const newZip = new JSZip();

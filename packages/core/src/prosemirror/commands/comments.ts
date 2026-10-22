@@ -1,4 +1,4 @@
-import { commentPoint, resolvedCommentPoints } from "../replacedAnnotations";
+import { resolvedCommentPoints } from "../replacedAnnotations";
 /**
  * Comment and Track Changes Commands
  *
@@ -14,9 +14,11 @@ import { TableMap } from "prosemirror-tables";
 import { resolveStateStory } from "../markupViewProjection";
 import { finalRevisionParagraphRanges } from "../../internal/revisionResolutionTracking";
 import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
+import { requestDeterministicParaIds } from "../extensions/features/ParaIdAllocatorExtension";
 import { trackedRevisionPathOf, retainedTrackedRevisionMark } from "../trackedRevisionPath";
 import { Mapping } from "prosemirror-transform";
 import { panic } from "better-result";
+import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
 import { resolveParagraphChangeAttrs } from "./resolveParagraphProperties";
 import { resolveNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
@@ -40,11 +42,7 @@ import {
 } from "../attrs";
 import { resolveEmptyFieldResultRuns } from "../emptyFieldResultRuns";
 import type { TrackedRevisionAncestor } from "../schema/marks";
-import {
-  addedBreakCarrierBefore,
-  finalParagraphsOf,
-  paragraphEndsItsContainer,
-} from "../containerFinalParagraph";
+import { addedBreakCarrierBefore, finalParagraphsOf } from "../containerFinalParagraph";
 import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
 import {
   markChangedParagraphRanges,
@@ -75,6 +73,7 @@ import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import { carryParagraphProperties, paragraphLeftAfter } from "../paragraphPropertyCarry";
 import { runInCellPending, runParagraphIntoTable } from "../tableRunIn";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
+import { readRangeAnchorAttrs } from "../rangeAnchorAttrs";
 import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
@@ -276,17 +275,6 @@ function resolveChange(
                 paragraphPosition: pos,
                 styleResolver,
                 tr,
-                ...(mode === "reject" && {
-                  // A direct override is already authored against the source
-                  // context that reject restores. Inherited marks must rebase.
-                  shouldRebase: (inline) => {
-                    const deleted = inline.marks.some(({ type }) => type.name === "deletion");
-                    const direct = inline.marks.some(
-                      ({ type }) => type.name === "runFormattingOverride",
-                    );
-                    return !deleted || !direct;
-                  },
-                }),
               });
             } else {
               tr.setNodeMarkup(pos, undefined, nextAttrs);
@@ -638,10 +626,25 @@ function resolveChange(
         }
         const nextNode = nextPos < tr.doc.content.size ? tr.doc.nodeAt(nextPos) : null;
         const joinable = nextNode?.type.name === paragraph.type.name;
+        let follows: "paragraph" | "table" | "nothing" = "nothing";
+        if (joinable) follows = "paragraph";
+        else if (nextNode?.type.spec["tableRole"] === "table") follows = "table";
+        const resolved = tr.doc.resolve(mappedPos);
+        const outcome = paragraphMarkOutcome({
+          follows,
+          holdsContent: !holdsNoContent(paragraph),
+          markWasAdded: op.markWasAdded,
+          // Removing this final paragraph leaves the block before it last.
+          containerStillEndsWithParagraph:
+            resolved.parent.maybeChild(resolved.index() - 1)?.type.name === "paragraph",
+          followingTableCanReceiveRunIn:
+            follows === "table" &&
+            boundaries.length === 0 &&
+            !pendingTables.some((position) => tr.mapping.map(position) === nextPos) &&
+            !ownsSectionEndpoint(paragraph),
+        });
         const ranIn =
-          nextNode?.type.spec["tableRole"] === "table" &&
-          boundaries.length === 0 &&
-          !pendingTables.some((position) => tr.mapping.map(position) === nextPos)
+          outcome.kind === "run-in"
             ? runParagraphIntoTable({ tr, paragraphPos: mappedPos, styleResolver })
             : null;
         if (ranIn) {
@@ -675,10 +678,7 @@ function resolveChange(
           // Section properties belong to the paragraph mark being resolved.
           // Removing that mark removes its section endpoint; transferring the
           // properties backward would retain the section the revision deleted.
-          const resolved = tr.doc.resolve(mappedPos);
-          const endsItsContainer = paragraphEndsItsContainer(resolved, paragraph.type.name);
-          const canGo = op.markWasAdded || !endsItsContainer;
-          if (holdsNoContent(paragraph) && canGo && resolved.parent.childCount > 1) {
+          if (outcome.kind === "remove") {
             if (ownsSectionEndpoint(paragraph)) {
               removedSectionEndpointCount++;
               removedSectionReferences.push(...sectionReferencesOf(paragraph));
@@ -761,8 +761,31 @@ function resolveChange(
         if (field.type === node.type) tr.setNodeMarkup(position, undefined, node.attrs, node.marks);
         else tr.replaceWith(position, position + field.nodeSize, node);
       }
-      for (const [id, position] of [...points].toReversed()) {
-        tr.insert(tr.mapping.map(position, -1), commentPoint(tr.doc.type.schema, id));
+      // A range that loses all covered content is removed rather than
+      // converted to a point. Point-authored comments never enter `points`.
+      if (points.size > 0) {
+        const doomed = new Set(points.keys());
+        const carriers: { position: number; size: number }[] = [];
+        tr.doc.descendants((node, position) => {
+          if (node.type.name === "commentReference" && doomed.has(node.attrs["commentId"])) {
+            carriers.push({ position, size: node.nodeSize });
+            return false;
+          }
+          if (node.type.name !== "rangeAnchor") return true;
+          const attrs = readRangeAnchorAttrs(node);
+          if (
+            attrs.ok &&
+            attrs.value.start.type === "commentRangeStart" &&
+            doomed.has(attrs.value.start.id)
+          ) {
+            carriers.push({ position, size: node.nodeSize });
+            return false;
+          }
+          return true;
+        });
+        for (const carrier of carriers.toReversed()) {
+          tr.delete(carrier.position, carrier.position + carrier.size);
+        }
       }
       if (tr.steps.length > 0) {
         dispatch(tr);
@@ -1430,6 +1453,9 @@ const resolveAllChanges =
         positionMap: result.positionMap,
       }),
     );
+    // Resolution is a reproducible projection. Schema fillers, including cells
+    // a table-repair plugin adds, need the same identities on every reading.
+    requestDeterministicParaIds(tr, `resolve-all:${mode}`);
     markChangedParagraphRanges(tr, {
       ranges: finalRevisionParagraphRanges(result),
       mappingFrom: tr.steps.length,

@@ -5,8 +5,8 @@ import {
   failureMarker,
   failureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
-import { failureClass, normalizeFailureMessage } from "./fuzz-failure-class";
-import type { Context, Finding } from "./fuzz-failure-issues";
+import { failureClass, upgradeClassKey } from "./fuzz-failure-class";
+import { type Context, type Finding, RUN_TRIGGER } from "./fuzz-failure-issues";
 import {
   type ClosedIssue,
   type ClosedIssueDisposition,
@@ -24,6 +24,8 @@ const context = {
   sha: "abc123",
   source: "continuous fuzz",
   date: "2026-10-02T12:00:00Z",
+  lane: "continuous-fuzz",
+  trigger: RUN_TRIGGER.scheduled,
 } satisfies Context;
 
 const finding = (seed: number, message = "listLevel is 3, expected 2"): Finding => {
@@ -93,6 +95,19 @@ const legacy = (closedAt: string | null = null): Issue => {
 };
 
 describe("class issue filing", () => {
+  test("renamed legacy class keys upgrade through the migration table", () => {
+    expect(upgradeClassKey(["consumer-flow", "listLevel mismatch"])).toBe(
+      '["consumer-invariant","numberingLevel"]',
+    );
+    expect(
+      upgradeClassKey([
+        "consumer-flow",
+        "lists",
+        "tracked-changes",
+        "Missing numbering format for displayed label",
+      ]),
+    ).toBe('["consumer-invariant","numberingLabel"]');
+  });
   test("same class retains every seed/path/replay and counts distinct runs", async () => {
     const fake = fakeStore();
     const first = finding(1);
@@ -134,7 +149,7 @@ describe("class issue filing", () => {
     expect(fake.edits).toEqual([1]);
     expect(result.map(({ issue }) => issue)).toEqual(["#1", "#2"]);
     expect(fake.issues.map(({ title }) => title)).toEqual([
-      "List numbering: listLevel mismatch",
+      "Consumer invariant: Numbering level is preserved",
       "Consumer flow: unrelated failure",
     ]);
   });
@@ -345,23 +360,15 @@ const REPACK = "Consumer flow: Cannot repack invalid DOCX document model";
 const EQUALITY = "expect(received).toEqual(expected)";
 
 describe("a failure seen across fixtures and modes", () => {
-  test("the recorded run is eighteen findings that were filed as eighteen classes", () => {
+  test("the recorded signatures collapse into invariant classes", () => {
     const findings = floodFindings();
     expect(findings).toHaveLength(18);
     expect(new Set(findings.map(({ record }) => record.marker.fingerprint)).size).toBe(18);
-    // What each finding was keyed by when the key held the fixture and the mode.
-    const filedAs = findings.map(({ record: { marker } }) => {
-      const signature = failureClass(marker.test, marker.assertion);
-      return JSON.stringify(
-        signature.fixture === ""
-          ? [normalizeFailureMessage(marker.test), marker.test, "all", signature.message]
-          : ["consumer-flow", signature.fixture, signature.mode, signature.message],
-      );
-    });
-    expect(new Set(filedAs)).toEqual(
-      new Set(flood.filed.map(({ signature }) => JSON.stringify(signature))),
+    const classes = new Set(
+      findings.map(({ record: { marker } }) => failureClass(marker.test, marker.assertion).key),
     );
-    expect(new Set(filedAs).size).toBe(18);
+    expect(classes.size).toBeLessThan(18);
+    expect(classes).toContain('["consumer-invariant","numberingKind"]');
   });
 
   test("files one issue per failure and adds rows to the open issues it already has", async () => {

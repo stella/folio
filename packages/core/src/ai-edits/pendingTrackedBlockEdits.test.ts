@@ -13,6 +13,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
@@ -91,6 +92,197 @@ const resolved = async (reviewer: FolioDocxReviewer, resolution: "accept" | "rej
 };
 
 const MODES = ["direct", "tracked-changes", "suggested"] as const;
+
+test("rejected adjacent deletions keep direct run sizes after save", async () => {
+  const document = fromMarkdown("# Delivery Terms\n\nSecond paragraph.\n\nCarrier.");
+  const bytes = toArrayBuffer(
+    (await ensureParaIds(new Uint8Array(await createDocx(document)))).docx,
+  );
+  const reviewer = await open(bytes);
+  const heading = blockId(reviewer, "Delivery Terms");
+  expect(
+    apply(reviewer, "tracked-changes", [
+      {
+        id: "italicize",
+        type: "formatRange",
+        range: {
+          type: "textRange",
+          story: "main",
+          blockId: heading,
+          startOffset: 9,
+          endOffset: 14,
+          selectedTextHash: hashFolioAIBlockText("Terms"),
+        },
+        formatting: { italic: true },
+      },
+    ]).applied,
+  ).toHaveLength(1);
+  reviewer.acceptAll();
+  expect(
+    apply(reviewer, "direct", [
+      {
+        id: "comment",
+        type: "commentOnRange",
+        range: {
+          type: "textRange",
+          story: "main",
+          blockId: heading,
+          startOffset: 0,
+          endOffset: 8,
+          selectedTextHash: hashFolioAIBlockText("Delivery"),
+        },
+        comment: { text: "Review this heading." },
+      },
+    ]).applied,
+  ).toHaveLength(1);
+  const targets = [heading, blockId(reviewer, "Second paragraph.")];
+  expect(
+    apply(
+      reviewer,
+      "tracked-changes",
+      targets.map((id, index) => ({
+        id: `style-${index}`,
+        type: "setBlockParagraphProperties",
+        blockId: id,
+        properties: { styleId: "Heading2" },
+      })),
+    ).applied,
+  ).toHaveLength(2);
+  expect(
+    apply(
+      reviewer,
+      "tracked-changes",
+      targets.map((id, index) => ({ id: `delete-${index}`, type: "deleteBlock", blockId: id })),
+    ).applied,
+  ).toHaveLength(2);
+
+  const liveFormatting = reviewer
+    .toResolvedDocument("reject")
+    .package.document.content.filter(({ type }) => type === "paragraph")
+    .flatMap((entry) =>
+      entry.type === "paragraph" ? entry.content.filter(({ type }) => type === "run") : [],
+    )
+    .map(({ formatting }) => formatting);
+
+  const rejectedRuns = (await reopen(reviewer))
+    .toResolvedDocument("reject")
+    .package.document.content.filter(({ type }) => type === "paragraph")
+    .flatMap((entry) =>
+      entry.type === "paragraph" ? entry.content.filter(({ type }) => type === "run") : [],
+    );
+  expect(rejectedRuns.map(({ formatting }) => formatting)).toEqual(liveFormatting);
+});
+
+describe("suggested insertion admission uses the live anchor for every gap run", () => {
+  test("refuses an insertion after its inserted anchor is retracted before a table", async () => {
+    const reviewer = await open(await tableDocument());
+    expect(
+      apply(reviewer, "suggested", [
+        {
+          id: "create-anchor",
+          type: "insertAfterBlock",
+          blockId: blockId(reviewer, "Prices"),
+          text: "Temporary anchor.",
+        },
+      ]).applied,
+    ).toHaveLength(1);
+    const anchor = blockId(reviewer, "Temporary anchor.");
+
+    const result = apply(reviewer, "suggested", [
+      { id: "retract-anchor", type: "deleteBlock", blockId: anchor },
+      { id: "insert", type: "insertBeforeBlock", blockId: anchor, text: "Must not appear." },
+    ]);
+
+    expect(result.applied.map(({ id }) => id)).toEqual(["retract-anchor"]);
+    expect(result.skipped).toContainEqual({ id: "insert", reason: "pendingDeletion" });
+    expect(textsOf(reviewer)).not.toContain("Must not appear.");
+  });
+
+  test("degrades a move deletion when its refused insertion loses the anchor", async () => {
+    const reviewer = await open(await tableDocument());
+    expect(
+      apply(reviewer, "suggested", [
+        {
+          id: "create-anchor",
+          type: "insertAfterBlock",
+          blockId: blockId(reviewer, "Prices"),
+          text: "Temporary anchor.",
+        },
+      ]).applied,
+    ).toHaveLength(1);
+    const anchor = blockId(reviewer, "Temporary anchor.");
+
+    const result = apply(reviewer, "suggested", [
+      { id: "move-from", type: "deleteBlock", blockId: anchor, moveId: "move" },
+      {
+        id: "move-to",
+        type: "insertBeforeBlock",
+        blockId: anchor,
+        text: "Moved text.",
+        moveId: "move",
+      },
+    ]);
+
+    expect(result.applied.map(({ id }) => id)).toEqual(["move-from"]);
+    expect(result.skipped).toContainEqual({ id: "move-to", reason: "pendingDeletion" });
+    expect(result.normalizations).toEqual([
+      { id: "move-from", code: "unpairedMove", moveId: "move" },
+      { id: "move-to", code: "unpairedMove", moveId: "move" },
+    ]);
+    const zip = await JSZip.loadAsync(await reviewer.toBuffer());
+    const xml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+    expect(xml).not.toContain("<w:moveFrom ");
+    expect(xml).not.toContain("<w:moveTo ");
+  });
+
+  for (const deletion of ["deleteBlock", "deleteTableRow"] as const) {
+    for (const count of [1, 2, 3]) {
+      for (const timing of ["same batch", "earlier batch", "saved"] as const) {
+        for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
+          // After-insertions execute before deletions in the right-to-left sweep.
+          if (timing === "same batch" && type === "insertAfterBlock") continue;
+          test(`${deletion}, ${count} ${type}, deletion in ${timing}`, async () => {
+            let reviewer = await open(
+              await (deletion === "deleteBlock" ? plainDocument() : tableDocument()),
+            );
+            const target = blockId(reviewer, deletion === "deleteBlock" ? SUPPLIER : "Goods");
+            const remove = { id: "delete", type: deletion, blockId: target };
+            if (timing !== "same batch") {
+              expect(apply(reviewer, "tracked-changes", [remove]).applied).toHaveLength(1);
+              if (timing === "saved") reviewer = await reopen(reviewer);
+            }
+            const insertions = Array.from({ length: count }, (_, index) => ({
+              id: `insert-${index}`,
+              type,
+              blockId: target,
+              text: `Added clause ${index}.`,
+            }));
+            const result = apply(reviewer, "suggested", [
+              ...(timing === "same batch" ? [remove] : []),
+              ...insertions,
+            ]);
+            expect(result.applied.map(({ id }) => id)).toEqual(
+              timing === "same batch" ? ["delete"] : [],
+            );
+            expect(result.skipped).toEqual(
+              expect.arrayContaining(
+                insertions.map(({ id }) => ({ id, reason: "pendingDeletion" })),
+              ),
+            );
+            expect(result.skipped).toHaveLength(count);
+            for (const resolution of ["accept", "reject"] as const) {
+              expect(
+                (await resolved(reviewer, resolution)).some((text) =>
+                  text.startsWith("Added clause"),
+                ),
+              ).toBe(false);
+            }
+          });
+        }
+      }
+    }
+  }
+});
 
 describe("replaceBlock on a paragraph pending deletion", () => {
   for (const saved of [true, false]) {
