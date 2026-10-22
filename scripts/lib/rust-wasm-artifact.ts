@@ -64,13 +64,80 @@ const capture = async (command: string, arguments_: string[]): Promise<string> =
   return result.text().trim();
 };
 
+type CargoMetadata = {
+  readonly packages: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly version: string;
+    readonly source: string | null;
+    readonly checksum: string | null;
+  }[];
+  readonly resolve: {
+    readonly nodes: readonly {
+      readonly id: string;
+      readonly deps: readonly {
+        readonly pkg: string;
+        readonly dep_kinds: readonly { readonly kind: "dev" | "build" | null }[];
+      }[];
+    }[];
+  } | null;
+};
+
+/** Returns the canonical locked packages used by a crate's WebAssembly build. */
+export const resolvedWasmBuildGraphDescription = (
+  metadata: CargoMetadata,
+  crate: string,
+): string => {
+  const roots = metadata.packages.filter(({ name }) => name === crate);
+  if (roots.length !== 1) {
+    panic(`Expected exactly one Cargo package named ${crate}; found ${roots.length}`);
+  }
+  const root = roots.at(0) ?? panic(`Cargo metadata does not contain package ${crate}`);
+  if (metadata.resolve === null) {
+    panic("Cargo metadata does not contain a dependency graph");
+  }
+
+  const nodes = new Map(metadata.resolve.nodes.map((node) => [node.id, node]));
+  const packages = new Map(metadata.packages.map((package_) => [package_.id, package_]));
+  const pending = [root.id];
+  const visited = new Set<string>();
+  while (pending.length > 0) {
+    const id = pending.pop() ?? panic("Dependency traversal unexpectedly ran out of packages");
+    if (visited.has(id)) {
+      continue;
+    }
+    visited.add(id);
+    const node = nodes.get(id) ?? panic(`Cargo metadata does not contain resolve node ${id}`);
+    for (const dependency of node.deps) {
+      if (dependency.dep_kinds.some(({ kind }) => kind === null || kind === "build")) {
+        pending.push(dependency.pkg);
+      }
+    }
+  }
+
+  const resolved = [...visited].map((id) => {
+    const package_ = packages.get(id) ?? panic(`Cargo metadata does not contain package ${id}`);
+    return {
+      name: package_.name,
+      version: package_.version,
+      source: package_.source,
+      checksum: package_.checksum,
+    };
+  });
+  resolved.sort((left, right) => {
+    const leftDescription = JSON.stringify(left);
+    const rightDescription = JSON.stringify(right);
+    return leftDescription < rightDescription ? -1 : Number(leftDescription > rightDescription);
+  });
+  return `${JSON.stringify(resolved)}\n`;
+};
+
 const generationInputsOf = (artifact: RustWasmArtifact): string[] => {
   const sourceDirectory = path.join(repoRoot, artifact.crateDirectory, "src");
   const sourceFiles = readdirSync(sourceDirectory, { recursive: true })
     .filter((file): file is string => typeof file === "string" && file.endsWith(".rs"))
     .map((file) => path.join(sourceDirectory, file));
   return [
-    path.join(repoRoot, "Cargo.lock"),
     path.join(repoRoot, "Cargo.toml"),
     path.join(repoRoot, "rust-toolchain.toml"),
     path.join(repoRoot, artifact.crateDirectory, "Cargo.toml"),
@@ -80,7 +147,7 @@ const generationInputsOf = (artifact: RustWasmArtifact): string[] => {
   ].sort();
 };
 
-const generationInputDigest = (artifact: RustWasmArtifact): string => {
+const generationInputDigest = async (artifact: RustWasmArtifact): Promise<string> => {
   const digest = createHash("sha256");
   for (const file of generationInputsOf(artifact)) {
     digest.update(path.relative(repoRoot, file));
@@ -88,6 +155,22 @@ const generationInputDigest = (artifact: RustWasmArtifact): string => {
     digest.update(readFileSync(file));
     digest.update("\0");
   }
+  const metadata = JSON.parse(
+    await capture("cargo", [
+      "metadata",
+      "--locked",
+      "--format-version",
+      "1",
+      "--features",
+      "wasm",
+      "--filter-platform",
+      "wasm32-unknown-unknown",
+    ]),
+  ) as CargoMetadata;
+  digest.update("resolved-cargo-build-graph");
+  digest.update("\0");
+  digest.update(resolvedWasmBuildGraphDescription(metadata, artifact.crate));
+  digest.update("\0");
   return `${digest.digest("hex")}\n`;
 };
 
@@ -256,7 +339,7 @@ export const buildRustWasmArtifact = async (
     optimize(artifact, wasmPath);
     writeFileSync(
       path.join(temporaryDir, `${artifact.outName}.inputs.sha256`),
-      generationInputDigest(artifact),
+      await generationInputDigest(artifact),
     );
 
     const { wasmBytes, brotliBytes } = assertLoadableWithinBudget(artifact, wasmPath);
