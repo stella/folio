@@ -13,11 +13,25 @@ import type {
 } from "../layout-engine/types";
 import { renderLine } from "./renderParagraph";
 
+const createFakeStyle = () => {
+  const properties: Record<string, string> = {};
+  return new Proxy(properties, {
+    get(target, property: string) {
+      if (property === "setProperty") {
+        return (name: string, value: string) => {
+          target[name] = value;
+        };
+      }
+      return target[property];
+    },
+  });
+};
+
 class FakeElement {
   className = "";
   dataset: Record<string, string> = {};
   innerHTML = "";
-  style: Record<string, string> = {};
+  style = createFakeStyle();
   children: FakeElement[] = [];
   classList = {
     add: (...tokens: string[]) => {
