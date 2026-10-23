@@ -242,6 +242,7 @@ export function layoutTable(
     if (
       !row ||
       !sourceRow ||
+      sourceRow.heightRule === "exact" ||
       sourceRow.isHeader ||
       verticallyMergedRows.has(rowIndex)
     ) {
