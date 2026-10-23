@@ -657,6 +657,42 @@ describe("continuous section break geometry", () => {
     expect(lastPage?.size).toEqual({ w: 1200, h: 700 });
   });
 
+  test("continued section advances to a fresh page when no column fits its first line", () => {
+    const host = paragraph("host", 890);
+    const sectionBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "continued-section",
+      type: "continuous",
+    };
+    const first = paragraph("first-line", 20);
+
+    const result = layoutDocument(
+      [host.block, sectionBreak, first.block],
+      [
+        host.measure,
+        { kind: "sectionBreak" },
+        first.measure,
+      ] satisfies Measure[],
+      {
+        pageSize: { w: 800, h: 1000 },
+        margins: { top: 50, right: 50, bottom: 50, left: 50 },
+        finalPageSize: { w: 800, h: 1000 },
+        finalMargins: { top: 50, right: 50, bottom: 50, left: 50 },
+        finalColumns: { count: 2, gap: 20 },
+      },
+    );
+
+    const firstLine = result.pages
+      .at(-1)
+      ?.fragments.find(
+        (fragment) =>
+          fragment.kind === "paragraph" && fragment.blockId === "first-line",
+      );
+    expect(result.pages).toHaveLength(2);
+    expect(firstLine?.y).toBe(50);
+    expect(firstLine?.x).toBe(50);
+  });
+
   test("orientation-changing continuous break is promoted to a page break", () => {
     // Regression (eigenpal/docx-editor#841): a `continuous` break normally
     // defers the new geometry, but a break that changes page size/orientation

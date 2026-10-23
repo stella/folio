@@ -537,6 +537,9 @@ export function createPaginator(options: PaginatorOptions) {
     while (!fits(safeHeight, state)) {
       const columnCapacity = state.contentBottom - columnRegionTop;
       if (safeHeight > columnCapacity) {
+        if (columnRegionTop > state.topMargin) {
+          return forcePageBreak();
+        }
         if (state.cursorY !== state.topMargin) {
           state = advanceColumn(state);
         }
