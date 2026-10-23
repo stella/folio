@@ -231,6 +231,46 @@ describe("canonical DOCX document model validation", () => {
     });
   });
 
+  test("pairs a move range that starts between blocks and ends inside a paragraph", () => {
+    const result = validateDocumentModel(
+      createDocument({
+        content: [
+          {
+            type: "moveFromRangeStart",
+            id: 4,
+            name: "move4",
+            author: "Reviewer",
+          },
+          paragraph([textRun(), { type: "moveFromRangeEnd", id: 4 }]),
+        ],
+      }),
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  test("rejects a move range start between blocks that nothing ends", () => {
+    const result = validateDocumentModel(
+      createDocument({
+        content: [
+          {
+            type: "moveToRangeStart",
+            id: 6,
+            name: "move6",
+            author: "Reviewer",
+          },
+          paragraph(),
+        ],
+      }),
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.map((issue) => issue.message)).toContain(
+      "Unbalanced move-to range 6: moveToRangeStart=1, moveToRangeEnd=0.",
+    );
+  });
+
   test("counts bookmark boundaries inside tracked run changes", () => {
     const result = validateDocumentModel(
       createDocument({
