@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import type { EditorState } from "prosemirror-state";
 
 import {
   applyDocumentOp,
@@ -54,8 +55,7 @@ const firstParagraphContent = (document: Document) => {
   return first?.type === "paragraph" ? first.content : [];
 };
 
-const rejectInEditor = (document: Document) => {
-  const state = createHarnessState(document, "editing");
+const rejectInState = (state: EditorState, document: Document) => {
   let resolved = state;
   expect(
     rejectAllChanges()(state, (tr) => {
@@ -68,6 +68,9 @@ const rejectInEditor = (document: Document) => {
     }),
   );
 };
+
+const rejectInEditor = (document: Document) =>
+  rejectInState(createHarnessState(document, "editing"), document);
 
 const rejectInEngine = (document: Document) => {
   const applied = applyDocumentOp(document, {
@@ -220,15 +223,17 @@ describe("rejecting an insertion keeps its range boundaries", () => {
               ...after,
               run("c"),
             ]);
-            let editor: string[];
+            let state: EditorState;
             try {
-              editor = outline(rejectInEditor(document));
+              state = createHarnessState(document, "editing");
             } catch {
               // A document the editor refuses on import holds nothing to reject.
               fc.pre(false);
               return;
             }
-            expect(editor).toEqual(outline(rejectInEngine(document)));
+            expect(outline(rejectInState(state, document))).toEqual(
+              outline(rejectInEngine(document)),
+            );
           },
         ),
         {
