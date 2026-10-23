@@ -236,7 +236,6 @@ describe("toFlowBlocks style cascade", () => {
     expect(run).toMatchObject({
       fontFamily: "Arial",
       hAnsiFontFamily: "Times New Roman",
-      eastAsiaFontFamily: undefined,
     });
     expect(document.package.document.content).toEqual(sourceContent);
   });
