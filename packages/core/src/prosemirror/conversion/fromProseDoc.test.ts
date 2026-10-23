@@ -4300,6 +4300,48 @@ describe("fromProseDoc", () => {
     ).toBe(false);
   });
 
+  test("removes orphaned anchor slots without removing their authored run", () => {
+    const document = documentWithTextBoxParagraph({
+      includeText: false,
+      textBoxCount: 2,
+    });
+    const sourceParagraph = document.package.document.content.at(0);
+    if (sourceParagraph?.type !== "paragraph") {
+      throw new Error("Expected source paragraph");
+    }
+    const [firstRun, secondRun] = sourceParagraph.content;
+    if (firstRun?.type !== "run" || secondRun?.type !== "run") {
+      throw new Error("Expected two text-box runs");
+    }
+    firstRun.content.unshift({ type: "text", text: "Before" });
+    firstRun.content.push(...secondRun.content, {
+      type: "text",
+      text: "After",
+    });
+    firstRun.formatting = { noProof: true };
+    sourceParagraph.content = [firstRun];
+    const projected = toProseDoc(document);
+    const edited = schema.node("doc", null, [projected.child(0)]);
+
+    const saved = fromProseDoc(edited, document, {
+      stylesheetSource: { type: "package" },
+    });
+    const paragraph = saved.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected round-tripped paragraph");
+    }
+    expect(paragraph.content).toEqual([
+      {
+        type: "run",
+        formatting: { noProof: true },
+        content: [
+          { type: "text", text: "Before" },
+          { type: "text", text: "After" },
+        ],
+      },
+    ]);
+  });
+
   test("preserves inline text-box order inside a table cell", () => {
     const document = documentWithTextBoxParagraph({ includeText: true });
     const sourceParagraph = document.package.document.content.at(0);

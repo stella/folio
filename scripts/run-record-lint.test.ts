@@ -22,15 +22,24 @@ const lintFixture = (fixture: string) => {
     { cwd: REPO_ROOT },
   );
   const output = result.stdout.toString() + result.stderr.toString();
-  return output.split(RULE_MARKER).length - 1;
+  return {
+    exitCode: result.exitCode,
+    findings: output.split(RULE_MARKER).length - 1,
+  };
 };
 
 describe("source run-record restoration", () => {
   test("rejects missing, mismatched, and cross-switch-arm restoration", () => {
-    expect(lintFixture("run-record-metadata.invalid.ts")).toBe(7);
+    expect(lintFixture("run-record-metadata.invalid.ts")).toEqual({
+      exitCode: 1,
+      findings: 7,
+    });
   });
 
   test("accepts source restoration and fresh runs without source marks", () => {
-    expect(lintFixture("run-record-metadata.valid.ts")).toBe(0);
+    expect(lintFixture("run-record-metadata.valid.ts")).toEqual({
+      exitCode: 0,
+      findings: 0,
+    });
   });
 });
