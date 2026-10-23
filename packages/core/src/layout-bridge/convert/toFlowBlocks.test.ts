@@ -2445,6 +2445,48 @@ describe("toFlowBlocks paragraph formatting", () => {
 });
 
 describe("toFlowBlocks field handling", () => {
+  test("projects hard breaks inside structured field results into layout", () => {
+    const field = schema.node(
+      "structuredField",
+      {
+        fieldType: "REF",
+        instruction: "REF target",
+        displayText: "One\nTwo",
+        fieldKind: "complex",
+      },
+      [schema.text("One"), schema.node("hardBreak"), schema.text("Two")],
+    );
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [field]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+    const paragraph = blocks.at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph block");
+    }
+
+    expect(paragraph.runs.map((run) => run.kind)).toEqual([
+      "text",
+      "lineBreak",
+      "text",
+    ]);
+    expect(paragraph.runs[0]).toMatchObject({
+      text: "One",
+      pmStart: 2,
+      pmEnd: 5,
+    });
+    expect(paragraph.runs[1]).toMatchObject({
+      pmStart: 5,
+      pmEnd: 6,
+    });
+    expect(paragraph.runs[2]).toMatchObject({
+      text: "Two",
+      pmStart: 6,
+      pmEnd: 9,
+    });
+  });
+
   test("keeps dynamically-rendered field types distinct in layout runs", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
