@@ -1,5 +1,7 @@
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { describe, expect, test } from "bun:test";
 
+import { LayoutPainter } from "../../layout-painter";
 import { UNDERLINE_STROKES } from "../build/strokes";
 import { underlineThicknessPx } from "../build/textDecorations";
 import { DISPLAY_PRIMITIVE_KINDS } from "../primitives";
@@ -14,6 +16,7 @@ import type {
   DisplayStrokePattern,
 } from "../types";
 import {
+  releaseDisplayPageResources,
   renderDisplayListToDom,
   renderDisplayPageToDom,
 } from "./renderDisplayListToDom";
@@ -868,5 +871,100 @@ describe("renderDisplayListToDom", () => {
     );
 
     expect(page.style.backgroundColor).toBe("rgb(255, 255, 255)");
+  });
+
+  test("releases page image URLs and shared font URLs after their last page", () => {
+    const created: string[] = [];
+    const revoked: string[] = [];
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: () => {
+        const url = `blob:display-resource-${created.length}`;
+        created.push(url);
+        return url;
+      },
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: (url: string) => revoked.push(url),
+    });
+
+    try {
+      const pages = renderDisplayListToDom(
+        listOf(
+          [
+            emptyPage([PRIMITIVE_SAMPLES.image]),
+            emptyPage([PRIMITIVE_SAMPLES.image]),
+          ],
+          [EMBEDDED_FONT],
+        ),
+        { doc: stubDocument() },
+      );
+
+      expect(created).toHaveLength(3);
+      releaseDisplayPageResources(pages[0]!);
+      expect(revoked).toEqual([created[1]]);
+      releaseDisplayPageResources(pages[1]!);
+      expect([...revoked].sort()).toEqual([...created].sort());
+      releaseDisplayPageResources(pages[1]!);
+      expect([...revoked].sort()).toEqual([...created].sort());
+    } finally {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: originalCreate,
+      });
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        value: originalRevoke,
+      });
+    }
+  });
+
+  test("LayoutPainter unmount releases resources owned by mounted display pages", () => {
+    GlobalRegistrator.register();
+    const created: string[] = [];
+    const revoked: string[] = [];
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: () => {
+        const url = `blob:display-unmount-${created.length}`;
+        created.push(url);
+        return url;
+      },
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: (url: string) => revoked.push(url),
+    });
+
+    try {
+      const container = document.createElement("div");
+      const painter = new LayoutPainter({ document });
+      painter.mount(container);
+      const page = renderDisplayListToDom(
+        listOf([emptyPage([PRIMITIVE_SAMPLES.image])], [EMBEDDED_FONT]),
+        { doc: document },
+      )[0];
+      if (!page) throw new Error("Expected one display page");
+      container.append(page);
+
+      painter.unmount();
+
+      expect(revoked.sort()).toEqual(created.sort());
+      expect(container.childElementCount).toBe(0);
+    } finally {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: originalCreate,
+      });
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        value: originalRevoke,
+      });
+    }
   });
 });
