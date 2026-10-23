@@ -183,7 +183,7 @@ describe("toProseDoc", () => {
       {
         "data-docx-symbol-char": "F06F",
         "data-docx-symbol-font": "Wingdings",
-        style: 'font-family: "Wingdings";',
+        style: 'font-family: "Wingdings", sans-serif;',
       },
       "\u25CB",
     ]);
