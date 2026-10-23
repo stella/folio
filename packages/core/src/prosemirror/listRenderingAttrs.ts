@@ -120,13 +120,24 @@ export const listRenderingAttrPatch = (
 export const hasListRendering = (
   attrs: Pick<
     ParagraphAttrs,
-    "listMarker" | "listMarkerTemplate" | "listIsBullet" | "listNumFmt"
+    | "listMarker"
+    | "listMarkerTemplate"
+    | "listIsBullet"
+    | "listIsLegal"
+    | "listNumFmt"
   >,
-): boolean =>
-  attrs.listMarker != null ||
-  attrs.listMarkerTemplate != null ||
-  attrs.listIsBullet === true ||
-  attrs.listNumFmt != null;
+): boolean => {
+  if (attrs.listNumFmt === "none" && attrs.listIsLegal !== true) {
+    return false;
+  }
+
+  return (
+    attrs.listMarker != null ||
+    attrs.listMarkerTemplate != null ||
+    attrs.listIsBullet === true ||
+    attrs.listNumFmt != null
+  );
+};
 
 /** The attrs a rendering is read back from: a paragraph's, or a recorded previous state's. */
 export type ListRenderingSourceAttrs = Pick<

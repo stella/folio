@@ -11,7 +11,7 @@ import {
 } from "../../../../test/property-testing";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import { CLEARED_LIST_RENDERING_ATTRS } from "./listMarker";
-import { listRenderingAttrPatch } from "./listRenderingAttrs";
+import { hasListRendering, listRenderingAttrPatch } from "./listRenderingAttrs";
 import { schema } from "./schema";
 
 test("folded LISTNUM display text stays literal while numbered and symbol-font bullet markers resolve", () => {
@@ -127,4 +127,20 @@ test("an empty level marker remains an empty marker through layout conversion", 
   );
   expect(paragraph?.attrs?.listMarker).toBe("");
   expect(paragraph?.attrs?.listMarkerSuffix).toBe("tab");
+});
+
+test("none numbering renders only for a legal-numbering level", () => {
+  const ordinaryNone = {
+    listMarkerTemplate: "",
+    listIsLegal: false,
+    listNumFmt: "none",
+  } as const satisfies Parameters<typeof hasListRendering>[0];
+  const legalNone = {
+    listMarkerTemplate: "",
+    listIsLegal: true,
+    listNumFmt: "none",
+  } as const satisfies Parameters<typeof hasListRendering>[0];
+
+  expect(hasListRendering(ordinaryNone)).toBe(false);
+  expect(hasListRendering(legalNone)).toBe(true);
 });

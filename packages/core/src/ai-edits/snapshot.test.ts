@@ -749,7 +749,7 @@ describe("createFolioAIEditSnapshot", () => {
         text: "Empty marker item",
         kind: "listItem",
         headingLevel: undefined,
-        displayLabel: undefined,
+        displayLabel: "",
         listReference: { numId: 5, level: 0 },
         statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
