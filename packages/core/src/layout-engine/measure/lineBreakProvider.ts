@@ -49,6 +49,7 @@ const ZERO_WIDTH_SPACE = "\u200B";
 const NEXT_LINE = "\u0085";
 const FIRST_COMBINING_MARK_CODE_POINT = 0x0300;
 const COMBINING_MARK = /^\p{Mark}$/u;
+const LETTER = /^\p{Letter}$/u;
 export const MAX_HYPHENATION_WORD_LENGTH = 256;
 
 const wordSegmenters = new Map<string, Intl.Segmenter>();
@@ -153,6 +154,13 @@ export const unicodeLineBoundaryPermitsBreak = ({
   next,
 }: LineBoundaryOptions): boolean => {
   if (next === ZERO_WIDTH_SPACE) {
+    return false;
+  }
+  if (
+    (previous === "\u17D2" || previous === "\u1039") &&
+    next !== undefined &&
+    LETTER.test(next)
+  ) {
     return false;
   }
   if (

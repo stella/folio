@@ -1072,6 +1072,27 @@ describe("measureParagraph cross-run line breaking", () => {
     );
   });
 
+  test("keeps stacked consonants together during emergency wrapping", () => {
+    withFakeTextMeasure(
+      () => {
+        for (const stack of ["ក\u17D2ក", "က\u1039က"]) {
+          const text = `${stack}x`;
+          const { lines } = measureParagraph(
+            paragraph([{ kind: "text", text }]),
+            10,
+          );
+          expect(lines).toHaveLength(2);
+          expect(lines[0]).toMatchObject({ fromChar: 0, toChar: stack.length });
+          expect(lines[1]).toMatchObject({
+            fromChar: stack.length,
+            toChar: text.length,
+          });
+        }
+      },
+      { charWidth: fixedCharWidth(5) },
+    );
+  });
+
   test("consumes spaces and zero-width spaces at the preceding line's tail", () => {
     withFakeTextMeasure(
       () => {

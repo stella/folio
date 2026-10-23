@@ -228,6 +228,14 @@ describe("findGraphemeBreaks", () => {
   test("keeps a zero-width space on the preceding emergency-wrap fragment", () => {
     expect(findGraphemeBreaks("a\u200Bb")).toEqual([2, 3]);
   });
+
+  test("keeps Khmer and Myanmar stacked consonants together", () => {
+    for (const stack of ["ក\u17D2ក", "က\u1039က"]) {
+      const text = `${stack}x`;
+      expect(findGraphemeBreaks(text)).toEqual([stack.length, text.length]);
+    }
+    expect(findWordBreaks("က\u1039 \u1031က")).toContain(3);
+  });
 });
 
 describe("findHyphenationBreaks", () => {
