@@ -152,6 +152,56 @@ describe("continuous section break geometry", () => {
     expect(secondColumn?.map(({ y }) => y)).toEqual([150, 250]);
   });
 
+  test("suppresses space before at the opening of a later column region", () => {
+    const intro = paragraph("intro", 50);
+    const sectionBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "section-break",
+      type: "continuous",
+      pageSize: { w: 200, h: 100 },
+      margins: { top: 10, right: 10, bottom: 10, left: 10 },
+    };
+    const firstColumn = paragraph("first-column", 20);
+    const secondColumn = paragraph("second-column", 20);
+    secondColumn.block.attrs.spacing = { before: 13 };
+    const occupiedColumn = paragraph("occupied-column", 5);
+    occupiedColumn.block.attrs.spacing = { before: 5 };
+    const blocks: FlowBlock[] = [
+      intro.block,
+      sectionBreak,
+      firstColumn.block,
+      secondColumn.block,
+      occupiedColumn.block,
+    ];
+    const measures = [
+      intro.measure,
+      { kind: "sectionBreak" },
+      firstColumn.measure,
+      secondColumn.measure,
+      occupiedColumn.measure,
+    ] satisfies Measure[];
+
+    const result = layoutDocument(blocks, measures, {
+      pageSize: { w: 200, h: 100 },
+      margins: { top: 10, right: 10, bottom: 10, left: 10 },
+      finalPageSize: { w: 200, h: 100 },
+      finalMargins: { top: 10, right: 10, bottom: 10, left: 10 },
+      finalColumns: { count: 2, gap: 20 },
+    });
+    const fragments = result.pages.at(0)?.fragments;
+    const moved = fragments?.find(
+      (fragment) =>
+        fragment.kind === "paragraph" && fragment.blockId === "second-column",
+    );
+    const following = fragments?.find(
+      (fragment) =>
+        fragment.kind === "paragraph" && fragment.blockId === "occupied-column",
+    );
+
+    expect(moved).toMatchObject({ x: 110, y: 60 });
+    expect(following).toMatchObject({ x: 110, y: 85 });
+  });
+
   test("a final multi-column section keeps a forced column break on the current page", () => {
     const first = paragraph("a", 100);
     const sectionBreak: SectionBreakBlock = {

@@ -529,14 +529,45 @@ export function createPaginator(options: PaginatorOptions) {
    * Advances column or creates new page if needed.
    * Returns the state to use for placement.
    */
-  function ensureFits(height: number): PageState {
+  type EnsureFitsOptions = {
+    requiredHeight: number;
+    freshColumnHeight?: number;
+  };
+  function ensureFits(height: number): PageState;
+  function ensureFits(options: EnsureFitsOptions): PageState;
+  function ensureFits(input: number | EnsureFitsOptions): PageState {
     let state = getCurrentState();
-    const safeHeight = Number.isFinite(height) && height > 0 ? height : 0;
+    const requiredHeight =
+      typeof input === "number" ? input : input.requiredHeight;
+    const safeHeight =
+      Number.isFinite(requiredHeight) && requiredHeight > 0
+        ? requiredHeight
+        : 0;
+    const freshColumnHeight =
+      typeof input === "number" ? undefined : input.freshColumnHeight;
+    const safeFreshColumnHeight =
+      freshColumnHeight !== undefined &&
+      Number.isFinite(freshColumnHeight) &&
+      freshColumnHeight > 0
+        ? freshColumnHeight
+        : safeHeight;
+    let heightToFit =
+      state.columnIndex > 0 && state.cursorY === columnRegionTop
+        ? safeFreshColumnHeight
+        : safeHeight;
 
     // Keep advancing until we have space
-    while (!fits(safeHeight, state)) {
+    while (!fits(heightToFit, state)) {
       const columnCapacity = state.contentBottom - columnRegionTop;
-      if (safeHeight > columnCapacity) {
+      if (heightToFit > columnCapacity) {
+        if (
+          state.columnIndex < columns.count - 1 &&
+          safeFreshColumnHeight <= columnCapacity
+        ) {
+          state = advanceColumn(state);
+          heightToFit = safeFreshColumnHeight;
+          continue;
+        }
         if (columnRegionTop > state.topMargin) {
           return forcePageBreak();
         }
@@ -546,6 +577,10 @@ export function createPaginator(options: PaginatorOptions) {
         return state;
       }
       state = advanceColumn(state);
+      heightToFit =
+        state.columnIndex > 0 && state.cursorY === columnRegionTop
+          ? safeFreshColumnHeight
+          : safeHeight;
     }
 
     return state;
@@ -574,13 +609,19 @@ export function createPaginator(options: PaginatorOptions) {
     const totalHeight = effectiveSpaceBefore + height;
 
     // Ensure we have space
-    const state = ensureFits(totalHeight);
+    const state = ensureFits({
+      requiredHeight: totalHeight,
+      freshColumnHeight: height,
+    });
 
     const isSameFlowRegion =
       state === initialState && state.columnIndex === initialColumnIndex;
-    const actualSpaceBefore = isSameFlowRegion
+    let actualSpaceBefore = isSameFlowRegion
       ? effectiveSpaceBefore
       : spaceBefore;
+    if (state.columnIndex > 0 && state.cursorY === columnRegionTop) {
+      actualSpaceBefore = 0;
+    }
 
     // Calculate position
     const x = getColumnX(state.columnIndex);
@@ -956,6 +997,10 @@ export function createPaginator(options: PaginatorOptions) {
     fits: (height: number) => fits(height),
     /** Ensure height fits, advancing if needed. */
     ensureFits,
+    isAtFreshColumnRegion: () => {
+      const state = getCurrentState();
+      return state.columnIndex > 0 && state.cursorY === columnRegionTop;
+    },
     /** Add a fragment to current page. */
     addFragment,
     /** Add an already-positioned fragment without advancing normal flow. */
