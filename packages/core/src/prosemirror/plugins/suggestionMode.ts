@@ -368,7 +368,11 @@ function markRangeAsInserted(
     if (!canCarryTrackedRunMark(node)) {
       return;
     }
-    if (node.marks.some((mark) => mark.type === insertionType)) {
+    if (
+      node.marks.some(
+        (mark) => mark.type === insertionType || mark.type === deletionType,
+      )
+    ) {
       return;
     }
     const start = Math.max(pos, from);
@@ -432,10 +436,8 @@ function markRangeAsInserted(
  * default paste + the `appendTransaction` catch-all marks a plain insertion
  * (eigenpal/docx-editor#784).
  */
-type SuggestionPasteView = Pick<EditorView, "dispatch" | "state">;
-
 export function handleSuggestionPaste(
-  view: SuggestionPasteView,
+  view: Pick<EditorView, "dispatch" | "state">,
   slice: Slice,
   pluginState: SuggestionModeState,
 ): boolean {

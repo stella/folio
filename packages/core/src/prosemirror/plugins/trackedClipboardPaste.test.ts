@@ -51,6 +51,7 @@ test("tracked HTML paste keeps source deletions while proposing the rich slice",
     author: string;
     date: string | null;
     revisionId: number;
+    revisionAncestors: { type: string; author: string; date: string | null }[];
   }[] = [];
   state.doc.descendants((node) => {
     if (!node.isText) return;
@@ -74,6 +75,7 @@ test("tracked HTML paste keeps source deletions while proposing the rich slice",
         author,
         date,
         revisionId,
+        revisionAncestors: mark.attrs["_docxRevisionAncestors"] ?? [],
       });
     }
   });
@@ -87,9 +89,8 @@ test("tracked HTML paste keeps source deletions while proposing the rich slice",
   });
   expect(removed?.revisionId).toBeGreaterThan(0);
   expect(
-    revisions.some(
-      ({ text, kind, author }) =>
-        text === "removed" && kind === "insertion" && author === "Reviewer",
+    removed?.revisionAncestors.some(
+      ({ type, author }) => type === "insertion" && author === "Reviewer",
     ),
   ).toBe(true);
   expect(
