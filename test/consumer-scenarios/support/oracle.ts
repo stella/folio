@@ -1359,10 +1359,9 @@ const insertBlock =
         row.fields = fields;
         row.checks = checks;
       }
-      if (named.pre?.table) row.besideTable = true;
       return row;
     });
-    gapOf(model, anchor, position).push(...rows);
+    pushBesideBlocks(model, anchor, position, rows);
     addComment(model, operation);
   };
 
@@ -1402,6 +1401,26 @@ const gapOf = (
   if (position === "after") return row.after;
   const previous = model.rows[model.rows.indexOf(row) - 1];
   return previous && !previous.pendingJoin ? previous.after : row.before;
+};
+
+/**
+ * Put `rows`, blocks inserted outside every table, in the gap on `position`'s
+ * side of `anchor`. When a table's own block borders that gap, they are
+ * beside the table: rows and cells the batch adds to it stay nearer it.
+ */
+const pushBesideBlocks = (
+  model: Model,
+  anchor: ModelRow,
+  position: "before" | "after",
+  rows: readonly ModelRow[],
+) => {
+  const gap = gapOf(model, anchor, position);
+  const previous = model.rows[model.rows.indexOf(anchor) - 1];
+  const bordering =
+    position === "after" || gap === anchor.before ? anchor : previous;
+  const nearTable = bordering?.pre?.table !== undefined;
+  for (const row of rows) if (nearTable) row.besideTable = true;
+  gap.push(...rows);
 };
 
 const rangeOf = (
@@ -1574,13 +1593,19 @@ export const EXPECTATIONS = {
   insertTable: (model, operation) => {
     const position = operation["position"] === "before" ? "before" : "after";
     const named = target(model, operation["blockId"], { adjacent: true });
-    const anchor = position === "after" ? pastTextBoxes(model, named) : named;
+    // A whole table is a peer of the outermost table its anchor sits in.
+    const anchor = insertionAnchor(model, named, position);
     const rows = operation["rows"] as string[][];
     // A cell's line break starts a paragraph there; a blank one stays blank.
     const texts = rows.flatMap((cells) =>
       cells.flatMap((cell) => cell.split(/\r\n|\r|\n/u)),
     );
-    gapOf(model, anchor, position).push(...texts.map((text) => modelRow(text)));
+    pushBesideBlocks(
+      model,
+      anchor,
+      position,
+      texts.map((text) => modelRow(text)),
+    );
   },
   deleteTable: (model, operation) => {
     const { tableIndex } = tableOf(
@@ -1639,6 +1664,18 @@ export const EXPECTATIONS = {
       // The new cell follows the anchor's column (or precedes it) in each row.
       const column = anchor.gridColumnIndex;
       const cell = modelRow(text);
+      // A row the document still holds but no reader lists, pending deletion,
+      // takes its new cell along: accepting the deletion removes the row.
+      if (
+        inRow.length > 0 &&
+        inRow.every(
+          (row) =>
+            (row.removed ||
+              (row.pendingDeletion === true && row.edits.length === 0)) &&
+            (model.mode !== "direct" || row.outsidePreState === true),
+        )
+      )
+        cell.removed = true;
       const lastBefore = inRow.findLast((row) =>
         after
           ? (row.pre?.table?.gridColumnIndex ?? 0) <= column
@@ -1676,12 +1713,12 @@ export const EXPECTATIONS = {
     });
     // Like a block, a signature table anchored in a cell lands beside the
     // outermost table, so rows the batch adds to that table stay nearer it.
-    const rows = texts.map((text) => {
-      const row = modelRow(text);
-      if (named.pre?.table) row.besideTable = true;
-      return row;
-    });
-    gapOf(model, anchor, position).push(...rows);
+    pushBesideBlocks(
+      model,
+      anchor,
+      position,
+      texts.map((text) => modelRow(text)),
+    );
     addComment(model, operation);
   },
   mergeTableCells: null,

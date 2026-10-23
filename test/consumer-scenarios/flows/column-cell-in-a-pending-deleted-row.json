@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "tracked-changes",
+  "seed": 694344420,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2326510342,
+      "operations": [
+        {
+          "type": "deleteTableRow",
+          "blockId": "682BB056"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 541151985,
+      "operations": [
+        {
+          "type": "insertTableColumn",
+          "blockId": "461701F4",
+          "position": "after",
+          "cellTexts": ["Column cell 1", "Column cell 2", "Column cell 3"]
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "origin": "Shrunk from the splice of 3c4c6f10b3ceccf8 (#1757)"
+}

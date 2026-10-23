@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 7977502,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3535650434,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "7735D914",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "commentOnRange",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "commentOnBlock",
+    "insertTable",
+    "deleteTable"
+  ],
+  "origin": "Shrunk from the swap of 14b4880bf1fc6a2d (#1757)"
+}
