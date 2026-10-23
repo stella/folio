@@ -90,6 +90,27 @@ describe("new document compatibility mode", () => {
     );
   });
 
+  test("a new package preserves the noColumnBalance on and off states", async () => {
+    const preset = createStellaStyleDocumentPreset();
+    preset.styleSet.settings = {
+      defaultTabStop: 720,
+      noColumnBalance: true,
+    };
+    const enabled = await createDocx(createEmptyDocument({ preset }));
+    expect(await savedSettings(enabled)).toContain(
+      "<w:compat><w:noColumnBalance/></w:compat>",
+    );
+    expect(
+      (await parseDocx(enabled, { preloadFonts: false })).package.settings,
+    ).toMatchObject({ noColumnBalance: true });
+
+    preset.styleSet.settings.noColumnBalance = false;
+    const disabled = await createDocx(createEmptyDocument({ preset }));
+    expect(await savedSettings(disabled)).toContain(
+      '<w:compat><w:noColumnBalance w:val="0"/></w:compat>',
+    );
+  });
+
   test("a loaded package without a compatibility mode saves without one", async () => {
     const source = settingsXml("");
     const document = await parseDocx(await packageWithSettings(source), {
