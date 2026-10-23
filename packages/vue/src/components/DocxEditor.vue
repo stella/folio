@@ -240,6 +240,7 @@
             ref="pagesViewportRef"
             class="docx-editor-vue__pages-viewport"
             :style="pagesViewportStyle"
+            @keydown="handleReadOnlyPagesKeyDown"
             @wheel="handleWheelZoomGated"
             @mousedown="handlePagesMouseDown"
             @mousemove="handlePagesMouseMove"
@@ -1153,6 +1154,27 @@ const {
   onDocumentChange: notifyDocumentChange,
   clearOverlay: selectionSync.clearOverlay,
 });
+
+function handleReadOnlyPagesKeyDown(event: KeyboardEvent): void {
+  if (!readOnly.value || event.defaultPrevented) return;
+  const selectAll =
+    (event.metaKey || event.ctrlKey) &&
+    !event.altKey &&
+    event.key.toLowerCase() === "a";
+  const extendSelection =
+    event.shiftKey &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    (event.key === "ArrowLeft" || event.key === "ArrowRight");
+  if (!selectAll && !extendSelection) return;
+  const view = editorView.value;
+  if (!view) return;
+  const handled = view.someProp("handleKeyDown", (handler) =>
+    handler(view, event),
+  );
+  if (handled) event.preventDefault();
+}
 
 const getActiveHeaderFooterView = () =>
   hfEdit.value?.rId ? getHeaderFooterView(hfEdit.value.rId) : null;
