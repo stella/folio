@@ -21,7 +21,9 @@ import { panic } from "better-result";
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import {
   hasComplexScript,
+  hasDistinctHAnsiFont,
   hasEastAsiaSlotText,
+  hasHAnsiSlotText,
   SCRIPT_CLASS,
   type ScriptClass,
   scriptClassOf,
@@ -359,6 +361,12 @@ function needsPerScriptFonts(style: FontStyle, measuredText: string): boolean {
   ) {
     return true;
   }
+  if (
+    hasDistinctHAnsiFont(style) &&
+    hasHAnsiSlotText(measuredText, { eastAsiaHint: style.eastAsiaHint })
+  ) {
+    return true;
+  }
   return hasComplexScriptFormatting(style) && hasComplexScript(measuredText);
 }
 
@@ -372,6 +380,15 @@ function scriptStyle(style: FontStyle, script: ScriptClass): FontStyle {
     delete result.alternateFontFamily;
     if (style.eastAsiaAlternateFontFamily !== undefined) {
       result.alternateFontFamily = style.eastAsiaAlternateFontFamily;
+    }
+    return result;
+  }
+  if (script === SCRIPT_CLASS.hAnsi) {
+    if (style.hAnsiFontFamily === undefined) return style;
+    const result = { ...style, fontFamily: style.hAnsiFontFamily };
+    delete result.alternateFontFamily;
+    if (style.hAnsiAlternateFontFamily !== undefined) {
+      result.alternateFontFamily = style.hAnsiAlternateFontFamily;
     }
     return result;
   }
@@ -389,7 +406,10 @@ function measureMixedScriptWidth(
   const horizontalScale = getHorizontalScaleFactor(style.horizontalScale);
 
   let glyphWidth = 0;
-  for (const segment of segmentByScript(measuredText, style.eastAsiaHint)) {
+  for (const segment of segmentByScript(measuredText, {
+    eastAsiaHint: style.eastAsiaHint,
+    hasHAnsiFont: hasDistinctHAnsiFont(style),
+  })) {
     glyphWidth += canvasMeasureTextWidth(
       segment.text,
       glyphAdvanceStyle(scriptStyle(style, segment.script)),
@@ -509,6 +529,12 @@ function canvasMeasureRun(
     hasComplexScriptFormatting(style) && !style.letterSpacing
       ? buildFontString(scriptStyle(style, SCRIPT_CLASS.complex))
       : undefined;
+  const hAnsiFont =
+    hasDistinctHAnsiFont(style) &&
+    !style.forceComplexScript &&
+    !style.letterSpacing
+      ? buildFontString(scriptStyle(style, SCRIPT_CLASS.hAnsi))
+      : undefined;
   // A synthesized small cap draws at `SMALL_CAPS_SCALE` of the run's size
   // (see smallCapsCasing.ts). Measured at that literal font string, not the
   // full-size advance scaled by arithmetic: a browser hints and sub-pixel
@@ -550,10 +576,18 @@ function canvasMeasureRun(
       : applyTextTransform(char, style);
     if (isSmallCap && smallCapsFont !== undefined) {
       ctx.font = smallCapsFont;
-    } else if (eastAsiaFont !== undefined || complexScriptFont !== undefined) {
-      const script = scriptClassOf(cp, style.eastAsiaHint);
+    } else if (
+      eastAsiaFont !== undefined ||
+      complexScriptFont !== undefined ||
+      hAnsiFont !== undefined
+    ) {
+      const script = scriptClassOf(cp, {
+        eastAsiaHint: style.eastAsiaHint,
+        hasHAnsiFont: hasDistinctHAnsiFont(style) && !style.forceComplexScript,
+      });
       ctx.font =
         (script === SCRIPT_CLASS.eastAsia ? eastAsiaFont : undefined) ??
+        (script === SCRIPT_CLASS.hAnsi ? hAnsiFont : undefined) ??
         (script === SCRIPT_CLASS.complex ? complexScriptFont : undefined) ??
         baseFont;
     } else if (smallCapsFont !== undefined) {

@@ -206,6 +206,75 @@ describe("toFlowBlocks style cascade", () => {
     expect(run.complexScriptFontFamily).toBe("Traditional Arabic");
   });
 
+  test("the independent hAnsi slot reaches layout and leaves authored formatting intact", () => {
+    const styles: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "Normal",
+          type: "paragraph",
+          default: true,
+          name: "Normal",
+          rPr: { fontFamily: { ascii: "Arial", hAnsi: "Times New Roman" } },
+        },
+      ],
+    };
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      formatting: { styleId: "Normal" },
+      content: [
+        {
+          type: "run",
+          content: [{ type: "text", text: "é—漢" }],
+        },
+      ],
+    };
+
+    const document = makeDoc(paragraph, styles);
+    const sourceContent = structuredClone(document.package.document.content);
+    const run = firstRun(toFlowBlocks(toProseDoc(document, { styles }), {}));
+
+    expect(run).toMatchObject({
+      fontFamily: "Arial",
+      hAnsiFontFamily: "Times New Roman",
+      eastAsiaFontFamily: undefined,
+    });
+    expect(document.package.document.content).toEqual(sourceContent);
+  });
+
+  test("an ASCII run override preserves the inherited hAnsi slot", () => {
+    const styles: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "Normal",
+          type: "paragraph",
+          default: true,
+          name: "Normal",
+          rPr: { fontFamily: { ascii: "Arial", hAnsi: "Times New Roman" } },
+        },
+      ],
+    };
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      formatting: { styleId: "Normal" },
+      content: [
+        {
+          type: "run",
+          formatting: { fontFamily: { ascii: "Arial Narrow" } },
+          content: [{ type: "text", text: "é" }],
+        },
+      ],
+    };
+
+    const run = firstRun(
+      toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {}),
+    );
+
+    expect(run).toMatchObject({
+      fontFamily: "Arial Narrow",
+      hAnsiFontFamily: "Times New Roman",
+    });
+  });
+
   test("a direct eastAsia run mark overrides the inherited EA default", () => {
     const styles: StyleDefinitions = {
       styles: [

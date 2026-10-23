@@ -15,6 +15,8 @@ export type FontStyle = {
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   fontFamily?: string;
   alternateFontFamily?: string;
+  hAnsiFontFamily?: string;
+  hAnsiAlternateFontFamily?: string;
   /**
    * East-Asian font for CJK code points. When set, `measureTextWidth` /
    * `measureRun` measure CJK code points with this font and the rest with
