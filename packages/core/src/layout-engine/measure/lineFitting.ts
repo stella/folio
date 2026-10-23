@@ -7,6 +7,10 @@
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import type { MeasuredLine, ParagraphBlock, Run } from "../types";
 import {
+  automaticRunGap,
+  automaticTextBoundaryGap,
+} from "./automaticTextSpacing";
+import {
   defaultLineBreakProvider,
   getLineBreakProvider,
 } from "./lineBreakProvider";
@@ -207,7 +211,20 @@ export function precedingLetterSpacing({
     return 0;
   }
   if (line.toRun === runIndex && line.toChar === charIndex) {
-    return scaledLetterSpacing(runStyle);
+    const run = block.runs[runIndex];
+    return (
+      scaledLetterSpacing(runStyle) +
+      (run?.kind === "text"
+        ? automaticTextBoundaryGap({
+            beforeText: run.text,
+            beforeEnd: charIndex,
+            beforeStyle: runStyle,
+            afterText: run.text,
+            afterStart: charIndex,
+            afterStyle: runStyle,
+          })
+        : 0)
+    );
   }
   if (charIndex !== 0 || line.toRun !== runIndex - 1) {
     return 0;
@@ -221,7 +238,10 @@ export function precedingLetterSpacing({
   ) {
     return 0;
   }
-  return scaledLetterSpacing(runToFontStyle(previousRun));
+  return (
+    scaledLetterSpacing(runToFontStyle(previousRun)) +
+    automaticRunGap(previousRun, block.runs[runIndex])
+  );
 }
 
 function trailingCodePoint(text: string): string | undefined {

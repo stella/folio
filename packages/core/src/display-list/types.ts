@@ -203,6 +203,10 @@ export type DisplayModelRange = {
  * it first, because a transform scales the spacing it is given.
  */
 export type DisplayRunAdjustments = {
+  readonly automaticTextSpacingGaps?: readonly {
+    readonly offset: number;
+    readonly advancePx: number;
+  }[];
   /** Added after every code point of the run but the last. */
   readonly letterSpacingPx: number;
   /** Multiplies every advance. 1 when the run carries no `w:w`. */

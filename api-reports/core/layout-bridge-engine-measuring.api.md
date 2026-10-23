@@ -101,6 +101,7 @@ export type FontMetrics = {
 
 // @public
 export type FontStyle = {
+    automaticTextSpacing?: AutomaticTextSpacingPolicy;
     embeddedFontFamilyMap?: ReadonlyMap<string, string>;
     fontFamily?: string;
     alternateFontFamily?: string;

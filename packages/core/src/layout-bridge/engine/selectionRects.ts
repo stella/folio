@@ -11,8 +11,13 @@
 import { getHeaderRowsHeight } from "../../layout-engine/index";
 import { measuredLineContentOffset } from "../../layout-engine/lineFlow";
 import { measureParagraph } from "../../layout-engine/measure";
-import { buildRunFontStyle } from "../../layout-engine/measure/measureHelpers";
-import { measureRun } from "../../layout-engine/measure/measureProvider";
+import { automaticRunGap } from "../../layout-engine/measure/automaticTextSpacing";
+import {
+  buildRunFontStyle,
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_FONT_SIZE,
+} from "../../layout-engine/measure/measureHelpers";
+import { measurePositionedRun } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
 import {
   buildTableCellFloatingZones,
@@ -99,7 +104,7 @@ export type CaretPosition = {
  * Extract FontStyle from a run for measurement.
  */
 function runToFontStyle(run: TextRun | TabRun): FontStyle {
-  return buildRunFontStyle(run, "Arial", 12);
+  return buildRunFontStyle(run, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
 }
 
 function mathRunToFontStyle(run: MathRun): FontStyle {
@@ -407,10 +412,10 @@ function charOffsetToX(
     }
 
     if (run.kind === "math") {
-      const mathWidth = measureRun(
-        run.plainText,
-        mathRunToFontStyle(run),
-      ).width;
+      const mathWidth = measurePositionedRun({
+        text: run.plainText,
+        style: mathRunToFontStyle(run),
+      }).width;
       if (charsProcessed + 1 >= charOffset) {
         if (charOffset <= charsProcessed) {
           return x;
@@ -431,17 +436,26 @@ function charOffsetToX(
       const start = isFirstRun ? line.fromChar : 0;
       const end = isLastRun ? line.toChar : text.length;
       const lineText = text.slice(start, end);
+      const next =
+        runIndex < line.toRun &&
+        !(runIndex + 1 === line.toRun && line.toChar === 0)
+          ? block.runs[runIndex + 1]
+          : undefined;
+      const measurement = measurePositionedRun({
+        text: lineText,
+        style: runToFontStyle(run),
+        trailingAutomaticSpacingPx: automaticRunGap(run, next),
+      });
 
       if (charsProcessed + lineText.length >= charOffset) {
         // Target character is in this run
         const charInRun = charOffset - charsProcessed;
-        const style = runToFontStyle(run);
-        const measurement = measureRun(lineText.slice(0, charInRun), style);
-        return x + measurement.width;
+        let prefix = 0;
+        for (let index = 0; index < charInRun; index += 1)
+          prefix += measurement.charWidths[index] ?? 0;
+        return x + prefix;
       }
 
-      const style = runToFontStyle(run);
-      const measurement = measureRun(lineText, style);
       x += measurement.width;
       charsProcessed += lineText.length;
     }

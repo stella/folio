@@ -798,6 +798,7 @@ export type Run = TextRun | TabRun | ImageRun | LineBreakRun | RenderedPageBreak
 
 // @public
 export type RunFormatting = {
+    automaticTextSpacing?: AutomaticTextSpacingPolicy;
     embeddedFontFamilyMap?: ReadonlyMap<string, string>;
     bold?: boolean;
     italic?: boolean;

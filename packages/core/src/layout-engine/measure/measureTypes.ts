@@ -10,7 +10,14 @@
 /**
  * Font styling properties for measurement
  */
+export type AutomaticTextSpacingPolicy = {
+  latin: boolean;
+  numbers: boolean;
+  reverseFontFamily?: string | null;
+};
+
 export type FontStyle = {
+  automaticTextSpacing?: AutomaticTextSpacingPolicy;
   /** Embedded families owned by this editor, never ambient process state. */
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   fontFamily?: string;
