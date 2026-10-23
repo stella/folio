@@ -40,6 +40,16 @@ export const resolveWesternThemeFont = (
   return themedFont ?? fontFamily.ascii ?? fontFamily.hAnsi ?? undefined;
 };
 
+export const resolveHAnsiThemeFont = (
+  fontFamily: ThemeFontAttributes,
+  theme?: Theme | null,
+): string | undefined => {
+  const themedFont = fontFamily.hAnsiTheme
+    ? resolveThemeFont(fontFamily.hAnsiTheme, theme?.fontScheme)
+    : null;
+  return themedFont ?? fontFamily.hAnsi ?? undefined;
+};
+
 export const resolveComplexScriptThemeFont = (
   fontFamily: ThemeFontAttributes,
   theme?: Theme | null,
@@ -86,6 +96,14 @@ function textFormattingToRunFormatting(
     if (alternate) {
       result.alternateFontFamily = alternate;
     }
+  }
+  const hAnsiFontFamily = defaultTextFormatting.fontFamily
+    ? resolveHAnsiThemeFont(defaultTextFormatting.fontFamily, theme)
+    : undefined;
+  if (hAnsiFontFamily) {
+    result.hAnsiFontFamily = hAnsiFontFamily;
+    const alternate = getFontAlternate(hAnsiFontFamily, fontAlternates);
+    if (alternate) result.hAnsiAlternateFontFamily = alternate;
   }
   // East-Asian font inherited from the paragraph style / docDefaults, so CJK
   // runs without a direct `w:eastAsia` still get per-character EA selection. A

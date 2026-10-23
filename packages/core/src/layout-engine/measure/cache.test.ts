@@ -146,6 +146,56 @@ test("paragraph cache keys include complex-script list marker formatting", () =>
   );
 });
 
+test("paragraph cache keys include the independent hAnsi font slot", () => {
+  const paragraph = {
+    kind: "paragraph",
+    id: "hansi-slot",
+    runs: [
+      {
+        kind: "text",
+        text: "é",
+        fontFamily: "Arial",
+        hAnsiFontFamily: "Times New Roman",
+      },
+    ],
+  } as const satisfies ParagraphBlock;
+
+  expect(hashParagraphBlock(paragraph)).not.toBe(
+    hashParagraphBlock({
+      ...paragraph,
+      runs: [{ ...paragraph.runs[0], hAnsiFontFamily: "Georgia" }],
+    }),
+  );
+});
+
+test("paragraph cache keys include hAnsi list marker formatting", () => {
+  const paragraph = {
+    kind: "paragraph",
+    id: "hansi-list-marker",
+    runs: [{ kind: "text", text: "body" }],
+    attrs: {
+      listMarker: "é.",
+      listMarkerFormatting: {
+        fontFamily: "Arial",
+        hAnsiFontFamily: "Times New Roman",
+      },
+    },
+  } as const satisfies ParagraphBlock;
+
+  expect(hashParagraphBlock(paragraph)).not.toBe(
+    hashParagraphBlock({
+      ...paragraph,
+      attrs: {
+        ...paragraph.attrs,
+        listMarkerFormatting: {
+          ...paragraph.attrs.listMarkerFormatting,
+          hAnsiFontFamily: "Georgia",
+        },
+      },
+    }),
+  );
+});
+
 test("paragraph cache keys include list paragraph mark font size", () => {
   const paragraph = {
     kind: "paragraph",

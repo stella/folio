@@ -22,6 +22,8 @@ export const SCRIPT_CLASS = {
   eastAsia: "eastAsia",
   /** `w:cs` — Arabic, Hebrew, Indic, South-East Asian. */
   complex: "complex",
+  /** `w:hAnsi` — non-ASCII western text when that slot has its own face. */
+  hAnsi: "hAnsi",
   /** `w:ascii` / `w:hAnsi` — everything else. */
   western: "western",
 } as const;
@@ -32,6 +34,31 @@ export type ScriptSegment = {
   text: string;
   script: ScriptClass;
 };
+
+export type ScriptSegmentationOptions = {
+  eastAsiaHint?: boolean;
+  hasHAnsiFont?: boolean;
+};
+
+export type HAnsiFontSlot = {
+  fontFamily?: string;
+  alternateFontFamily?: string;
+  hAnsiFontFamily?: string;
+  hAnsiAlternateFontFamily?: string;
+};
+
+export function hasDistinctHAnsiFont({
+  fontFamily,
+  alternateFontFamily,
+  hAnsiFontFamily,
+  hAnsiAlternateFontFamily,
+}: HAnsiFontSlot): boolean {
+  return (
+    hAnsiFontFamily !== undefined &&
+    (hAnsiFontFamily !== fontFamily ||
+      hAnsiAlternateFontFamily !== alternateFontFamily)
+  );
+}
 
 /**
  * True when a code point belongs to an East-Asian script that Word renders with
@@ -138,9 +165,20 @@ export function isEastAsiaHintCodePoint(cp: number): boolean {
     (cp >= 0x02_b0 && cp <= 0x03_6f) || // Spacing Modifier Letters, Combining Diacritical Marks
     (cp >= 0x03_70 && cp <= 0x03_ff) || // Greek
     (cp >= 0x04_00 && cp <= 0x04_ff) || // Cyrillic
-    (cp >= 0x20_00 && cp <= 0x27_bf) || // General Punctuation through Dingbats
+    (cp >= 0x20_00 && cp <= 0x20_2e) || // General Punctuation before narrow no-break space
+    (cp >= 0x20_30 && cp <= 0x27_bf) || // General Punctuation through Dingbats
     (cp >= 0xe0_00 && cp <= 0xf8_ff) || // Private Use Area
     (cp >= 0xfb_00 && cp <= 0xfb_1c) // Alphabetic Presentation Forms before the Hebrew ones
+  );
+}
+
+/** Characters assigned to `w:hAnsi` when no East Asian hint moves them. */
+export function isHAnsiCodePoint(cp: number): boolean {
+  return (
+    cp >= 0xa0 &&
+    cp <= 0xffff &&
+    !isComplexScriptCodePoint(cp) &&
+    !isCjkCodePoint(cp)
   );
 }
 
@@ -166,12 +204,23 @@ export function eastAsiaHintApplies(run: {
  * `eastAsiaHint` is the run's effective `w:hint="eastAsia"`
  * (see {@link eastAsiaHintApplies}).
  */
-export function scriptClassOf(cp: number, eastAsiaHint = false): ScriptClass {
+export function scriptClassOf(
+  cp: number,
+  options: ScriptSegmentationOptions = {},
+): ScriptClass {
+  const { eastAsiaHint = false, hasHAnsiFont = false } = options;
   if (isCjkCodePoint(cp) || (eastAsiaHint && isEastAsiaHintCodePoint(cp))) {
     return SCRIPT_CLASS.eastAsia;
   }
   if (isComplexScriptCodePoint(cp)) {
     return SCRIPT_CLASS.complex;
+  }
+  if (
+    hasHAnsiFont &&
+    isHAnsiCodePoint(cp) &&
+    !(eastAsiaHint && isEastAsiaHintCodePoint(cp))
+  ) {
+    return SCRIPT_CLASS.hAnsi;
   }
   return SCRIPT_CLASS.western;
 }
@@ -247,7 +296,30 @@ export function hasEastAsiaSlotText(
   }
   for (const ch of text) {
     // SAFETY: for...of over a string yields whole code points.
-    if (scriptClassOf(ch.codePointAt(0)!, true) === SCRIPT_CLASS.eastAsia) {
+    if (
+      scriptClassOf(ch.codePointAt(0)!, { eastAsiaHint: true }) ===
+      SCRIPT_CLASS.eastAsia
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True when text selects `w:hAnsi` and the run has an independent hAnsi face. */
+export function hasHAnsiSlotText(
+  text: string,
+  options: { eastAsiaHint?: boolean } = {},
+): boolean {
+  const { eastAsiaHint = false } = options;
+  for (const ch of text) {
+    // SAFETY: for...of over a string yields whole code points.
+    if (
+      scriptClassOf(ch.codePointAt(0)!, {
+        eastAsiaHint,
+        hasHAnsiFont: true,
+      }) === SCRIPT_CLASS.hAnsi
+    ) {
       return true;
     }
   }
@@ -262,7 +334,7 @@ export function hasEastAsiaSlotText(
  */
 export function segmentByScript(
   text: string,
-  eastAsiaHint = false,
+  options: ScriptSegmentationOptions = {},
 ): ScriptSegment[] {
   const segments: ScriptSegment[] = [];
   let current = "";
@@ -270,7 +342,7 @@ export function segmentByScript(
 
   for (const ch of text) {
     // SAFETY: for...of over a string yields whole code points.
-    const script = scriptClassOf(ch.codePointAt(0)!, eastAsiaHint);
+    const script = scriptClassOf(ch.codePointAt(0)!, options);
     if (current.length === 0) {
       current = ch;
       currentScript = script;
