@@ -453,6 +453,11 @@ export type FolioAIEditOperation<Numbering = FolioAIListNumbering> =
       | {
           id: string;
           type: "insertTable";
+          /**
+           * The anchor block. An anchor inside a table cell places the new
+           * table beside the outermost table holding that cell, never inside
+           * the cell.
+           */
           blockId: string;
           /** Place the table after the anchor (default) or before it. */
           position?: "after" | "before";

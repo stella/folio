@@ -609,6 +609,8 @@ type ModelRow = {
    * the table's own blocks and this one, whatever the batch order.
    */
   besideTable?: boolean;
+  /** A block of a table row the batch deletes, rather than one emptied alone. */
+  rowDeleted?: boolean;
   before: ModelRow[];
   after: ModelRow[];
   /** Formatting that must hold over `[start, end)` of the result's text. */
@@ -1611,7 +1613,9 @@ export const EXPECTATIONS = {
     const { tableIndex } = tableOf(
       tableRemovalTarget(model, operation["blockId"]),
     );
-    removeTableRows(model, tableRows(model, tableIndex));
+    const rows = tableRows(model, tableIndex);
+    for (const row of rows) row.rowDeleted = true;
+    removeTableRows(model, rows);
   },
   insertTableRow: (model, operation) => {
     // A row may go in beside one the batch deletes.
@@ -1639,12 +1643,11 @@ export const EXPECTATIONS = {
     const anchor = tableOf(tableRemovalTarget(model, operation["blockId"]));
     if (hasMergedCells(model, anchor.tableIndex))
       throw new Unmodelled("merged cells");
-    removeTableRows(
-      model,
-      tableRows(model, anchor.tableIndex).filter(
-        (row) => row.pre?.table?.rowIndex === anchor.rowIndex,
-      ),
+    const rows = tableRows(model, anchor.tableIndex).filter(
+      (row) => row.pre?.table?.rowIndex === anchor.rowIndex,
     );
+    for (const row of rows) row.rowDeleted = true;
+    removeTableRows(model, rows);
   },
   insertTableColumn: (model, operation) => {
     const anchor = tableOf(target(model, operation["blockId"]));
@@ -1664,15 +1667,15 @@ export const EXPECTATIONS = {
       // The new cell follows the anchor's column (or precedes it) in each row.
       const column = anchor.gridColumnIndex;
       const cell = modelRow(text);
-      // A row the document still holds but no reader lists, pending deletion,
-      // takes its new cell along: accepting the deletion removes the row.
+      // A row pending deletion keeps its place in the live table and takes
+      // its new cell along: accepting the deletion removes the row. Emptied
+      // cells alone do not make one; a row stays with every cell retired.
       if (
         inRow.length > 0 &&
         inRow.every(
           (row) =>
-            (row.removed ||
-              (row.pendingDeletion === true && row.edits.length === 0)) &&
-            (model.mode !== "direct" || row.outsidePreState === true),
+            row.outsidePreState === true ||
+            (model.mode !== "direct" && row.rowDeleted === true),
         )
       )
         cell.removed = true;

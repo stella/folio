@@ -631,4 +631,40 @@ describe("table operation source coordinates", () => {
       }
     }
   });
+
+  test("a row with every cell paragraph deleted keeps its new column cell", async () => {
+    for (const mode of ["tracked-changes", "suggested"] as const) {
+      const reviewer = await openReviewer(await FIXTURES.tables());
+      const idOf = (text: string): string => {
+        const block = reviewer
+          .getContent()
+          .find((entry) => entry.text === text);
+        assert.ok(block, `the fixture holds "${text}"`);
+        return block.id;
+      };
+      // The engine retires each cell's last paragraph and keeps the row.
+      const operations = [
+        { type: "deleteBlock", blockId: idOf("Widget") },
+        { type: "deleteBlock", blockId: idOf("10") },
+        {
+          type: "insertTableColumn",
+          blockId: idOf("Price"),
+          position: "after",
+          cellTexts: ["Column cell 1", "Column cell 2", "Column cell 3"],
+        },
+      ];
+      const pre = await capture(reviewer, mode);
+      const result = reviewer.applyDocumentOperations(
+        coreBatch(operations, mode) as never,
+        { undefinedReferences: "refuse" },
+      );
+      assert.equal(result.applied.length, operations.length, mode);
+      await assertRequestedOutcome(
+        reviewer,
+        pre,
+        { applied: operations },
+        `emptied row, ${mode}`,
+      );
+    }
+  });
 });
