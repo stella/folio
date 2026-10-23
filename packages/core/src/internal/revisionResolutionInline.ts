@@ -22,6 +22,11 @@ import {
 import { resolveEmptyFieldResultRuns } from "../prosemirror/emptyFieldResultRuns";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
 import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
+import {
+  type RemovedSubtree,
+  removeResolvedSubtree,
+  type RevisionSelection,
+} from "../prosemirror/keptRangeBoundaries";
 import { resolvedPreservedXmlAttrs } from "../prosemirror/preservedXmlReview";
 import { continuedRunMarks } from "../prosemirror/rejoinRunCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
@@ -57,6 +62,8 @@ type RevisionInlineContext = {
   steps: Step[];
   changedParagraphRanges: RevisionRange[];
   styleResolver: RunStyleResolver | null;
+  /** The boundaries removed content left standing, for the range repair. */
+  keptBoundaries: Set<PMNode>;
 };
 
 const EMPTY_PARAGRAPH_RUN_STYLE_CONTEXT: ParagraphRunStyleContext = {
@@ -111,7 +118,7 @@ const resolveInlineNode = ({
   node,
   context,
   paragraphScope,
-}: ResolveInlineNodeOptions): PMNode | null => {
+}: ResolveInlineNodeOptions): PMNode | RemovedSubtree => {
   let marks: readonly Mark[] = node.marks;
   let attrs = node.attrs;
   if (
@@ -192,7 +199,7 @@ const resolveInlineNode = ({
     (context.removeType &&
       node.marks.some((mark) => mark.type === context.removeType))
   ) {
-    return null;
+    return removeResolvedSubtree(node, everyRevision(context.mode));
   }
   if (context.keepType) {
     marks = marks.filter((mark) => mark.type !== context.keepType);
@@ -248,6 +255,42 @@ const rejoinResolvedRuns = ({
   }
 };
 
+/** The whole-story pass resolves every revision. */
+const everyRevision = (mode: RevisionResolutionMode): RevisionSelection => ({
+  mode,
+  resolves: () => true,
+});
+
+const isRemoved = (
+  resolved: PMNode | RemovedSubtree,
+): resolved is RemovedSubtree => !("type" in resolved);
+
+/**
+ * `node`, at `position`, gives way to what its removal keeps: the one place
+ * this pass takes content out of the document.
+ */
+const recordRemoval = ({
+  context,
+  position,
+  node,
+  removed,
+}: {
+  context: RevisionInlineContext;
+  position: number;
+  node: PMNode;
+  removed: RemovedSubtree;
+}): RemovedSubtree => {
+  const kept = Fragment.fromArray([...removed.kept]);
+  context.replacementRanges.push({
+    from: position,
+    to: position + node.nodeSize,
+    newSize: kept.size,
+    ...(kept.size === 0 ? {} : { slice: new Slice(kept, 0, 0) }),
+  });
+  for (const boundary of removed.kept) context.keptBoundaries.add(boundary);
+  return removed;
+};
+
 type ResolveInlineContentOptions = {
   node: PMNode;
   position: number;
@@ -260,16 +303,16 @@ const resolveInlineContent = ({
   position,
   context,
   inheritedParagraphScope,
-}: ResolveInlineContentOptions): PMNode | null => {
+}: ResolveInlineContentOptions): PMNode | RemovedSubtree => {
   if (node.type.name === "commentReference") {
     const attrs = readCommentReferenceAttrs(node);
     if (attrs.ok && context.pointComments.has(attrs.value.commentId)) {
-      context.replacementRanges.push({
-        from: position,
-        to: position + node.nodeSize,
-        newSize: 0,
+      return recordRemoval({
+        context,
+        position,
+        node,
+        removed: removeResolvedSubtree(node, everyRevision(context.mode)),
       });
-      return null;
     }
   }
   const paragraphScope =
@@ -284,13 +327,8 @@ const resolveInlineContent = ({
       context,
       paragraphScope,
     });
-    if (resolved === null) {
-      context.replacementRanges.push({
-        from: position,
-        to: position + node.nodeSize,
-        newSize: 0,
-      });
-      return null;
+    if (isRemoved(resolved)) {
+      return recordRemoval({ context, position, node, removed: resolved });
     }
     resolvedNode = resolved;
     recordNodeResolution({
@@ -314,12 +352,12 @@ const resolveInlineContent = ({
       resolves: () => true,
     })
   ) {
-    context.replacementRanges.push({
-      from: position,
-      to: position + node.nodeSize,
-      newSize: 0,
+    return recordRemoval({
+      context,
+      position,
+      node,
+      removed: removeResolvedSubtree(node, everyRevision(context.mode)),
     });
-    return null;
   }
 
   const children: PMNode[] = [];
@@ -341,12 +379,12 @@ const resolveInlineContent = ({
       contentChanged = true;
       resolvedBoundaries.add(children.length);
     }
-    if (resolved) {
-      children.push(resolved);
+    for (const standing of isRemoved(resolved) ? resolved.kept : [resolved]) {
+      children.push(standing);
       positions.push(contentStart + offset);
-      if (resolved !== child) {
-        resolvedBoundaries.add(children.length);
-      }
+    }
+    if (resolved !== child) {
+      resolvedBoundaries.add(children.length);
     }
   });
 
@@ -399,9 +437,13 @@ const resolveInlineContent = ({
       context.replacementRanges.splice(
         replacementRangeStart,
         context.replacementRanges.length - replacementRangeStart,
-        { from: position, to: position + node.nodeSize, newSize: 0 },
       );
-      return null;
+      return recordRemoval({
+        context,
+        position,
+        node,
+        removed: removeResolvedSubtree(node, everyRevision(context.mode)),
+      });
     }
     // The fitted content is larger than the deletion-only reconstruction.
     // Replace its nested maps with the actual content-size transition so a
@@ -503,9 +545,12 @@ export const resolveInlineRevisions = ({
     steps: [],
     changedParagraphRanges: [],
     styleResolver,
+    keptBoundaries: new Set(),
   };
   const resolved = resolveInlineContent({ node: doc, position: -1, context });
-  if (!resolved || resolved.eq(doc)) {
+  if (isRemoved(resolved))
+    return panic("Revision resolution never removes the document.");
+  if (resolved.eq(doc)) {
     return null;
   }
   const replacementRanges = coalesceReplacementRanges(
@@ -526,5 +571,6 @@ export const resolveInlineRevisions = ({
     positionMap,
     ranges: context.changedParagraphRanges,
     steps: context.steps,
+    keptBoundaries: context.keptBoundaries,
   };
 };

@@ -215,7 +215,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
@@ -283,7 +283,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -476,7 +476,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -500,7 +500,7 @@ jobs:
           fetch-depth: 0 # compare generated declarations with the base commit
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -546,7 +546,7 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -597,7 +597,7 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -648,7 +648,7 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -699,7 +699,7 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -749,7 +749,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -784,7 +784,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -876,7 +876,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -913,7 +913,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
       - run: bun install --frozen-lockfile
@@ -943,7 +943,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -1006,7 +1006,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -1037,7 +1037,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -1109,7 +1109,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
@@ -1153,7 +1153,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@5764ab66e4df84cfd2e642c7d7e4678261e668f8
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
         with:
           bun-version-file: "package.json"
 
