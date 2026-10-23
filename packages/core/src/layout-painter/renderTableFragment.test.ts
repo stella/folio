@@ -11,6 +11,7 @@ import type {
   TableMeasure,
 } from "../layout-engine/types";
 import type { PageGeometry } from "./anchoredImagePosition";
+import { PARAGRAPH_CLASS_NAMES } from "./renderParagraph";
 import { renderTableFragment, TABLE_CLASS_NAMES } from "./renderTable";
 import type { RenderContext } from "./renderUtils";
 
@@ -457,11 +458,14 @@ describe("renderTableFragment split-row cell content", () => {
       toRow: 1,
     };
 
-    const table = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    let table = fakeDocument.createElement("div") as unknown as FakeElement;
+    withFakeTextMeasure(() => {
+      table = renderTableFragment(fragment, block, measure, renderContext, {
+        document: fakeDocument,
+      }) as unknown as FakeElement;
+    });
     const cell = findByClass(table, TABLE_CLASS_NAMES.cell)[0];
-    const image = findByClass(table, "layout-image")[0];
+    const image = findByClass(table, PARAGRAPH_CLASS_NAMES.image)[0];
 
     expect(cell?.style["width"]).toBe("200px");
     expect(cell?.style["overflow"]).toBe("hidden");
@@ -469,14 +473,22 @@ describe("renderTableFragment split-row cell content", () => {
     expect(image?.style["maxWidth"]).toBeFalsy();
 
     block.rows[0]!.cells[0]!.textDirection = "btLr";
-    const rotatedTable = renderTableFragment(
-      fragment,
-      block,
-      measure,
-      renderContext,
-      { document: fakeDocument },
+    let rotatedTable = fakeDocument.createElement(
+      "div",
     ) as unknown as FakeElement;
-    const rotatedImage = findByClass(rotatedTable, "layout-image")[0];
+    withFakeTextMeasure(() => {
+      rotatedTable = renderTableFragment(
+        fragment,
+        block,
+        measure,
+        renderContext,
+        { document: fakeDocument },
+      ) as unknown as FakeElement;
+    });
+    const rotatedImage = findByClass(
+      rotatedTable,
+      PARAGRAPH_CLASS_NAMES.image,
+    )[0];
 
     expect(rotatedImage?.style["maxWidth"]).toBe("100%");
   });

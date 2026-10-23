@@ -10,6 +10,7 @@ import type {
   ParagraphMeasure,
 } from "../layout-engine/types";
 import { AUTHOR_COLORS, resetAuthorColors } from "../utils/authorColors";
+import { resolveParagraphLineAlignment } from "../utils/paragraphInlineLayout";
 import { renderLine, renderParagraphFragment } from "./renderParagraph";
 
 // Runtime shim: prod code calls element.style.setProperty("--doc-run-color", …)
@@ -258,13 +259,25 @@ describe("renderLine inline image handling", () => {
       expect(imageEl?.style.maxWidth).toBeFalsy();
 
       for (const alignment of ["center", "right"] as const) {
-        const alignedLine = renderLine(block, line, alignment, fakeDocument, {
+        const resolvedAlignment = resolveParagraphLineAlignment({
+          imageOnlyRun: imageRun,
+          paragraphAlignment: alignment,
           availableWidth: 468,
-          isLastLine: true,
-          isFirstLine: true,
-          paragraphEndsWithLineBreak: false,
-          context: { ...context, pageNumber: 1, totalPages: 1 },
         });
+        expect(resolvedAlignment).toBe("left");
+        const alignedLine = renderLine(
+          block,
+          line,
+          resolvedAlignment,
+          fakeDocument,
+          {
+            availableWidth: 468,
+            isLastLine: true,
+            isFirstLine: true,
+            paragraphEndsWithLineBreak: false,
+            context: { ...context, pageNumber: 1, totalPages: 1 },
+          },
+        );
         expect(alignedLine.style.justifyContent).toBeFalsy();
       }
     },
