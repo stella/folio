@@ -74,6 +74,7 @@ import {
   sequencePositions,
   withPreservedChildren,
 } from "./containerChildren";
+import { BLOCK_MOVE_RANGE_MARKER_HANDLERS } from "./markupRangeMarker";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
@@ -1744,6 +1745,7 @@ export const CELL_CONTENT_HANDLERS = {
   bookmarkEnd: (child, { modelled }) => {
     modelled.push(parseBookmarkEnd(child));
   },
+  ...BLOCK_MOVE_RANGE_MARKER_HANDLERS,
   tcPr: CELL_PROPERTIES_OWNER,
   // Declared for `w:body`, not for a cell; the handler map is total over
   // the union every block container shares.
@@ -1762,11 +1764,7 @@ export const CELL_CONTENT_HANDLERS = {
   del: CAPTURE,
   ins: CAPTURE,
   moveFrom: CAPTURE,
-  moveFromRangeEnd: CAPTURE,
-  moveFromRangeStart: CAPTURE,
   moveTo: CAPTURE,
-  moveToRangeEnd: CAPTURE,
-  moveToRangeStart: CAPTURE,
   permEnd: CAPTURE,
   permStart: CAPTURE,
   proofErr: CAPTURE,

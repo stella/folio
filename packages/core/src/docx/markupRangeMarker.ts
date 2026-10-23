@@ -10,6 +10,7 @@
  */
 
 import type {
+  BlockContent,
   BookmarkRangeMarker,
   DisplacedByCustomXml,
   MarkupRangeMarker,
@@ -85,3 +86,44 @@ export const parseMoveBookmarkMarker = (
   }
   return marker;
 };
+
+/**
+ * A move's range markers between blocks, as every block container reads them.
+ * They are typed blocks, not captured bytes, so the passes that pair a start
+ * with its end can see both halves wherever a container holds them.
+ */
+export const BLOCK_MOVE_RANGE_MARKER_HANDLERS = {
+  moveFromRangeStart: (
+    child: XmlElement,
+    { modelled }: { modelled: BlockContent[] },
+  ): void => {
+    modelled.push({
+      type: "moveFromRangeStart",
+      ...parseMoveBookmarkMarker(child),
+    });
+  },
+  moveFromRangeEnd: (
+    child: XmlElement,
+    { modelled }: { modelled: BlockContent[] },
+  ): void => {
+    modelled.push({
+      type: "moveFromRangeEnd",
+      ...parseMarkupRangeMarker(child),
+    });
+  },
+  moveToRangeStart: (
+    child: XmlElement,
+    { modelled }: { modelled: BlockContent[] },
+  ): void => {
+    modelled.push({
+      type: "moveToRangeStart",
+      ...parseMoveBookmarkMarker(child),
+    });
+  },
+  moveToRangeEnd: (
+    child: XmlElement,
+    { modelled }: { modelled: BlockContent[] },
+  ): void => {
+    modelled.push({ type: "moveToRangeEnd", ...parseMarkupRangeMarker(child) });
+  },
+} as const;
