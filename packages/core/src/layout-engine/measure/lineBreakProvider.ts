@@ -170,6 +170,7 @@ export const unicodeLineBoundaryPermitsBreak = ({
     previous !== undefined &&
     previous !== ZERO_WIDTH_SPACE &&
     previous !== NEXT_LINE &&
+    !BREAK_AFTER_CHARACTER.has(previous) &&
     !isBreakingWhitespace(previous)
   ) {
     return false;
@@ -454,6 +455,21 @@ const findUnicodeGraphemeBreaks = (
     policy?.locale,
   ).segment(text)) {
     const end = segment.index + segment.segment.length;
+    let position = segment.index;
+    for (const character of segment.segment) {
+      position += character.length;
+      if (
+        position < end &&
+        (isBreakingWhitespace(character) ||
+          BREAK_AFTER_CHARACTER.has(character)) &&
+        unicodeLineBoundaryPermitsBreak({
+          previous: character,
+          next: firstCodePoint(text, position),
+        })
+      ) {
+        breaks.push(position);
+      }
+    }
     if (
       unicodeLineBoundaryPermitsBreak({
         previous: previousCodePoint(text, end),
