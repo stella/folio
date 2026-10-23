@@ -180,62 +180,78 @@ describe("script measurement", () => {
           },
           200,
         );
-        const scripted = measureParagraph(
+        const halfSize = measureParagraph(
           {
             kind: "paragraph",
-            id: "full-size-script-line",
-            runs: [
-              { kind: "text", text: "xxxxxx", fontSize: 12 },
-              {
-                kind: "text",
-                text: "abcdefghijkl",
-                fontSize: 18,
-                [script]: true,
-              },
-              { kind: "lineBreak" },
-              { kind: "text", text: "x", fontSize: 12 },
-            ],
+            id: "half-size-script-reference",
+            runs: [{ kind: "text", text: "x", fontSize: 12 }],
           },
-          30,
+          200,
         );
+        const scriptedBlock: ParagraphBlock = {
+          kind: "paragraph",
+          id: "full-size-script-line",
+          runs: [
+            { kind: "text", text: "xxxxxx", fontSize: 12 },
+            {
+              kind: "text",
+              text: "abcdefghijkl",
+              fontSize: 18,
+              [script]: true,
+            },
+            { kind: "lineBreak" },
+            { kind: "text", text: "x", fontSize: 12 },
+          ],
+        };
+        const scripted = measureParagraph(scriptedBlock, 30);
 
         expect(scripted.lines).toHaveLength(4);
-        expect(scripted.lines.at(0)).toMatchObject({
-          fromRun: 0,
-          fromChar: 0,
-          toRun: 0,
-          toChar: 6,
-        });
-        expect(scripted.lines.at(1)).toMatchObject({
-          fromRun: 1,
-          fromChar: 0,
-          toRun: 1,
-          toChar: 6,
-        });
-        expect(scripted.lines.at(2)).toMatchObject({
-          fromRun: 1,
-          fromChar: 6,
-          toRun: 1,
-          toChar: 12,
-        });
-        expect(scripted.lines.at(3)).toMatchObject({
-          fromRun: 3,
-          fromChar: 0,
-          toRun: 3,
-          toChar: 1,
-        });
-        expect(scripted.lines.at(0)?.lineHeight).toBeCloseTo(
-          12 * PT_TO_PX * 1.15,
-          5,
-        );
-        expect(scripted.lines.at(0)?.ascent).toBeCloseTo(
-          12 * PT_TO_PX * 0.8,
-          5,
-        );
-        expect(scripted.lines.at(0)?.descent).toBeCloseTo(
-          12 * PT_TO_PX * 0.2,
-          5,
-        );
+        const sourceOffset = ({
+          runIndex,
+          characterIndex,
+        }: {
+          runIndex: number;
+          characterIndex: number;
+        }): number => {
+          const precedingTextLength = scriptedBlock.runs
+            .slice(0, runIndex)
+            .reduce(
+              (length, run) =>
+                length + (run.kind === "text" ? run.text.length : 0),
+              0,
+            );
+          const currentRun = scriptedBlock.runs[runIndex];
+          return (
+            precedingTextLength +
+            (currentRun?.kind === "text" ? characterIndex : 0)
+          );
+        };
+        expect(
+          scripted.lines.map((line) => ({
+            from: sourceOffset({
+              runIndex: line.fromRun,
+              characterIndex: line.fromChar,
+            }),
+            to: sourceOffset({
+              runIndex: line.toRun,
+              characterIndex: line.toChar,
+            }),
+          })),
+        ).toEqual([
+          { from: 0, to: 6 },
+          { from: 6, to: 12 },
+          { from: 12, to: 18 },
+          { from: 18, to: 19 },
+        ]);
+        const halfSizeLine = halfSize.lines.at(0);
+        if (halfSizeLine === undefined) {
+          throw new Error("Expected a measured half-size reference line");
+        }
+        for (const line of [scripted.lines.at(0), scripted.lines.at(3)]) {
+          expect(line?.lineHeight).toBeCloseTo(halfSizeLine.lineHeight, 5);
+          expect(line?.ascent).toBeCloseTo(halfSizeLine.ascent, 5);
+          expect(line?.descent).toBeCloseTo(halfSizeLine.descent, 5);
+        }
         for (const line of scripted.lines.slice(1, 3)) {
           expect(line.lineHeight).toBeCloseTo(
             fullSize.lines.at(0)!.lineHeight,
@@ -244,18 +260,6 @@ describe("script measurement", () => {
           expect(line.ascent).toBeCloseTo(fullSize.lines.at(0)!.ascent, 5);
           expect(line.descent).toBeCloseTo(fullSize.lines.at(0)!.descent, 5);
         }
-        expect(scripted.lines.at(3)?.lineHeight).toBeCloseTo(
-          12 * PT_TO_PX * 1.15,
-          5,
-        );
-        expect(scripted.lines.at(3)?.ascent).toBeCloseTo(
-          12 * PT_TO_PX * 0.8,
-          5,
-        );
-        expect(scripted.lines.at(3)?.descent).toBeCloseTo(
-          12 * PT_TO_PX * 0.2,
-          5,
-        );
       }, fakeMeasure);
     },
   );
