@@ -129,6 +129,9 @@ export type PainterOptions = {
 };
 
 // @public
+export const releaseDisplayPageResources: (root: Element) => void;
+
+// @public
 export type RenderContext = {
     pageNumber: number;
     pageNumberFormat?: import__stll_docx_core_model.NumberFormat;
