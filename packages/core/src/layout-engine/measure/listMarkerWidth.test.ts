@@ -32,6 +32,32 @@ describe("getListMarkerInlineWidth", () => {
     }, fakeMeasure);
   });
 
+  test("empty marker with a tab suffix reserves the first body tab stop", () => {
+    withFakeTextMeasure(() => {
+      expect(
+        getListMarkerInlineWidth(
+          listBlock({ listMarker: "", listMarkerSuffix: "tab" }),
+        ),
+      ).toBeCloseTo(DEFAULT_TAB_STOP_PX, 5);
+    }, fakeMeasure);
+  });
+
+  test.each([
+    ["space", 10],
+    ["nothing", 0],
+  ] as const)(
+    "empty marker with a %s suffix reserves the correct width",
+    (suffix, expectedWidth) => {
+      withFakeTextMeasure(() => {
+        expect(
+          getListMarkerInlineWidth(
+            listBlock({ listMarker: "", listMarkerSuffix: suffix }),
+          ),
+        ).toBe(expectedWidth);
+      }, fakeMeasure);
+    },
+  );
+
   test("hidden marker → 0", () => {
     withFakeTextMeasure(() => {
       expect(

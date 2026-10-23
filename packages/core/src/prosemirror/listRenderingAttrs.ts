@@ -86,8 +86,8 @@ export const listRenderingAttrPatch = (
   rendering: ListRendering,
 ): Partial<ParagraphAttrs> => {
   const patch: ListRenderingAttrPatch = {
-    listMarker: rendering.marker || undefined,
-    listMarkerTemplate: rendering.markerTemplate || undefined,
+    listMarker: rendering.marker ?? undefined,
+    listMarkerTemplate: rendering.markerTemplate ?? undefined,
     listFoldedMarkerSuffix: rendering.foldedMarkerSuffix,
     listIsBullet: rendering.isBullet || undefined,
     listIsLegal: rendering.isLegal || undefined,

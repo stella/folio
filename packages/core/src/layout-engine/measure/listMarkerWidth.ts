@@ -122,7 +122,7 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
  */
 export function getListMarkerInlineWidth(block: ParagraphBlock): number {
   const attrs = block.attrs;
-  if (!attrs?.listMarker || attrs.listMarkerHidden) {
+  if (attrs?.listMarker == null || attrs.listMarkerHidden) {
     return 0;
   }
 
