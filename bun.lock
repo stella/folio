@@ -20,7 +20,9 @@
         "@stll/folio-core": "workspace:*",
         "@stll/fuzzy-search": "1.1.5",
         "@stll/oxlint-config": "1.7.0",
+        "@stll/oxlint-plugin": "0.6.2",
         "@stll/regex-set": "1.0.5",
+        "@stll/typescript-config": "0.9.0",
         "@stll/utf8-boundaries": "workspace:*",
         "@types/babel__core": "^7.20.5",
         "@types/node": "^26.6.5",
@@ -994,6 +996,8 @@
 
     "@stll/oxlint-config": ["@stll/oxlint-config@1.7.0", "", { "dependencies": { "@changesets/assemble-release-plan": "7.0.0", "@changesets/config": "4.0.1", "@changesets/read": "1.0.1", "@manypkg/get-packages": "3.1.0", "acorn": "8.19.0", "esbuild": "0.28.2", "picomatch": "4.0.7", "semver": "7.8.5", "smol-toml": "1.9.1", "tsx": "4.23.15", "yaml": "2.9.1" }, "peerDependencies": { "oxlint": ">=1.87.0 <2", "oxlint-tsgolint": ">=7.0.2003 <8", "vite": "8.1.5" }, "optionalPeers": ["vite"], "bin": { "stll-dependabot": "dist/dependabot-cli.mjs", "stll-quarantine": "dist/quarantine-cli.mjs", "stll-cloud-setup": "dist/cloud-setup-cli.mjs", "stll-engine-support": "dist/engine-support-cli.mjs", "stll-consumer-compat": "dist/consumer-compat-cli.mjs", "stll-toolchain-check": "dist/toolchain-check-cli.mjs", "stll-typecheck-probe": "dist/typecheck-probe-cli.mjs", "stll-publish-contract": "dist/publish-contract-cli.mjs", "stll-typecheck-parity": "dist/typecheck-parity-cli.mjs", "stll-toolchain-changed": "dist/toolchain-changed-cli.mjs", "stll-normalize-wasi-loaders": "dist/wasi-loader-normalizer-cli.mjs" } }, "sha512-Oj2br0ZBypOKf7dBCIwusKPqzyXEt/YH4gBTbpAQy/nhwh1ZThyChbcy3ZpRyxOsOI3VDcl/mbVFcF044GK1/w=="],
 
+    "@stll/oxlint-plugin": ["@stll/oxlint-plugin@0.6.2", "", { "peerDependencies": { "@oxlint/plugins": ">=1.75.0 <2", "oxlint": ">=1.75.0 <2" } }, "sha512-ZChIFmw4D998wxQYVIFYgrvm/j4xQA1T8uFVVGhjiHkm5xBlYvZaQ6vA7Q3rpKfWblAQ7rUopKd/OtsUViYqDg=="],
+
     "@stll/playground": ["@stll/playground@workspace:packages/playground"],
 
     "@stll/playground-vue": ["@stll/playground-vue@workspace:packages/playground-vue"],
@@ -1017,6 +1021,8 @@
     "@stll/text-normalize": ["@stll/text-normalize@0.1.1", "", {}, "sha512-Cc5VF8zwl9InDKv66Fg7lxLhV0shWNbDWrBxep6DWnZmjHBnkSv5AXERtRggQjw0y0oO76eLKUbtZ5idBHZY0w=="],
 
     "@stll/time": ["@stll/time@0.3.0", "", { "dependencies": { "better-result": "3.0.1", "temporal-polyfill": "1.0.5" } }, "sha512-fnSIJp4fRDcNdleUUgQDSKrAilgDH0DIiQMfNK4pzrmGUlFtetmgI3TC4WCn1jSVqV9wEiCL/sDkXFUJB75wzg=="],
+
+    "@stll/typescript-config": ["@stll/typescript-config@0.9.0", "", { "peerDependencies": { "typescript": ">=6.0.3 <8" } }, "sha512-sApAM8Pbh/SO/+nJT/I+xX4/ZLKi7C5KBnpTInGDyYX+yMGDAyogJM0QZP4RDFhNJZWS9WjNtFe51haat4TpIQ=="],
 
     "@stll/utf8-boundaries": ["@stll/utf8-boundaries@workspace:packages/utf8-boundaries"],
 

@@ -1,32 +1,4 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "compilerOptions": {
-    "allowJs": true,
-    "checkJs": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "target": "ES2024",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx",
-    "resolveJsonModule": true,
-    "moduleDetection": "force",
-    "verbatimModuleSyntax": true,
-    "noUncheckedSideEffectImports": true,
-    "module": "Preserve",
-    "moduleResolution": "Bundler",
-    "noEmit": true,
-    "strict": true,
-    "noFallthroughCasesInSwitch": true,
-    "noImplicitOverride": true,
-    "noImplicitReturns": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "useUnknownInCatchVariables": true,
-    "forceConsistentCasingInFileNames": true,
-    "strictNullChecks": true,
-    "noUncheckedIndexedAccess": true,
-    "noPropertyAccessFromIndexSignature": true,
-    "exactOptionalPropertyTypes": true,
-    "erasableSyntaxOnly": true
-  }
+  "extends": "@stll/typescript-config/react-library.json"
 }

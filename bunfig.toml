@@ -48,6 +48,7 @@ minimumReleaseAgeExcludes = [
   "@stll/country-codes", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z
   "@stll/docx-utils", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z
   "@stll/oxlint-config", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z
+  "@stll/oxlint-plugin", # quarantine-excluded-since: 2026-10-23T16:00:00.000Z
   "@stll/regex-set", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z
   "@stll/regex-set-darwin-arm64", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z
   "@stll/regex-set-darwin-x64", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z
@@ -58,6 +59,7 @@ minimumReleaseAgeExcludes = [
   "@stll/template-conditions", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z
   "@stll/text-normalize", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z
   "@stll/time", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z
+  "@stll/typescript-config", # quarantine-excluded-since: 2026-10-23T16:00:00.000Z
   "@stll/fuzzy-search-wasm", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z
 ]
 
