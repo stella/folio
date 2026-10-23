@@ -117,8 +117,9 @@ describe("new-list placement", () => {
           },
         ]);
         expect(result.skipped).toEqual([]);
-        reviewer.acceptAll();
-        return lists(reviewer);
+        const saved = await open(await reviewer.toBuffer());
+        saved.acceptAll();
+        return lists(saved);
       }),
     );
     const [direct, tracked] = outcomes;
