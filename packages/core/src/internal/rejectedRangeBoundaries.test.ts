@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 
 import {
   applyDocumentOp,
@@ -7,6 +8,10 @@ import {
   REVISION_DECISIONS,
 } from "@stll/docx-core/ops";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createHarnessState } from "../__tests__/editorHarness";
 import { rejectAllChanges } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -144,4 +149,94 @@ describe("rejecting an insertion keeps its range boundaries", () => {
       "type:moveToRangeEnd,id:7",
     ]);
   });
+
+  test(
+    "editor and engine reject generated insertions holding every boundary kind alike",
+    async () => {
+      const run = (text: string): Paragraph["content"][number] => ({
+        type: "run",
+        content: [{ type: "text", text }],
+      });
+      const move = fc.integer({ min: 1, max: 3 }).chain((id) =>
+        fc.constantFrom<Paragraph["content"]>(
+          [{ type: "moveToRangeStart", id, name: `move${id}`, author: "A" }],
+          [{ type: "moveToRangeEnd", id }],
+          // A point range: the editor holds both halves in one node.
+          [
+            { type: "moveToRangeStart", id, name: `move${id}`, author: "A" },
+            { type: "moveToRangeEnd", id },
+          ],
+        ),
+      );
+      const moves = fc
+        .array(move, { maxLength: 3 })
+        .map((items) => items.flat());
+      // One bookmark, paired and unique as the editor requires, in any of the
+      // places a rejection treats differently.
+      const bookmark = fc.constantFrom(
+        "none",
+        "outside",
+        "inside",
+        "startOutside",
+        "endOutside",
+      );
+      await assertProperty(
+        fc.property(
+          moves,
+          moves,
+          moves,
+          bookmark,
+          (before, inside, after, placement) => {
+            const start = {
+              type: "bookmarkStart" as const,
+              id: 9,
+              name: "_Ref9",
+            };
+            const end = { type: "bookmarkEnd" as const, id: 9 };
+            const document = documentWith([
+              run("a"),
+              ...(placement === "outside" || placement === "startOutside"
+                ? [start]
+                : []),
+              ...before,
+              ...(placement === "outside" ? [end] : []),
+              {
+                type: "insertion",
+                info: insertion,
+                content: [
+                  run("x"),
+                  ...(placement === "inside" || placement === "endOutside"
+                    ? [start]
+                    : []),
+                  ...inside,
+                  ...(placement === "inside" || placement === "startOutside"
+                    ? [end]
+                    : []),
+                  run("y"),
+                ],
+              },
+              run("b"),
+              ...(placement === "endOutside" ? [end] : []),
+              ...after,
+              run("c"),
+            ]);
+            let editor: string[];
+            try {
+              editor = outline(rejectInEditor(document));
+            } catch {
+              // A document the editor refuses on import holds nothing to reject.
+              fc.pre(false);
+              return;
+            }
+            expect(editor).toEqual(outline(rejectInEngine(document)));
+          },
+        ),
+        {
+          numRuns: 200,
+          id: "editor and engine reject generated insertions holding every boundary kind alike",
+        },
+      );
+    },
+    propertyTestTimeout(60_000),
+  );
 });
