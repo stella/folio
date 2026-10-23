@@ -42,7 +42,7 @@ const open = (buffer: ArrayBuffer) =>
   FolioDocxReviewer.fromBuffer(buffer, { author: AUTHOR });
 
 type Reviewer = Awaited<ReturnType<typeof open>>;
-type Mode = "direct" | "tracked-changes";
+type Mode = "direct" | "tracked-changes" | "suggested";
 
 const idOf = (reviewer: Reviewer, text: string): string => {
   const block = reviewer.getContent().find((row) => row.text === text);
@@ -296,5 +296,47 @@ describe("new-list placement", () => {
     expect(
       (await accepted(batch)).find(({ text }) => text === "Delivery follows."),
     ).toMatchObject({ kind: "listItem", label: "1." });
+  });
+
+  test("a suggested new list stays its own suggestion when a later batch reuses its operation id", async () => {
+    const reviewer = await open(await listDocx());
+    const first = apply(reviewer, "suggested", [
+      {
+        id: "op-1",
+        type: "insertAfterBlock",
+        blockId: idOf(reviewer, "Closing remarks."),
+        text: "A new numbered item.",
+        numbering: { kind: "newList", format: "numbered" },
+      },
+    ]);
+    const second = apply(reviewer, "suggested", [
+      {
+        id: "op-1",
+        type: "insertBeforeBlock",
+        blockId: idOf(reviewer, "Payment happens in stages."),
+        text: "An unnumbered note.",
+      },
+    ]);
+    const firstId = first.applied.at(0)?.suggestionId;
+    const secondId = second.applied.at(0)?.suggestionId;
+    expect(firstId).toBe("op-1");
+    expect(secondId).toBeDefined();
+    expect(secondId).not.toBe(firstId);
+
+    // Both stay pending, so the list the first one defines stays exported.
+    expect(
+      reviewer
+        .exportPendingSuggestions()
+        .map(({ suggestionId, operation }) => [suggestionId, operation.type]),
+    ).toEqual(
+      expect.arrayContaining([
+        ["op-1", "insertAfterBlock"],
+        [secondId, "insertBeforeBlock"],
+      ]),
+    );
+    expect(reviewer.rejectSuggestion(secondId ?? "")).toBe(true);
+    expect(
+      reviewer.getContent().find(({ text }) => text === "A new numbered item."),
+    ).toMatchObject({ kind: "listItem", displayLabel: "1." });
   });
 });

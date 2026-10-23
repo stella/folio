@@ -1689,8 +1689,8 @@ export class FolioDocxReviewer {
     return createStateSnapshot(this.state);
   }
 
-  /** Export staged AI operations for storage by the host, outside the DOCX. */
-  exportPendingSuggestions(): FolioPendingSuggestionRecord[] {
+  /** Every suggestion id the document's stories still carry. */
+  private activeSuggestionIds(): Set<string> {
     const active = new Set(
       getSuggestions(this.state).map(({ suggestionId }) => suggestionId),
     );
@@ -1698,6 +1698,49 @@ export class FolioDocxReviewer {
       for (const { suggestionId } of getSuggestions(entry.state))
         active.add(suggestionId);
     }
+    return active;
+  }
+
+  /**
+   * A suggested operation without a `suggestionId` is its own suggestion,
+   * named by its id. An id an earlier batch's still pending suggestion already
+   * carries would fold the two into one (accepted, rejected and exported
+   * together), so such an operation gets a distinct suggestion id of its own;
+   * its receipt reports it.
+   */
+  private withDistinctSuggestionIds(
+    batch: FolioDocumentOperationBatch,
+  ): FolioDocumentOperationBatch {
+    if (batch.mode !== "suggested" || !Array.isArray(batch.operations))
+      return batch;
+    const taken = this.activeSuggestionIds();
+    if (taken.size === 0) return batch;
+    let changed = false;
+    const operations = batch.operations.map((operation) => {
+      if (
+        typeof operation !== "object" ||
+        operation === null ||
+        typeof operation.id !== "string" ||
+        operation.type === "commentOnRange" ||
+        ("suggestionId" in operation && operation.suggestionId !== undefined) ||
+        !taken.has(operation.id)
+      )
+        return operation;
+      let ordinal = 2;
+      while (taken.has(`${operation.id}#${String(ordinal)}`)) ordinal += 1;
+      const suggestionId = `${operation.id}#${String(ordinal)}`;
+      taken.add(suggestionId);
+      changed = true;
+      return { ...operation, suggestionId };
+    });
+    return changed
+      ? ({ ...batch, operations } as FolioDocumentOperationBatch)
+      : batch;
+  }
+
+  /** Export staged AI operations for storage by the host, outside the DOCX. */
+  exportPendingSuggestions(): FolioPendingSuggestionRecord[] {
+    const active = this.activeSuggestionIds();
     return this.pendingSuggestions.exportPendingSuggestions({
       activeSuggestionIds: active,
       snapshotForStory: (story, commentIds) => {
@@ -1986,11 +2029,11 @@ export class FolioDocxReviewer {
   ): FolioAIEditApplyResult {
     const { applied, skipped } = this.applyDocumentOperationsInternal({
       story: MAIN_STORY,
-      batch: {
+      batch: this.withDistinctSuggestionIds({
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         operations,
         mode: options.mode ?? "tracked-changes",
-      },
+      }),
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
       ...(options.revisionStamp !== undefined && {
         revisionStamp: options.revisionStamp,
@@ -2014,7 +2057,7 @@ export class FolioDocxReviewer {
   ): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story: MAIN_STORY,
-      batch,
+      batch: this.withDistinctSuggestionIds(batch),
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
       ...(options.revisionStamp !== undefined && {
         revisionStamp: options.revisionStamp,
@@ -2038,7 +2081,7 @@ export class FolioDocxReviewer {
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story,
-      batch,
+      batch: this.withDistinctSuggestionIds(batch),
       ...(snapshot !== undefined && { snapshot }),
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
