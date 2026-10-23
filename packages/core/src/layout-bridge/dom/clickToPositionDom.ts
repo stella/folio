@@ -19,6 +19,7 @@ import {
   descendantTextNodes,
   logicalTextOffset,
   measurePaintedSpanRange,
+  paintedTextOffset,
   textBoundaryAt,
   totalTextLength,
 } from "./textStreamDom";
@@ -143,6 +144,23 @@ export function findPositionInSpan(
 
   if (textLength === 0) {
     return pmStart;
+  }
+
+  if (pmEnd - pmStart === 1 && textLength > 1) {
+    const ownerDoc = spanEl.ownerDocument;
+    const range = ownerDoc.createRange();
+    const distanceToBoundary = (offset: number): number => {
+      const boundary = textBoundaryAt(textNodes, offset, "start");
+      if (!boundary) return Number.POSITIVE_INFINITY;
+      range.setStart(boundary.node, boundary.offset);
+      range.setEnd(boundary.node, boundary.offset);
+      const rect = range.getBoundingClientRect();
+      const nearestY = Math.max(rect.top, Math.min(rect.bottom, clientY));
+      return Math.hypot(clientX - rect.left, clientY - nearestY);
+    };
+    return distanceToBoundary(0) < distanceToBoundary(textLength)
+      ? pmStart
+      : pmEnd;
   }
 
   const ownerDoc = spanEl.ownerDocument;
@@ -642,10 +660,12 @@ const getPaintedSpanCaretGeometry = (
   }
 
   const pmStart = Number(span.dataset["pmStart"]);
-  const charIndex = Math.min(
-    Math.max(0, pmPos - pmStart),
-    totalTextLength(textNodes),
-  );
+  const charIndex = paintedTextOffset({
+    pmStart,
+    pmEnd: Number(span.dataset["pmEnd"]),
+    pmPosition: pmPos,
+    textLength: totalTextLength(textNodes),
+  });
   const boundary = textBoundaryAt(textNodes, charIndex, "start");
   if (!boundary) {
     return { left: spanRect.left, top: spanRect.top, height: lineHeight };
@@ -780,7 +800,12 @@ export function getCaretPositionFromDom(
         };
       }
 
-      const charIndex = Math.min(pmPos - pmStart, totalTextLength(textNodes));
+      const charIndex = paintedTextOffset({
+        pmStart,
+        pmEnd,
+        pmPosition: pmPos,
+        textLength: totalTextLength(textNodes),
+      });
       const boundary = textBoundaryAt(textNodes, charIndex, "start");
       if (!boundary) {
         continue;

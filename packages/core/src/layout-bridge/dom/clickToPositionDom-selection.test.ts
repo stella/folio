@@ -90,6 +90,8 @@ class FakeHTMLElement {
 
 let rangeStart: { node: FakeText; offset: number } | null;
 let rangeEnd: { node: FakeText; offset: number } | null;
+let boundaryGeometry:
+  ((boundary: { node: FakeText; offset: number }) => DOMRect) | undefined;
 const fakeDocument = {
   caretPositionFromPoint: () => nativeCaret,
   createRange: () =>
@@ -104,11 +106,21 @@ const fakeDocument = {
         rect({ left: 20, top: 30, width: 80, height: 16 }),
       ],
       getBoundingClientRect: () =>
-        rect({ left: 40, top: 30, width: 0, height: 16 }),
+        rangeStart && boundaryGeometry
+          ? boundaryGeometry(rangeStart)
+          : rect({ left: 40, top: 30, width: 0, height: 16 }),
     }) as unknown as Range,
 };
 
-const buildNestedRun = (): {
+type NestedRunOptions = {
+  parts?: readonly [string, string, string];
+  pmEnd?: number;
+};
+
+const buildNestedRun = ({
+  parts = ["Alpha beta ", "gamma ", "delta"],
+  pmEnd = 32,
+}: NestedRunOptions = {}): {
   container: HTMLElement;
   first: FakeText;
   middle: FakeText;
@@ -121,10 +133,10 @@ const buildNestedRun = (): {
   const content = new FakeHTMLElement(["layout-page-content"]);
   const run = new FakeHTMLElement(["layout-run-text"]);
   run.dataset["pmStart"] = "10";
-  run.dataset["pmEnd"] = "32";
-  const first = new FakeText("Alpha beta ");
-  const middle = new FakeText("gamma ");
-  const last = new FakeText("delta");
+  run.dataset["pmEnd"] = String(pmEnd);
+  const first = new FakeText(parts[0]);
+  const middle = new FakeText(parts[1]);
+  const last = new FakeText(parts[2]);
   const firstFragment = new FakeHTMLElement();
   const middleFragment = new FakeHTMLElement();
   const nestedMiddleFragment = new FakeHTMLElement();
@@ -174,6 +186,7 @@ beforeEach(() => {
   rangeStart = null;
   rangeEnd = null;
   nativeCaret = null;
+  boundaryGeometry = undefined;
   originalHTMLElement = globalThis.HTMLElement;
   originalNode = globalThis.Node;
   Object.assign(globalThis, {
@@ -233,4 +246,53 @@ describe("getSelectionRectsFromDom", () => {
     expect(rangeStart).toEqual({ node: middle, offset: 2 });
     expect(rangeEnd).toEqual({ node: middle, offset: 2 });
   });
+
+  test("maps an atomic field's two carets to its complete nested result", () => {
+    const { container, first, last } = buildNestedRun({
+      parts: ["Clause ", "4", ".2"],
+      pmEnd: 11,
+    });
+
+    getCaretPositionFromDom(container, 10, rect({}));
+    expect(rangeStart).toEqual({ node: first, offset: 0 });
+    getCaretPositionFromDom(container, 11, rect({}));
+    expect(rangeStart).toEqual({ node: last, offset: 2 });
+    expect(rangeEnd).toEqual({ node: last, offset: 2 });
+
+    getSelectionRectsFromDom(container, 10, 11, rect({}));
+    expect(rangeStart).toEqual({ node: first, offset: 0 });
+    expect(rangeEnd).toEqual({ node: last, offset: 2 });
+  });
+
+  test.each(["ltr", "rtl"] as const)(
+    "hits the nearest atomic endpoint for a %s field result",
+    (direction) => {
+      const { run, first, middle, last } = buildNestedRun({
+        parts: ["Clause ", "4", ".2"],
+        pmEnd: 11,
+      });
+      const nodes = [first, middle, last];
+      boundaryGeometry = ({ node, offset }) => {
+        let textOffset = offset;
+        for (const text of nodes) {
+          if (text === node) break;
+          textOffset += text.length;
+        }
+        return rect({
+          left: direction === "ltr" ? textOffset * 10 : 100 - textOffset * 10,
+          top: 30,
+          bottom: 46,
+          height: 16,
+        });
+      };
+      nativeCaret = { offsetNode: middle, offset: 0 };
+
+      expect(findPositionInSpan(run, 20, 35)).toBe(
+        direction === "ltr" ? 10 : 11,
+      );
+      expect(findPositionInSpan(run, 80, 35)).toBe(
+        direction === "ltr" ? 11 : 10,
+      );
+    },
+  );
 });
