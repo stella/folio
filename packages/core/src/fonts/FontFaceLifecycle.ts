@@ -7,14 +7,16 @@ type FontFaceLifecycleState<Face> =
   | { type: "disposed" };
 
 export class FontFaceLifecycle<Face> extends Subscribable<number> {
+  private readonly remove: (faces: readonly Face[]) => void;
   private state: FontFaceLifecycleState<Face> = {
     type: "active",
     generation: 0,
     faces: [],
   };
 
-  constructor(private readonly remove: (faces: readonly Face[]) => void) {
+  constructor(remove: (faces: readonly Face[]) => void) {
     super(0);
+    this.remove = remove;
   }
 
   beginReplacement(): (faces: readonly Face[]) => void {
