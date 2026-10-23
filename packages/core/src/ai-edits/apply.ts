@@ -56,6 +56,7 @@ import { requestDeterministicParaIds } from "../prosemirror/extensions/features/
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
 import {
   blockBoundariesOf,
+  inlineBoundariesOf,
   isBlockBoundaryNode,
   removeResolvedSubtree,
 } from "../prosemirror/keptRangeBoundaries";
@@ -2835,8 +2836,8 @@ const holdsOnlyInsertedContent = (
  * Take back the wholly pending paragraph between `from` and `to`, as
  * rejecting it would: the range boundaries it holds stay where it was. With
  * a paragraph after it they open that paragraph, where the joined break
- * leaves them; before a table they stand between blocks; ending its
- * container, they close the paragraph before it.
+ * leaves them, with any standing between the two; before a table they stand
+ * between blocks; ending its container, they close the paragraph before it.
  */
 const retractParagraph = (
   tr: Transaction,
@@ -2853,10 +2854,15 @@ const retractParagraph = (
     followingIndex++;
   const following = at.parent.maybeChild(followingIndex);
   if (following?.type.name === "paragraph") {
+    const between: PMNode[] = [];
     let opening = to;
-    for (let index = at.index() + 1; index < followingIndex; index++)
+    for (let index = at.index() + 1; index < followingIndex; index++) {
+      between.push(at.parent.child(index));
       opening += at.parent.child(index).nodeSize;
-    return tr.insert(opening + 1, kept).delete(from, to);
+    }
+    const joined = inlineBoundariesOf(between);
+    if (joined === null) return tr.delete(from, to);
+    return tr.insert(opening + 1, [...kept, ...joined]).delete(from, opening);
   }
   if (following !== null)
     return tr.replaceWith(from, to, blockBoundariesOf(kept));

@@ -125,10 +125,9 @@ type CommentAnchor = Extract<
 /** A boundary a block list holds between its blocks. */
 export type BlockBoundary = Exclude<Boundary, CommentAnchor>;
 
+// A block list holds no comment anchor, so every boundary in it is one of these.
 export const isBlockBoundary = (block: BlockContent): block is BlockBoundary =>
-  Object.hasOwn(BOUNDARY_SIDES, block.type) &&
-  block.type !== "commentRangeStart" &&
-  block.type !== "commentRangeEnd";
+  Object.hasOwn(BOUNDARY_SIDES, block.type);
 
 /** Every range boundary in `content`, at any depth, in document order. */
 export const rangeBoundariesIn = (content: readonly InlineNode[]): Boundary[] =>
