@@ -33,6 +33,7 @@ import {
   renderFootnoteArea,
   renderPage,
 } from "./renderPage";
+import { PARAGRAPH_CLASS_NAMES } from "./renderParagraph";
 
 describe("floating table wrap zones", () => {
   test("reserves a top-and-bottom band when neither side can hold text", () => {
@@ -100,11 +101,13 @@ describe("header/footer inline picture paper clipping", () => {
     if (header === undefined) {
       throw new Error("Expected header container");
     }
-    const imageElement = findByClass(header, "layout-image");
+    const imageElement = findByClass(header, PARAGRAPH_CLASS_NAMES.image);
 
     expect(header?.style.overflow).not.toBe("clip");
     expect(imageElement?.style.width).toBe("800px");
-    expect(imageElement?.style.clipPath).toBe("inset(0px 56px 0px 0px)");
+    expect(imageElement?.parent?.style.clipPath).toBe(
+      "inset(0px 56px 0px 0px)",
+    );
   });
 
   test("clips negative-indent body pictures at the physical paper edges", () => {
@@ -161,11 +164,13 @@ describe("header/footer inline picture paper clipping", () => {
         blockLookup: new Map([[String(block.id), { block, measure }]]),
       },
     ) as unknown as FakeElement;
-    const imageElement = findByClass(pageElement, "layout-image");
+    const imageElement = findByClass(pageElement, PARAGRAPH_CLASS_NAMES.image);
 
     expect(pageElement.style.overflow).toBe("hidden");
     expect(imageElement?.style.width).toBe("900px");
-    expect(imageElement?.style.clipPath).toBe("inset(0px 56px 0px 28px)");
+    expect(imageElement?.parent?.style.clipPath).toBe(
+      "inset(0px 56px 0px 28px)",
+    );
   });
 });
 

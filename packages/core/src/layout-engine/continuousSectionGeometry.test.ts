@@ -109,7 +109,6 @@ describe("continuous section break geometry", () => {
       type: "continuous",
       pageSize: { w: 800, h: 1000 },
       margins: { top: 50, right: 50, bottom: 50, left: 50 },
-      columns: { count: 2, gap: 20 },
     };
     const imageMeasure: ParagraphMeasure = {
       kind: "paragraph",
@@ -137,6 +136,7 @@ describe("continuous section break geometry", () => {
     const layout = layoutDocument(blocks, measures, {
       pageSize: { w: 800, h: 1000 },
       margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      finalColumns: { count: 2, gap: 20 },
     });
     const page = layout.pages.at(0);
     const beforeFragment = page?.fragments.find(

@@ -498,17 +498,17 @@ describe("header and footer stories", () => {
       const cellClip = flatten(list.pages.at(0)?.primitives ?? []).find(
         (primitive) =>
           primitive.kind === "clipGroup" &&
-          primitive.rect.widthPx === 200 &&
+          primitive.rect.widthPx === 164 &&
           primitive.children.some((child) => child.kind === "image"),
       );
 
-      expect(cellClip).toMatchObject({
-        kind: "clipGroup",
-        rect: { xPx: MARGINS.left, widthPx: 200 },
-        children: expect.arrayContaining([
-          { kind: "image", rect: { xPx: MARGINS.left + 36, widthPx: 300 } },
-        ]),
-      });
+      if (cellClip?.kind !== "clipGroup") {
+        throw new Error("Expected the header picture to be cell-clipped");
+      }
+      expect(cellClip.rect).toMatchObject({ xPx: 132, widthPx: 164 });
+      expect(cellClip.rect.xPx + cellClip.rect.widthPx).toBe(296);
+      const image = cellClip.children.find((child) => child.kind === "image");
+      expect(image?.rect).toMatchObject({ xPx: 132, widthPx: 300 });
     }, fakeMeasure);
   });
 

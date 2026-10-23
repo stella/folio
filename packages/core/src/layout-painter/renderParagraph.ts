@@ -3689,7 +3689,10 @@ export function renderParagraphFragment(
       contentWidthPx: fragment.width,
       context: renderContext,
       imageOriginX: renderContext.inlinePictureOriginX ?? fragment.x,
-      inlineImageLineStartX: lineGeometry.paintStartXPx,
+      inlineImageLineStartX:
+        (renderContext.inlinePictureOriginX ?? fragment.x) +
+        lineGeometry.paintStartXPx -
+        fragment.x,
       floatingMargins: {
         leftMargin: lineLeftOffset,
         rightMargin: lineRightOffset,
