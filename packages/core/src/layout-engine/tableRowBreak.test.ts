@@ -2170,6 +2170,43 @@ describe("oversized table row splits across pages (#570)", () => {
     expect(covered).toBe(15 * LINE);
   });
 
+  test("clips an oversized exact-height row to the page and advances the next block", () => {
+    const { block, measure } = tallTable(1);
+    block.rows[0]!.height = 15 * LINE;
+    block.rows[0]!.heightRule = "exact";
+    measure.rows[0]!.height = 15 * LINE;
+    measure.totalHeight = 15 * LINE;
+    const after: FlowBlock = {
+      kind: "paragraph",
+      id: "after-exact-row",
+      runs: [{ kind: "text", text: "after" }],
+    };
+
+    const layout = layoutDocument(
+      [block, after],
+      [measure, paraMeasure(1)],
+      OPTIONS,
+    );
+    const frags = layout.pages
+      .flatMap((page) => page.fragments)
+      .filter(
+        (fragment): fragment is TableFragment => fragment.kind === "table",
+      );
+
+    expect(frags).toHaveLength(1);
+    expect(frags[0]?.height).toBe(120);
+    expect(frags[0]?.bottomClip).toBe(120);
+    expect(frags[0]?.topClip).toBeUndefined();
+    expect(layout.pages).toHaveLength(2);
+    expect(
+      layout.pages[1]?.fragments.some(
+        (fragment) =>
+          fragment.kind === "paragraph" &&
+          fragment.blockId === "after-exact-row",
+      ),
+    ).toBe(true);
+  });
+
   test("never splits an oversized cantSplit row with an exact height", () => {
     const { block, measure } = tallTable(15);
     block.rows[0]!.cantSplit = true;
@@ -2179,9 +2216,72 @@ describe("oversized table row splits across pages (#570)", () => {
     const frags = tableFragments(block, measure);
 
     expect(frags).toHaveLength(1);
-    expect(frags[0]?.height).toBe(15 * LINE);
+    expect(frags[0]?.height).toBe(120);
     expect(frags[0]?.topClip).toBeUndefined();
-    expect(frags[0]?.bottomClip).toBeUndefined();
+    expect(frags[0]?.bottomClip).toBe(120);
+  });
+
+  test("clips an exact row below repeated headers", () => {
+    const { block, measure } = tableWithHeaderAndTallBody(1);
+    block.rows[1]!.height = 110;
+    block.rows[1]!.heightRule = "exact";
+    measure.rows[1]!.height = 110;
+    measure.totalHeight = 130;
+    const after: FlowBlock = {
+      kind: "paragraph",
+      id: "after-exact-row-header",
+      runs: [{ kind: "text", text: "after" }],
+    };
+
+    const layout = layoutDocument(
+      [block, after],
+      [measure, paraMeasure(1)],
+      OPTIONS,
+    );
+    const tables = layout.pages.map((page) =>
+      page.fragments.filter(
+        (fragment): fragment is TableFragment => fragment.kind === "table",
+      ),
+    );
+
+    expect(tables[0]).toHaveLength(1);
+    expect(tables[0]?.[0]).toMatchObject({
+      fromRow: 0,
+      toRow: 1,
+      height: LINE,
+    });
+    expect(tables[1]?.[0]).toMatchObject({
+      fromRow: 1,
+      toRow: 2,
+      height: 120,
+      headerRowCount: 1,
+      bottomClip: 100,
+    });
+    expect(
+      layout.pages[2]?.fragments.some(
+        (fragment) =>
+          fragment.kind === "paragraph" &&
+          fragment.blockId === "after-exact-row-header",
+      ),
+    ).toBe(true);
+  });
+
+  test("clips an exact row to the band remaining after footnote reservation", () => {
+    const { block, measure } = tallTable(1);
+    block.rows[0]!.height = 15 * LINE;
+    block.rows[0]!.heightRule = "exact";
+    measure.rows[0]!.height = 15 * LINE;
+    measure.totalHeight = 15 * LINE;
+
+    const layout = layoutDocument([block], [measure], {
+      ...OPTIONS,
+      footnoteReservedHeights: new Map([[1, 40]]),
+    });
+    const fragment = layout.pages[0]?.fragments.find(
+      (candidate): candidate is TableFragment => candidate.kind === "table",
+    );
+
+    expect(fragment).toMatchObject({ height: 80, bottomClip: 80 });
   });
 
   test("keeps page-fitting rows whole after footnote reservations", () => {

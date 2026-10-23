@@ -497,6 +497,7 @@ export function layoutTable(
     // Calculate how many rows fit (excluding header rows which are prepended separately)
     let rowsHeight = 0;
     let fittingRows = 0;
+    let exactRowBottomClip: number | undefined;
     const pageFootnoteIds = new Set(state.page.footnoteIds ?? []);
     const fragmentFootnoteIds: number[] = [];
     let fragmentFootnoteHeight = 0;
@@ -550,7 +551,19 @@ export function layoutTable(
           state.cursorY === state.topMargin &&
           state.page.fragments.length === 0;
         if (isFreshFlowRegion) {
-          rowsHeight += rowHeight;
+          const exactRowClip =
+            block.rows[j]?.heightRule === "exact" &&
+            rowHeight + normalHeaderOverhead + footnoteGrowth > availableHeight;
+          const rowBand = exactRowClip
+            ? Math.max(
+                0,
+                availableHeight - normalHeaderOverhead - footnoteGrowth,
+              )
+            : rowHeight;
+          rowsHeight += rowBand;
+          if (exactRowClip) {
+            exactRowBottomClip = rowBand;
+          }
           fragmentFootnoteHeight += rowFootnoteHeight;
           fittingRows++;
           break;
@@ -592,6 +605,9 @@ export function layoutTable(
       ...(!isFirstFragment ? { continuesFromPrev: true } : {}),
       ...(!isLastFragment ? { continuesOnNext: true } : {}),
       ...(repeatHeaderRowsForNormalFragment ? { headerRowCount } : {}),
+      ...(exactRowBottomClip !== undefined
+        ? { bottomClip: exactRowBottomClip }
+        : {}),
       ...(block.sdtGroups ? { sdtGroups: block.sdtGroups } : {}),
     };
 
