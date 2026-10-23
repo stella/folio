@@ -1,0 +1,10 @@
+{
+  "all numbering readers agree": [
+    {
+      "seed": 792074115,
+      "path": "5:0:2:2:1:1:1:1",
+      "note": "A full level override on an instance whose abstract numbering is missing is a level of its own: the parse boundary must not unnumber what the numbering owner resolves as a list.",
+      "date": "2026-10-23"
+    }
+  ]
+}

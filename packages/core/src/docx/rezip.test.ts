@@ -1163,7 +1163,22 @@ describe("createDocx style numbering references", () => {
     document.package.numbering?.nums.push(brokenNumbering);
 
     await expect(createDocx(document)).rejects.toThrow(
-      "Numbering definition 7 references missing abstract numbering",
+      "Numbering definition 7 defines no level",
+    );
+  });
+
+  test("accepts a style reference whose full level override stands without its abstract", async () => {
+    const document = styleNumberingDocument(7);
+    document.package.numbering?.nums.push({
+      ...brokenNumbering,
+      levelOverrides: [
+        { ilvl: 0, lvl: { ilvl: 0, numFmt: "upperRoman", lvlText: "%1." } },
+      ],
+    });
+
+    const zip = await JSZip.loadAsync(await createDocx(document));
+    expect(await zip.file("word/styles.xml")?.async("text")).toContain(
+      '<w:numId w:val="7"/>',
     );
   });
 

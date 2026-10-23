@@ -7,7 +7,10 @@ import {
   escapeXmlText,
   validateDocxPackage,
 } from "@stll/docx-core";
-import { mintRelationshipId } from "@stll/docx-core/model";
+import {
+  mintRelationshipId,
+  numberingInstanceResolves,
+} from "@stll/docx-core/model";
 import { writeZipPart } from "@stll/docx-core/zip";
 
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
@@ -4630,28 +4633,15 @@ const assertStyleNumberingReferences = (doc: Document): void => {
   if (referenced.size === 0) {
     return;
   }
-  const available = new Map(
-    doc.package.numbering?.nums.map((numbering) => [
-      numbering.numId,
-      numbering,
-    ]) ?? [],
-  );
-  const availableAbstract = new Set(
-    doc.package.numbering?.abstractNums.map(
-      (numbering) => numbering.abstractNumId,
-    ) ?? [],
-  );
+  const definitions = doc.package.numbering ?? { abstractNums: [], nums: [] };
   // Only what a style names: an unreferenced `w:num` numbers nothing, and the
   // model carries the source's numbering part as it found it.
   for (const numId of referenced) {
-    const numbering = available.get(numId);
-    if (!numbering) {
+    if (!definitions.nums.some((instance) => instance.numId === numId)) {
       panic(`Style references missing numbering definition ${numId}`);
     }
-    if (!availableAbstract.has(numbering.abstractNumId)) {
-      panic(
-        `Numbering definition ${numbering.numId} references missing abstract numbering`,
-      );
+    if (!numberingInstanceResolves(definitions, numId)) {
+      panic(`Numbering definition ${numId} defines no level`);
     }
   }
 };

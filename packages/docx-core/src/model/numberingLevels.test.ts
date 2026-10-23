@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { ListLevel, NumberingDefinitions } from "./lists";
 import {
   levelShowsMarker,
+  numberingInstanceResolves,
   numberingLevelEntries,
   resolveNumberingLevel,
 } from "./numberingLevels";
@@ -64,6 +65,34 @@ describe("resolveNumberingLevel", () => {
         0,
       ),
     ).toEqual({ kind: "level", level: override, source: "override" });
+    expect(
+      numberingInstanceResolves(
+        definitions({
+          nums: [
+            {
+              numId: 1,
+              abstractNumId: 9,
+              levelOverrides: [{ ilvl: 0, lvl: override }],
+            },
+          ],
+        }),
+        1,
+      ),
+    ).toBe(true);
+    expect(
+      numberingInstanceResolves(
+        definitions({
+          nums: [
+            {
+              numId: 1,
+              abstractNumId: 9,
+              levelOverrides: [{ ilvl: 0, startOverride: 3 }],
+            },
+          ],
+        }),
+        1,
+      ),
+    ).toBe(false);
     // Without an override, the same dangling instance still has no level.
     expect(
       resolveNumberingLevel(

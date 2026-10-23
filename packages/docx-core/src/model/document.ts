@@ -215,6 +215,7 @@ export type {
 export {
   levelShowsMarker,
   numberingLevelHasMarkerSlot,
+  numberingInstanceResolves,
   numberingLevelEntries,
   resolveNumberingLevel,
   type NumberingLevelEntry,

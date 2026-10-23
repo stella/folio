@@ -98,12 +98,15 @@ const inheritedNumberingReference = (
   ) {
     return undefined;
   }
+  // Only the predecessor's own `w:numPr` reference stands in, as the painter
+  // (`advanceVisibleListMarker`) shows it: numbering its previous style
+  // supplied left with that style.
   const previous = attrs._propertyChanges?.at(-1)?.previousFormatting;
-  if (!previous) return undefined;
+  if (previous?.numPr?.kind !== "reference") return undefined;
   return effectiveParagraphNumberingReference(
     paragraphNumberingSourcesFromBoundary({
       numPr: previous.numPr,
-      numPrFromStyle: previous.numPrFromStyle,
+      numPrFromStyle: undefined,
     }),
   );
 };

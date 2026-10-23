@@ -37,6 +37,33 @@ const firstById = <Value>(
 ) => values.find((value) => idOf(value) === id);
 
 /**
+ * Whether a `w:numId` names an instance that can define any level: a `w:num`
+ * whose `w:abstractNum` exists, or one carrying a full `lvlOverride/lvl`,
+ * which is a complete level of its own (see `resolveNumberingLevel`). A
+ * reference that fails this numbers nothing at any level.
+ */
+export const numberingInstanceResolves = (
+  definitions: NumberingDefinitions,
+  numId: number,
+): boolean => {
+  const instance = firstById(
+    definitions.nums,
+    (candidate) => candidate.numId,
+    numId,
+  );
+  if (!instance) return false;
+  return (
+    instance.levelOverrides?.some((override) => override.lvl !== undefined) ===
+      true ||
+    firstById(
+      definitions.abstractNums,
+      (candidate) => candidate.abstractNumId,
+      instance.abstractNumId,
+    ) !== undefined
+  );
+};
+
+/**
  * Resolves the level named by a concrete numbering reference.
  *
  * ECMA-376 §17.9.3 and §17.9.6 restrict `ilvl` to 0..8; an invalid or
