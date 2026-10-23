@@ -8,6 +8,7 @@
  * Script sizing: eigenpal/docx-editor@585413d0 (Apache-2.0), modified for Folio.
  */
 
+import { documentFontFactsFingerprint } from "../../fonts/documentFontFacts";
 import {
   parseFontFamilyList,
   resolveFontFamily,
@@ -90,6 +91,9 @@ export function buildRunFontStyle(
     ...(run.embeddedFontFamilyMap
       ? { embeddedFontFamilyMap: run.embeddedFontFamilyMap }
       : {}),
+    ...(run.documentFontFacts
+      ? { documentFontFacts: run.documentFontFacts }
+      : {}),
     ...(run.alternateFontFamily !== undefined
       ? { alternateFontFamily: run.alternateFontFamily }
       : {}),
@@ -154,25 +158,28 @@ let embeddedFontResolvedCaches = new WeakMap<
 type ResolvedDataOptions = {
   alternateFontFamily?: string | undefined;
   embeddedFontFamilyMap?: ReadonlyMap<string, string> | undefined;
+  documentFontFacts?: FontStyle["documentFontFacts"];
 };
 
 export function getResolvedData(
   fontFamily: string,
   options: ResolvedDataOptions = {},
 ): ResolvedFontCache {
-  const { alternateFontFamily, embeddedFontFamilyMap } = options;
+  const { alternateFontFamily, embeddedFontFamilyMap, documentFontFacts } =
+    options;
   let cache = fontResolvedCache;
   if (embeddedFontFamilyMap) {
     const owned = embeddedFontResolvedCaches.get(embeddedFontFamilyMap);
     cache = owned ?? new Map<string, ResolvedFontCache>();
     if (!owned) embeddedFontResolvedCaches.set(embeddedFontFamilyMap, cache);
   }
-  const cacheKey = `${fontFamily}\u0000${alternateFontFamily ?? ""}`;
+  const cacheKey = `${fontFamily}\u0000${alternateFontFamily ?? ""}\u0000${documentFontFactsFingerprint(documentFontFacts) ?? ""}`;
   let cached = cache.get(cacheKey);
   if (cached === undefined) {
     const resolved = resolveFontFamily(fontFamily, {
       alternateFontName: alternateFontFamily,
       embeddedFontFamilyMap,
+      documentFontFacts,
     });
     cached = {
       cssFallback: resolved.cssFallback,

@@ -9,6 +9,10 @@ import { panic } from "better-result";
 
 import { statesNoBorder } from "@stll/docx-core/model";
 
+import {
+  type DocumentFontFacts,
+  documentFontFactsFingerprint,
+} from "../fonts/documentFontFacts";
 import { embeddedFontFingerprint } from "../fonts/embeddedFontFingerprint";
 import {
   measureParagraph,
@@ -221,6 +225,7 @@ export type PaintPageRequest = {
 
 export type RenderPageOptions = {
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
+  documentFontFacts?: DocumentFontFacts;
   /** Document to create elements in (default: window.document) */
   document?: Document;
   /** Bookmark name -> 1-indexed page, for resolving PAGEREF fields at paint. */
@@ -588,6 +593,9 @@ function syncPageWatermarkOverlay(
       : {}),
     ...(options.embeddedFontFamilyMap
       ? { embeddedFontFamilyMap: options.embeddedFontFamilyMap }
+      : {}),
+    ...(options.documentFontFacts
+      ? { documentFontFacts: options.documentFontFacts }
       : {}),
   });
   if (!overlay) {
@@ -1753,6 +1761,9 @@ export function renderPage(
         : {}),
       ...(options.embeddedFontFamilyMap
         ? { embeddedFontFamilyMap: options.embeddedFontFamilyMap }
+        : {}),
+      ...(options.documentFontFacts
+        ? { documentFontFacts: options.documentFontFacts }
         : {}),
     });
     if (watermarkEl) {
@@ -3040,6 +3051,12 @@ function computeOptionsHash(options: RenderPageOptions): string {
     parts.push(
       `embedded-fonts:${embeddedFontFingerprint(options.embeddedFontFamilyMap)}`,
     );
+  }
+  const documentFactsFingerprint = documentFontFactsFingerprint(
+    options.documentFontFacts,
+  );
+  if (documentFactsFingerprint !== undefined) {
+    parts.push(`document-font-facts:${documentFactsFingerprint}`);
   }
 
   // Header/footer content changes affect all pages. Include `textSig` so

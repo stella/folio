@@ -35,6 +35,9 @@ export const isPageRendererName = (value: unknown): value is PageRendererName =>
 export const displayListFurnitureFrom = (
   options: RenderPageOptions,
 ): PageFurnitureInputs => ({
+  ...(options.documentFontFacts
+    ? { documentFontFacts: options.documentFontFacts }
+    : {}),
   ...(options.embeddedFontFamilyMap
     ? { embeddedFontFamilyMap: options.embeddedFontFamilyMap }
     : {}),

@@ -5,6 +5,10 @@
  * Improves performance by avoiding repeated measurements of identical content.
  */
 
+import {
+  type DocumentFontFacts,
+  documentFontFactsFingerprint,
+} from "../../fonts/documentFontFacts";
 import { embeddedFontFingerprint } from "../../fonts/embeddedFontFingerprint";
 import type {
   ImageRun,
@@ -367,17 +371,26 @@ type FontContextRef = (
   families: ReadonlyMap<string, string> | undefined,
 ) => number | undefined;
 
-const runMeasureCacheInput = (run: Run, fontContextRef: FontContextRef) => {
+type DocumentFontContextRef = (
+  facts: DocumentFontFacts | undefined,
+) => number | undefined;
+
+const runMeasureCacheInput = (
+  run: Run,
+  fontContextRef: FontContextRef,
+  documentFontContextRef: DocumentFontContextRef,
+) => {
   switch (run.kind) {
     case "text":
     case "tab":
     case "renderedPageBreak":
     case "field":
     case "math": {
-      const { embeddedFontFamilyMap, ...formatting } = run;
+      const { embeddedFontFamilyMap, documentFontFacts, ...formatting } = run;
       return {
         ...formatting,
         embeddedFontFamilies: fontContextRef(embeddedFontFamilyMap),
+        documentFontFacts: documentFontContextRef(documentFontFacts),
       };
     }
     case "lineBreak":
@@ -394,13 +407,16 @@ const runMeasureCacheInput = (run: Run, fontContextRef: FontContextRef) => {
 const paragraphAttrsMeasureCacheInput = (
   attrs: ParagraphAttrs | undefined,
   fontContextRef: FontContextRef,
+  documentFontContextRef: DocumentFontContextRef,
 ) => {
   if (attrs === undefined) return undefined;
 
-  const { snapToGrid, embeddedFontFamilyMap, ...rest } = attrs;
+  const { snapToGrid, embeddedFontFamilyMap, documentFontFacts, ...rest } =
+    attrs;
   const measurementAttrs = {
     ...rest,
     embeddedFontFamilies: fontContextRef(embeddedFontFamilyMap),
+    documentFontFacts: documentFontContextRef(documentFontFacts),
   };
   if (measurementAttrs.documentGridLinePitch === undefined) {
     return measurementAttrs;
@@ -414,6 +430,8 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
   // a small local reference instead of duplicating all embedded families.
   const fontContexts: string[] = [];
   const contextRefs = new Map<string, number>();
+  const documentFontContexts: string[] = [];
+  const documentContextRefs = new Map<string, number>();
   const fontContextRef: FontContextRef = (families) => {
     if (!families) return undefined;
     const fingerprint = embeddedFontFingerprint(families);
@@ -424,15 +442,30 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     fontContexts.push(fingerprint);
     return index;
   };
-  const attrs = paragraphAttrsMeasureCacheInput(block.attrs, fontContextRef);
+  const documentFontContextRef: DocumentFontContextRef = (facts) => {
+    const fingerprint = documentFontFactsFingerprint(facts);
+    if (fingerprint === undefined) return undefined;
+    const existing = documentContextRefs.get(fingerprint);
+    if (existing !== undefined) return existing;
+    const index = documentFontContexts.length;
+    documentContextRefs.set(fingerprint, index);
+    documentFontContexts.push(fingerprint);
+    return index;
+  };
+  const attrs = paragraphAttrsMeasureCacheInput(
+    block.attrs,
+    fontContextRef,
+    documentFontContextRef,
+  );
   const runs = block.runs.map((run) =>
-    runMeasureCacheInput(run, fontContextRef),
+    runMeasureCacheInput(run, fontContextRef, documentFontContextRef),
   );
   return JSON.stringify({
     lineBreakProviderGeneration: getLineBreakProviderGeneration(),
     attrs,
     runs,
     fontContexts,
+    documentFontContexts,
   });
 }
 

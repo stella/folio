@@ -13,6 +13,7 @@
  * its watermark and a page that never had one must not look alike.
  */
 
+import type { DocumentFontFacts } from "../../fonts/documentFontFacts";
 import { ptToPx, pxToPt } from "../../layout-engine/measure/measureHelpers";
 import { getFontMetrics } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
@@ -49,6 +50,7 @@ const paintTextWatermark = ({
   page,
   context,
   embeddedFontFamilyMap,
+  documentFontFacts,
 }: PaintTextWatermarkOptions): readonly DisplayPrimitive[] => {
   if (watermark.text.length === 0) {
     return [];
@@ -56,6 +58,7 @@ const paintTextWatermark = ({
 
   const style: FontStyle = {
     ...(embeddedFontFamilyMap ? { embeddedFontFamilyMap } : {}),
+    ...(documentFontFacts ? { documentFontFacts } : {}),
     fontFamily: watermark.font ?? TEXT_DEFAULT_FONT,
     fontSize: pxToPt(TEXT_FONT_SIZE_PX),
     bold: true,
@@ -216,6 +219,7 @@ const paintPictureWatermark = (
 
 export type WatermarkPaintOptions = {
   embeddedFontFamilyMap?: ReadonlyMap<string, string> | undefined;
+  documentFontFacts?: DocumentFontFacts | undefined;
   readonly page: Page;
   readonly watermark: Watermark;
   /** Resolved `data:` source for a picture watermark; absent means unresolved. */
@@ -229,6 +233,7 @@ export const paintWatermark = ({
   imageSrc,
   context,
   embeddedFontFamilyMap,
+  documentFontFacts,
 }: WatermarkPaintOptions): readonly DisplayPrimitive[] => {
   switch (watermark.kind) {
     case "text":
@@ -237,6 +242,7 @@ export const paintWatermark = ({
         page,
         context,
         embeddedFontFamilyMap,
+        documentFontFacts,
       });
     case "picture":
       return paintPictureWatermark(watermark, page, imageSrc, context);

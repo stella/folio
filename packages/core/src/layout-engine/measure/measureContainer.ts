@@ -316,6 +316,9 @@ function glyphAdvanceStyle(style: FontStyle): FontStyle {
     ...(style.embeddedFontFamilyMap
       ? { embeddedFontFamilyMap: style.embeddedFontFamilyMap }
       : {}),
+    ...(style.documentFontFacts
+      ? { documentFontFacts: style.documentFontFacts }
+      : {}),
   };
   if (style.fontFamily !== undefined) {
     result.fontFamily = style.fontFamily;
