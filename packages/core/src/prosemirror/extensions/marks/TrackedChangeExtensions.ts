@@ -6,11 +6,14 @@
  * Colors are assigned per author via CSS custom properties (see editor.css).
  */
 
+import { Result } from "better-result";
+
 import { AUTHOR_COLORS, getAuthorColorIdx } from "../../../utils/authorColors";
 import {
   expectTrackedChangeMarkAttrs,
   isTrackedRevisionAncestorArray,
 } from "../../attrs";
+import { nextRevisionId } from "../../plugins/revisionIds";
 import { createMarkExtension } from "../create";
 
 /**
@@ -59,6 +62,21 @@ const revisionAncestorsFromDom = (serialized: string | undefined) => {
   }
 };
 
+const authorFromClipboardRevision = (cite: string | null): string => {
+  if (!cite) return "";
+  const address = cite.startsWith("mailto:")
+    ? cite.slice("mailto:".length)
+    : cite;
+  const decoded = Result.try(() => decodeURIComponent(address));
+  return decoded.isOk() ? decoded.value : address;
+};
+
+const clipboardRevisionAttrs = (dom: HTMLElement) => ({
+  revisionId: nextRevisionId(),
+  author: authorFromClipboardRevision(dom.getAttribute("cite")),
+  date: dom.getAttribute("datetime"),
+});
+
 /**
  * Insertion mark — text added in tracked changes
  * Renders with per-author colored underline.
@@ -93,6 +111,10 @@ export const InsertionExtension = createMarkExtension({
     },
     inclusive: false,
     parseDOM: [
+      {
+        tag: "ins",
+        getAttrs: (dom) => clipboardRevisionAttrs(dom),
+      },
       {
         tag: "span.docx-insertion",
         getAttrs(dom) {
@@ -200,6 +222,10 @@ export const DeletionExtension = createMarkExtension({
     },
     inclusive: false,
     parseDOM: [
+      {
+        tag: "del",
+        getAttrs: (dom) => clipboardRevisionAttrs(dom),
+      },
       {
         tag: "span.docx-deletion",
         getAttrs(dom) {
