@@ -10,9 +10,9 @@ import { FOLIO_AGENT_TOOL_NAMES } from "../src/types";
 
 declare const bridge: FolioAgentBridge;
 
-// @ts-expect-error empty-input tools reject undeclared fields
 executeFolioToolCall(
   FOLIO_AGENT_TOOL_NAMES.readDocument,
+  // @ts-expect-error empty-input tools reject undeclared fields
   { unexpected: true },
   bridge,
 );

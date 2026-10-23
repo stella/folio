@@ -20,7 +20,10 @@ import {
   prunedLockChanges,
   scopeInstall,
 } from "./ci-scoped-install";
-import { installFrozenRepositoryDependencies } from "./clean-room-install";
+import {
+  installFrozenRepositoryDependencies,
+  settleRepositoryLockfile,
+} from "./clean-room-install";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -69,9 +72,13 @@ describe("scoped CI environments", () => {
           path.join(fixture, "bunfig.toml"),
           `[install]\nminimumReleaseAge = ${age}\n`,
         );
-        expect(() => installFrozenRepositoryDependencies(fixture)).toThrow(
-          "Frozen repository installs require the release-age policy",
-        );
+        for (const install of [
+          installFrozenRepositoryDependencies,
+          settleRepositoryLockfile,
+        ])
+          expect(() => install(fixture)).toThrow(
+            "Repository installs require the release-age policy",
+          );
       }
     } finally {
       rmSync(fixture, { recursive: true, force: true });

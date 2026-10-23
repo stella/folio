@@ -16,9 +16,9 @@ import {
   paragraphNumberingReference,
 } from "../../src/model/paragraphNumbering";
 
-// @ts-expect-error the cancellation arm declares no level
 const CANCELLATION_WITH_A_LEVEL: ParagraphNumberingOverride = {
   kind: "none",
+  // @ts-expect-error the cancellation arm declares no level
   ilvl: 0,
 };
 
@@ -30,8 +30,8 @@ const RESERVED_REFERENCE: ParagraphNumberingOverride = {
   numId: NO_NUMBERING_NUM_ID,
 };
 
-// @ts-expect-error the constructor also rejects a literal reserved id
 const RESERVED_CONSTRUCTOR = paragraphNumberingReference({
+  // @ts-expect-error the constructor also rejects a literal reserved id
   numId: NO_NUMBERING_NUM_ID,
 });
 

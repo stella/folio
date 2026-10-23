@@ -567,7 +567,7 @@ test.each(["initial", "poll", "watcher"] as const)(
       initial: "  check().catch(surfaceBackgroundError);\n  return {",
       poll: "  const timer = setInterval(() => {\n    check().catch(surfaceBackgroundError);",
       watcher:
-        "if (name === null || name.startsWith(prefix)) check().catch(surfaceBackgroundError);",
+        "if (name === null || name.startsWith(prefix))\n        check().catch(surfaceBackgroundError);",
     };
     const moduleSource = await readFile(modulePath, "utf8");
     const handler = handlers[invocation];

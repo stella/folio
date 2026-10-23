@@ -10,7 +10,10 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-import { installFrozenRepositoryDependencies } from "./clean-room-install";
+import {
+  installFrozenRepositoryDependencies,
+  settleRepositoryLockfile,
+} from "./clean-room-install";
 
 export const INSTALL_SCOPES = {
   "ci-plan": {
@@ -105,15 +108,16 @@ export const installedPackageBytes = (repoRoot: string): number => {
  * an entry of the pruned lock, and any other changed field fails, so a scoped
  * install still resolves nothing new.
  */
+const byKey = ([left]: [string, unknown], [right]: [string, unknown]) => {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+};
+
 /** JSON with object keys sorted, so key order never reads as a lockfile change. */
 const canonical = (value: unknown): string =>
   JSON.stringify(value, (_, inner: unknown) =>
     inner !== null && typeof inner === "object" && !Array.isArray(inner)
-      ? Object.fromEntries(
-          Object.entries(inner).toSorted(([left], [right]) =>
-            left < right ? -1 : left > right ? 1 : 0,
-          ),
-        )
+      ? Object.fromEntries(Object.entries(inner).toSorted(byKey))
       : inner,
   );
 
@@ -139,12 +143,7 @@ export const prunedLockChanges = (before: Lock, after: Lock): string[] => {
 export const settlePrunedLockfile = (repoRoot: string): void => {
   const file = path.join(repoRoot, "bun.lock");
   const before: Lock = Bun.JSONC.parse(readFileSync(file, "utf8"));
-  const result = Bun.spawnSync(
-    [process.execPath, "install", "--lockfile-only"],
-    { cwd: repoRoot, stdout: "inherit", stderr: "inherit" },
-  );
-  if (result.exitCode !== 0)
-    throw new TypeError("Scoped lockfile settle failed");
+  settleRepositoryLockfile(repoRoot);
   const after: Lock = Bun.JSONC.parse(readFileSync(file, "utf8"));
   const changes = prunedLockChanges(before, after);
   if (changes.length > 0)

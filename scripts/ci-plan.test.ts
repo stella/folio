@@ -965,7 +965,7 @@ describe("CI plan", () => {
       "utf8",
     );
     for (const match of smoke.matchAll(
-      /path\.join\(repoRoot,\s*((?:"[^"]+"\s*,?\s*)+)\)/gu,
+      /path\.join\(\s*repoRoot,\s*((?:"[^"]+"\s*,?\s*)+)\)/gu,
     )) {
       const argumentsText = match.at(1);
       if (!argumentsText) throw new Error("Missing smoke fixture arguments");

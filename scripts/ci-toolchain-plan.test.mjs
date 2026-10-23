@@ -636,6 +636,7 @@ describe("published Node minimum", () => {
         for (const file of [
           ".github/dependabot.yml",
           ".node-version",
+          "bunfig.toml",
           "stll-toolchain.json",
           ".agents/cloud-setup.sh",
           ".claude/settings.json",

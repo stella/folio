@@ -38,8 +38,11 @@ export const writeCleanRoomInstallConfig = async (
   );
 };
 
-/** Bootstrap a locked repository environment using its complete install policy. */
-export const installFrozenRepositoryDependencies = (repoRoot: string): void => {
+/** Run one repository install under its complete install policy. */
+const installRepository = (
+  repoRoot: string,
+  mode: "--frozen-lockfile" | "--lockfile-only",
+): void => {
   const config: unknown = Bun.TOML.parse(
     readFileSync(path.join(repoRoot, "bunfig.toml"), "utf8"),
   );
@@ -50,20 +53,23 @@ export const installFrozenRepositoryDependencies = (repoRoot: string): void => {
     !Number.isSafeInteger(config["install"]["minimumReleaseAge"]) ||
     config["install"]["minimumReleaseAge"] <= 0
   )
-    throw new TypeError(
-      "Frozen repository installs require the release-age policy",
-    );
-  const result = Bun.spawnSync(
-    [process.execPath, "install", "--frozen-lockfile"],
-    {
-      cwd: repoRoot,
-      stdout: "inherit",
-      stderr: "inherit",
-    },
-  );
+    throw new TypeError("Repository installs require the release-age policy");
+  const result = Bun.spawnSync([process.execPath, "install", mode], {
+    cwd: repoRoot,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
   if (result.exitCode !== 0)
-    throw new TypeError("Frozen repository install failed");
+    throw new TypeError(`Repository install ${mode} failed`);
 };
+
+/** Bootstrap a locked repository environment using its complete install policy. */
+export const installFrozenRepositoryDependencies = (repoRoot: string): void =>
+  installRepository(repoRoot, "--frozen-lockfile");
+
+/** Let Bun rewrite the lockfile only, under the same install policy. */
+export const settleRepositoryLockfile = (repoRoot: string): void =>
+  installRepository(repoRoot, "--lockfile-only");
 
 type CleanRoomInstallOptions = {
   consumerDir: string;
