@@ -283,15 +283,17 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
     expect(view.state.doc.child(0).textContent).toBe("first");
   });
 
-  // A zero-width anchor holds a position and shows nothing. Counting one as
-  // content left an emptied paragraph standing as a blank line around an
-  // invisible node.
-  for (const anchor of [
-    "renderedPageBreak",
-    "bookmarkBoundary",
-    "textBoxAnchor",
-  ]) {
-    test(`a ${anchor} does not keep an emptied paragraph alive`, () => {
+  // Whether an emptied paragraph stays is the engine's one paragraph-content
+  // rule, the same in the editor: a cached page break is not content, so the
+  // paragraph goes; a bookmark boundary is a range boundary and a text box
+  // anchor stands for its drawing, so the paragraph keeps them (this table
+  // takes no run-in) instead of dropping the bookmark or orphaning the box.
+  for (const [anchor, kept] of [
+    ["renderedPageBreak", false],
+    ["bookmarkBoundary", true],
+    ["textBoxAnchor", true],
+  ] as const) {
+    test(`a ${anchor} ${kept ? "keeps" : "does not keep"} an emptied paragraph`, () => {
       const deletion = schema.marks["deletion"]!;
       const revision = { revisionId: 1, author: "Alice", date: "2026-05-01" };
       const state = EditorState.create({
@@ -311,8 +313,16 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       acceptAllChanges()(view.state, view.dispatch);
 
-      expect(view.state.doc.childCount).toBe(2);
-      expect(view.state.doc.child(0).type.name).toBe("table");
+      if (kept) {
+        expect(view.state.doc.childCount).toBe(3);
+        const paragraph = view.state.doc.child(0);
+        expect(paragraph.textContent).toBe("");
+        expect(paragraph.childCount).toBe(1);
+        expect(paragraph.firstChild?.type.name).toBe(anchor);
+      } else {
+        expect(view.state.doc.childCount).toBe(2);
+        expect(view.state.doc.child(0).type.name).toBe("table");
+      }
     });
   }
 

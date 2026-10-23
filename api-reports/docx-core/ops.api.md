@@ -776,6 +776,17 @@ export const packageResourcesOpOf: (input: PackageResourcesOpOptions) => SetPack
 export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
 
 // @public
+export type ParagraphContentVerdict = boolean & {
+    readonly [paragraphContentBrand]: true;
+};
+
+// @public
+export const paragraphContentVerdict: (input: {
+    width: number;
+    zeroWidthItems: Iterable<ZeroWidthItem>;
+}) => ParagraphContentVerdict;
+
+// @public
 export const paragraphIdsIn: (value: unknown) => string[];
 
 // @public
@@ -787,7 +798,7 @@ export const paragraphLogicalText: (paragraph: Paragraph) => string;
 // @public
 export const paragraphMarkOutcome: (input: {
     follows: "paragraph" | "table" | "nothing";
-    holdsContent: boolean;
+    holdsContent: ParagraphContentVerdict;
     markWasAdded: boolean;
     containerStillEndsWithParagraph: boolean;
     followingTableCanReceiveRunIn: boolean;
@@ -1236,6 +1247,9 @@ export type WellFormedRangePlan = {
 
 // @public
 export const withBodyContent: (body: DocumentBody, content: BlockContent[]) => DocumentBody;
+
+// @public
+export type ZeroWidthItem = keyof typeof ZERO_WIDTH_ITEMS_HOLD_CONTENT;
 
 // @public
 export const zeroWidthLeavesAt: (items: readonly InlineNode[], offset: number) => InlineNode[];
