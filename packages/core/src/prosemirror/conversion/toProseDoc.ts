@@ -5467,130 +5467,32 @@ function extractTextBoxesFromParagraph(
   return extractTextBoxes(paragraph, textBoxGroupId);
 }
 
-function mayContainTextBox(paragraph: Paragraph): boolean {
-  for (const item of paragraph.content) {
-    if (item.type !== "run") {
-      if (
-        item.type === "inlineSdt" ||
-        item.type === "hyperlink" ||
-        item.type === "insertion" ||
-        item.type === "deletion" ||
-        item.type === "moveFrom" ||
-        item.type === "moveTo"
-      ) {
-        return true;
-      }
-      continue;
-    }
+type VisitTextBoxRunsOptions = {
+  items: readonly ParagraphContent[];
+  context: TextBoxExtractionContext;
+  visitRun: (run: Run, context: TextBoxExtractionContext) => boolean;
+};
 
-    for (const content of item.content) {
-      if (content.type === "shape" && content.shape.textBody) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-function extractTextBoxes(
-  paragraph: Paragraph,
-  textBoxGroupId: string,
-): ExtractTextBoxesResult {
-  const textBoxes: ExtractedTextBox[] = [];
-  const textBoxAnchors = new Map<Shape, string>();
-  const visitRun = (run: Run, context: TextBoxExtractionContext): void => {
-    for (const runContent of run.content) {
-      if (runContent.type !== "shape" || !runContent.shape.textBody) {
-        continue;
-      }
-      const anchorId = `${textBoxGroupId}:${textBoxes.length}`;
-      textBoxAnchors.set(runContent.shape, anchorId);
-      textBoxes.push({
-        textBox: textBoxFromShape(runContent.shape, runContent.shape.textBody),
-        alternateContentXml: replayableShapeAlternateContent(runContent),
-        anchorId,
-        trackedChange: context.trackedChange,
-        inlineSdts: context.inlineSdts,
-      });
-    }
-  };
-
-  const visitHyperlink = (
-    hyperlink: Hyperlink,
-    context: TextBoxExtractionContext,
-  ): void => {
-    for (const child of hyperlink.children) {
-      if (child.type === "run") {
-        visitRun(child, context);
-      }
-    }
-  };
-
-  const visitTrackedChange = (
-    change: Insertion | Deletion | MoveFrom | MoveTo,
-    context: TextBoxExtractionContext,
-  ): void => {
-    const trackedChange = {
-      type: change.type,
-      info: change.info,
-    } as const satisfies NonNullable<TextBoxAttrs["_docxTrackedChange"]>;
-    for (const item of change.content) {
-      if (item.type === "run") {
-        visitRun(item, { ...context, trackedChange });
-        continue;
-      }
-      if (item.type === "hyperlink") {
-        visitHyperlink(item, { ...context, trackedChange });
-      }
-    }
-  };
-
-  const visitInlineSdt = (
-    sdt: InlineSdt,
-    context: TextBoxExtractionContext,
-  ): void => {
-    const inlineSdts = [
-      ...context.inlineSdts,
-      sdtAttrsFromProperties(sdt.properties),
-    ];
-    const nestedContext = { ...context, inlineSdts };
-
-    for (const item of sdt.content) {
-      if (item.type === "run") {
-        visitRun(item, nestedContext);
-        continue;
-      }
-      if (item.type === "inlineSdt") {
-        visitInlineSdt(item, nestedContext);
-        continue;
-      }
-      if (item.type === "hyperlink") {
-        visitHyperlink(item, nestedContext);
-        continue;
-      }
-      if (
-        item.type === "insertion" ||
-        item.type === "deletion" ||
-        item.type === "moveFrom" ||
-        item.type === "moveTo"
-      ) {
-        visitTrackedChange(item, nestedContext);
-      }
-    }
-  };
-
-  const rootContext: TextBoxExtractionContext = { inlineSdts: [] };
-  for (const item of paragraph.content) {
+/** Walk the same projected child inventory for the fast path and collector. */
+function visitTextBoxRuns({
+  items,
+  context,
+  visitRun,
+}: VisitTextBoxRunsOptions): boolean {
+  for (const item of items) {
     if (item.type === "run") {
-      visitRun(item, rootContext);
+      if (visitRun(item, context)) return true;
       continue;
     }
-    if (item.type === "inlineSdt") {
-      visitInlineSdt(item, rootContext);
+    if (item.type === "complexField") {
+      for (const run of item.fieldResult) {
+        if (visitRun(run, context)) return true;
+      }
       continue;
     }
-    if (item.type === "hyperlink") {
-      visitHyperlink(item, rootContext);
+    if (item.type === "simpleField") {
+      if (visitTextBoxRuns({ items: item.content, context, visitRun }))
+        return true;
       continue;
     }
     if (
@@ -5599,9 +5501,91 @@ function extractTextBoxes(
       item.type === "moveFrom" ||
       item.type === "moveTo"
     ) {
-      visitTrackedChange(item, rootContext);
+      const trackedChange = {
+        type: item.type,
+        info: item.info,
+      } as const satisfies NonNullable<TextBoxAttrs["_docxTrackedChange"]>;
+      if (
+        visitTextBoxRuns({
+          items: item.content,
+          context: { ...context, trackedChange },
+          visitRun,
+        })
+      ) {
+        return true;
+      }
+      continue;
+    }
+    if (item.type === "inlineSdt") {
+      const inlineSdts = [
+        ...context.inlineSdts,
+        sdtAttrsFromProperties(item.properties),
+      ];
+      if (
+        visitTextBoxRuns({
+          items: item.content,
+          context: { ...context, inlineSdts },
+          visitRun,
+        })
+      ) {
+        return true;
+      }
+      continue;
+    }
+    if (item.type === "hyperlink") {
+      if (visitTextBoxRuns({ items: item.children, context, visitRun }))
+        return true;
+      continue;
+    }
+    if (item.type === "inlineWrapper") {
+      if (visitTextBoxRuns({ items: item.content, context, visitRun }))
+        return true;
     }
   }
+  return false;
+}
+
+function mayContainTextBox(paragraph: Paragraph): boolean {
+  return visitTextBoxRuns({
+    items: paragraph.content,
+    context: { inlineSdts: [] },
+    visitRun: (run) =>
+      run.content.some(
+        (content) => content.type === "shape" && content.shape.textBody,
+      ),
+  });
+}
+
+function extractTextBoxes(
+  paragraph: Paragraph,
+  textBoxGroupId: string,
+): ExtractTextBoxesResult {
+  const textBoxes: ExtractedTextBox[] = [];
+  const textBoxAnchors = new Map<Shape, string>();
+  visitTextBoxRuns({
+    items: paragraph.content,
+    context: { inlineSdts: [] },
+    visitRun: (run, context) => {
+      for (const runContent of run.content) {
+        if (runContent.type !== "shape" || !runContent.shape.textBody) {
+          continue;
+        }
+        const anchorId = `${textBoxGroupId}:${textBoxes.length}`;
+        textBoxAnchors.set(runContent.shape, anchorId);
+        textBoxes.push({
+          textBox: textBoxFromShape(
+            runContent.shape,
+            runContent.shape.textBody,
+          ),
+          alternateContentXml: replayableShapeAlternateContent(runContent),
+          anchorId,
+          trackedChange: context.trackedChange,
+          inlineSdts: context.inlineSdts,
+        });
+      }
+      return false;
+    },
+  });
 
   return {
     textBoxes,
