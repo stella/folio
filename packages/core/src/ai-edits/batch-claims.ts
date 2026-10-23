@@ -62,7 +62,18 @@ export type BatchClaim =
    * applying (`joinsNow`); tracked, only `block`'s paragraph mark is marked
    * deleted and both paragraphs stay as they are until the change is accepted.
    */
-  | { type: "merge"; block: number; next: number; joinsNow: boolean }
+  | {
+      type: "merge";
+      block: number;
+      next: number;
+      joinsNow: boolean;
+      /**
+       * The merge sets the merged paragraph's properties
+       * (`mergedParagraphProperties`): `block`'s applied directly, `next`'s,
+       * whose mark survives acceptance, tracked.
+       */
+      setsProperties: boolean;
+    }
   /** A new block between two others, at `at`. */
   | { type: "insertion"; at: number }
   /**
@@ -99,7 +110,11 @@ type BlockRole =
   | { kind: "rewriteBlock" | "paragraphProperties" }
   | { kind: "deleteBlock"; keepsParagraph: boolean }
   /** The block a merge ends (`own`), or the one it pulls in (`next`). */
-  | { kind: "mergeOwn" | "mergeNext"; joinsNow: boolean };
+  | {
+      kind: "mergeOwn" | "mergeNext";
+      joinsNow: boolean;
+      setsProperties: boolean;
+    };
 
 type BlockEntry = { operationId: string; role: BlockRole };
 
@@ -128,11 +143,19 @@ const blockRolesOf = (
       return [
         {
           block: claim.block,
-          role: { kind: "mergeOwn", joinsNow: claim.joinsNow },
+          role: {
+            kind: "mergeOwn",
+            joinsNow: claim.joinsNow,
+            setsProperties: claim.setsProperties,
+          },
         },
         {
           block: claim.next,
-          role: { kind: "mergeNext", joinsNow: claim.joinsNow },
+          role: {
+            kind: "mergeNext",
+            joinsNow: claim.joinsNow,
+            setsProperties: claim.setsProperties,
+          },
         },
       ];
     default:
@@ -224,9 +247,13 @@ const rolesConflict = (left: BlockRole, right: BlockRole): boolean => {
       }
     case "mergeOwn":
       switch (right.kind) {
+        // A merge that sets the merged paragraph's properties is a property
+        // edit of that paragraph as well: two of them run backwards, so the
+        // earlier would land last, where one at a time the later one wins.
+        case "paragraphProperties":
+          return left.setsProperties;
         case "text":
         case "annotation":
-        case "paragraphProperties":
         // A chain: this block's merge and the one merging into it.
         case "mergeNext":
           return false;
@@ -239,7 +266,12 @@ const rolesConflict = (left: BlockRole, right: BlockRole): boolean => {
       // goes away. Tracked, the joined paragraph's mark is the one that
       // survives acceptance, so its properties are the merged paragraph's.
       // Its text, its own break and its own merge (a chain) survive either way.
-      return right.kind === "paragraphProperties" && left.joinsNow;
+      // Tracked, a merge that sets the merged paragraph's properties sets the
+      // joined paragraph's, so another property edit of it conflicts too.
+      return (
+        right.kind === "paragraphProperties" &&
+        (left.joinsNow || left.setsProperties)
+      );
     case "paragraphProperties":
       // Two property edits of one paragraph run from the end backwards, so the
       // earlier one would land last and override the later one; tracked, the

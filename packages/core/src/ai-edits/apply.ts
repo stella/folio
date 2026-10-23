@@ -2239,6 +2239,7 @@ const batchClaimOf = ({
         block,
         next: item.blockTo,
         joinsNow: !producesTrackedChanges,
+        setsProperties: item.operation.mergedParagraphProperties !== undefined,
       };
     case "deleteBlock": {
       // The same test the deletion itself makes: see its case in the applier.
@@ -3517,15 +3518,26 @@ const withRetiredFinalParagraphs = ({
       // deletion applied directly leaves them, but for what this batch set
       // on the emptied one. A pending change the emptied paragraph already
       // had records what rejecting puts back; otherwise this change does.
+      // When the paragraph it joined has its own break pending deletion
+      // (a wholly deleted paragraph the predecessor search looked past),
+      // accepting leaves the paragraph after that break: that one carries
+      // the words, so it takes the added paragraph's properties.
+      const carryPosition = isDeletedPPrMark(
+        tr.doc.nodeAt(position)?.attrs["pPrMark"],
+      )
+        ? (paragraphLeftAfter({ doc: tr.doc, paragraphPos: position }) ??
+          position)
+        : position;
+      const carryTarget = tr.doc.nodeAt(carryPosition) ?? following;
       const revisionId = nextRevisionId;
       const carried = carryParagraphProperties({
         tr,
-        position,
+        position: carryPosition,
         source: previous,
         styleResolver,
         numbering,
         revision: { id: revisionId, author, date, ...revisionExtras },
-        keep: propertiesSetInBatch(following, batchRevisionIds),
+        keep: propertiesSetInBatch(carryTarget, batchRevisionIds),
       });
       if (carried.tracked) {
         nextRevisionId++;
@@ -6488,6 +6500,8 @@ const applyFolioAIEditOperationsInternal = ({
         let mergedPropertiesAt = blockFrom;
         // Set when a property change already records what the paragraph had.
         let mergedPropertiesRecorded = false;
+        // Set once `mergedParagraphProperties` are on the paragraph they name.
+        let mergedPropertiesApplied = false;
         const second = join.next;
         // A comment running from one paragraph into the next runs across the
         // separator too, or it would cover two stretches.
@@ -6582,6 +6596,20 @@ const applyFolioAIEditOperationsInternal = ({
             joined &&
             (endingMark?.kind === "del" || endingMark?.kind === "moveFrom")
           ) {
+            // The joined paragraph takes the requested properties before its
+            // pending removed mark hands its properties on to the paragraph
+            // accepting leaves, as the same merge tracked and accepted does.
+            if (item.operation.mergedParagraphProperties) {
+              tr = applyBlockParagraphProperties({
+                tr,
+                position: blockFrom,
+                node: joined,
+                properties: item.operation.mergedParagraphProperties,
+                styleResolver,
+                numbering,
+              }).tr;
+              mergedPropertiesApplied = true;
+            }
             const survivor = paragraphLeftAfter({
               doc: tr.doc,
               paragraphPos: blockFrom,
@@ -6590,7 +6618,7 @@ const applyFolioAIEditOperationsInternal = ({
               tr = carryParagraphProperties({
                 tr,
                 position: survivor,
-                source: joined,
+                source: tr.doc.nodeAt(blockFrom) ?? joined,
                 styleResolver,
                 numbering,
                 revision: endingMark.info,
@@ -6723,7 +6751,10 @@ const applyFolioAIEditOperationsInternal = ({
           }
         }
 
-        if (item.operation.mergedParagraphProperties) {
+        if (
+          item.operation.mergedParagraphProperties &&
+          !mergedPropertiesApplied
+        ) {
           const mergedParagraph = tr.doc.nodeAt(mergedPropertiesAt);
           if (!mergedParagraph) {
             panic("A resolved merge did not produce a paragraph");
