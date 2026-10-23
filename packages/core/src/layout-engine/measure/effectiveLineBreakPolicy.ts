@@ -57,7 +57,8 @@ export const resolveEffectiveLineBreakPolicy = ({
 
   return {
     provider,
-    hangingPunctuation: attrs?.overflowPunctuation !== false,
+    hangingPunctuation:
+      attrs?.alignment === "justify" && attrs.overflowPunctuation !== false,
     automaticHyphenation: resolveAutomaticHyphenation(attrs),
   };
 };

@@ -3293,7 +3293,7 @@ describe("CJK line breaking", () => {
     );
   });
 
-  test("defaults to hanging punctuation unless w:overflowPunct is disabled", () => {
+  test("justified paragraphs hang punctuation unless w:overflowPunct is disabled", () => {
     withFakeTextMeasure(
       () => {
         const paragraph = (overflowPunctuation?: boolean): ParagraphBlock => ({
@@ -3302,9 +3302,7 @@ describe("CJK line breaking", () => {
           runs: [
             { kind: "text", text: "中文。", language: { eastAsia: "zh-CN" } },
           ],
-          ...(overflowPunctuation === undefined
-            ? {}
-            : { attrs: { overflowPunctuation } }),
+          attrs: { alignment: "justify", overflowPunctuation },
         });
 
         expect(measureParagraph(paragraph(false), 20).lines).toHaveLength(2);
@@ -3327,7 +3325,7 @@ describe("CJK line breaking", () => {
           kind: "paragraph",
           id: "latin-overflow-punctuation",
           runs: [{ kind: "text", text: "AB,", language: { val: "en-US" } }],
-          attrs: { overflowPunctuation: true },
+          attrs: { alignment: "justify", overflowPunctuation: true },
         };
 
         const measure = measureParagraph(paragraph, 20);
@@ -3348,7 +3346,7 @@ describe("CJK line breaking", () => {
           runs: [
             { kind: "text", text: "中文（", language: { eastAsia: "zh-CN" } },
           ],
-          attrs: { overflowPunctuation: true },
+          attrs: { alignment: "justify", overflowPunctuation: true },
         };
 
         expect(measureParagraph(paragraph, 20).lines.length).toBeGreaterThan(1);
@@ -3367,6 +3365,7 @@ describe("CJK line breaking", () => {
             { kind: "text", text: "中文※", language: { eastAsia: "zh-CN" } },
           ],
           attrs: {
+            alignment: "justify",
             overflowPunctuation: true,
             lineBreakRules: {
               noLineBreaksBefore: { language: "zh-CN", characters: "※" },
@@ -3396,7 +3395,7 @@ describe("CJK line breaking", () => {
             kind: "paragraph",
             id: "custom-multi-code-point-hanging-punctuation",
             runs: [{ kind: "text", text }],
-            attrs: { overflowPunctuation: true },
+            attrs: { alignment: "justify", overflowPunctuation: true },
           };
 
           const measure = measureParagraph(paragraph, 20);
