@@ -384,6 +384,12 @@ export function convertParagraphAttrs(
   if (pmAttrs.kinsoku !== undefined && pmAttrs.kinsoku !== null) {
     attrs.kinsoku = pmAttrs.kinsoku;
   }
+  if (pmAttrs.autoSpaceDE !== undefined && pmAttrs.autoSpaceDE !== null) {
+    attrs.autoSpaceDE = pmAttrs.autoSpaceDE;
+  }
+  if (pmAttrs.autoSpaceDN !== undefined && pmAttrs.autoSpaceDN !== null) {
+    attrs.autoSpaceDN = pmAttrs.autoSpaceDN;
+  }
   if (
     pmAttrs.overflowPunctuation !== undefined &&
     pmAttrs.overflowPunctuation !== null

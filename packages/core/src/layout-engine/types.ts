@@ -515,6 +515,8 @@ export type ParagraphAttrs = {
   justificationCompatibility?: { type: "legacy" };
   /** East Asian first/last-character restrictions (`w:kinsoku`). */
   kinsoku?: boolean;
+  autoSpaceDE?: boolean;
+  autoSpaceDN?: boolean;
   /** Hanging punctuation (`w:overflowPunct`); defaults to enabled when omitted. */
   overflowPunctuation?: boolean;
   defaultEastAsiaFontFamily?: string;
