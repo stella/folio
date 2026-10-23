@@ -16,7 +16,7 @@ import {
 import { createHarnessState } from "../__tests__/editorHarness";
 import { rejectAllChanges } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import type { Document, Paragraph } from "../types/document";
+import type { Document, InlineSdt, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 
 // Rejecting an insertion keeps the range boundaries it held where the
@@ -186,12 +186,12 @@ describe("rejecting an insertion keeps its range boundaries", () => {
   test(
     "editor and engine reject generated insertions holding every boundary kind alike",
     async () => {
-      const run = (text: string): Paragraph["content"][number] => ({
-        type: "run",
-        content: [{ type: "text", text }],
+      const run = (text: string) => ({
+        type: "run" as const,
+        content: [{ type: "text" as const, text }],
       });
       const move = fc.integer({ min: 1, max: 3 }).chain((id) =>
-        fc.constantFrom<Paragraph["content"]>(
+        fc.constantFrom<InlineSdt["content"]>(
           [{ type: "moveToRangeStart", id, name: `move${id}`, author: "A" }],
           [{ type: "moveToRangeEnd", id }],
           // A point range: the editor holds both halves in one node.
@@ -213,19 +213,50 @@ describe("rejecting an insertion keeps its range boundaries", () => {
         "startOutside",
         "endOutside",
       );
+      // Where inline content controls stand: none, one holding what the
+      // insertion holds (the rejection removes it whole), two nested so, or
+      // one around the insertion (it stays, emptied).
+      const controls = fc.constantFrom("none", "inside", "nested", "around");
+      const control = (
+        id: number,
+        content: InlineSdt["content"],
+      ): InlineSdt => ({
+        type: "inlineSdt",
+        properties: { sdtType: "richText", id },
+        content: [run(`c${id}`), ...content],
+      });
       await assertProperty(
         fc.property(
           moves,
           moves,
           moves,
           bookmark,
-          (before, inside, after, placement) => {
+          controls,
+          (before, inside, after, placement, wrapping) => {
             const start = {
               type: "bookmarkStart" as const,
               id: 9,
               name: "_Ref9",
             };
             const end = { type: "bookmarkEnd" as const, id: 9 };
+            const held: InlineSdt["content"] = [
+              ...(placement === "inside" || placement === "endOutside"
+                ? [start]
+                : []),
+              ...inside,
+              ...(placement === "inside" || placement === "startOutside"
+                ? [end]
+                : []),
+            ];
+            let inserted = held;
+            if (wrapping === "inside") inserted = [control(41, held)];
+            if (wrapping === "nested")
+              inserted = [control(41, [control(42, held)])];
+            const insertionNode: Paragraph["content"][number] = {
+              type: "insertion",
+              info: insertion,
+              content: [run("x"), ...inserted, run("y")],
+            };
             const document = documentWith([
               run("a"),
               ...(placement === "outside" || placement === "startOutside"
@@ -233,21 +264,9 @@ describe("rejecting an insertion keeps its range boundaries", () => {
                 : []),
               ...before,
               ...(placement === "outside" ? [end] : []),
-              {
-                type: "insertion",
-                info: insertion,
-                content: [
-                  run("x"),
-                  ...(placement === "inside" || placement === "endOutside"
-                    ? [start]
-                    : []),
-                  ...inside,
-                  ...(placement === "inside" || placement === "startOutside"
-                    ? [end]
-                    : []),
-                  run("y"),
-                ],
-              },
+              wrapping === "around"
+                ? control(43, [insertionNode])
+                : insertionNode,
               run("b"),
               ...(placement === "endOutside" ? [end] : []),
               ...after,

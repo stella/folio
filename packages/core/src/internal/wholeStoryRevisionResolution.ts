@@ -958,5 +958,7 @@ const resolveStoryRevisions = ({
     removedEndpointCount: context.removedEndpointCount,
     removedReferences: context.removedReferences,
     runsIntoTable: propertyResult.runsIntoTable,
+    /** The boundaries removed content left standing, for the range repair. */
+    keptBoundaries: inline?.keptBoundaries ?? new Set<PMNode>(),
   };
 };

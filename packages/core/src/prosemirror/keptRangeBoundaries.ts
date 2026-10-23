@@ -99,7 +99,7 @@ const isComment = (
  * carries range boundaries and none is a comment's, which goes with the
  * comment.
  */
-export const keepsRangeBoundary = (node: PMNode): boolean => {
+const keepsRangeBoundary = (node: PMNode): boolean => {
   const items = rangeBoundaryItemsOf(node);
   return items.length > 0 && !items.some(isComment);
 };
@@ -139,7 +139,7 @@ type Found = {
   occurrence: BoundaryOccurrence;
 };
 
-const boundariesIn = (doc: PMNode, kept: ReadonlySet<number>): Found[] => {
+const boundariesIn = (doc: PMNode, kept: ReadonlySet<PMNode>): Found[] => {
   const found: Found[] = [];
   doc.descendants((node, position) => {
     for (const item of rangeBoundaryItemsOf(node))
@@ -147,7 +147,7 @@ const boundariesIn = (doc: PMNode, kept: ReadonlySet<number>): Found[] => {
         position,
         node,
         item,
-        occurrence: occurrenceOf(item, kept.has(position)),
+        occurrence: occurrenceOf(item, kept.has(node)),
       });
     return true;
   });
@@ -181,15 +181,15 @@ type BoundaryEdit =
 
 /**
  * Make every range a rejection kept boundaries of well-formed, by the
- * engine's own plan (`planWellFormedRanges`): `kept` holds the positions, in
- * `tr.doc`, of the nodes the rejection kept from removed content. The plan
+ * engine's own plan (`planWellFormedRanges`): `kept` holds the nodes
+ * {@link removeResolvedSubtree} kept, found in `tr.doc` as themselves. The plan
  * runs once over every boundary in document order and names each by its
  * place in that list, as the engine names its own, so applying it never
  * reads a position the repair itself moved.
  */
 export const normalizeKeptRangeBoundaries = (
   tr: Transaction,
-  kept: ReadonlySet<number>,
+  kept: ReadonlySet<PMNode>,
 ): void => {
   if (kept.size === 0) return;
   const found = boundariesIn(tr.doc, kept);
@@ -243,19 +243,52 @@ export const normalizeKeptRangeBoundaries = (
   }
 };
 
+declare const removedSubtreeBrand: unique symbol;
+
 /**
- * Where, in `doc`, a rejection keeps boundaries from the content it removes:
- * each node {@link keepsRangeBoundary} that carries a revision mark the
- * rejection removes, directly or as a nested layer.
+ * What stays of a subtree a resolution removes. Only
+ * {@link removeResolvedSubtree} makes one, so no resolution can drop content
+ * without being handed the boundaries it holds.
  */
-export const boundariesRejectionKeeps = (
-  doc: PMNode,
-  removes: (node: PMNode) => boolean,
-): number[] => {
-  const positions: number[] = [];
-  doc.descendants((node, position) => {
-    if (keepsRangeBoundary(node) && removes(node)) positions.push(position);
-    return true;
-  });
-  return positions;
+export type RemovedSubtree = {
+  /** Fresh nodes, in document order, to stand where the subtree was. */
+  readonly kept: readonly PMNode[];
+  readonly [removedSubtreeBrand]: true;
+};
+
+const REVISION_MARK_NAMES: ReadonlySet<string> = new Set([
+  "insertion",
+  "deletion",
+]);
+
+/**
+ * Remove `node` and everything in it. Rejecting keeps every range boundary
+ * within it, at any depth, as the engine's `removedContentBoundaries` does,
+ * carrying no revision of its own; accepting keeps none, as a direct
+ * deletion does. Each kept node is a new node, so the range repair can tell
+ * it from a boundary that was already standing.
+ */
+export const removeResolvedSubtree = (
+  node: PMNode,
+  mode: "accept" | "reject",
+): RemovedSubtree => {
+  const kept: PMNode[] = [];
+  const visit = (candidate: PMNode): void => {
+    if (keepsRangeBoundary(candidate)) {
+      kept.push(
+        candidate.type.create(
+          candidate.attrs,
+          null,
+          candidate.marks.filter(
+            (mark) => !REVISION_MARK_NAMES.has(mark.type.name),
+          ),
+        ),
+      );
+      return;
+    }
+    candidate.forEach(visit);
+  };
+  if (mode === "reject") visit(node);
+  // SAFETY: this is the brand's only constructor.
+  return { kept } as unknown as RemovedSubtree;
 };
