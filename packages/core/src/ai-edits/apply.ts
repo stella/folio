@@ -3151,6 +3151,19 @@ const finalParagraphPredecessor = (doc: PMNode, at: number) => {
   return null;
 };
 
+/**
+ * The paragraph whose break a recorded final deletion retires, if any. A
+ * deletion that nothing preceded when it ran keeps its paragraph emptied, as
+ * the deletion alone does: a paragraph the batch places before it afterwards
+ * (an insertion after a table, a deleted table's predecessor) lands after the
+ * deletion and keeps its own break.
+ */
+const retiredFinalBreak = (
+  doc: PMNode,
+  at: number,
+  deletion: Pick<DeletedFinalParagraph, "precededWhenDeleted">,
+) => (deletion.precededWhenDeleted ? finalParagraphPredecessor(doc, at) : null);
+
 type CrossesBatchDeletionOptions = {
   doc: PMNode;
   /** Where the predecessor `finalParagraphPredecessor` found ends. */
@@ -3210,7 +3223,7 @@ const pendingRemovedFinalBreakPositions = (
   const positions = new Set<number>();
   for (const deletion of deletions) {
     const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
-    const predecessor = finalParagraphPredecessor(tr.doc, at);
+    const predecessor = retiredFinalBreak(tr.doc, at, deletion);
     if (!predecessor || predecessor.node.attrs["pPrMark"] != null) continue;
     positions.add(predecessor.position);
   }
@@ -3289,7 +3302,7 @@ const hasDeferredParagraphPropertyWrite = ({
     const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
     const target = tr.doc.nodeAt(at);
     if (!target) continue;
-    const predecessor = finalParagraphPredecessor(tr.doc, at);
+    const predecessor = retiredFinalBreak(tr.doc, at, deletion);
     if (!predecessor) continue;
     const mark: unknown = predecessor.node.attrs["pPrMark"];
     if (
@@ -3371,7 +3384,7 @@ const paragraphPropertyRevisionTargets = ({
   // in preflight without changing the established deferred mutation order.
   for (const deletion of deletedFinalParagraphs) {
     const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
-    const predecessor = finalParagraphPredecessor(tr.doc, at);
+    const predecessor = retiredFinalBreak(tr.doc, at, deletion);
     if (
       !predecessor ||
       addedBreakRevisionId(predecessor.node.attrs["pPrMark"]) === null
@@ -3444,15 +3457,13 @@ const withRetiredFinalParagraphs = ({
     }))
     // A retraction joins two paragraphs: the last one first keeps the others' positions.
     .toSorted((left, right) => right.at - left.at);
-  for (const {
-    deletion: { operationId, revisionExtras, precededWhenDeleted },
-    at,
-  } of located) {
+  for (const { deletion, at } of located) {
+    const { operationId, revisionExtras } = deletion;
     const emptied = tr.doc.nodeAt(at);
     if (emptied?.type.name !== "paragraph") {
       continue;
     }
-    const predecessor = finalParagraphPredecessor(tr.doc, at);
+    const predecessor = retiredFinalBreak(tr.doc, at, deletion);
     if (!predecessor) continue;
     const { node: previous, position } = predecessor;
     const mark: unknown = previous.attrs["pPrMark"];
@@ -3499,12 +3510,7 @@ const withRetiredFinalParagraphs = ({
       addedRevisions.push({ operationId, revisionId });
       continue;
     }
-    const addedBreak = addedBreakRevisionId(mark);
-    if (addedBreak !== null) {
-      // A paragraph this batch inserted where nothing preceded the deleted
-      // one: one at a time, the deletion ran first and left the paragraph
-      // emptied, and the insertion then landed before it with its own break.
-      if (!precededWhenDeleted && batchRevisionIds.has(addedBreak)) continue;
+    if (addedBreakRevisionId(mark) !== null) {
       const following = tr.doc.nodeAt(position + previous.nodeSize);
       if (
         !following ||
