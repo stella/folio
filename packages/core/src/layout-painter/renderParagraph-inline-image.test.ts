@@ -187,10 +187,35 @@ describe("renderLine inline image handling", () => {
   });
 
   test.each([
-    ["body", { section: "body" as const }],
-    ["header", { section: "header" as const }],
-    ["footer", { section: "footer" as const }],
-    ["table cell", { section: "body" as const, insideTableCell: true }],
+    [
+      "body",
+      {
+        section: "body" as const,
+        inlinePictureSizing: "authoredExtent" as const,
+      },
+    ],
+    [
+      "header",
+      {
+        section: "header" as const,
+        inlinePictureSizing: "authoredExtent" as const,
+      },
+    ],
+    [
+      "footer",
+      {
+        section: "footer" as const,
+        inlinePictureSizing: "authoredExtent" as const,
+      },
+    ],
+    [
+      "table cell",
+      {
+        section: "body" as const,
+        insideTableCell: true,
+        inlinePictureSizing: "authoredExtent" as const,
+      },
+    ],
   ])(
     "keeps an oversized inline image at its authored width in %s flow",
     (_label, context) => {

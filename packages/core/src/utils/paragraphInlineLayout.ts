@@ -336,6 +336,8 @@ export const resolveParagraphLineGeometry = ({
       paintStartXPx = leftEdge + (rightEdge - leftEdge - line.width) / 2;
       break;
     case "left":
+      paintStartXPx = leftEdge;
+      break;
     case "justify":
       paintStartXPx = isRtl ? rightEdge - line.width : leftEdge;
       break;

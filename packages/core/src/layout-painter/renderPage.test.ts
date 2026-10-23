@@ -100,7 +100,7 @@ describe("header/footer inline picture paper clipping", () => {
     if (header === undefined) {
       throw new Error("Expected header container");
     }
-    const imageElement = findByClass(header, "layout-image")[0];
+    const imageElement = findByClass(header, "layout-image");
 
     expect(header?.style.overflow).not.toBe("clip");
     expect(imageElement?.style.width).toBe("800px");
@@ -161,7 +161,7 @@ describe("header/footer inline picture paper clipping", () => {
         blockLookup: new Map([[String(block.id), { block, measure }]]),
       },
     ) as unknown as FakeElement;
-    const imageElement = findByClass(pageElement, "layout-image")[0];
+    const imageElement = findByClass(pageElement, "layout-image");
 
     expect(pageElement.style.overflow).toBe("hidden");
     expect(imageElement?.style.width).toBe("900px");

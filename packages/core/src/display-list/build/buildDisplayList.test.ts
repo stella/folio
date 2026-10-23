@@ -133,7 +133,7 @@ describe("inline picture paper clipping", () => {
         throw new Error("Expected inline image clip group");
       }
 
-      expect(clip.rect).toMatchObject({ xPx: 0, widthPx: PAGE_SIZE.w });
+      expect(clip.rect).toMatchObject({ xPx: 0, widthPx: PAGE_SIZE.w - 40 });
       expect(
         clip.children.find((primitive) => primitive.kind === "image"),
       ).toMatchObject({
@@ -239,8 +239,8 @@ describe("inline picture paper clipping", () => {
         (primitive) => primitive.kind === "image",
       );
 
-      expect(clip.rect.xPx).toBe(MARGINS.left);
-      expect(clip.rect.widthPx).toBe(200);
+      expect(clip.rect.xPx).toBe(MARGINS.left + 36);
+      expect(clip.rect.widthPx).toBe(200 - 36);
       expect(image).toMatchObject({
         kind: "image",
         rect: { xPx: MARGINS.left + 36, widthPx: 300 },
@@ -316,9 +316,10 @@ describe("inline picture paper clipping", () => {
           primitive.kind === "clipGroup",
       );
 
-      expect(clips.map((clip) => clip.rect.widthPx)).toEqual([200, 100]);
+      expect(clips.map((clip) => clip.rect.widthPx)).toEqual([93]);
+      expect(clips[0]?.rect.xPx).toBe(MARGINS.left + 14);
       expect(
-        clips.at(1)?.children.find((primitive) => primitive.kind === "image"),
+        clips.at(0)?.children.find((primitive) => primitive.kind === "image"),
       ).toMatchObject({ kind: "image", rect: { widthPx: 300 } });
     }, fakeMeasure);
   });
@@ -339,7 +340,10 @@ describe("inline picture paper clipping", () => {
         throw new Error("Expected inline image clip group");
       }
 
-      expect(clip.rect).toMatchObject({ xPx: 0, widthPx: PAGE_SIZE.w });
+      expect(clip.rect).toMatchObject({
+        xPx: MARGINS.left,
+        widthPx: PAGE_SIZE.w - MARGINS.left,
+      });
     }, fakeMeasure);
   });
 });
