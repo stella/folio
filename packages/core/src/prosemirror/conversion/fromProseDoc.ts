@@ -2082,10 +2082,9 @@ function replaceTextBoxAnchorInBlocks(
   marker: Run,
   textBoxRun: Run,
 ): boolean {
-  marker.content = textBoxRun.content;
   for (const block of blocks) {
     if (block.type === "paragraph") {
-      if (editTextBoxAnchorInContent(block.content, marker, marker)) {
+      if (editTextBoxAnchorInContent(block.content, marker, textBoxRun)) {
         return true;
       }
       continue;
@@ -2160,10 +2159,16 @@ function editTextBoxAnchorInContent(
   marker: Run,
   replacement?: Run,
 ): boolean {
+  const anchorSlot = marker.content.at(0);
+  if (!anchorSlot) return false;
   for (const [index, item] of content.entries()) {
-    if (item === marker) {
-      content.splice(index, 1, ...(replacement ? [replacement] : []));
-      return true;
+    if (item.type === "run") {
+      const slotIndex = item.content.indexOf(anchorSlot);
+      if (slotIndex >= 0) {
+        item.content.splice(slotIndex, 1, ...(replacement?.content ?? []));
+        if (item.content.length === 0) content.splice(index, 1);
+        return true;
+      }
     }
     const nestedContent = textBoxAnchorHost(item);
     if (!nestedContent) {
@@ -3872,14 +3877,27 @@ function extractParagraphContent(
     if (!insertionMark && !deletionMark) {
       currentTrackedChange = undefined;
     }
+    let anchorRun: Run | undefined;
     if (node.type.name === "textBoxAnchor") {
-      flushCurrentInline();
-      currentTrackedChange = undefined;
       if (!textBoxAnchorMarkers) {
+        flushCurrentInline();
+        currentTrackedChange = undefined;
         return;
       }
       const { anchorId } = expectTextBoxAnchorAttrs(node);
-      const marker: Run = { type: "run", content: [] };
+      if (textBoxAnchorMarkers.has(anchorId)) {
+        flushCurrentInline();
+        currentTrackedChange = undefined;
+        return;
+      }
+      // The unique slot is consumed before serialization and prevents text
+      // coalescing from crossing the pending text-box position.
+      const anchorSlot = {
+        type: "preservedXml" as const,
+        xml: "",
+        text: "",
+      };
+      const marker: Run = { type: "run", content: [anchorSlot] };
       const formatting = getAtomRunFormattingFromMarks(
         node.marks,
         formattingContext,
@@ -3888,58 +3906,8 @@ function extractParagraphContent(
         marker.formatting = formatting;
       }
       restoreRunRecord(marker, node.marks);
-      if (textBoxAnchorMarkers.has(anchorId)) {
-        return;
-      }
       textBoxAnchorMarkers.set(anchorId, marker);
-      const anchoredContent: Run | Hyperlink = linkMark
-        ? createIndexedHyperlink(linkMark)
-        : marker;
-      if (anchoredContent.type === "hyperlink") {
-        anchoredContent.children.push(marker);
-      }
-      const changeMark = insertionMark ?? deletionMark;
-      if (!changeMark) {
-        content.push(anchoredContent);
-        return;
-      }
-      const changeAttrs = expectTrackedChangeMarkAttrs(changeMark);
-      const info: TrackedChangeInfo = {
-        id: changeAttrs.revisionId,
-        author: changeAttrs.author || "Unknown",
-        ...(changeAttrs.date ? { date: changeAttrs.date } : {}),
-        ...(changeAttrs.utcDate
-          ? {
-              utcDate: {
-                attribute: DATE_UTC_ATTRIBUTE,
-                value: changeAttrs.utcDate,
-              },
-            }
-          : {}),
-        ...(changeAttrs.initials ? { initials: changeAttrs.initials } : {}),
-      };
-      let type: TrackedRunWrapper["type"];
-      if (insertionMark) {
-        type = changeAttrs.moveKind === "moveTo" ? "moveTo" : "insertion";
-      } else {
-        type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
-      }
-      const wrapper = createTrackedRunWrapper({
-        type,
-        info,
-        child: anchoredContent,
-        resolutionJoins: changeAttrs._docxResolutionJoins ?? undefined,
-      });
-      revisionOuterWrapperCounts.set(
-        wrapper,
-        changeAttrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length,
-      );
-      revisionAncestorsByWrapper.set(
-        wrapper,
-        changeAttrs._docxRevisionAncestors ?? [],
-      );
-      content.push(wrapper);
-      return;
+      anchorRun = marker;
     }
     if (insertionMark || deletionMark) {
       // Finish any current content
@@ -4045,11 +4013,13 @@ function extractParagraphContent(
           );
           return;
         }
-        const run = createTrackedChangeRun({
-          ...formattingContext,
-          marks: otherMarks,
-          node,
-        });
+        const run =
+          anchorRun ??
+          createTrackedChangeRun({
+            ...formattingContext,
+            marks: otherMarks,
+            node,
+          });
         if (run) {
           appendRunToHyperlink(
             currentTrackedChange.hyperlink,
@@ -4112,11 +4082,13 @@ function extractParagraphContent(
         currentTrackedChange.wrapper.content.push(createPreservedInline(node));
         return;
       }
-      const run = createTrackedChangeRun({
-        ...formattingContext,
-        marks: otherMarks,
-        node,
-      });
+      const run =
+        anchorRun ??
+        createTrackedChangeRun({
+          ...formattingContext,
+          marks: otherMarks,
+          node,
+        });
       if (run) {
         appendRunToTrackedWrapper(
           currentTrackedChange.wrapper,
@@ -4128,14 +4100,16 @@ function extractParagraphContent(
       return;
     }
 
-    const ownedRun =
-      linkMark || runIdentityId(node) === undefined
-        ? null
-        : createTrackedChangeRun({
-            ...formattingContext,
-            marks: node.marks,
-            node,
-          });
+    const ownedRun = linkMark
+      ? null
+      : (anchorRun ??
+        (runIdentityId(node) === undefined
+          ? null
+          : createTrackedChangeRun({
+              ...formattingContext,
+              marks: node.marks,
+              node,
+            })));
     if (ownedRun) {
       appendDirectRun(node, ownedRun, node.isText);
       return;
@@ -4172,12 +4146,21 @@ function extractParagraphContent(
         currentHyperlink = createIndexedHyperlink(linkMark);
         currentHyperlinkKey = linkKey;
       }
-      addNodeToHyperlink({
-        ...formattingContext,
-        hyperlink: currentHyperlink,
-        node,
-        sourceRunOwners,
-      });
+      if (anchorRun) {
+        appendRunToHyperlink(
+          currentHyperlink,
+          anchorRun,
+          node,
+          sourceRunOwners,
+        );
+      } else {
+        addNodeToHyperlink({
+          ...formattingContext,
+          hyperlink: currentHyperlink,
+          node,
+          sourceRunOwners,
+        });
+      }
       return;
     }
 

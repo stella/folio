@@ -4101,6 +4101,73 @@ describe("fromProseDoc", () => {
     }
   });
 
+  test("keeps inline text-box content in its authored run", () => {
+    const document = documentWithTextBoxParagraph({
+      includeText: false,
+      textBoxCount: 2,
+    });
+    const sourceParagraph = document.package.document.content.at(0);
+    if (sourceParagraph?.type !== "paragraph") {
+      throw new Error("Expected source paragraph");
+    }
+    const sourceRuns = sourceParagraph.content.filter(
+      (item): item is Run =>
+        item.type === "run" &&
+        item.content.some(({ type }) => type === "shape"),
+    );
+    const sourceRun = sourceRuns.at(0);
+    const followingRun = sourceRuns.at(1);
+    if (!sourceRun || !followingRun) {
+      throw new Error("Expected two source text-box runs");
+    }
+    sourceRun.content.push(...followingRun.content);
+    sourceParagraph.content.splice(
+      sourceParagraph.content.indexOf(followingRun),
+      1,
+    );
+    sourceRun.content.unshift({ type: "text", text: "Before" });
+    sourceRun.content.push({ type: "text", text: "After" });
+    sourceRun.formatting = { noProof: true };
+    sourceRun.preservedAttributes = [
+      {
+        namespace:
+          "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        name: "rsidRPr",
+        value: "00A20604",
+      },
+    ];
+
+    const roundTripped = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
+    const paragraph = roundTripped.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected round-tripped paragraph");
+    }
+    const [savedRun] = paragraph.content;
+
+    expect(paragraph.content).toHaveLength(1);
+    expect(savedRun?.type).toBe("run");
+    if (savedRun?.type !== "run") return;
+    expect(savedRun.content.map(({ type }) => type)).toEqual([
+      "text",
+      "shape",
+      "shape",
+      "text",
+    ]);
+    expect(savedRun.content.at(0)).toMatchObject({ text: "Before" });
+    expect(savedRun.content.at(3)).toMatchObject({ text: "After" });
+    expect(savedRun.formatting).toEqual({ noProof: true });
+    expect(savedRun.preservedAttributes).toEqual([
+      {
+        namespace:
+          "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        name: "rsidRPr",
+        value: "00A20604",
+      },
+    ]);
+  });
+
   test("preserves an inline text box between surrounding text", () => {
     const document = documentWithTextBoxParagraph({ includeText: true });
     const sourceParagraph = document.package.document.content.at(0);
@@ -4484,6 +4551,8 @@ describe("fromProseDoc", () => {
     if (textBoxRun?.type !== "run") {
       throw new Error("Expected text-box run");
     }
+    textBoxRun.content.unshift({ type: "text", text: "Before" });
+    textBoxRun.content.push({ type: "text", text: "After" });
     paragraph.content = [
       {
         type: "insertion",
@@ -4492,11 +4561,7 @@ describe("fromProseDoc", () => {
           {
             type: "hyperlink",
             href: "https://example.com",
-            children: [
-              { type: "run", content: [{ type: "text", text: "Before" }] },
-              textBoxRun,
-              { type: "run", content: [{ type: "text", text: "After" }] },
-            ],
+            children: [textBoxRun],
           },
         ],
       },
@@ -4521,6 +4586,23 @@ describe("fromProseDoc", () => {
           ),
       ),
     ).toBe(true);
+    const insertion = block.content.at(0);
+    if (insertion?.type !== "insertion") {
+      throw new Error("Expected tracked hyperlink wrapper");
+    }
+    const hyperlink = insertion.content.at(0);
+    if (hyperlink?.type !== "hyperlink") {
+      throw new Error("Expected text-box hyperlink");
+    }
+    const hyperlinkRun = hyperlink.children.at(0);
+    if (hyperlinkRun?.type !== "run") {
+      throw new Error("Expected text-box hyperlink run");
+    }
+    expect(hyperlinkRun.content.map(({ type }) => type)).toEqual([
+      "text",
+      "shape",
+      "text",
+    ]);
     expect(paragraphInlineOrder(block)).toEqual(["Before", "textBox", "After"]);
   });
 
@@ -4615,16 +4697,14 @@ describe("fromProseDoc", () => {
     if (textBoxRun?.type !== "run") {
       throw new Error("Expected text-box run");
     }
+    textBoxRun.content.unshift({ type: "text", text: "Before" });
+    textBoxRun.content.push({ type: "text", text: "After" });
     const info = { id: 43, author: "Reviewer" } satisfies TrackedChangeInfo;
     paragraph.content = [
       {
         type: "insertion",
         info,
-        content: [
-          { type: "run", content: [{ type: "text", text: "Before" }] },
-          textBoxRun,
-          { type: "run", content: [{ type: "text", text: "After" }] },
-        ],
+        content: [textBoxRun],
       },
     ];
 
@@ -4648,6 +4728,19 @@ describe("fromProseDoc", () => {
           : content.type,
       ),
     ).toEqual(["insertion:43"]);
+    const insertion = result.content.at(0);
+    if (insertion?.type !== "insertion") {
+      throw new Error("Expected tracked text-box wrapper");
+    }
+    const trackedRun = insertion.content.at(0);
+    if (trackedRun?.type !== "run") {
+      throw new Error("Expected grouped tracked text-box run");
+    }
+    expect(trackedRun.content.map(({ type }) => type)).toEqual([
+      "text",
+      "shape",
+      "text",
+    ]);
   });
 
   test.each(["moveFrom", "moveTo"] as const)(
