@@ -68,6 +68,18 @@ describe("findWordBreaks", () => {
     expect(findWordBreaks("text a text", { locale: "cs-CZ" })).toEqual([5, 7]);
   });
 
+  test("keeps zero-width spaces with the break after them across whitespace runs", () => {
+    const prefix = "😀";
+    for (const spaceCount of [1, 2, 3]) {
+      const text = `${prefix}${" ".repeat(spaceCount)}\u200Btail`;
+      const zeroWidthSpaceOffset = prefix.length + spaceCount;
+      const breaks = findWordBreaks(text);
+
+      expect(breaks).not.toContain(zeroWidthSpaceOffset);
+      expect(breaks).toContain(zeroWidthSpaceOffset + 1);
+    }
+  });
+
   test("does not apply East-Asian line-edge punctuation defaults to Arabic text", () => {
     expect(findWordBreaks("بنك ………………..", { locale: "ar-SA" })).toEqual([4]);
     expect(
@@ -196,6 +208,25 @@ describe("findGraphemeBreaks", () => {
   test("never splits an emoji ZWJ sequence or combining character", () => {
     expect(findGraphemeBreaks("👨‍👩‍👧‍👦x")).toEqual([11, 12]);
     expect(findGraphemeBreaks("e\u0301x")).toEqual([2, 3]);
+  });
+
+  test("keeps Myanmar combining and spacing marks with their base", () => {
+    const prefix = "😀";
+    const samples = [
+      { base: "က", marks: "\u102B" },
+      { base: "က", marks: "\u102C" },
+      { base: "လေ", marks: "\u1038" },
+      { base: "က", marks: "\u102B\u102C\u1038\u1038" },
+    ];
+
+    for (const { base, marks } of samples) {
+      const text = `${prefix}${base}${marks}`;
+      expect(findGraphemeBreaks(text)).toEqual([prefix.length, text.length]);
+    }
+  });
+
+  test("keeps a zero-width space on the preceding emergency-wrap fragment", () => {
+    expect(findGraphemeBreaks("a\u200Bb")).toEqual([2, 3]);
   });
 });
 
@@ -346,5 +377,15 @@ describe("isBreakBetween", () => {
     expect(isBreakBetween("-", "\u00A0")).toBe(true);
     expect(isBreakBetween("世", "界")).toBe(true);
     expect(isBreakBetween("a", "b")).toBe(false);
+  });
+
+  test("protects zero-width spaces and combining marks across run boundaries", () => {
+    expect(isBreakBetween(" ", "\u200B")).toBe(false);
+    expect(isBreakBetween("-", "\u200B")).toBe(false);
+    expect(isBreakBetween("世", "\u200B")).toBe(false);
+    expect(isBreakBetween("世", "\u1038")).toBe(false);
+    expect(isBreakBetween("\u200B", "a")).toBe(true);
+    expect(isBreakBetween("\u200B", "\u1038")).toBe(true);
+    expect(isBreakBetween(" ", "\u1038")).toBe(true);
   });
 });

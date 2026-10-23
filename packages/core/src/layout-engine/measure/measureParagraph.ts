@@ -59,7 +59,7 @@ import {
   precedingLetterSpacing,
   resolveTextCandidateFit,
   trailingHangingPunctuationWidth,
-  trimTrailingSpacesAndTabs,
+  trimLineEndWhitespace,
 } from "./lineFitting";
 import {
   applyDocumentGrid,
@@ -1259,7 +1259,7 @@ export function measureParagraph(
             chunkLeadingLetterSpacing = 0;
             currentLine.trailingWhitespaceWidth =
               chunkWidth -
-              measureTextWidth(trimTrailingSpacesAndTabs(chunk), style);
+              measureTextWidth(trimLineEndWhitespace(chunk), style);
             currentLine.regularSpaceWidth += compressibleSpaceWidth(
               chunk,
               style,

@@ -45,6 +45,10 @@ const SEGMENTER_CACHE_LIMIT = 16;
 const LINE_BREAK_LOCALE_CACHE_LIMIT = 16;
 const DEFAULT_SEGMENTER_KEY = "";
 const SOFT_HYPHEN = "\u00AD";
+const ZERO_WIDTH_SPACE = "\u200B";
+const NEXT_LINE = "\u0085";
+const FIRST_COMBINING_MARK_CODE_POINT = 0x0300;
+const COMBINING_MARK = /^\p{Mark}$/u;
 export const MAX_HYPHENATION_WORD_LENGTH = 256;
 
 const wordSegmenters = new Map<string, Intl.Segmenter>();
@@ -94,7 +98,7 @@ const BREAK_AFTER_CHARACTER = new Set([
   "\u30A0", // katakana-hiragana double hyphen
   "\uFE63", // small hyphen-minus
   "\uFF0D", // fullwidth hyphen-minus
-  "\u200B", // zero-width space
+  ZERO_WIDTH_SPACE,
   "\u00AD", // soft hyphen
 ]);
 // UAX #14 classes GL (no-break spaces, non-breaking hyphen) and WJ (word
@@ -137,6 +141,32 @@ export const gluePermitsBreakBefore = (
     return false;
   }
   return isBreakingWhitespace(previous) || BREAK_AFTER_CHARACTER.has(previous);
+};
+
+type LineBoundaryOptions = {
+  previous: string | undefined;
+  next: string | undefined;
+};
+
+export const unicodeLineBoundaryPermitsBreak = ({
+  previous,
+  next,
+}: LineBoundaryOptions): boolean => {
+  if (next === ZERO_WIDTH_SPACE) {
+    return false;
+  }
+  if (
+    next !== undefined &&
+    next.charCodeAt(0) >= FIRST_COMBINING_MARK_CODE_POINT &&
+    COMBINING_MARK.test(next) &&
+    previous !== undefined &&
+    previous !== ZERO_WIDTH_SPACE &&
+    previous !== NEXT_LINE &&
+    !isBreakingWhitespace(previous)
+  ) {
+    return false;
+  }
+  return true;
 };
 
 // ECMA-376 kinsoku defaults are language-specific and can be replaced by
@@ -365,11 +395,14 @@ const pushBreak = (
   if (index <= 0 || index > text.length || breaks.at(-1) === index) {
     return;
   }
-  // Glue characters are single UTF-16 code units; testing the code unit keeps
-  // the common, glue-free case free of string lookups.
   if (
-    isGlueCodeUnit(text.charCodeAt(index)) &&
-    !gluePermitsBreakBefore(previousCodePoint(text, index), text[index])
+    (text.charCodeAt(index) >= FIRST_COMBINING_MARK_CODE_POINT &&
+      !unicodeLineBoundaryPermitsBreak({
+        previous: previousCodePoint(text, index),
+        next: firstCodePoint(text, index),
+      })) ||
+    (isGlueCodeUnit(text.charCodeAt(index)) &&
+      !gluePermitsBreakBefore(previousCodePoint(text, index), text[index]))
   ) {
     return;
   }
@@ -413,7 +446,14 @@ const findUnicodeGraphemeBreaks = (
     policy?.locale,
   ).segment(text)) {
     const end = segment.index + segment.segment.length;
-    breaks.push(end);
+    if (
+      unicodeLineBoundaryPermitsBreak({
+        previous: previousCodePoint(text, end),
+        next: firstCodePoint(text, end),
+      })
+    ) {
+      breaks.push(end);
+    }
   }
   return breaks;
 };

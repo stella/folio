@@ -1045,6 +1045,59 @@ describe("measureParagraph cross-run line breaking", () => {
     );
   });
 
+  test("keeps a Myanmar spacing mark with its word during emergency wrapping", () => {
+    withFakeTextMeasure(
+      () => {
+        const text = "လေးx";
+        const { lines } = measureParagraph(
+          paragraph([{ kind: "text", text }]),
+          10,
+        );
+
+        expect(lines).toHaveLength(2);
+        expect(lines[0]).toMatchObject({
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 0,
+          toChar: 3,
+        });
+        expect(lines[1]).toMatchObject({
+          fromRun: 0,
+          fromChar: 3,
+          toRun: 0,
+          toChar: text.length,
+        });
+      },
+      { charWidth: fixedCharWidth(5) },
+    );
+  });
+
+  test("consumes spaces and zero-width spaces at the preceding line's tail", () => {
+    withFakeTextMeasure(
+      () => {
+        for (const text of ["a \u200Bb", "a\u200B b", "a\u200B\u200Bb"]) {
+          const { lines } = measureParagraph(
+            paragraph([{ kind: "text", text }]),
+            5,
+          );
+
+          expect(lines).toHaveLength(2);
+          expect(lines[0]).toMatchObject({
+            fromChar: 0,
+            toChar: text.length - 1,
+            width: 5,
+          });
+          expect(lines[1]).toMatchObject({
+            fromChar: text.length - 1,
+            toChar: text.length,
+            width: 5,
+          });
+        }
+      },
+      { charWidth: (character) => (character === "\u200B" ? 0 : 5) },
+    );
+  });
+
   test("does not soft-wrap overflowed preserved spaces onto their own lines", () => {
     withFakeTextMeasure(() => {
       const spaces = " ".repeat(12);
