@@ -33,12 +33,12 @@ import {
   assignTestShards,
   changedTestPaths,
   discoverTestSuites,
-  FAST_SIBLING_TEST_CAP,
   focusedTestFiles,
   selectFastTestSuites,
   selectFullTestSuites,
   TEST_SHARD_COUNT,
 } from "./ci-test-shards";
+import type { ModuleGraph } from "./ci-test-shards";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -60,6 +60,20 @@ const GATE =
 const PR_SCOPED_JOBS = new Set(["browser-discovery"]);
 const PROPERTY_AREAS_CONDITION =
   "github.event_name == 'pull_request' && github.event.pull_request.draft != true && ";
+
+const graph = (
+  edges: Record<string, string[]> = {},
+  codeFiles: string[] = [],
+): ModuleGraph => ({
+  reverse: new Map(
+    Object.entries(edges).map(([dependency, importers]) => [
+      dependency,
+      new Set(importers),
+    ]),
+  ),
+  unresolved: new Map(),
+  codeFiles: new Set(codeFiles),
+});
 
 type Job = {
   needs?: unknown;
@@ -402,7 +416,7 @@ describe("CI plan", () => {
     }
   });
 
-  test("fast selection includes changed examples and immediate source siblings with preloads", () => {
+  test("fast selection includes changed tests and reverse import dependants with preloads", () => {
     const suites = [
       {
         cwd: "packages/example",
@@ -428,12 +442,25 @@ describe("CI plan", () => {
         "packages/example/src/parser/parse.ts",
         "packages/example/src/other/added.test.ts",
         "scripts/new.test.ts",
-        "packages/example/src/removed/deleted.test.ts",
       ],
       focusedFiles: [
         "packages/example/src/parser/plain.test.ts",
         "packages/example/src/removed/deleted.test.ts",
       ],
+      graph: graph(
+        {
+          "packages/example/src/parser/parse.ts": [
+            "packages/example/src/parser/plain.test.ts",
+            "packages/example/src/parser/roundtrip.spec.ts",
+          ],
+        },
+        [
+          "packages/example/src/parser/parse.ts",
+          "packages/example/src/other/added.test.ts",
+          "packages/example/test/setup.ts",
+          "scripts/new.test.ts",
+        ],
+      ),
     });
     expect(selected).toEqual([
       {
@@ -486,7 +513,7 @@ describe("CI plan", () => {
     ).toBe(suites);
   });
 
-  test("only non-test source changes select sibling tests", () => {
+  test("changed tests select themselves and package data selects package tests", () => {
     const suites = [
       {
         cwd: "packages/example",
@@ -502,6 +529,7 @@ describe("CI plan", () => {
         suites,
         changedFiles: ["packages/example/src/one.test.ts"],
         focusedFiles: [],
+        graph: graph({}, ["packages/example/src/one.test.ts"]),
       }),
     ).toEqual([{ ...suites[0], files: ["packages/example/src/one.test.ts"] }]);
     expect(
@@ -509,42 +537,12 @@ describe("CI plan", () => {
         suites,
         changedFiles: ["packages/example/src/README.md"],
         focusedFiles: [],
+        graph: graph(),
       }),
-    ).toEqual([]);
+    ).toEqual(suites);
   });
 
-  test("the sibling cap expands the owning package without truncation or other packages", () => {
-    const siblings = Array.from(
-      { length: FAST_SIBLING_TEST_CAP },
-      (_, i) => `packages/example/src/parser/test-${i}.test.ts`,
-    );
-    const elsewhere = "packages/example/src/elsewhere/roundtrip.test.ts";
-    const other = {
-      cwd: "packages/other",
-      preloads: [],
-      files: ["packages/other/src/other.test.ts"],
-    };
-    const select = (files: string[]) =>
-      selectFastTestSuites({
-        suites: [
-          { cwd: "packages/example", preloads: ["./setup.ts"], files },
-          other,
-        ],
-        changedFiles: ["packages/example/src/parser/parse.ts"],
-        focusedFiles: [],
-      });
-    expect(select([...siblings, elsewhere]).at(0)?.files).toEqual(siblings);
-    const files = [
-      ...siblings,
-      "packages/example/src/parser/over-cap.test.ts",
-      elsewhere,
-    ];
-    expect(select(files)).toEqual([
-      { cwd: "packages/example", preloads: ["./setup.ts"], files },
-    ]);
-  });
-
-  test("changed-path discovery excludes deleted tests and deleted source before sibling expansion", () => {
+  test("changed-path discovery excludes deleted tests and deleted source before selection", () => {
     const fixtureRoot = mkdtempSync(path.join(tmpdir(), "folio-ci-diff-"));
     const git = (...args: string[]) => {
       const result = Bun.spawnSync(["git", ...args], {
@@ -604,6 +602,7 @@ describe("CI plan", () => {
         ],
         changedFiles,
         focusedFiles: [],
+        graph: graph({}, changedFiles),
       });
       expect(selected.flatMap(({ files }) => files).toSorted()).toEqual(
         [changedTest, added].toSorted(),
