@@ -437,6 +437,13 @@ const landingMarks = (removed: PMNode, selection: RevisionSelection): Mark[] =>
   });
 
 /**
+ * Marks that say which content a range covers. A kept boundary is no content,
+ * so it carries none: a comment whose content went goes with it, as in the
+ * engine, whose comment anchors are boundaries of their own.
+ */
+const COVERAGE_MARK_NAMES: ReadonlySet<string> = new Set(["comment"]);
+
+/**
  * Remove `node` and everything in it. Rejecting keeps every range boundary
  * within it, at any depth, as the engine's `removedContentBoundaries` does;
  * accepting keeps none, as a direct deletion does. A kept boundary keeps its
@@ -456,7 +463,9 @@ export const removeResolvedSubtree = (
       kept.push(
         candidate.type.create(candidate.attrs, null, [
           ...candidate.marks.filter(
-            (mark) => !REVISION_MARK_NAMES.has(mark.type.name),
+            (mark) =>
+              !REVISION_MARK_NAMES.has(mark.type.name) &&
+              !COVERAGE_MARK_NAMES.has(mark.type.name),
           ),
           ...landing,
         ]),

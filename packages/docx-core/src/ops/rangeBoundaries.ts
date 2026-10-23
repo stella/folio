@@ -172,8 +172,13 @@ export const withBoundariesOutsideDeletion = (
     items.flatMap((node) => {
       const children = childNodes(node);
       if (children === undefined) return [node];
-      if (!created(node) || node.type !== "deletion")
-        return [rebuildNode(node, visit(children))];
+      if (!created(node) || node.type !== "deletion") {
+        const next = visit(children);
+        return next.every((child, index) => child === children[index]) &&
+          next.length === children.length
+          ? [node]
+          : [rebuildNode(node, next)];
+      }
       const groups: InlineNode[][] = [[]];
       const between: Boundary[] = [];
       for (const child of children) {

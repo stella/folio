@@ -823,6 +823,12 @@ export const paragraphMarkOutcome: (input: {
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
 
 // @public
+export const paragraphRemains: (content: readonly InlineNode[]) => {
+    blocks: BlockBoundary[];
+    comments: CommentAnchor$1[];
+};
+
+// @public
 export type ParagraphReviewFields = {
     formatting?: ParagraphFormatting;
     propertyChanges?: ParagraphPropertyChange[];
