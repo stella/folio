@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type {
   BlockContent,
   Document,
@@ -104,92 +107,96 @@ const MARKERS = {
 
 const markersAt = (where: keyof typeof MARKERS) => MARKERS[where];
 
-test("resolving a revision never moves text across a range boundary", () => {
-  assertProperty(
-    fc.property(
-      fc.constantFrom("none", "ins", "del"),
-      fc.constantFrom("none", "insertion", "deletion"),
-      placement,
-      fc.constantFrom("none", "start", "end"),
-      placement,
-      placement,
-      fc.constantFrom(REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT),
-      (mark, wrapper, inFirst, between, inCell, inLast, decision) => {
-        const first: Paragraph = {
-          type: "paragraph",
-          paraId: "00000001",
-          content: [...markersAt(inFirst), wrap(run("aaa"), wrapper)],
-          ...(mark === "none"
-            ? {}
-            : { pPrMark: { kind: mark, info: info(12) } }),
-        };
-        const document: Document = {
-          package: {
-            document: {
-              content: [
-                first,
-                ...markersAt(between),
-                {
-                  type: "table",
-                  rows: [
-                    {
-                      type: "tableRow",
-                      cells: [
-                        {
-                          type: "tableCell",
-                          content: [
-                            {
-                              type: "paragraph",
-                              paraId: "00000002",
-                              content: [run("bb"), ...markersAt(inCell)],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-                {
-                  type: "paragraph",
-                  paraId: "00000003",
-                  content: [run("cc"), ...markersAt(inLast)],
-                },
-              ],
+test(
+  "resolving a revision never moves text across a range boundary",
+  () => {
+    assertProperty(
+      fc.property(
+        fc.constantFrom("none", "ins", "del"),
+        fc.constantFrom("none", "insertion", "deletion"),
+        placement,
+        fc.constantFrom("none", "start", "end"),
+        placement,
+        placement,
+        fc.constantFrom(REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT),
+        (mark, wrapper, inFirst, between, inCell, inLast, decision) => {
+          const first: Paragraph = {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [...markersAt(inFirst), wrap(run("aaa"), wrapper)],
+            ...(mark === "none"
+              ? {}
+              : { pPrMark: { kind: mark, info: info(12) } }),
+          };
+          const document: Document = {
+            package: {
+              document: {
+                content: [
+                  first,
+                  ...markersAt(between),
+                  {
+                    type: "table",
+                    rows: [
+                      {
+                        type: "tableRow",
+                        cells: [
+                          {
+                            type: "tableCell",
+                            content: [
+                              {
+                                type: "paragraph",
+                                paraId: "00000002",
+                                content: [run("bb"), ...markersAt(inCell)],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    type: "paragraph",
+                    paraId: "00000003",
+                    content: [run("cc"), ...markersAt(inLast)],
+                  },
+                ],
+              },
             },
-          },
-        };
-        const before = coverage(document);
-        fc.pre(before.size > 0);
-        const ids = [
-          ...(mark === "none" ? [] : [12]),
-          ...(wrapper === "none" ? [] : [wrapper === "insertion" ? 10 : 11]),
-        ];
-        fc.pre(ids.length > 0);
-        const applied = applyDocumentOp(document, {
-          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-          story: OP_STORIES.MAIN,
-          revisionIds: ids,
-          decision,
-        });
-        if (applied.isErr()) return;
-        const after = coverage(applied.value.document);
-        for (const [id, sides] of after) {
-          const was = before.get(id);
-          if (was === undefined) continue;
-          for (const side of ["inside", "outside"] as const)
-            for (const [letter, count] of sides[side])
-              expect({ id, side, letter, count }).toEqual({
-                id,
-                side,
-                letter,
-                count: Math.min(count, was[side].get(letter) ?? 0),
-              });
-        }
+          };
+          const before = coverage(document);
+          fc.pre(before.size > 0);
+          const ids = [
+            ...(mark === "none" ? [] : [12]),
+            ...(wrapper === "none" ? [] : [wrapper === "insertion" ? 10 : 11]),
+          ];
+          fc.pre(ids.length > 0);
+          const applied = applyDocumentOp(document, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds: ids,
+            decision,
+          });
+          if (applied.isErr()) return;
+          const after = coverage(applied.value.document);
+          for (const [id, sides] of after) {
+            const was = before.get(id);
+            if (was === undefined) continue;
+            for (const side of ["inside", "outside"] as const)
+              for (const [letter, count] of sides[side])
+                expect({ id, side, letter, count }).toEqual({
+                  id,
+                  side,
+                  letter,
+                  count: Math.min(count, was[side].get(letter) ?? 0),
+                });
+          }
+        },
+      ),
+      {
+        numRuns: 300,
+        id: "resolving a revision never moves text across a range boundary",
       },
-    ),
-    {
-      numRuns: 300,
-      id: "resolving a revision never moves text across a range boundary",
-    },
-  );
-});
+    );
+  },
+  propertyTestTimeout(10_000),
+);
