@@ -114,46 +114,6 @@
       "firstSeen": "2026-10-02"
     },
     {
-      "fingerprint": "06fbfa3323b87132",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1377,
-        "primary": "03f9404118ecce41",
-        "title": "consumer flow tables / suggested: tracked acceptance differs from direct editing",
-        "flow": {
-          "version": 1,
-          "kind": "random",
-          "generation": "targeted",
-          "fixture": "tables",
-          "mode": "suggested",
-          "seed": 694344439,
-          "steps": [
-            {
-              "action": "story batch",
-              "seed": 3845945687,
-              "operations": [
-                {
-                  "type": "insertAfterBlock",
-                  "blockId": "0406D732",
-                  "text": "Party party term delivery written schedule.",
-                  "styleId": "Heading2"
-                },
-                {
-                  "type": "deleteBlock",
-                  "blockId": "6FFB97E7"
-                }
-              ]
-            }
-          ],
-          "origin": "shrunk from swap+splice+insert of e29ce2acaa6667ee"
-        },
-        "type": "consumer",
-        "reportSeed": 1785651760,
-        "reportSeeds": [1785651760]
-      }
-    },
-    {
       "fingerprint": "03f9404118ecce41",
       "issueOrPr": "#1350",
       "firstSeen": "2026-10-02"

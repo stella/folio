@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "suggested",
+  "seed": 694344439,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3845945687,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "0406D732",
+          "text": "Party party term delivery written schedule.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "6FFB97E7"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from swap+splice+insert of e29ce2acaa6667ee",
+  "title": "PINNED #1377, reported seed 1785651760: an insertion after a table in a batch that empties the closing paragraph accepts as direct editing"
+}
