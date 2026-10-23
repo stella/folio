@@ -1,4 +1,6 @@
-/** Immutable editor-owned lookups share content fingerprints without retaining disposed editors. */
+import { boundedContentIdentity } from "../utils/boundedContentIdentity";
+
+/** Immutable editor-owned lookups reuse cache-local identities without retaining disposed editors. */
 const fingerprints = new WeakMap<ReadonlyMap<string, string>, string>();
 
 /** Callers replace owned maps on font changes; mutating a published map is unsupported. */
@@ -13,7 +15,7 @@ export const embeddedFontFingerprint = (
     if (left > right) return 1;
     return 0;
   });
-  const fingerprint = JSON.stringify(entries);
+  const fingerprint = boundedContentIdentity(JSON.stringify(entries));
   fingerprints.set(families, fingerprint);
   return fingerprint;
 };

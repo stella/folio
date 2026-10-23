@@ -1,21 +1,79 @@
 import { expect, test } from "bun:test";
 
 import { buildDocumentFontFacts } from "../../fonts/documentFontFacts";
-import type { ParagraphBlock } from "../types";
+import type { ParagraphBlock, ParagraphMeasure } from "../types";
 import {
   fixedCharWidth,
   withFakeTextMeasure,
 } from "./__tests__/fakeTextMeasure";
 import {
   clearAllCaches,
+  clearParagraphMeasureCache,
   clearTextWidthCache,
+  getCachedParagraphMeasure,
   getCachedTextWidth,
+  getParagraphCacheSize,
   getTextCacheSize,
   hashParagraphBlock,
+  setCachedParagraphMeasure,
   setCachedTextWidth,
   setTextCacheSize,
 } from "./cache";
 import { measureBlock } from "./measureBlocks";
+
+test("paragraph cache evicts by retained bytes before reaching its entry limit", () => {
+  clearParagraphMeasureCache();
+  const text = "a".repeat(256 * 1024);
+  const paragraph = (index: number) =>
+    ({
+      kind: "paragraph",
+      id: String(index),
+      runs: [{ kind: "text", text: `${index}${text}` }],
+    }) as const satisfies ParagraphBlock;
+  const measure = {
+    kind: "paragraph",
+    lines: [],
+    totalHeight: 0,
+  } satisfies ParagraphMeasure;
+
+  try {
+    for (let index = 0; index < 40; index += 1) {
+      setCachedParagraphMeasure(paragraph(index), 100, measure);
+    }
+    expect(getParagraphCacheSize()).toBeLessThan(40);
+    expect(getCachedParagraphMeasure(paragraph(0), 100)).toBeUndefined();
+    expect(getCachedParagraphMeasure(paragraph(39), 100)).toBe(measure);
+  } finally {
+    clearParagraphMeasureCache();
+  }
+});
+
+test("replacing and clearing paragraph entries releases their accounted bytes", () => {
+  clearParagraphMeasureCache();
+  const block = {
+    kind: "paragraph",
+    id: "replaced",
+    runs: [{ kind: "text", text: "a".repeat(256 * 1024) }],
+  } as const satisfies ParagraphBlock;
+  const measure = {
+    kind: "paragraph",
+    lines: [],
+    totalHeight: 0,
+  } satisfies ParagraphMeasure;
+
+  try {
+    for (let index = 0; index < 40; index += 1) {
+      setCachedParagraphMeasure(block, 100, measure);
+    }
+    expect(getParagraphCacheSize()).toBe(1);
+    expect(getCachedParagraphMeasure(block, 100)).toBe(measure);
+    clearParagraphMeasureCache();
+    setCachedParagraphMeasure(block, 100, measure);
+    expect(getCachedParagraphMeasure(block, 100)).toBe(measure);
+  } finally {
+    clearParagraphMeasureCache();
+  }
+});
 
 const measureParagraphBlock = (block: ParagraphBlock, width: number) => {
   const measure = measureBlock(block, width);

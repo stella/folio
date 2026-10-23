@@ -31,7 +31,7 @@ export type LayoutTemplatePreview = {
  */
 export type LayoutMeasureInputs = {
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
-  documentFontFactsFingerprint: string | undefined;
+  documentFontFactsCacheIdentity: string | undefined;
   styles: StyleDefinitions | null | undefined;
   theme: Theme | null | undefined;
   defaultTabStop: number | undefined;
