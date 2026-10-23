@@ -434,6 +434,15 @@ const buildPage = ({
           continue;
         }
         const paint = (fragmentContext: BuildContext): void => {
+          const inlinePictureViewport =
+            fragment.kind === "paragraph" && entry.block.kind === "paragraph"
+              ? paragraphInlinePictureViewport({
+                  block: entry.block,
+                  fragment,
+                  paper: paperPictureViewport,
+                  columns: pictureColumns,
+                })
+              : undefined;
           composer.region(
             blockRegion({
               fragment,
@@ -448,17 +457,9 @@ const buildPage = ({
                 composer,
                 prevEntry: entries[index - 1],
                 nextEntry: entries[index + 1],
-                ...(fragment.kind === "paragraph" &&
-                entry.block.kind === "paragraph"
-                  ? {
-                      inlinePictureViewport: paragraphInlinePictureViewport({
-                        block: entry.block,
-                        fragment,
-                        paper: paperPictureViewport,
-                        columns: pictureColumns,
-                      }),
-                    }
-                  : {}),
+                ...(inlinePictureViewport === undefined
+                  ? {}
+                  : { inlinePictureViewport }),
               });
             },
           );

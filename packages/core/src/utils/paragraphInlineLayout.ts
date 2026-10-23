@@ -322,7 +322,7 @@ export const resolveParagraphLineGeometry = ({
   const rightEdge =
     fragment.x + layoutRightEdgeXPx - (isRtl ? firstLineExtra : 0);
   const resolvedAlignment = resolveParagraphLineAlignment({
-    imageOnlyRun,
+    ...(imageOnlyRun === undefined ? {} : { imageOnlyRun }),
     paragraphAlignment: alignment,
     availableWidth: rightEdge - leftEdge,
   });
