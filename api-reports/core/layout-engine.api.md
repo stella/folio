@@ -756,6 +756,10 @@ export type ParagraphBorders = {
 // @public
 export type ParagraphFragment = FragmentBase & {
     kind: "paragraph";
+    inlinePictureViewport?: {
+        left: number;
+        right: number;
+    };
     paginationRole?: "empty-carrier";
     fromLine: number;
     toLine: number;
