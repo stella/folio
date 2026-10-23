@@ -80,6 +80,12 @@ const visibleLabel = (
   if (counted) {
     return `${counted}${foldedFieldSuffix(counterAttrs)}`;
   }
+  if (
+    counterAttrs.listMarker === "" ||
+    counterAttrs.listMarkerTemplate === ""
+  ) {
+    return "";
+  }
   // What the page paints when the counter resolves nothing: the marker as
   // the paragraph carries it.
   return staticMarker(counterAttrs);
@@ -102,8 +108,8 @@ export const listLabelAttrsFromRendering = (
       : { numPrFromStyle: paragraphNumberingAttr(numPrFromStyle) }),
   };
   if (rendering === undefined) return attrs;
-  if (rendering.marker) attrs.listMarker = rendering.marker;
-  if (rendering.markerTemplate)
+  if (rendering.marker !== undefined) attrs.listMarker = rendering.marker;
+  if (rendering.markerTemplate !== undefined)
     attrs.listMarkerTemplate = rendering.markerTemplate;
   if (rendering.isBullet) attrs.listIsBullet = true;
   if (rendering.isLegal) attrs.listIsLegal = true;

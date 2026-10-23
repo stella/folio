@@ -678,6 +678,10 @@ describe("createFolioAIEditSnapshot", () => {
         "Cancelled",
       ),
       numberedParagraph({ numPr: numbered, listMarker: "4." }, "Item"),
+      numberedParagraph(
+        { numPr: numbered, listMarker: "" },
+        "Empty marker item",
+      ),
     ]);
 
     const blocks = createFolioAIEditSnapshot(doc)
@@ -738,6 +742,14 @@ describe("createFolioAIEditSnapshot", () => {
         kind: "listItem",
         headingLevel: undefined,
         displayLabel: "4.",
+        listReference: { numId: 5, level: 0 },
+        statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
+      },
+      {
+        text: "Empty marker item",
+        kind: "listItem",
+        headingLevel: undefined,
+        displayLabel: undefined,
         listReference: { numId: 5, level: 0 },
         statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
