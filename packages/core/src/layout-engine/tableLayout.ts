@@ -259,11 +259,7 @@ export function layoutTable(
       // w:cantSplit (§17.4.6) keeps the row on one page only while a page can
       // hold it. A taller row first moves to a fresh flow region and splits
       // there; an exact w:trHeight row keeps its fixed box and never splits.
-      return (
-        oversized &&
-        sourceRow.heightRule !== "exact" &&
-        rowOpensFlowRegion(rowIndex, state)
-      );
+      return oversized && rowOpensFlowRegion(rowIndex, state);
     }
     if (
       !oversized &&
