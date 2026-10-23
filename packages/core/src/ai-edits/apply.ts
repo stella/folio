@@ -3084,6 +3084,13 @@ type BatchParagraphPosition = { position: number; mappedFrom: number };
 /** A container-ending paragraph a tracked `deleteBlock` emptied, as it recorded it. */
 type DeletedFinalParagraph = BatchParagraphPosition & {
   operationId: string;
+  /**
+   * Whether a paragraph preceded the emptied one when the deletion ran. One
+   * that nothing preceded (a table, or its container's start) stays emptied,
+   * as the deletion alone leaves it: a paragraph this batch inserts before it
+   * lands afterwards and keeps its own break.
+   */
+  precededWhenDeleted: boolean;
   revisionExtras: {
     initials?: string;
     provenance?: "suggested";
@@ -3438,7 +3445,7 @@ const withRetiredFinalParagraphs = ({
     // A retraction joins two paragraphs: the last one first keeps the others' positions.
     .toSorted((left, right) => right.at - left.at);
   for (const {
-    deletion: { operationId, revisionExtras },
+    deletion: { operationId, revisionExtras, precededWhenDeleted },
     at,
   } of located) {
     const emptied = tr.doc.nodeAt(at);
@@ -3492,7 +3499,12 @@ const withRetiredFinalParagraphs = ({
       addedRevisions.push({ operationId, revisionId });
       continue;
     }
-    if (addedBreakRevisionId(mark) !== null) {
+    const addedBreak = addedBreakRevisionId(mark);
+    if (addedBreak !== null) {
+      // A paragraph this batch inserted where nothing preceded the deleted
+      // one: one at a time, the deletion ran first and left the paragraph
+      // emptied, and the insertion then landed before it with its own break.
+      if (!precededWhenDeleted && batchRevisionIds.has(addedBreak)) continue;
       const following = tr.doc.nodeAt(position + previous.nodeSize);
       if (
         !following ||
@@ -6072,6 +6084,8 @@ const applyFolioAIEditOperationsInternal = ({
             // settled only once the batch is: see `withRetiredFinalParagraphs`.
             deletedFinalParagraphs.push({
               operationId: item.operation.id,
+              precededWhenDeleted:
+                finalParagraphPredecessor(tr.doc, markPosition) !== null,
               position: markPosition,
               mappedFrom: tr.mapping.maps.length,
               revisionExtras: trackedRevisionExtras,
@@ -6092,6 +6106,7 @@ const applyFolioAIEditOperationsInternal = ({
             if (finalPosition !== null) {
               deletedFinalParagraphs.push({
                 operationId: item.operation.id,
+                precededWhenDeleted: true,
                 position: finalPosition,
                 mappedFrom: tr.mapping.maps.length,
                 revisionExtras: trackedRevisionExtras,

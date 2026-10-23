@@ -226,4 +226,75 @@ describe("new-list placement", () => {
     original.rejectAll();
     expect(lists(rejected)).toEqual(lists(original));
   });
+
+  test("a new list inserted after a table keeps its own break when the batch empties the closing paragraph", async () => {
+    const bytes = (
+      await ensureParaIds(
+        new Uint8Array(
+          await createDocx(
+            fromMarkdown(
+              [
+                "# Schedule",
+                "| Milestone | Date |\n| --- | --- |\n| Kick-off | May |",
+                "Schedules may change by agreement.",
+              ].join("\n\n"),
+            ),
+          ),
+        ),
+      )
+    ).docx;
+    const source = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer;
+    const operations = (reviewer: Reviewer) => {
+      const insert: FolioDocumentOperation = {
+        id: "insert",
+        type: "insertAfterBlock",
+        blockId: idOf(reviewer, "May"),
+        text: "Delivery follows.",
+        numbering: { kind: "newList", format: "numbered" },
+      };
+      const remove: FolioDocumentOperation = {
+        id: "remove",
+        type: "deleteBlock",
+        blockId: idOf(reviewer, "Schedules may change by agreement."),
+      };
+      return { insert, remove };
+    };
+    const accepted = async (reviewer: Reviewer) => {
+      const saved = await open(await reviewer.toBuffer());
+      saved.acceptAll();
+      return lists(saved);
+    };
+
+    const batch = await open(source);
+    const { insert, remove } = operations(batch);
+    expect(apply(batch, "tracked-changes", [insert, remove]).skipped).toEqual(
+      [],
+    );
+    // One at a time, from the end backwards: the deletion runs first.
+    const oneByOne = await open(source);
+    const single = operations(oneByOne);
+    expect(apply(oneByOne, "tracked-changes", [single.remove]).skipped).toEqual(
+      [],
+    );
+    expect(apply(oneByOne, "tracked-changes", [single.insert]).skipped).toEqual(
+      [],
+    );
+    const direct = await open(source);
+    const directOperations = operations(direct);
+    expect(
+      apply(direct, "direct", [
+        directOperations.insert,
+        directOperations.remove,
+      ]).skipped,
+    ).toEqual([]);
+
+    expect(lists(batch)).toEqual(lists(oneByOne));
+    expect(await accepted(batch)).toEqual(await accepted(direct));
+    expect(
+      (await accepted(batch)).find(({ text }) => text === "Delivery follows."),
+    ).toMatchObject({ kind: "listItem", label: "1." });
+  });
 });
