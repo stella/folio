@@ -1006,6 +1006,9 @@ export type NumberingInstance = {
 };
 
 // @public
+export const numberingInstanceResolves: (definitions: NumberingDefinitions, numId: number) => boolean;
+
+// @public
 export const numberingLevelEntries: (definitions: NumberingDefinitions) => NumberingLevelEntry[];
 
 // @public (undocumented)
