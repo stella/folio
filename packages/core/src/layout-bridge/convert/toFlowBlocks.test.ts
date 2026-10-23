@@ -3227,7 +3227,7 @@ describe("toFlowBlocks table cell formatting", () => {
     expect(row.cells.at(1)?.noWrap).toBeUndefined();
   });
 
-  test("suppresses an empty terminal paragraph when the cell marker is hidden", () => {
+  test("keeps the line in an empty hidden-mark cell but collapses after content", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", null, [
         schema.node("tableRow", null, [
@@ -3235,6 +3235,10 @@ describe("toFlowBlocks table cell formatting", () => {
             schema.node("paragraph"),
           ]),
           schema.node("tableCell", null, [schema.node("paragraph")]),
+          schema.node("tableCell", { hideMark: true }, [
+            schema.node("paragraph", null, [schema.text("content")]),
+            schema.node("paragraph"),
+          ]),
         ]),
       ]),
     ]);
@@ -3245,16 +3249,21 @@ describe("toFlowBlocks table cell formatting", () => {
     }
     const hiddenMarkerParagraph = table.rows.at(0)?.cells.at(0)?.blocks.at(0);
     const ordinaryParagraph = table.rows.at(0)?.cells.at(1)?.blocks.at(0);
+    const hiddenMarkerTerminator = table.rows.at(0)?.cells.at(2)?.blocks.at(1);
 
     expect(hiddenMarkerParagraph?.kind).toBe("paragraph");
     expect(ordinaryParagraph?.kind).toBe("paragraph");
     if (
       hiddenMarkerParagraph?.kind !== "paragraph" ||
-      ordinaryParagraph?.kind !== "paragraph"
+      ordinaryParagraph?.kind !== "paragraph" ||
+      hiddenMarkerTerminator?.kind !== "paragraph"
     ) {
       return;
     }
-    expect(hiddenMarkerParagraph.attrs?.suppressEmptyParagraphHeight).toBe(
+    expect(
+      hiddenMarkerParagraph.attrs?.suppressEmptyParagraphHeight,
+    ).toBeUndefined();
+    expect(hiddenMarkerTerminator?.attrs?.suppressEmptyParagraphHeight).toBe(
       true,
     );
     expect(
