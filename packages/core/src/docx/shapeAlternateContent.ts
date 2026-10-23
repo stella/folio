@@ -190,7 +190,7 @@ const updateAlternateContentText = (
       ...body.attributes,
       [declaration]: NAMESPACES.w,
     };
-    body.elements = drawingBody.elements;
+    body.elements = drawingBody.elements ?? [];
   }
   const synchronizedXml = captureVerbatimXml(alternateContent);
   if (!isSafeCapturedXmlDocument(synchronizedXml)) {
