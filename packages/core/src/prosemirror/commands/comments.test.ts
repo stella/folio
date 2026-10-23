@@ -1759,6 +1759,86 @@ describe("findChangeAtPosition", () => {
 });
 
 describe("tracked change navigation", () => {
+  test("visits adjacent same-author replacement halves as one stop", () => {
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("head "),
+          schema.text("old", [
+            schema.marks.deletion.create({
+              revisionId: 11,
+              author: "Reviewer",
+              date: "2026-01-01T10:00:00Z",
+            }),
+          ]),
+          schema.text("new", [
+            schema.marks.insertion.create({
+              revisionId: 12,
+              author: "Reviewer",
+              date: "2026-01-01T10:01:00Z",
+            }),
+          ]),
+          schema.text(" tail"),
+          schema.text("later", [
+            schema.marks.insertion.create({
+              revisionId: 13,
+              author: "Another reviewer",
+              date: "2026-01-01T10:02:00Z",
+            }),
+          ]),
+        ]),
+      ]),
+    });
+
+    expect(findNextChange(state, 6)).toMatchObject({
+      from: 6,
+      to: 12,
+      type: "deletion",
+    });
+    expect(findNextChange(state, 12)).toMatchObject({
+      from: 17,
+      to: 22,
+      type: "insertion",
+    });
+    expect(findPreviousChange(state, 17)).toMatchObject({
+      from: 6,
+      to: 12,
+      type: "insertion",
+    });
+  });
+
+  test("does not pair adjacent revisions from different authors", () => {
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("old", [
+            schema.marks.deletion.create({ ...REV_A_ATTRS, revisionId: 11 }),
+          ]),
+          schema.text("new", [
+            schema.marks.insertion.create({
+              ...REV_B_ATTRS,
+              revisionId: 12,
+              author: "Another reviewer",
+            }),
+          ]),
+        ]),
+      ]),
+    });
+
+    expect(findNextChange(state, 0)).toMatchObject({
+      from: 1,
+      to: 4,
+      type: "deletion",
+    });
+    expect(findNextChange(state, 4)).toMatchObject({
+      from: 4,
+      to: 7,
+      type: "insertion",
+    });
+  });
+
   test("findNextChange returns the nearest later change before wrapping", () => {
     const state = makeStateWithMarks();
 
