@@ -507,28 +507,36 @@ describe("stated numbering source schema cutover", () => {
     },
   );
 
-  test("current snapshots preserve authored references regardless of the style value", () => {
-    for (const numId of [7, 8]) {
-      const ydoc = new Y.Doc();
-      const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
-      const paragraph = schema.node("paragraph", {
-        numPr: { kind: "reference", numId, ilvl: 2 },
-        numPrFromStyle: { kind: "reference", numId: 7, ilvl: 0 },
-      });
-      prosemirrorToYXmlFragment(
-        schema.node("doc", null, [paragraph]),
-        fragment,
-      );
-      const before = Y.encodeStateAsUpdate(ydoc);
-      expect(
-        applyAttrSchemaMigrations(
-          ydoc,
-          fragment,
+  test.each([13, FOLIO_YJS_ATTR_SCHEMA_VERSION] as const)(
+    "schema %s preserves authored references regardless of the style value",
+    (version) => {
+      for (const numId of [7, 8]) {
+        const ydoc = new Y.Doc();
+        const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
+        const paragraph = schema.node(
+          "paragraph",
+          {
+            numPr: { kind: "reference", numId, ilvl: 2 },
+            numPrFromStyle: { kind: "reference", numId: 7, ilvl: 0 },
+          },
+          schema.text("Unsaved collaboration edit"),
+        );
+        const document = schema.node("doc", null, [paragraph]);
+        prosemirrorToYXmlFragment(document, fragment);
+        ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, version);
+        const before = Y.encodeStateAsUpdate(ydoc);
+        expect(applyAttrSchemaMigrations(ydoc, fragment, version)).toBe(0);
+        expect(readYjsAttrSchemaVersion(ydoc).unwrap()).toBe(
           FOLIO_YJS_ATTR_SCHEMA_VERSION,
-        ),
-      ).toBe(0);
-      expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
-      ydoc.destroy();
-    }
-  });
+        );
+        expect(initProseMirrorDoc(fragment, schema).doc.eq(document)).toBe(
+          true,
+        );
+        if (version === FOLIO_YJS_ATTR_SCHEMA_VERSION) {
+          expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
+        }
+        ydoc.destroy();
+      }
+    },
+  );
 });

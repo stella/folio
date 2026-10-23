@@ -746,6 +746,9 @@ type CurrentAttrSchemaVersion = {
 export const FOLIO_YJS_ATTR_SCHEMA_VERSION =
   14 satisfies CurrentAttrSchemaVersion;
 
+const STATED_NUMBERING_SOURCE_SCHEMA_VERSION =
+  13 satisfies FolioYjsAttrSchemaVersion;
+
 export class FolioYjsNoteReferenceSchemaError extends TaggedError(
   "FolioYjsNoteReferenceSchemaError",
 )<{
@@ -767,7 +770,7 @@ const requireStatedNumberingSources = (
   fragment: Y.XmlFragment,
   schemaVersion: FolioYjsAttrSchemaVersion,
 ): void => {
-  if (schemaVersion === FOLIO_YJS_ATTR_SCHEMA_VERSION) return;
+  if (schemaVersion >= STATED_NUMBERING_SOURCE_SCHEMA_VERSION) return;
   const pending: unknown[] = [];
   const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
     if ("getAttributes" in node) pending.push(node.getAttributes());
@@ -796,8 +799,8 @@ const requireStatedNumberingSources = (
     ) {
       throw new FolioYjsNumberingSourceSchemaError({
         schemaVersion,
-        requiredSchemaVersion: FOLIO_YJS_ATTR_SCHEMA_VERSION,
-        message: `Yjs schema ${schemaVersion} has ambiguous numbering ownership; schema ${FOLIO_YJS_ATTR_SCHEMA_VERSION} requires stated numbering overrides. Rebuild the collaboration state from the saved DOCX.`,
+        requiredSchemaVersion: STATED_NUMBERING_SOURCE_SCHEMA_VERSION,
+        message: `Yjs schema ${schemaVersion} has ambiguous numbering ownership; schema ${STATED_NUMBERING_SOURCE_SCHEMA_VERSION} requires stated numbering overrides. Rebuild the collaboration state from the saved DOCX.`,
       });
     }
     for (const entry of Object.values(value)) pending.push(entry);
