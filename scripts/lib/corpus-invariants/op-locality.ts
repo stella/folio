@@ -103,6 +103,10 @@ const untouchedBlocks = (
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         out.push(block);
         break;
       default: {
