@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { ommlToMathml } from "./mathToMathml";
+import { ommlToMathml, sharedMathRunFontSize } from "./mathToMathml";
 import { parseXmlDocument } from "./xmlParser";
+import { XmlResourceLimitError } from "./xmlResourceLimits";
 
 const MATH_NS =
-  'xmlns="http://schemas.openxmlformats.org/officeDocument/2006/math"';
+  'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
 
 function parse(xml: string) {
   const root = parseXmlDocument(xml);
@@ -13,6 +14,61 @@ function parse(xml: string) {
   }
   return root;
 }
+
+describe("sharedMathRunFontSize", () => {
+  test("returns a common explicit size for every math run", () => {
+    const omml =
+      `<m:oMath ${MATH_NS} xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+      `<m:r><w:rPr><w:sz w:val="24"/></w:rPr><m:t>x</m:t></m:r>` +
+      `<m:r><w:rPr><w:sz w:val="24"/></w:rPr><m:t>y</m:t></m:r></m:oMath>`;
+
+    expect(sharedMathRunFontSize(omml)).toBe(12);
+  });
+
+  test("recognizes strict OOXML math and run namespaces", () => {
+    const omml =
+      '<q:oMath xmlns:q="http://purl.oclc.org/ooxml/officeDocument/math" ' +
+      'xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main">' +
+      '<q:r><w:rPr><w:sz w:val="30"/></w:rPr><q:t>x</q:t></q:r></q:oMath>';
+
+    expect(sharedMathRunFontSize(omml)).toBe(15);
+  });
+
+  test("bounds model-provided OMML before parsing", () => {
+    const deeplyNested =
+      `<m:oMath ${MATH_NS}>` +
+      "<m:r>".repeat(100) +
+      "<m:t>x</m:t>" +
+      "</m:r>".repeat(100) +
+      "</m:oMath>";
+
+    expect(() => sharedMathRunFontSize(deeplyNested)).toThrow(
+      XmlResourceLimitError,
+    );
+  });
+
+  test("leaves mixed, partially sized, and wrong-namespace runs inherited", () => {
+    const mathStart = `<m:oMath ${MATH_NS} xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`;
+    expect(
+      sharedMathRunFontSize(
+        `${mathStart}<m:r><w:rPr><w:sz w:val="24"/></w:rPr><m:t>x</m:t></m:r>` +
+          `<m:r><w:rPr><w:sz w:val="28"/></w:rPr><m:t>y</m:t></m:r></m:oMath>`,
+      ),
+    ).toBeUndefined();
+    expect(
+      sharedMathRunFontSize(
+        `${mathStart}<m:r><w:rPr><w:sz w:val="24"/></w:rPr><m:t>x</m:t></m:r>` +
+          `<m:r><m:t>y</m:t></m:r></m:oMath>`,
+      ),
+    ).toBeUndefined();
+    expect(
+      sharedMathRunFontSize(
+        `<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:w="urn:wrong">` +
+          `<m:r><w:rPr><w:sz w:val="24"/></w:rPr><m:t>x</m:t></m:r></m:oMath>`,
+      ),
+    ).toBeUndefined();
+  });
+});
 
 describe("ommlToMathml — root + display", () => {
   test("returns null for a non-OMML element", () => {

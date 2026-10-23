@@ -2444,6 +2444,108 @@ describe("toFlowBlocks paragraph formatting", () => {
   });
 });
 
+describe("toFlowBlocks math run formatting", () => {
+  test("uses inherited run marks when the equation has no shared run size", () => {
+    const fontSize = schema.mark("fontSize", { size: 24 });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.node(
+          "math",
+          {
+            display: "inline",
+            ommlXml:
+              '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><m:r><m:t>x</m:t></m:r></m:oMath>',
+            plainText: "x",
+          },
+          null,
+          [fontSize],
+        ),
+      ]),
+    ]);
+    const paragraph = toFlowBlocks(doc).at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph block");
+    }
+
+    expect(paragraph.runs.at(0)).toMatchObject({
+      kind: "math",
+      fontSize: 12,
+    });
+  });
+
+  test("inherits paragraph run size from the document model through layout", () => {
+    const document: Document = {
+      package: {
+        styles: {
+          styles: [
+            {
+              styleId: "MathSize",
+              type: "paragraph",
+              rPr: { fontSize: 24 },
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { styleId: "MathSize" },
+              content: [
+                {
+                  type: "mathEquation",
+                  display: "inline",
+                  ommlXml:
+                    '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><m:r><m:t>x</m:t></m:r></m:oMath>',
+                  plainText: "x",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const blocks = toFlowBlocks(toProseDoc(document));
+    const paragraph = blocks.at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph block");
+    }
+
+    expect(paragraph.runs.at(0)).toMatchObject({
+      kind: "math",
+      fontSize: 12,
+    });
+  });
+
+  test("uses the shared explicit OMML run size without changing its source", () => {
+    const ommlXml =
+      '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" ' +
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<m:r><w:rPr><w:sz w:val="24"/></w:rPr><m:t>x</m:t></m:r>' +
+      '<m:r><w:rPr><w:sz w:val="24"/></w:rPr><m:t>y</m:t></m:r></m:oMath>';
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.node("math", {
+          display: "inline",
+          ommlXml,
+          plainText: "xy",
+        }),
+      ]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+    const paragraph = blocks.at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph block");
+    }
+    const math = paragraph.runs.at(0);
+    expect(math).toMatchObject({
+      kind: "math",
+      fontSize: 12,
+      ommlXml,
+    });
+  });
+});
+
 describe("toFlowBlocks field handling", () => {
   test("projects hard breaks inside structured field results into layout", () => {
     const field = schema.node(

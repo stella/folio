@@ -308,6 +308,15 @@ function renderMathRunOnce(
 }
 
 describe("painter — OMML math run", () => {
+  test("paints the shared equation size used by layout measurement", () => {
+    const line = renderMathRunOnce(mathRun({ fontSize: 18 }));
+    const host = findElement(line, (el) =>
+      el.className.includes("docx-math-inline"),
+    );
+
+    expect(host?.style.fontSize).toBe("24px");
+  });
+
   test("renders an inline `<math>` element with the MathML namespace", () => {
     const line = renderMathRunOnce(
       mathRun({
