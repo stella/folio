@@ -37,6 +37,7 @@ const schema = new Schema({
     },
   },
   marks: {
+    strong: { toDOM: () => ["strong", 0] },
     bold: { toDOM: () => ["strong", 0] },
     italic: { toDOM: () => ["em", 0] },
     insertion: {
