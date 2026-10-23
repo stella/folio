@@ -149,7 +149,7 @@
     "@changesets/cli": "^3.0.3",
     "@codspeed/tinybench-plugin": "6.0.0-beta.2",
     "@formatjs/icu-messageformat-parser": "^3.5.21",
-    "@happy-dom/global-registrator": "^20.14.0",
+    "@happy-dom/global-registrator": "^21.0.3",
     "@microsoft/api-extractor": "7.59.4",
     "@oxlint/plugins": "1.87.0",
     "@playwright/test": "1.61.1",
