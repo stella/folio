@@ -15,6 +15,74 @@ function createFontFace(): FontFace {
 }
 
 describe("useFontLifecycle", () => {
+  test("keeps installed host faces while replacements are pending and remeasures only on completion", async () => {
+    const originalFontFace = Reflect.get(globalThis, "FontFace");
+    const hadFontFace = "FontFace" in globalThis;
+    Object.defineProperty(globalThis, "FontFace", {
+      value: class {},
+      configurable: true,
+      writable: true,
+    });
+    const scope = effectScope();
+    try {
+      const initialFace = createFontFace();
+      const replacementFace = createFontFace();
+      const initial = deferred<FontFace[]>();
+      const replacement = deferred<FontFace[]>();
+      const fonts = ref([{ family: "Host Sans", src: "/initial.woff2" }]);
+      const remove = mock((_faces: readonly FontFace[]) => {});
+      const remeasure = mock(() => {});
+      scope.run(() =>
+        useFontLifecycle(
+          {
+            isReady: ref(false),
+            getDocument: () => null,
+            fonts: () => fonts.value,
+            remeasure,
+            setEmbeddedFontFamilies: () => {},
+          },
+          {
+            loadEmbedded: () =>
+              Promise.resolve({ faces: [], familyMap: new Map() }),
+            loadHost: (sources) =>
+              sources?.at(0)?.src === "/initial.woff2"
+                ? initial.promise
+                : replacement.promise,
+            remove,
+          },
+        ),
+      );
+      initial.resolve([initialFace]);
+      await Promise.resolve();
+      expect(remeasure).toHaveBeenCalledTimes(1);
+      remove.mockClear();
+
+      fonts.value = [{ family: "Host Sans", src: "/replacement.woff2" }];
+      await nextTick();
+      expect(remove).not.toHaveBeenCalled();
+      expect(remeasure).toHaveBeenCalledTimes(1);
+
+      replacement.resolve([replacementFace]);
+      await Promise.resolve();
+      expect(remove).toHaveBeenCalledWith([initialFace]);
+      expect(remeasure).toHaveBeenCalledTimes(2);
+      scope.stop();
+      expect(remove).toHaveBeenCalledWith([replacementFace]);
+      expect(remeasure).toHaveBeenCalledTimes(2);
+    } finally {
+      scope.stop();
+      if (hadFontFace) {
+        Object.defineProperty(globalThis, "FontFace", {
+          value: originalFontFace,
+          configurable: true,
+          writable: true,
+        });
+      } else {
+        Reflect.deleteProperty(globalThis, "FontFace");
+      }
+    }
+  });
+
   test("loading, replacing and unmounting one editor leaves the other map intact", async () => {
     const firstResult = deferred<{
       faces: FontFace[];

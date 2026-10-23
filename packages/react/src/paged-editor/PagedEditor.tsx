@@ -67,6 +67,7 @@ import type { PageRendererName } from "@stll/folio-core/display-list/editor/page
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { allowsDirectDrawingEdit } from "@stll/folio-core/docx/imageRawXml";
 import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
+import { FontFaceLifecycle } from "@stll/folio-core/fonts/FontFaceLifecycle";
 import {
   convertHeaderFooterPmDocToContent,
   convertHeaderFooterToContent,
@@ -6123,23 +6124,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       };
     }, [embeddedFontBuffer, runtime]);
 
-    // Register the host app's custom font faces (the `fonts` prop) on the same
-    // best-effort FontFace path, then re-layout via the identical font-ready tail
-    // as the embedded path above. Without the explicit re-layout, faces supplied
-    // on initial mount register after the first layout has run, so the document
-    // would keep its fallback-font metrics until the next edit. Keyed on the prop
-    // identity; the cleanup unregisters the faces on change / unmount.
+    const hostFontLifecycleRef = useRef<FontFaceLifecycle<FontFace> | null>(
+      null,
+    );
     useEffect(() => {
-      if (!hostFonts || hostFonts.length === 0) {
-        return undefined;
-      }
-      let cancelled = false;
-      let registered: FontFace[] = [];
-
-      // Drop cached font metrics and re-run layout so measurements reflect the
-      // current faces — or, on the cleanup path, their absence. Shared by the
-      // register and unregister paths so both re-measure identically. No-op when
-      // the view is gone (e.g. during unmount), so it is safe to call in cleanup.
+      const lifecycle = new FontFaceLifecycle(removeFontFaces);
+      hostFontLifecycleRef.current = lifecycle;
       const remeasureForFontChange = () => {
         const view = hiddenPMRef.current?.getView();
         if (!view) {
@@ -6151,31 +6141,24 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         runtime.updateSelection(view.state);
       };
 
-      void loadHostFontFaces(hostFonts).then((faces) => {
-        if (cancelled) {
-          removeFontFaces(faces);
-          return undefined;
-        }
-        registered = faces;
-        if (faces.length === 0) {
-          return undefined;
-        }
-        remeasureForFontChange();
-        return undefined;
-      });
-
+      const unsubscribe = lifecycle.subscribe(remeasureForFontChange);
       return () => {
-        cancelled = true;
-        if (registered.length === 0) {
-          return;
-        }
-        // Fonts were cleared or changed: unregister the faces, then re-measure so
-        // the document drops the now-removed custom metrics immediately instead
-        // of keeping them until the next edit.
-        removeFontFaces(registered);
-        remeasureForFontChange();
+        unsubscribe();
+        lifecycle.destroy();
+        hostFontLifecycleRef.current = null;
       };
-    }, [hostFonts, runtime]);
+    }, [runtime]);
+
+    useEffect(() => {
+      const lifecycle = hostFontLifecycleRef.current;
+      if (!lifecycle) panic("Host font lifecycle is not initialized.");
+      if (!hostFonts || hostFonts.length === 0) {
+        lifecycle.clear();
+        return;
+      }
+      const commit = lifecycle.beginReplacement();
+      void loadHostFontFaces(hostFonts).then(commit);
+    }, [hostFonts]);
 
     // Re-layout when non-document layout inputs change (e.g., after HF editor save
     // or parent-driven page setup/theme updates).
