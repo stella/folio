@@ -2863,8 +2863,11 @@ const shiftAddedParagraphBreakBefore = ({
 };
 
 /**
- * Place an accepted paragraph's break when a following accepted insertion has
- * already rotated its own break onto that paragraph.
+ * Place an accepted paragraph's break when its own break slot is taken: a
+ * following accepted insertion has rotated its break onto the paragraph, or
+ * the paragraph carries the break of the one it was inserted after, pending
+ * deletion. Either way that boundary stays, and the accepted break goes on
+ * the preceding free carrier.
  */
 const placeAcceptedParagraphBreakBefore = ({
   tr,
@@ -2877,8 +2880,7 @@ const placeAcceptedParagraphBreakBefore = ({
   if (
     !paragraph ||
     paragraph.type.name !== "paragraph" ||
-    !isPPrMarkAttr(displaced) ||
-    !paragraphMarkWasAdded(displaced.kind)
+    !isPPrMarkAttr(displaced)
   ) {
     return false;
   }
