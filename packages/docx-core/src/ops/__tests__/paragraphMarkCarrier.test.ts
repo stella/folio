@@ -538,3 +538,58 @@ test("deleting a bookmark-only paragraph directly before a table is refused and 
   expect(result.isErr()).toBe(true);
   expect(document.package.document.content[0]).toBe(paragraph);
 });
+
+test("resolving a mark across a range boundary standing before a table is refused, the document unchanged", () => {
+  const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    content: [{ type: "run", content: [{ type: "text", text: "outside" }] }],
+    pPrMark: { kind: "del", info },
+  };
+  const ranged = {
+    ...table,
+    rows: [
+      {
+        ...table.rows[0],
+        cells: [
+          {
+            ...table.rows[0].cells[0],
+            content: [
+              {
+                type: "paragraph",
+                paraId: "00000002",
+                content: [
+                  { type: "run", content: [{ type: "text", text: "inside" }] },
+                  { type: "bookmarkEnd", id: 1 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  } as const;
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          paragraph,
+          { type: "bookmarkStart", id: 1, name: "kept" },
+          ranged,
+          finalParagraph,
+        ],
+      },
+    },
+  };
+
+  const result = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [7],
+    decision: REVISION_DECISIONS.ACCEPT,
+  });
+  expect(result.isErr()).toBe(true);
+  expect(document.package.document.content[0]).toBe(paragraph);
+  expect(document.package.document.content[2]).toBe(ranged);
+});

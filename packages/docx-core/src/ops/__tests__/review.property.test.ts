@@ -77,7 +77,6 @@ import {
   paragraphLogicalText,
 } from "../offsets";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
-import { isBlockBoundary } from "../rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   isAddedRevision,
@@ -462,13 +461,7 @@ const tableRunInReceiver = (
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(id),
   );
   if (at === undefined) return undefined;
-  const blocks = blockListAt(body.content, at.list);
-  // Range boundaries between blocks stand where a paragraph went; the mark
-  // reads past them to the table.
-  let index = at.index + 1;
-  while (blocks[index] !== undefined && isBlockBoundary(blocks[index]!))
-    index += 1;
-  let next = blocks.at(index);
+  let next = blockListAt(body.content, at.list).at(at.index + 1);
   while (next?.type === "table")
     next = next.rows.at(0)?.cells.at(0)?.content.at(0);
   return next?.type === "paragraph" ? next : undefined;

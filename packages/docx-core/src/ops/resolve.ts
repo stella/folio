@@ -1637,16 +1637,9 @@ const joinOps = (
       },
     ]);
   }
-  // A paragraph that went before a table left its range boundaries there:
-  // this mark reads past them to the table.
-  let tableIndex = location.index + 1;
-  while (
-    blocks[tableIndex] !== undefined &&
-    isBlockBoundary(blocks[tableIndex]!)
-  )
-    tableIndex += 1;
-  const after = blocks[tableIndex];
-  if (tableIndex > location.index + 1 && after?.type !== "table") {
+  // Fail closed: content resolved across a range boundary standing between
+  // blocks would move into or out of its range.
+  if (next !== undefined && isBlockBoundary(next)) {
     return Result.err(
       refusal(
         op,
@@ -1661,23 +1654,22 @@ const joinOps = (
   const cellFinal =
     containerFinal && location.list.some((step) => step.kind === "tableCell");
   const outcome = paragraphMarkOutcome({
-    follows: after?.type === "table" ? "table" : "nothing",
+    follows: next?.type === "table" ? "table" : "nothing",
     holdsContent: paragraphHoldsContent(paragraph),
     markWasAdded: added,
     containerStillEndsWithParagraph:
-      after?.type === "table"
+      next?.type === "table"
         ? blocks.at(-1)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last.
           containerFinal &&
           !cellFinal &&
           blocks.at(location.index - 1)?.type === "paragraph",
     followingTableCanReceiveRunIn:
-      after?.type === "table" &&
-      tableCanReceiveParagraphRunIn(paragraph, after),
+      next?.type === "table" && tableCanReceiveParagraphRunIn(paragraph, next),
     tableRemovalIsTrackable:
-      after?.type !== "table" ||
+      next?.type !== "table" ||
       (blocks.at(-1)?.type === "paragraph" &&
-        tableCanReceiveParagraphRunIn(paragraph, after)),
+        tableCanReceiveParagraphRunIn(paragraph, next)),
     removedSectionProperties:
       added && paragraph.sectionProperties !== undefined,
     precedingSectionOwner: precedingSectionOwner(previous, paragraph),
@@ -1695,7 +1687,7 @@ const joinOps = (
   if (
     (outcome.kind === "remove" || outcome.kind === "run-in") &&
     blocks.length > 1 &&
-    after?.type === "table"
+    next?.type === "table"
   ) {
     const anchor = blocks.find(
       (block, index): block is Paragraph =>
@@ -1727,7 +1719,7 @@ const joinOps = (
           },
         ]);
     } else {
-      const replacement = runParagraphIntoTable(paragraph, after);
+      const replacement = runParagraphIntoTable(paragraph, next);
       if (replacement === undefined) {
         return Result.err(
           refusal(
@@ -1745,7 +1737,7 @@ const joinOps = (
           expected: blocks,
           blocks: blocks.flatMap((block, index) => {
             if (index === location.index) return [];
-            return index === tableIndex ? [replacement] : [block];
+            return index === location.index + 1 ? [replacement] : [block];
           }),
         },
       ]);
