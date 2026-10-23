@@ -87,8 +87,12 @@ export const rangeBoundaryItemsOf = (node: PMNode): readonly BoundaryItem[] =>
     ? BOUNDARY_ITEMS[node.type.name](node)
     : [];
 
-const isComment = (item: BoundaryItem): boolean =>
-  item.type === "commentRangeStart" || item.type === "commentRangeEnd";
+const isComment = (
+  item: BoundaryItem,
+): item is Extract<
+  BoundaryItem,
+  { type: "commentRangeStart" | "commentRangeEnd" }
+> => item.type === "commentRangeStart" || item.type === "commentRangeEnd";
 
 /**
  * Whether resolving away the content around `node` keeps it in place: it
