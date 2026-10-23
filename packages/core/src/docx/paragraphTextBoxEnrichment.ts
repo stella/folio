@@ -231,6 +231,35 @@ const parseVmlFill = (shapeEl: XmlElement): Shape["fill"] =>
     ? { type: "none" }
     : undefined;
 
+const parseVmlOutline = (shapeEl: XmlElement): Shape["outline"] => {
+  if (
+    ["0", "f", "false"].includes(
+      getAttribute(shapeEl, null, "stroked")?.trim().toLowerCase() ?? "",
+    )
+  ) {
+    return undefined;
+  }
+  const rawColor = getAttribute(shapeEl, null, "strokecolor");
+  const colorMatch = rawColor?.match(/^#?([0-9a-f]{6})$/i);
+  const color = colorMatch?.at(1)?.toUpperCase();
+  const rawWidth = getAttribute(shapeEl, null, "strokeweight");
+  const widthPixels =
+    rawWidth === null || rawWidth === undefined
+      ? undefined
+      : vmlLengthToPixels(rawWidth);
+  const positiveWidthPixels =
+    widthPixels !== undefined && widthPixels > 0 ? widthPixels : undefined;
+  if (color === undefined && positiveWidthPixels === undefined) {
+    return undefined;
+  }
+  return {
+    ...(color === undefined ? {} : { color: { rgb: color } }),
+    ...(positiveWidthPixels === undefined
+      ? {}
+      : { width: pixelsToEmu(positiveWidthPixels) }),
+  };
+};
+
 const parseVmlTextAnchor = (
   value: string | undefined,
 ): ShapeTextBody["anchor"] | undefined => {
@@ -783,11 +812,13 @@ const parseVmlTextBoxShape = (
   const margins = parseVmlInsets(textBoxEl);
   const anchor = parseVmlTextAnchor(textBoxStyle["v-text-anchor"]);
   const fill = parseVmlFill(shapeEl);
+  const outline = parseVmlOutline(shapeEl);
   const shape: Shape = {
     type: "shape",
     shapeType: "textBox",
     size: { width: pixelsToEmu(width), height: pixelsToEmu(height) },
     ...(fill === undefined ? {} : { fill }),
+    ...(outline === undefined ? {} : { outline }),
     wrap: { type: vmlWrapType(positioned, zIndex) },
     textBody: {
       content: parseTextBoxContent(

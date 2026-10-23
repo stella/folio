@@ -195,6 +195,72 @@ describe("header/footer text boxes", () => {
     });
   });
 
+  test("retains an explicit VML text-box stroke", () => {
+    const footer = parseFooter(`
+      <w:ftr ${NAMESPACES}>
+        <w:p><w:r><w:pict>
+          <v:shape style="width:216pt;height:18pt" stroked="t" strokecolor="#112233" strokeweight="2pt">
+            <v:textbox><w:txbxContent><w:p><w:r><w:t>Outlined</w:t></w:r></w:p></w:txbxContent></v:textbox>
+          </v:shape>
+        </w:pict></w:r></w:p>
+      </w:ftr>`);
+    const paragraph = footer.content.at(0);
+    const run =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
+    if (shapeContent?.type !== "shape") {
+      throw new Error("Expected a VML text box");
+    }
+
+    expect(shapeContent.shape.outline).toEqual({
+      color: { rgb: "112233" },
+      width: 25_400,
+    });
+  });
+
+  test.each(["f", "false", "0"])(
+    "omits a VML text-box stroke when stroked is %s",
+    (stroked) => {
+      const footer = parseFooter(`
+        <w:ftr ${NAMESPACES}>
+          <w:p><w:r><w:pict>
+            <v:shape style="width:216pt;height:18pt" stroked="${stroked}" strokecolor="#112233" strokeweight="2pt">
+              <v:textbox><w:txbxContent><w:p><w:r><w:t>Unoutlined</w:t></w:r></w:p></w:txbxContent></v:textbox>
+            </v:shape>
+          </w:pict></w:r></w:p>
+        </w:ftr>`);
+      const paragraph = footer.content.at(0);
+      const run =
+        paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+      const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
+      if (shapeContent?.type !== "shape") {
+        throw new Error("Expected a VML text box");
+      }
+
+      expect(shapeContent.shape.outline).toBeUndefined();
+    },
+  );
+
+  test("omits a nonpositive VML text-box stroke width", () => {
+    const footer = parseFooter(`
+      <w:ftr ${NAMESPACES}>
+        <w:p><w:r><w:pict>
+          <v:shape style="width:216pt;height:18pt" stroked="t" strokecolor="#112233" strokeweight="-2pt">
+            <v:textbox><w:txbxContent><w:p><w:r><w:t>Zero width</w:t></w:r></w:p></w:txbxContent></v:textbox>
+          </v:shape>
+        </w:pict></w:r></w:p>
+      </w:ftr>`);
+    const paragraph = footer.content.at(0);
+    const run =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
+    if (shapeContent?.type !== "shape") {
+      throw new Error("Expected a VML text box");
+    }
+
+    expect(shapeContent.shape.outline).toEqual({ color: { rgb: "112233" } });
+  });
+
   test("applies authored and default values in sparse VML text-box insets", () => {
     const footer = parseFooter(`
       <w:ftr ${NAMESPACES}>
