@@ -3,7 +3,7 @@
  *
  * Ordinary fields are true ProseMirror leaves, so `textContent`, `textBetween`,
  * and the default plain-text clipboard serializer can use `leafText`.
- * Simple fields that must preserve hyperlink structure use a distinct atomic
+ * Fields that preserve run metadata or inline structure use a distinct atomic
  * node with inline children; their visible text comes from those children.
  */
 
@@ -15,6 +15,7 @@ import {
   isValidEmptyFieldResultRuns,
   isValidFieldCode,
 } from "../../attrs";
+import { RUN_CONTENT_INLINE_NODE_NAMES } from "../../runContentProjection";
 import { createNodeExtension } from "../create";
 
 type FieldOptions = {
@@ -182,8 +183,14 @@ export const StructuredFieldExtension = createNodeExtension<FieldOptions>({
   nodeSpec: (options) => ({
     inline: true,
     group: "inline",
-    content:
-      "(text | bookmarkBoundary | commentRangeBoundary | commentReference | rangeAnchor | tab | symbol | hardBreak | pageBreakRun | image | shape | renderedPageBreak | textBoxAnchor | preservedXml | sdt)+",
+    content: `(${[
+      ...RUN_CONTENT_INLINE_NODE_NAMES,
+      "bookmarkBoundary",
+      "commentRangeBoundary",
+      "commentReference",
+      "rangeAnchor",
+      "sdt",
+    ].join(" | ")})+`,
     atom: true,
     selectable: true,
     attrs: createFieldAttrs(),
@@ -191,9 +198,11 @@ export const StructuredFieldExtension = createNodeExtension<FieldOptions>({
       {
         tag: 'span.docx-field[data-field-structured="true"]',
         getAttrs(dom) {
+          const fieldKind = dom.dataset["fieldKind"];
+          const hasHyperlink = dom.querySelector("a[href]") !== null;
           if (
-            dom.dataset["fieldKind"] !== "simple" ||
-            !dom.querySelector("a[href]")
+            (fieldKind === "complex" && hasHyperlink) ||
+            (fieldKind !== "simple" && fieldKind !== "complex")
           ) {
             return false;
           }

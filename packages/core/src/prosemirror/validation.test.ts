@@ -462,7 +462,30 @@ describe("ProseMirror document validation", () => {
     ).toContain("Ordinary fields cannot contain structured result children.");
   });
 
-  test("rejects any structured children in complex field results", () => {
+  test("accepts structured complex results that preserve run identity", () => {
+    const runIdentity = schema.mark("runIdentity", { id: 1 });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.node(
+          "structuredField",
+          {
+            fieldType: "REF",
+            instruction: " REF target ",
+            displayText: "Target",
+            fieldKind: "complex",
+          },
+          [schema.text("Target", [runIdentity])],
+        ),
+      ]),
+    ]);
+
+    expect(validateProseMirrorDocument(doc)).toEqual({
+      valid: true,
+      issues: [],
+    });
+  });
+
+  test("rejects a plain text-only structured complex result", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
         schema.node(
@@ -480,7 +503,35 @@ describe("ProseMirror document validation", () => {
 
     expect(
       validateProseMirrorDocument(doc).issues.map((issue) => issue.message),
-    ).toContain("Complex fields cannot contain structured result children.");
+    ).toContain(
+      "Structured fields require run metadata, distinct run marks or inline structure.",
+    );
+  });
+
+  test("rejects wrapper content that a complex result cannot represent", () => {
+    const wrapper = schema.mark("inlineWrapper", {
+      stack: [{ kind: "smartTag", element: "tag" }],
+    });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.node(
+          "structuredField",
+          {
+            fieldType: "REF",
+            instruction: " REF target ",
+            displayText: "Target",
+            fieldKind: "complex",
+          },
+          [schema.text("Target", [wrapper])],
+        ),
+      ]),
+    ]);
+
+    expect(
+      validateProseMirrorDocument(doc).issues.map((issue) => issue.message),
+    ).toContain(
+      "Complex field results can contain only run-representable content.",
+    );
   });
 
   test("rejects text-only structured simple field children", () => {
@@ -502,7 +553,7 @@ describe("ProseMirror document validation", () => {
     expect(
       validateProseMirrorDocument(doc).issues.map((issue) => issue.message),
     ).toContain(
-      "Structured simple fields require non-text, hyperlink, wrapper or tracked content.",
+      "Structured fields require run metadata, distinct run marks or inline structure.",
     );
   });
 

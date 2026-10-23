@@ -2128,7 +2128,7 @@ describe("toProseDoc", () => {
     );
     const defaultTextFormatting = paragraph?.attrs.defaultTextFormatting;
 
-    expect(field?.type.name).toBe("field");
+    expect(field?.type.name).toBe("structuredField");
     expect(fieldFont?.attrs.ascii).toBe("CG Times");
     expect(defaultTextFormatting?.fontFamily?.ascii).toBe("CG Times");
   });

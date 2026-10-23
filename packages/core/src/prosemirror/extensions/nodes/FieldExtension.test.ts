@@ -232,6 +232,58 @@ describe("FieldExtension", () => {
     ]);
   });
 
+  test("preserves structured complex field result runs through DOM parsing", () => {
+    const field = schema.node(
+      "structuredField",
+      {
+        fieldType: "REF",
+        instruction: " REF target ",
+        displayText: "Target",
+        fieldKind: "complex",
+      },
+      [
+        schema.text("Tar", [schema.mark("bold")]),
+        schema.text("get", [schema.mark("italic")]),
+      ],
+    );
+
+    const { parsed } = roundTripThroughDom(field);
+
+    expect(parsed.firstChild?.firstChild).toMatchObject({
+      type: schema.nodes.structuredField,
+      attrs: { fieldKind: "complex", displayText: "Target" },
+    });
+    expect(
+      parsed.firstChild?.firstChild?.firstChild?.marks.map(
+        ({ type }) => type.name,
+      ),
+    ).toEqual(["bold"]);
+  });
+
+  test("preserves structured simple result formatting without a hyperlink", () => {
+    const field = schema.node(
+      "structuredField",
+      {
+        fieldType: "REF",
+        instruction: " REF target ",
+        displayText: "Target text",
+        fieldKind: "simple",
+      },
+      [
+        schema.text("Target", [schema.mark("bold")]),
+        schema.text(" text", [schema.mark("italic")]),
+      ],
+    );
+
+    const { parsed } = roundTripThroughDom(field);
+
+    expect(
+      parsed.firstChild?.firstChild?.content.content.map((child) =>
+        child.marks.map(({ type }) => type.name),
+      ),
+    ).toEqual([["bold"], ["italic"]]);
+  });
+
   test("keeps ordinary and structured DOM parse rules disjoint", () => {
     const parseRules = schema.nodes.field.spec.parseDOM ?? [];
     const structuredRules = schema.nodes.structuredField.spec.parseDOM ?? [];
@@ -248,7 +300,7 @@ describe("FieldExtension", () => {
 
   test.each([
     { fieldKind: "complex", hasHyperlink: true },
-    { fieldKind: "simple", hasHyperlink: false },
+    { fieldKind: "other", hasHyperlink: false },
   ])(
     "rejects malformed structured field DOM ($fieldKind, link=$hasHyperlink)",
     (input) => {

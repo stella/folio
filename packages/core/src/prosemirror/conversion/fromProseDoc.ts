@@ -2113,10 +2113,8 @@ function replaceTextBoxAnchorInBlocks(
  * The inline list a text-box anchor run can be spliced out of, or nothing when
  * the item holds no such list.
  *
- * A complex field keeps its runs in `fieldCode`/`fieldResult`, two arrays
- * rather than one, and an anchor has never been placed in either; splicing one
- * would have to pick a side. The marker stays where it is and
- * `removeUnresolvedTextBoxAnchors` leaves it, as before.
+ * Only a complex field's displayed result is projected into the editor, so
+ * its anchors belong to `fieldResult`; its instruction runs stay untouched.
  */
 const textBoxAnchorHost = (
   item: ParagraphContent,
@@ -2126,6 +2124,8 @@ const textBoxAnchorHost = (
       return item.children;
     case "simpleField":
       return item.content;
+    case "complexField":
+      return item.fieldResult;
     case "inlineSdt":
     case "insertion":
     case "deletion":
@@ -2134,7 +2134,6 @@ const textBoxAnchorHost = (
     case "inlineWrapper":
       return item.content;
     case "run":
-    case "complexField":
     case "bookmarkStart":
     case "bookmarkEnd":
     case "commentRangeStart":
@@ -4486,17 +4485,7 @@ function buildDocumentTrackedChangeCounts(pmDoc: PMNode): TrackedChangeCounts {
  * Create a unique key for a link mark
  */
 function getLinkKey(mark: Mark): string {
-  const attrs = expectHyperlinkMarkAttrs(mark);
-  return [
-    attrs.href,
-    attrs.anchor ?? "",
-    attrs.rId ?? "",
-    attrs.tooltip ?? "",
-    attrs.target ?? "",
-    attrs.history === undefined ? "" : String(attrs.history),
-    attrs.docLocation ?? "",
-    attrs._docxHyperlinkIndex ?? "",
-  ].join("\u0000");
+  return JSON.stringify(expectHyperlinkMarkAttrs(mark));
 }
 
 /**

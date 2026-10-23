@@ -1243,13 +1243,14 @@ describe("fromProseDoc", () => {
       nodeType: "structuredField",
       fieldKind: "simple",
       message:
-        "Structured simple fields require non-text, hyperlink, wrapper or tracked content.",
+        "Structured fields require run metadata, distinct run marks or inline structure.",
     },
     {
-      name: "structured complex-field child",
+      name: "plain structured complex-field child",
       nodeType: "structuredField",
       fieldKind: "complex",
-      message: "Complex fields cannot contain structured result children.",
+      message:
+        "Structured fields require run metadata, distinct run marks or inline structure.",
     },
   ] as const)(
     "fails closed before saving a JSON-cloned $name",
@@ -4166,6 +4167,132 @@ describe("fromProseDoc", () => {
         value: "00A20604",
       },
     ]);
+  });
+
+  test("reattaches text-box anchors inside complex-field result runs", () => {
+    const document = documentWithTextBoxParagraph({
+      includeText: false,
+      textBoxCount: 2,
+    });
+    const sourceParagraph = document.package.document.content.at(0);
+    if (sourceParagraph?.type !== "paragraph") {
+      throw new Error("Expected source paragraph");
+    }
+    const sourceRuns = sourceParagraph.content.filter(
+      (item): item is Run =>
+        item.type === "run" &&
+        item.content.some(({ type }) => type === "shape"),
+    );
+    const resultRun = sourceRuns.at(0);
+    const secondShapeRun = sourceRuns.at(1);
+    if (!resultRun || !secondShapeRun) {
+      throw new Error("Expected two source text-box runs");
+    }
+    resultRun.content.unshift({ type: "text", text: "Before" });
+    resultRun.content.push(...secondShapeRun.content, {
+      type: "text",
+      text: "After",
+    });
+    sourceParagraph.content = [
+      {
+        type: "complexField",
+        instruction: " PAGE ",
+        fieldType: "PAGE",
+        fieldCode: [
+          {
+            type: "run",
+            content: [{ type: "instrText", text: " PAGE " }],
+            formatting: { italic: true },
+            preservedAttributes: [
+              {
+                namespace:
+                  "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                name: "rsidR",
+                value: "00A20605",
+              },
+            ],
+          },
+        ],
+        fieldResult: [
+          {
+            ...resultRun,
+            formatting: { noProof: true },
+            preservedAttributes: [
+              {
+                namespace:
+                  "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                name: "rsidRPr",
+                value: "00A20606",
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const sourceField = sourceParagraph.content.at(0);
+    if (sourceField?.type !== "complexField") {
+      throw new Error("Expected source complex field");
+    }
+
+    const proseDocument = toProseDoc(document);
+    const roundTripped = fromProseDoc(proseDocument, document, {
+      stylesheetSource: { type: "package" },
+    });
+    const paragraph = roundTripped.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected round-tripped paragraph");
+    }
+    const field = paragraph.content.at(0);
+    if (field?.type !== "complexField") {
+      throw new Error("Expected round-tripped complex field");
+    }
+    const [savedResultRun] = field.fieldResult;
+
+    expect(field.fieldCode).toEqual(sourceField.fieldCode);
+    expect(field.fieldResult).toHaveLength(1);
+    expect(savedResultRun?.content.map(({ type }) => type)).toEqual([
+      "text",
+      "shape",
+      "shape",
+      "text",
+    ]);
+    expect(savedResultRun?.content.at(0)).toMatchObject({ text: "Before" });
+    expect(savedResultRun?.content.at(3)).toMatchObject({ text: "After" });
+    expect(savedResultRun?.formatting).toEqual({ noProof: true });
+    expect(savedResultRun?.preservedAttributes).toEqual([
+      {
+        namespace:
+          "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        name: "rsidRPr",
+        value: "00A20606",
+      },
+    ]);
+
+    const fieldParagraph = proseDocument.firstChild;
+    if (!fieldParagraph) {
+      throw new Error("Expected projected field paragraph");
+    }
+    const orphanedAnchorsDocument = schema.node("doc", null, [fieldParagraph]);
+    const cleaned = fromProseDoc(orphanedAnchorsDocument, document, {
+      stylesheetSource: { type: "package" },
+    });
+    const cleanedParagraph = cleaned.package.document.content.at(0);
+    if (cleanedParagraph?.type !== "paragraph") {
+      throw new Error("Expected cleaned paragraph");
+    }
+    const cleanedField = cleanedParagraph.content.at(0);
+    if (cleanedField?.type !== "complexField") {
+      throw new Error("Expected cleaned complex field");
+    }
+    const [cleanedResultRun] = cleanedField.fieldResult;
+    expect(cleanedResultRun?.content).toEqual([
+      { type: "text", text: "Before" },
+      { type: "text", text: "After" },
+    ]);
+    expect(cleanedResultRun?.formatting).toEqual({ noProof: true });
+    expect(cleanedResultRun?.preservedAttributes).toEqual(
+      savedResultRun?.preservedAttributes,
+    );
   });
 
   test("preserves an inline text box between surrounding text", () => {
