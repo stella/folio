@@ -475,7 +475,7 @@ export type LineBreakRun = {
 };
 
 // @public (undocumented)
-export type ListMarkerFormatting = Pick<RunFormatting, "embeddedFontFamilyMap" | "fontFamily" | "alternateFontFamily" | "eastAsiaFontFamily" | "eastAsiaAlternateFontFamily" | "complexScriptFontFamily" | "complexScriptAlternateFontFamily" | "fontSize" | "complexScriptFontSize" | "bold" | "complexScriptBold" | "italic" | "complexScriptItalic" | "rtl" | "forceComplexScript" | "color">;
+export type ListMarkerFormatting = Pick<RunFormatting, "embeddedFontFamilyMap" | "fontFamily" | "alternateFontFamily" | "hAnsiFontFamily" | "hAnsiAlternateFontFamily" | "eastAsiaFontFamily" | "eastAsiaAlternateFontFamily" | "complexScriptFontFamily" | "complexScriptAlternateFontFamily" | "fontSize" | "complexScriptFontSize" | "bold" | "complexScriptBold" | "italic" | "complexScriptItalic" | "rtl" | "forceComplexScript" | "color">;
 
 // @public
 export type MathRun = RunFormatting & {
@@ -810,6 +810,8 @@ export type RunFormatting = {
     shading?: string;
     fontFamily?: string;
     alternateFontFamily?: string;
+    hAnsiFontFamily?: string;
+    hAnsiAlternateFontFamily?: string;
     eastAsiaFontFamily?: string;
     eastAsiaAlternateFontFamily?: string;
     eastAsiaHint?: boolean;

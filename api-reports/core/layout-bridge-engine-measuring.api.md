@@ -104,6 +104,8 @@ export type FontStyle = {
     embeddedFontFamilyMap?: ReadonlyMap<string, string>;
     fontFamily?: string;
     alternateFontFamily?: string;
+    hAnsiFontFamily?: string;
+    hAnsiAlternateFontFamily?: string;
     eastAsiaFontFamily?: string;
     eastAsiaAlternateFontFamily?: string;
     eastAsiaHint?: boolean;
