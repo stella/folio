@@ -55,7 +55,9 @@ export const formattingMarksBesideLockedControl = ({
   if (!control) return undefined;
   const afterControl = before === control;
   const controlIndex = afterControl ? $from.index() - 1 : $from.index();
-  const adjacent = parent.maybeChild(controlIndex + (afterControl ? 1 : -1));
+  const adjacent =
+    parent.maybeChild(controlIndex + (afterControl ? 1 : -1)) ??
+    parent.maybeChild(controlIndex + (afterControl ? -1 : 1));
   if (
     !adjacent?.isText ||
     adjacent.marks.some(
