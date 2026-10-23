@@ -107,6 +107,8 @@ export type FontStyle = {
     documentFontFacts?: DocumentFontFacts;
     fontFamily?: string;
     alternateFontFamily?: string;
+    hAnsiFontFamily?: string;
+    hAnsiAlternateFontFamily?: string;
     eastAsiaFontFamily?: string;
     eastAsiaAlternateFontFamily?: string;
     eastAsiaHint?: boolean;
