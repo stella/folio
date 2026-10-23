@@ -2701,6 +2701,19 @@ function paragraphAttrsToFormatting(
         delete result.numPr;
       }
       delete result.numPrFromStyle;
+    } else if (
+      !sameStatedParagraphNumbering(
+        attrs.numPrFromStyle ?? undefined,
+        orig.numPrFromStyle,
+      )
+    ) {
+      // The inherited tier is the current style's: a restyle replaced or
+      // removed the numbering the paragraph was read with.
+      if (attrs.numPrFromStyle == null) {
+        delete result.numPrFromStyle;
+      } else {
+        result.numPrFromStyle = attrs.numPrFromStyle;
+      }
     }
     if (attrs.styleId !== (orig.styleId ?? undefined)) {
       if (attrs.styleId) {
