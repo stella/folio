@@ -36,8 +36,8 @@ export type ScriptSegment = {
 };
 
 export type ScriptSegmentationOptions = {
-  eastAsiaHint?: boolean;
-  hasHAnsiFont?: boolean;
+  eastAsiaHint?: boolean | undefined;
+  hasHAnsiFont?: boolean | undefined;
 };
 
 export type HAnsiFontSlot = {
@@ -309,7 +309,7 @@ export function hasEastAsiaSlotText(
 /** True when text selects `w:hAnsi` and the run has an independent hAnsi face. */
 export function hasHAnsiSlotText(
   text: string,
-  options: { eastAsiaHint?: boolean } = {},
+  options: { eastAsiaHint?: boolean | undefined } = {},
 ): boolean {
   const { eastAsiaHint = false } = options;
   for (const ch of text) {

@@ -1466,6 +1466,7 @@ const paintListMarker = ({
   }
   const formatting = resolveListMarkerFont(block);
   const style: FontStyle = formatting;
+  const baseFontFamily = formatting.fontFamily;
   // A folded LISTNUM marker carries both slots separated by a tab; without the
   // second-slot offset there is nothing to align it to, so paint it as one run.
   const text = toPaintedText(marker.replaceAll("\t", " "));
@@ -1502,7 +1503,7 @@ const paintListMarker = ({
       collapsed: false,
     });
     const font = context.fonts.intern({
-      fontFamily: segmentStyle.fontFamily,
+      fontFamily: segmentStyle.fontFamily ?? baseFontFamily,
       ...(segmentStyle.alternateFontFamily === undefined
         ? {}
         : { alternateFontFamily: segmentStyle.alternateFontFamily }),
