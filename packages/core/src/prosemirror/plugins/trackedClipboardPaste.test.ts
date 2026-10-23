@@ -28,8 +28,9 @@ test("tracked HTML paste keeps source deletions while proposing the rich slice",
   const original = schema.node("doc", null, [
     schema.node("paragraph", null, [schema.text("replace")]),
   ]);
-  const sourceDeletion = slice.content.descendants(
-    (node) =>
+  let sourceDeletion = false;
+  slice.content.descendants((node) => {
+    if (
       node.isText &&
       node.text === "removed" &&
       node.marks.some(
@@ -37,8 +38,11 @@ test("tracked HTML paste keeps source deletions while proposing the rich slice",
           mark.type.name === "deletion" &&
           mark.attrs["author"] === "Bob Reviewer" &&
           mark.attrs["date"] === "2026-10-22T14:19",
-      ),
-  );
+      )
+    ) {
+      sourceDeletion = true;
+    }
+  });
   expect(sourceDeletion).toBe(true);
   let state = EditorState.create({
     doc: original,
