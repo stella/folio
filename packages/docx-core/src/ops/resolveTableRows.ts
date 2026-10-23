@@ -40,6 +40,10 @@ const collectTables = (blocks: readonly BlockContent[], out: Table[]): void => {
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         break;
       default: {
         const unreachable: never = block;

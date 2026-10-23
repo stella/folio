@@ -91,6 +91,10 @@ const blocksHaveMultiplePropertyChanges = (
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         return false;
       default: {
         const unreachable: never = block;
@@ -271,6 +275,10 @@ const normalizeBlocks = (blocks: readonly BlockContent[]): BlockContent[] => {
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         out.push(block);
         break;
       default: {

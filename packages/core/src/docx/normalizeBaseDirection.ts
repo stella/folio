@@ -141,6 +141,10 @@ const normalizeCellBlock = (
     // A delimiter carries no text and so no base direction.
     case "bookmarkStart":
     case "bookmarkEnd":
+    case "moveFromRangeStart":
+    case "moveFromRangeEnd":
+    case "moveToRangeStart":
+    case "moveToRangeEnd":
       return block;
     default: {
       const unreachable: never = block;
@@ -163,7 +167,11 @@ const normalizeBlocks = (
     if (
       block.type === "preservedBlock" ||
       block.type === "bookmarkStart" ||
-      block.type === "bookmarkEnd"
+      block.type === "bookmarkEnd" ||
+      block.type === "moveFromRangeStart" ||
+      block.type === "moveFromRangeEnd" ||
+      block.type === "moveToRangeStart" ||
+      block.type === "moveToRangeEnd"
     ) {
       return block;
     }

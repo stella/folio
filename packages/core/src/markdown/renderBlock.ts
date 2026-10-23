@@ -88,6 +88,10 @@ export function renderBlocks(
       // A delimiter, with no text to render.
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         return { type: "delimiter" };
       default: {
         const unsupported: never = block;

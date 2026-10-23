@@ -22,6 +22,7 @@ import {
 import type { ParagraphContent } from "../types/document";
 import { expectBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import { BLOCK_BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockBookmarkBoundaryExtension";
+import { BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockMoveRangeBoundaryExtension";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
@@ -63,6 +64,7 @@ type BoundaryNodeName =
   | typeof BOOKMARK_BOUNDARY_NODE_NAME
   | typeof BLOCK_BOOKMARK_BOUNDARY_NODE_NAME
   | typeof MOVE_RANGE_BOUNDARY_NODE_NAME
+  | typeof BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME
   | typeof RANGE_ANCHOR_NODE_NAME;
 
 const bookmarkItems = (node: PMNode): BoundaryItem[] => {
@@ -80,6 +82,9 @@ const BOUNDARY_ITEMS: Record<
   [BOOKMARK_BOUNDARY_NODE_NAME]: bookmarkItems,
   [BLOCK_BOOKMARK_BOUNDARY_NODE_NAME]: bookmarkItems,
   [MOVE_RANGE_BOUNDARY_NODE_NAME]: (node) => [
+    expectMoveRangeBoundaryAttrs(node),
+  ],
+  [BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME]: (node) => [
     expectMoveRangeBoundaryAttrs(node),
   ],
   // A point range holds its start and its end in one node.

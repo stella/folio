@@ -228,6 +228,10 @@ const countAltChunks = (blocks: readonly BlockContent[]): number => {
       case "paragraph":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         break;
       default: {
         const unsupported: never = block;
@@ -394,6 +398,10 @@ const countOpaqueRevisionCarriers = (
       case "paragraph":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         break;
       default: {
         const unsupported: never = block;

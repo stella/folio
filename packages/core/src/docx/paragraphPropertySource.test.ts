@@ -511,6 +511,23 @@ describe("paragraph-property source identity", () => {
         })),
       type: "over-complex",
     },
+    {
+      classification: "expected_block",
+      createPayload: () => [
+        {
+          type: "tableCell",
+          content: [{ type: "moveToRangeStart", id: 1, name: "move1" }],
+        },
+      ],
+      type: "authorless move range start",
+    },
+    {
+      classification: "expected_block",
+      createPayload: () => [
+        { type: "tableCell", content: [{ type: "bookmarkStart", id: 1 }] },
+      ],
+      type: "nameless bookmark start",
+    },
   ] as const)(
     "rejects $type hidden payload deterministically",
     ({ classification, createPayload }) => {

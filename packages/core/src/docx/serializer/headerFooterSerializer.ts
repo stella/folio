@@ -29,7 +29,10 @@ import { captureVerbatimXml } from "../verbatimCapture";
 import { getLocalName, parseXmlDocument } from "../xmlParser";
 import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { serializeBlockSdt } from "./blockSdtSerializer";
-import { serializeBookmarkMarker } from "./markupRangeAttributes";
+import {
+  serializeBookmarkMarker,
+  serializeMoveRangeMarker,
+} from "./markupRangeAttributes";
 import { serializeParagraph } from "./paragraphSerializer";
 import {
   type OoxmlNamespacePrefix,
@@ -90,6 +93,11 @@ function serializeBlock(block: BlockContent): string {
     case "bookmarkStart":
     case "bookmarkEnd":
       return serializeBookmarkMarker(block);
+    case "moveFromRangeStart":
+    case "moveFromRangeEnd":
+    case "moveToRangeStart":
+    case "moveToRangeEnd":
+      return serializeMoveRangeMarker(block);
     default: {
       const unreachable: never = block;
       return unreachable;
