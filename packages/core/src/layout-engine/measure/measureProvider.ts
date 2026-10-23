@@ -117,13 +117,18 @@ export const measurePositionedRun = ({
   const measured = measureRun(text, style);
   const gaps = automaticTextSpacingGaps(text, style);
   const gapWidth = gaps.reduce((sum, gap) => sum + gap.advancePx, 0);
-  const gapAdvances = automaticGapCodeUnitAdvances(text, gaps);
   const glyphWidth =
     measured.charWidths.reduce((sum, width) => sum + width, 0) - gapWidth;
   const shapedWidth = measureTextWidth(text, style) - gapWidth;
   const scale = glyphWidth > 0 ? shapedWidth / glyphWidth : 1;
+  if (scale === 1 && trailingAutomaticSpacingPx === 0) {
+    const width = shapedWidth + gapWidth;
+    return measured.width === width ? measured : { ...measured, width };
+  }
+  const gapAdvances =
+    gaps.length === 0 ? undefined : automaticGapCodeUnitAdvances(text, gaps);
   const charWidths = measured.charWidths.map((width, offset) => {
-    const gap = gapAdvances.get(offset) ?? 0;
+    const gap = gapAdvances?.get(offset) ?? 0;
     return (width - gap) * scale + gap;
   });
   if (text.length > 0 && trailingAutomaticSpacingPx > 0) {
