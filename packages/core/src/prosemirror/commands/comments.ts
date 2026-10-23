@@ -103,7 +103,7 @@ import {
   retainedTrackedRevisionMark,
   trackedRevisionPathOf,
 } from "../trackedRevisionPath";
-import { holdsNoContent } from "../zeroWidthAnchors";
+import { paragraphContentOf } from "../zeroWidthAnchors";
 import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
@@ -803,7 +803,7 @@ function resolveChange(
         }
         const outcome = paragraphMarkOutcome({
           follows,
-          holdsContent: !holdsNoContent(paragraph),
+          holdsContent: paragraphContentOf(paragraph),
           markWasAdded: op.markWasAdded,
           // Removing this final paragraph leaves the block before it last.
           containerStillEndsWithParagraph:

@@ -12,7 +12,11 @@ import { isCommentExhausted } from "./comments";
 import type { DocumentEdit } from "./edits";
 import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
-import { paragraphHoldsContent, paragraphLength } from "./offsets";
+import {
+  type ParagraphContentVerdict,
+  paragraphHoldsContent,
+  paragraphLength,
+} from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
@@ -47,7 +51,8 @@ export const paragraphMarkOutcome = ({
   followingHasSectionProperties = false,
 }: {
   follows: "paragraph" | "table" | "nothing";
-  holdsContent: boolean;
+  /** From {@link paragraphHoldsContent} or the editor's view of the same rule, never re-derived. */
+  holdsContent: ParagraphContentVerdict;
   markWasAdded: boolean;
   /**
    * Read only when nothing follows: whether the block BEFORE this paragraph,

@@ -51,7 +51,7 @@ import {
   rebuildNode,
   sameOwnFields,
 } from "./leaves";
-import { paragraphHoldsContent, paragraphLength } from "./offsets";
+import { paragraphHoldsContent } from "./offsets";
 import {
   noRelocatedBoundaries,
   pairedCommentRanges,
@@ -1509,11 +1509,10 @@ const joinOps = (
   const blocks = blockListAt(body.content, location.list);
   const next = blocks[location.index + 1];
   const previous = blocks[location.index - 1];
-  const empty = paragraphLength(paragraph) === 0;
   if (next?.type === "paragraph") {
     const outcome = paragraphMarkOutcome({
       follows: "paragraph",
-      holdsContent: !empty,
+      holdsContent: paragraphHoldsContent(paragraph),
       markWasAdded: added,
       containerStillEndsWithParagraph: true,
       followingTableCanReceiveRunIn: false,

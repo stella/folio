@@ -39,7 +39,7 @@ import {
   runParagraphsIntoTables,
   runsIntoFollowingTable,
 } from "../prosemirror/tableRunIn";
-import { holdsNoContent } from "../prosemirror/zeroWidthAnchors";
+import { paragraphContentOf } from "../prosemirror/zeroWidthAnchors";
 import { recordNodeResolution } from "./revisionResolutionEdits";
 import {
   resolveInlineRevisions,
@@ -574,7 +574,7 @@ const resolveStructure = ({
       const preceding = entries[index - 1]?.node;
       const outcome = paragraphMarkOutcome({
         follows: "paragraph",
-        holdsContent: !holdsNoContent(paragraph),
+        holdsContent: paragraphContentOf(paragraph),
         markWasAdded,
         containerStillEndsWithParagraph: true,
         followingTableCanReceiveRunIn: false,
@@ -648,7 +648,7 @@ const resolveStructure = ({
     }
     const outcome = paragraphMarkOutcome({
       follows,
-      holdsContent: !holdsNoContent(paragraph),
+      holdsContent: paragraphContentOf(paragraph),
       markWasAdded,
       containerStillEndsWithParagraph,
       followingTableCanReceiveRunIn: false,
@@ -661,7 +661,7 @@ const resolveStructure = ({
     });
     if (
       marker &&
-      holdsNoContent(paragraph) &&
+      !paragraphContentOf(paragraph) &&
       outcome.kind === "remove" &&
       joins &&
       index + reversed.length + 1 > 1

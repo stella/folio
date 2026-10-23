@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { paragraphMarkOutcome } from "../blockDeletion";
-import { paragraphHoldsContent } from "../offsets";
+import { paragraphContentVerdict, paragraphHoldsContent } from "../offsets";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
 const resolveAccepted = (document: Document, revisionIds = [7]): Document => {
@@ -324,6 +324,34 @@ test("only atomic fields make marker-only inline containers paragraph content", 
   ).toBe(true);
 });
 
+test("the one paragraph-content rule keeps range boundaries and not layout caches", () => {
+  expect(
+    paragraphContentVerdict({ width: 0, zeroWidthItems: ["commentRangeEnd"] }),
+  ).toBe(true);
+  expect(
+    paragraphContentVerdict({ width: 0, zeroWidthItems: ["bookmarkStart"] }),
+  ).toBe(true);
+  expect(
+    paragraphContentVerdict({
+      width: 0,
+      zeroWidthItems: ["renderedPageBreak", "noteMarker"],
+    }),
+  ).toBe(false);
+  expect(paragraphContentVerdict({ width: 1, zeroWidthItems: [] })).toBe(true);
+  expect(
+    paragraphHoldsContent({
+      type: "paragraph",
+      content: [{ type: "run", content: [{ type: "renderedPageBreak" }] }],
+    }),
+  ).toBe(false);
+  expect(
+    paragraphHoldsContent({
+      type: "paragraph",
+      content: [{ type: "commentRangeEnd", id: 1 }],
+    }),
+  ).toBe(true);
+});
+
 test("refuses one owned reason when an empty mark precedes a section-ending table cell", () => {
   const paragraph: Paragraph = {
     type: "paragraph",
@@ -435,7 +463,16 @@ describe("paragraphMarkOutcome", () => {
       followingTableCanReceiveRunIn: false,
       expected: "keep",
     },
-  ] as const)("returns $expected for $follows", ({ expected, ...input }) => {
-    expect(paragraphMarkOutcome(input).kind).toBe(expected);
-  });
+  ] as const)(
+    "returns $expected for $follows",
+    ({ expected, holdsContent, ...input }) => {
+      const verdict = paragraphContentVerdict({
+        width: holdsContent ? 1 : 0,
+        zeroWidthItems: [],
+      });
+      expect(
+        paragraphMarkOutcome({ ...input, holdsContent: verdict }).kind,
+      ).toBe(expected);
+    },
+  );
 });

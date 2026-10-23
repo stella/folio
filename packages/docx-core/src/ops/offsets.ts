@@ -86,18 +86,80 @@ export const isRangeBoundary = (item: ParagraphContent): boolean =>
   INLINE_KINDS[item.type] === "openingMarker" ||
   INLINE_KINDS[item.type] === "closingMarker";
 
+type RangeBoundaryType = {
+  [Type in keyof typeof INLINE_KINDS]: (typeof INLINE_KINDS)[Type] extends
+    "openingMarker" | "closingMarker"
+    ? Type
+    : never;
+}[keyof typeof INLINE_KINDS];
+
 /**
- * Whether a paragraph holds content its mark must not take away: visible text
- * or a range marker or comment reference, which have no width.
+ * The zero-width items a paragraph can hold, and whether each is content its
+ * mark must not take away. A range boundary is: it anchors a bookmark, comment
+ * or move that outlives the paragraph mark. A cached page break and a note's
+ * own marker are not.
  */
-export const paragraphHoldsContent = (paragraph: Paragraph): boolean => {
-  return (
-    paragraphLength(paragraph) > 0 ||
-    paragraph.content.some(
-      (item) => isRangeBoundary(item) || item.type === "commentReference",
-    )
-  );
+export const ZERO_WIDTH_ITEMS_HOLD_CONTENT = {
+  bookmarkStart: true,
+  bookmarkEnd: true,
+  commentRangeStart: true,
+  commentRangeEnd: true,
+  moveFromRangeStart: true,
+  moveFromRangeEnd: true,
+  moveToRangeStart: true,
+  moveToRangeEnd: true,
+  renderedPageBreak: false,
+  noteMarker: false,
+} as const satisfies Record<
+  | RangeBoundaryType
+  | Extract<RunContent["type"], "renderedPageBreak" | "noteMarker">,
+  boolean
+>;
+
+/** A zero-width item the paragraph-content rule classifies. */
+export type ZeroWidthItem = keyof typeof ZERO_WIDTH_ITEMS_HOLD_CONTENT;
+
+declare const paragraphContentBrand: unique symbol;
+
+/**
+ * Whether a paragraph holds content its mark must not take away. Only
+ * {@link paragraphContentVerdict} makes one, so every paragraph-mark outcome,
+ * in the engine and in the editor, is decided by the same rule.
+ */
+export type ParagraphContentVerdict = boolean & {
+  readonly [paragraphContentBrand]: true;
 };
+
+/** The one paragraph-content rule: any width, or a zero-width item that is content. */
+export const paragraphContentVerdict = ({
+  width,
+  zeroWidthItems,
+}: {
+  width: number;
+  zeroWidthItems: Iterable<ZeroWidthItem>;
+}): ParagraphContentVerdict => {
+  let holds = width > 0;
+  for (const item of zeroWidthItems) {
+    holds ||= ZERO_WIDTH_ITEMS_HOLD_CONTENT[item];
+  }
+  return holds as ParagraphContentVerdict;
+};
+
+const isRangeBoundaryItem = (
+  item: ParagraphContent,
+): item is Extract<ParagraphContent, { type: RangeBoundaryType }> =>
+  isRangeBoundary(item);
+
+/** Whether a paragraph holds content its mark must not take away. */
+export const paragraphHoldsContent = (
+  paragraph: Paragraph,
+): ParagraphContentVerdict =>
+  paragraphContentVerdict({
+    width: paragraphLength(paragraph),
+    zeroWidthItems: paragraph.content
+      .filter(isRangeBoundaryItem)
+      .map((item) => item.type),
+  });
 
 /** Tracked content that direct text must not join: it is on its way out. */
 export const isRemovedRevision = (item: ParagraphContent): boolean =>
