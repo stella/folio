@@ -9,15 +9,15 @@
 
 import type { DocumentFontFacts } from "../../fonts/documentFontFacts";
 
-/**
- * Font styling properties for measurement
- */
 export type AutomaticTextSpacingPolicy = {
   latin: boolean;
   numbers: boolean;
   reverseFontFamily?: string | null;
 };
 
+/**
+ * Font styling properties for measurement
+ */
 export type FontStyle = {
   automaticTextSpacing?: AutomaticTextSpacingPolicy;
   /** Embedded families owned by this editor, never ambient process state. */

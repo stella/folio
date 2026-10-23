@@ -6,6 +6,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { buildGlyphs } from "../display-list/build/glyphs";
+import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
 import { paragraphToRuns } from "../layout-bridge/convert/paragraphRuns";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import {
@@ -349,6 +350,7 @@ test("flow derives default and authored switches without changing the source mod
             : { autoSpaceDE: enabled, autoSpaceDN: enabled }),
         };
         const before = JSON.stringify(document);
+        const xmlBefore = serializeParagraph(first);
         const pmDoc = toProseDoc(document);
         const pmBefore = pmDoc.toJSON();
         const block = toFlowBlocks(pmDoc).at(0);
@@ -363,6 +365,7 @@ test("flow derives default and authored switches without changing the source mod
         });
         measureParagraph(block, 100);
         expect(JSON.stringify(document)).toBe(before);
+        expect(serializeParagraph(first)).toBe(xmlBefore);
         expect(pmDoc.toJSON()).toEqual(pmBefore);
       }
     },
