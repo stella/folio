@@ -115,6 +115,15 @@ export function sharedMathRunFontSize(ommlXml: string): number | undefined {
   return sharedHalfPoints / 2;
 }
 
+const MATH_VARIANTS = {
+  plain: "normal",
+  bold: "bold",
+  italic: "italic",
+  boldItalic: "bold-italic",
+} as const;
+
+const MATH_ON_VALUES = new Set(["1", "on", "true"]);
+
 /**
  * Convert an OMML element (`<m:oMath>` or `<m:oMathPara>`) into a MathML
  * XML string.
@@ -329,7 +338,49 @@ function renderRun(run: XmlElement): string {
   for (const tEl of tElems) {
     out += tokenizeMathText(extractText(tEl));
   }
-  return out;
+  const properties = findChildByNamespaceUri(run, MATH_NAMESPACE_URIS, "rPr");
+  const normal = findChildByNamespaceUri(
+    properties,
+    MATH_NAMESPACE_URIS,
+    "nor",
+  );
+  const normalValue = normal
+    ? (getAttributeByNamespaceUri(
+        normal,
+        MATH_NAMESPACE_URIS,
+        "val",
+      )?.toLowerCase() ?? "1")
+    : undefined;
+  const enablesMathStyle =
+    normalValue !== undefined && MATH_ON_VALUES.has(normalValue);
+  const style = findChildByNamespaceUri(properties, MATH_NAMESPACE_URIS, "sty");
+  const styleValue = getAttributeByNamespaceUri(
+    style,
+    MATH_NAMESPACE_URIS,
+    "val",
+  );
+  let mathVariant: string | undefined;
+  if (enablesMathStyle) {
+    mathVariant = MATH_VARIANTS.plain;
+  } else {
+    switch (styleValue) {
+      case "p":
+        mathVariant = MATH_VARIANTS.plain;
+        break;
+      case "b":
+        mathVariant = MATH_VARIANTS.bold;
+        break;
+      case "i":
+        mathVariant = MATH_VARIANTS.italic;
+        break;
+      case "bi":
+        mathVariant = MATH_VARIANTS.boldItalic;
+        break;
+    }
+  }
+  return mathVariant === undefined
+    ? out
+    : out.replaceAll(/<(mi|mn|mo)>/gu, `<$1 mathvariant="${mathVariant}">`);
 }
 
 function tokenizeMathText(text: string): string {
