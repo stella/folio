@@ -430,8 +430,8 @@ const run = async (shard: Shard, outPath: string): Promise<void> => {
     },
     declaredRefusals: familyCensus.declaredRefusals,
     failures,
-    fileSignatures: failures.flatMap(({ file, evidence, failures }) =>
-      fileSignatureRows(file, countedFailures(failures, evidence)),
+    fileSignatures: failures.flatMap(({ file, evidence, failures: findings }) =>
+      fileSignatureRows(file, countedFailures(findings, evidence)),
     ),
     baseline: familyBaselineFromCensus(
       familyCensus,
