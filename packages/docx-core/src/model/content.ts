@@ -2818,7 +2818,11 @@ export type BlockContent =
   | BlockCustomXml
   | PreservedBlock
   | BookmarkStart
-  | BookmarkEnd;
+  | BookmarkEnd
+  | MoveFromRangeStart
+  | MoveFromRangeEnd
+  | MoveToRangeStart
+  | MoveToRangeEnd;
 
 /** A block that can occur inside a table cell. */
 export type TableCellBlock = BlockContent;

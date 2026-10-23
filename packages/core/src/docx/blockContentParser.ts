@@ -30,6 +30,7 @@ import {
   computeListMarker,
   type PreviousListState,
 } from "./listMarkerComputation";
+import { BLOCK_MOVE_RANGE_MARKER_HANDLERS } from "./markupRangeMarker";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
@@ -283,6 +284,7 @@ export const BLOCK_CONTENT_HANDLERS = {
   bookmarkEnd: (child, { modelled }) => {
     modelled.push(parseBookmarkEnd(child));
   },
+  ...BLOCK_MOVE_RANGE_MARKER_HANDLERS,
   ...BLOCK_CHILD_OWNERS,
   altChunk: CAPTURE,
   commentRangeEnd: CAPTURE,
@@ -298,11 +300,7 @@ export const BLOCK_CONTENT_HANDLERS = {
   del: CAPTURE,
   ins: CAPTURE,
   moveFrom: CAPTURE,
-  moveFromRangeEnd: CAPTURE,
-  moveFromRangeStart: CAPTURE,
   moveTo: CAPTURE,
-  moveToRangeEnd: CAPTURE,
-  moveToRangeStart: CAPTURE,
   permEnd: CAPTURE,
   permStart: CAPTURE,
   proofErr: CAPTURE,

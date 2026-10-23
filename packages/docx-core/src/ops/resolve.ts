@@ -51,10 +51,13 @@ import {
   rebuildNode,
   sameOwnFields,
 } from "./leaves";
-import { paragraphHoldsContent, paragraphLength } from "./offsets";
+import { paragraphHoldsContent } from "./offsets";
 import {
+  isBlockBoundary,
   noRelocatedBoundaries,
   pairedCommentRanges,
+  paragraphRemains,
+  rangeBoundariesIn,
   type RelocatedBoundaries,
   removedContentBoundaries,
   wellFormedRanges,
@@ -1487,6 +1490,38 @@ const deferSplitSeam = ({
  * The operations that remove a paragraph's resolved mark, against the document
  * as it stands. `ends` is updated for the paragraph a join leaves.
  */
+/**
+ * `blocks` without the paragraph at `index`, and with what it leaves
+ * ({@link paragraphRemains}). Before a table its bookmark and move boundaries
+ * stand in its place and its comment anchors go to the end of the paragraph
+ * right before it; ending its container, where only a paragraph may stand
+ * last, every boundary goes there. `undefined` when there is no such
+ * paragraph to take them: the paragraph then stays.
+ */
+const blocksWithoutParagraph = (
+  blocks: readonly BlockContent[],
+  index: number,
+  place: "blocks" | "previous",
+): BlockContent[] | undefined => {
+  const paragraph = blocks[index];
+  if (paragraph?.type !== "paragraph")
+    return panic("Only a paragraph leaves its range boundaries.");
+  const { blocks: boundaries, comments } = paragraphRemains(paragraph.content);
+  const between = place === "blocks" ? boundaries : [];
+  const toPrevious =
+    place === "blocks" ? comments : rangeBoundariesIn(paragraph.content);
+  const remaining = [
+    ...blocks.slice(0, index),
+    ...between,
+    ...blocks.slice(index + 1),
+  ];
+  if (toPrevious.length === 0) return remaining;
+  const host = remaining[index - 1];
+  if (host?.type !== "paragraph") return undefined;
+  remaining[index - 1] = { ...host, content: [...host.content, ...toPrevious] };
+  return remaining;
+};
+
 const joinOps = (
   document: Document,
   { op, story, paraId, added, depth }: JoinPlan,
@@ -1509,11 +1544,10 @@ const joinOps = (
   const blocks = blockListAt(body.content, location.list);
   const next = blocks[location.index + 1];
   const previous = blocks[location.index - 1];
-  const empty = paragraphLength(paragraph) === 0;
   if (next?.type === "paragraph") {
     const outcome = paragraphMarkOutcome({
       follows: "paragraph",
-      holdsContent: !empty,
+      holdsContent: paragraphHoldsContent(paragraph),
       markWasAdded: added,
       containerStillEndsWithParagraph: true,
       followingTableCanReceiveRunIn: false,
@@ -1603,15 +1637,14 @@ const joinOps = (
       },
     ]);
   }
-  if (
-    next !== undefined &&
-    (next.type === "bookmarkStart" || next.type === "bookmarkEnd")
-  ) {
+  // Fail closed: content resolved across a range boundary standing between
+  // blocks would move into or out of its range.
+  if (next !== undefined && isBlockBoundary(next)) {
     return Result.err(
       refusal(
         op,
         DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `A block-level bookmark stands between ${paraId} and the next paragraph.`,
+        `A range boundary stands between ${paraId} and the next block.`,
       ),
     );
   }
@@ -1669,46 +1702,65 @@ const joinOps = (
         ),
       );
     }
-    const replacement =
-      outcome.kind === "remove" ? next : runParagraphIntoTable(paragraph, next);
-    if (replacement === undefined) {
-      return Result.err(
-        refusal(
-          op,
-          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          `Resolving the mark of ${paraId} cannot run into the table's first cell paragraph.`,
-        ),
+    if (outcome.kind === "remove") {
+      const remaining = blocksWithoutParagraph(
+        blocks,
+        location.index,
+        "blocks",
       );
+      if (remaining !== undefined)
+        return Result.ok([
+          {
+            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+            story,
+            blockId: anchor.paraId ?? "",
+            expected: blocks,
+            blocks: remaining,
+          },
+        ]);
+    } else {
+      const replacement = runParagraphIntoTable(paragraph, next);
+      if (replacement === undefined) {
+        return Result.err(
+          refusal(
+            op,
+            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            `Resolving the mark of ${paraId} cannot run into the table's first cell paragraph.`,
+          ),
+        );
+      }
+      return Result.ok([
+        {
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+          story,
+          blockId: anchor.paraId ?? "",
+          expected: blocks,
+          blocks: blocks.flatMap((block, index) => {
+            if (index === location.index) return [];
+            return index === location.index + 1 ? [replacement] : [block];
+          }),
+        },
+      ]);
     }
-    return Result.ok([
-      {
-        type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-        story,
-        blockId: anchor.paraId ?? "",
-        expected: blocks,
-        blocks: blocks.flatMap((block, index) => {
-          if (index === location.index) return [];
-          return index === location.index + 1 ? [replacement] : [block];
-        }),
-      },
-    ]);
   }
   if (outcome.kind === "remove" && blocks.length > 1) {
     const anchor = blocks.find(
       (block, index): block is Paragraph =>
         index !== location.index && block.type === "paragraph",
     );
-    if (anchor !== undefined) {
-      const replacementBlocks = blocks.filter(
-        (_, index) => index !== location.index,
-      );
+    const replacementBlocks = blocksWithoutParagraph(
+      blocks,
+      location.index,
+      "previous",
+    );
+    if (anchor !== undefined && replacementBlocks !== undefined) {
+      const preceding = replacementBlocks[location.index - 1];
       if (
         outcome.sectionDestination === "preceding" &&
-        previous?.type === "paragraph"
+        preceding?.type === "paragraph"
       ) {
-        const previousIndex = replacementBlocks.indexOf(previous);
-        replacementBlocks[previousIndex] = {
-          ...previous,
+        replacementBlocks[location.index - 1] = {
+          ...preceding,
           sectionProperties: paragraph.sectionProperties,
         };
       }

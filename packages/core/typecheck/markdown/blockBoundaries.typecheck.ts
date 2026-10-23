@@ -57,6 +57,19 @@ export const MARKDOWN_BLOCK_BOUNDARY_FIXTURES = {
     marker: null,
   },
   bookmarkEnd: { block: { type: "bookmarkEnd", id: 1 }, marker: null },
+  moveFromRangeStart: {
+    block: { type: "moveFromRangeStart", id: 2, name: "move", author: "A" },
+    marker: null,
+  },
+  moveFromRangeEnd: {
+    block: { type: "moveFromRangeEnd", id: 2 },
+    marker: null,
+  },
+  moveToRangeStart: {
+    block: { type: "moveToRangeStart", id: 3, name: "move", author: "A" },
+    marker: null,
+  },
+  moveToRangeEnd: { block: { type: "moveToRangeEnd", id: 3 }, marker: null },
 } as const satisfies BoundaryFixtures;
 
 // @ts-expect-error a boundary census missing any block kind must fail

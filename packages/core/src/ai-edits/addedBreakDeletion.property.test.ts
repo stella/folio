@@ -86,12 +86,24 @@ const resolved = async (
   const copy = await reopen(reviewer);
   if (resolution === "accept") copy.acceptAll();
   else copy.rejectAll();
-  return (await reopen(copy)).getContent().map((block) => {
+  const saved = await copy.toBuffer();
+  const blocks = (await open(saved)).getContent().map((block) => {
     if (block.kind === "diagnostic")
       panic("The added-break fixture contains an opaque block");
     const { text, kind, directAlignment } = block;
     return { text, kind, directAlignment };
   });
+  // A paragraph that goes takes no bookmark with it: both ends stay, in place.
+  const xml =
+    (await (
+      await JSZip.loadAsync(saved)
+    )
+      .file("word/document.xml")
+      ?.async("string")) ?? "";
+  const bookmarks = [
+    ...xml.matchAll(/<w:(bookmarkStart|bookmarkEnd)\b|<w:(p|tbl)\b/gu),
+  ].map((match) => match[1] ?? match[2]);
+  return { blocks, bookmarks };
 };
 
 const checkDeletion = async (options: FixtureOptions) => {
@@ -159,3 +171,116 @@ test.each(CASES)(
   },
   propertyTestTimeout(60_000),
 );
+
+test("retracting an inserted paragraph before a table keeps a comment that ends in it", async () => {
+  const document = createEmptyDocument();
+  const info = { author: "Earlier Reviewer", date: "2026-01-01T00:00:00Z" };
+  document.package.document.comments = [
+    {
+      id: 7,
+      author: "Earlier Reviewer",
+      content: [paragraph("Check this.")],
+    },
+  ];
+  document.package.document.content = [
+    paragraph([{ type: "commentRangeStart", id: 7 }, run("Opening clause.")]),
+    {
+      ...paragraph([
+        {
+          type: "insertion",
+          info: { ...info, id: 4 },
+          content: [run("Pending clause.")],
+        },
+        { type: "commentRangeEnd", id: 7 },
+        {
+          type: "run",
+          content: [{ type: "commentReference", id: 7 }],
+        },
+      ]),
+      paraId: "10000001",
+      pPrMark: { kind: "ins", info: { ...info, id: 3 } },
+    },
+    table({ rows: [["Cell."]] }),
+    paragraph("Closing clause."),
+  ];
+  const reviewer = await open(await createDocx(document));
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: "10000001" }],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  expect(result.skipped).toEqual([]);
+  const xml =
+    (await (
+      await JSZip.loadAsync(await reviewer.toBuffer())
+    )
+      .file("word/document.xml")
+      ?.async("string")) ?? "";
+  // The comment still spans what it covered outside the pending paragraph.
+  expect(xml).toMatch(/<w:commentRangeStart w:id="7"\/>/u);
+  expect(xml).toMatch(/<w:commentRangeEnd w:id="7"\/>/u);
+  expect(xml.indexOf('commentRangeStart w:id="7"')).toBeLessThan(
+    xml.indexOf('commentRangeEnd w:id="7"'),
+  );
+  expect(xml.indexOf('commentRangeEnd w:id="7"')).toBeLessThan(
+    xml.indexOf("<w:tbl"),
+  );
+});
+
+test("retracting an inserted paragraph first in its container keeps a comment that starts in it and leaves no insertion", async () => {
+  const document = createEmptyDocument();
+  const info = { author: "Earlier Reviewer", date: "2026-01-01T00:00:00Z" };
+  document.package.document.comments = [
+    {
+      id: 8,
+      author: "Earlier Reviewer",
+      content: [paragraph("Check this.")],
+    },
+  ];
+  document.package.document.content = [
+    {
+      ...paragraph([
+        { type: "commentRangeStart", id: 8 },
+        {
+          type: "insertion",
+          info: { ...info, id: 4 },
+          content: [run("Pending clause.")],
+        },
+      ]),
+      paraId: "10000002",
+      pPrMark: { kind: "ins", info: { ...info, id: 3 } },
+    },
+    table({ rows: [["Cell."]] }),
+    paragraph([
+      run("Closing clause."),
+      { type: "commentRangeEnd", id: 8 },
+      { type: "run", content: [{ type: "commentReference", id: 8 }] },
+    ]),
+  ];
+  const reviewer = await open(await createDocx(document));
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: "10000002" }],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  expect(result.skipped).toEqual([]);
+  const xml =
+    (await (
+      await JSZip.loadAsync(await reviewer.toBuffer())
+    )
+      .file("word/document.xml")
+      ?.async("string")) ?? "";
+  expect(xml).toMatch(/<w:commentRangeStart w:id="8"\/>/u);
+  expect(xml).toMatch(/<w:commentRangeEnd w:id="8"\/>/u);
+  expect(xml.indexOf('commentRangeStart w:id="8"')).toBeLessThan(
+    xml.indexOf('commentRangeEnd w:id="8"'),
+  );
+  // Nothing of the retracted insertion stays pending.
+  expect(xml).not.toMatch(/<w:ins\b/u);
+});

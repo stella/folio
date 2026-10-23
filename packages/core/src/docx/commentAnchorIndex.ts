@@ -306,6 +306,10 @@ export const removeCommentMarkers = (
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         return block;
     }
   };

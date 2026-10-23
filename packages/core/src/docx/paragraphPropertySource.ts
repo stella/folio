@@ -907,6 +907,10 @@ const tableCellBlockTraversalByType = {
   blockCustomXml: "blockSdt",
   bookmarkEnd: "leaf",
   bookmarkStart: "leaf",
+  moveFromRangeEnd: "leaf",
+  moveFromRangeStart: "leaf",
+  moveToRangeEnd: "leaf",
+  moveToRangeStart: "leaf",
   paragraph: "paragraph",
   preservedBlock: "leaf",
   table: "table",
@@ -1387,11 +1391,56 @@ function visitDecodedTableCellBlock(
       return;
     }
     case "leaf":
+      visitDecodedTableCellLeafBlock(block, blockType, path);
       return;
     default: {
       const exhaustiveTraversal: never = traversal;
       return exhaustiveTraversal;
     }
+  }
+}
+
+type TableCellLeafBlockType = {
+  [
+    Type in keyof typeof tableCellBlockTraversalByType
+  ]: (typeof tableCellBlockTraversalByType)[Type] extends "leaf" ? Type : never;
+}[keyof typeof tableCellBlockTraversalByType];
+
+/**
+ * The fields each leaf block needs before the serializer can write it. A
+ * payload is untrusted: a marker short of one is refused here, not met by
+ * the writer.
+ */
+const TABLE_CELL_LEAF_BLOCK_FIELDS = {
+  bookmarkStart: { id: "number", name: "string" },
+  bookmarkEnd: { id: "number" },
+  moveFromRangeStart: { id: "number", name: "string", author: "string" },
+  moveFromRangeEnd: { id: "number" },
+  moveToRangeStart: { id: "number", name: "string", author: "string" },
+  moveToRangeEnd: { id: "number" },
+  preservedBlock: { xml: "string" },
+} as const satisfies Record<
+  TableCellLeafBlockType,
+  Readonly<Record<string, "number" | "string">>
+>;
+
+const isTableCellLeafBlockType = (
+  type: BlockContent["type"],
+): type is TableCellLeafBlockType =>
+  Object.hasOwn(TABLE_CELL_LEAF_BLOCK_FIELDS, type);
+
+function visitDecodedTableCellLeafBlock(
+  block: Record<string, unknown>,
+  blockType: BlockContent["type"],
+  path: string,
+): void {
+  if (!isTableCellLeafBlockType(blockType))
+    return invalidTableCellParagraphSourcePayload("invalid_block_type", path);
+  for (const [field, kind] of Object.entries(
+    TABLE_CELL_LEAF_BLOCK_FIELDS[blockType],
+  )) {
+    if (typeof block[field] !== kind)
+      return invalidTableCellParagraphSourcePayload("expected_block", path);
   }
 }
 

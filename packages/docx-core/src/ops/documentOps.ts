@@ -18,6 +18,7 @@ export { withBodyContent } from "./blocks";
 export { paragraphMarkOutcome } from "./blockDeletion";
 export {
   type BoundaryOccurrence,
+  paragraphRemains,
   planWellFormedRanges,
   type WellFormedRangePlan,
 } from "./rangeBoundaries";
@@ -64,8 +65,11 @@ export {
 } from "./contract";
 export {
   OBJECT_REPLACEMENT_CHARACTER,
+  paragraphContentVerdict,
   paragraphLength,
   paragraphLogicalText,
+  type ParagraphContentVerdict,
+  type ZeroWidthItem,
 } from "./offsets";
 export {
   planTrackedReplace,

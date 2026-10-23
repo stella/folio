@@ -699,7 +699,7 @@ const statedCellWidth = (value: number, type: TableWidthType) => ({
 
 const tableCellSpec: NodeSpec = {
   content:
-    "(paragraph | table | textBox | blockSdt | blockCustomXml | preservedBlock | blockBookmarkBoundary)+",
+    "(paragraph | table | textBox | blockSdt | blockCustomXml | preservedBlock | blockBookmarkBoundary | blockMoveRangeBoundary)+",
   tableRole: "cell",
   isolating: true,
   attrs: {
@@ -800,7 +800,7 @@ const tableCellSpec: NodeSpec = {
 
 const tableHeaderSpec: NodeSpec = {
   content:
-    "(paragraph | table | textBox | blockSdt | blockCustomXml | preservedBlock | blockBookmarkBoundary)+",
+    "(paragraph | table | textBox | blockSdt | blockCustomXml | preservedBlock | blockBookmarkBoundary | blockMoveRangeBoundary)+",
   tableRole: "header_cell",
   isolating: true,
   attrs: {

@@ -31,6 +31,10 @@ const BLOCK_ELEMENT_NAMES = {
   preservedBlock: null,
   bookmarkStart: "bookmarkStart",
   bookmarkEnd: "bookmarkEnd",
+  moveFromRangeStart: "moveFromRangeStart",
+  moveFromRangeEnd: "moveFromRangeEnd",
+  moveToRangeStart: "moveToRangeStart",
+  moveToRangeEnd: "moveToRangeEnd",
 } as const satisfies Record<BlockContent["type"], string | null>;
 type ModelMatchOptions = {
   value: BlockContent | undefined;
@@ -613,6 +617,10 @@ const replayNestedBlock = ({
     case "preservedBlock":
     case "bookmarkStart":
     case "bookmarkEnd":
+    case "moveFromRangeStart":
+    case "moveFromRangeEnd":
+    case "moveToRangeStart":
+    case "moveToRangeEnd":
       return null;
     default: {
       const unreachable: never = current;

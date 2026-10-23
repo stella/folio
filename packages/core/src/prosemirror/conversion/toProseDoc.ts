@@ -134,6 +134,7 @@ import {
   type MarkFactory,
   textFormattingToMarks,
 } from "../extensions/marks/markUtils";
+import { BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/BlockMoveRangeBoundaryExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
@@ -143,6 +144,7 @@ import { inlineWrapperLayer } from "../inlineWrapperStack";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { listRenderingFor } from "../listRendering";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
+import type { MoveRangeMarker } from "../moveRangeBoundaryAttrs";
 import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
 import {
   effectiveParagraphNumbering,
@@ -515,6 +517,12 @@ export const collectPairedBookmarkIds = (
         case "bookmarkEnd":
           countBoundary(block.id, "end");
           break;
+        // A move's range is no bookmark: nothing here pairs it.
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          break;
         default: {
           const unsupported: never = block;
           panic(`Unsupported block content: ${JSON.stringify(unsupported)}`);
@@ -611,6 +619,12 @@ export function toProseDoc(
         case "bookmarkEnd":
           out.push(convertBlockBookmarkBoundary(block));
           break;
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          out.push(convertBlockMoveRangeBoundary(block));
+          break;
         default: {
           const unsupported: never = block;
           panic(`Unsupported block content: ${JSON.stringify(unsupported)}`);
@@ -702,6 +716,11 @@ function convertBlockBookmarkBoundary(
           displacedByCustomXml: block.displacedByCustomXml,
         },
   );
+}
+
+/** A move range marker standing between blocks, kept between the same two. */
+function convertBlockMoveRangeBoundary(block: MoveRangeMarker): PMNode {
+  return schema.node(BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME, { marker: block });
 }
 
 /**
@@ -2793,6 +2812,12 @@ function convertTableCell({
         case "bookmarkStart":
         case "bookmarkEnd":
           nodes.push(convertBlockBookmarkBoundary(block));
+          break;
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          nodes.push(convertBlockMoveRangeBoundary(block));
           break;
         default: {
           const unsupported: never = block;
@@ -5917,6 +5942,12 @@ export function headerFooterToProseDoc(
         case "bookmarkStart":
         case "bookmarkEnd":
           out.push(convertBlockBookmarkBoundary(block));
+          break;
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          out.push(convertBlockMoveRangeBoundary(block));
           break;
         default: {
           const unsupported: never = block;

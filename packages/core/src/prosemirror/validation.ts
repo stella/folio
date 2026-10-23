@@ -410,6 +410,7 @@ const validateNodeAttrs = (
       return;
 
     case "moveRangeBoundary":
+    case "blockMoveRangeBoundary":
       appendAttrIssues(path, readMoveRangeBoundaryAttrs(node), issues);
       return;
 
