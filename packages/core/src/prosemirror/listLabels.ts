@@ -85,32 +85,6 @@ const visibleLabel = (
   return staticMarker(counterAttrs);
 };
 
-const inheritedNumberingReference = (
-  attrs: Readonly<ParagraphAttrs>,
-  sources: ParagraphNumberingSources,
-) => {
-  // A tracked previous reference is only the missing numId for a current
-  // level-only override. A current style reference already supplies that id
-  // and must remain the owner of the current marker.
-  if (
-    sources.numPr?.kind !== "levelOnly" ||
-    sources.numPrFromStyle !== undefined
-  ) {
-    return undefined;
-  }
-  // Only the predecessor's own `w:numPr` reference stands in, as the painter
-  // (`advanceVisibleListMarker`) shows it: numbering its previous style
-  // supplied left with that style.
-  const previous = attrs._propertyChanges?.at(-1)?.previousFormatting;
-  if (previous?.numPr?.kind !== "reference") return undefined;
-  return effectiveParagraphNumberingReference(
-    paragraphNumberingSourcesFromBoundary({
-      numPr: previous.numPr,
-      numPrFromStyle: undefined,
-    }),
-  );
-};
-
 /**
  * The attrs the counter reads for a paragraph of the document model, as
  * `toProseDoc` projects them (`listRenderingAttrPatch`), without the layout
@@ -202,12 +176,10 @@ export const createListLabelCounter = (
       attrs.listNumFmt != null
         ? listRenderingFromAttrs({ attrs, numId: effective?.numId ?? 1 })
         : undefined);
-    const inheritedReference = inheritedNumberingReference(attrs, sources);
-    const list = resolveParagraphList(
-      { ...sources, ...(inheritedReference ? { inheritedReference } : {}) },
-      numbering,
-      projectedRendering,
-    );
+    // A level-only override names no instance of its own: its style supplies
+    // the numId or nothing does (ECMA-376 §17.9.19). A tracked predecessor's
+    // reference is what rejecting restores, never the current list.
+    const list = resolveParagraphList(sources, numbering, projectedRendering);
     const counterInput: ParagraphAttrs = { ...attrs };
     Object.assign(counterInput, CLEARED_LIST_RENDERING_ATTRS);
     const contentDerived = {
@@ -215,24 +187,10 @@ export const createListLabelCounter = (
       listMarkerSecondSlotOffsetTwips: attrs.listMarkerSecondSlotOffsetTwips,
       listFoldedMarkerSuffix: attrs.listFoldedMarkerSuffix,
     };
-    // When the list owner resolved a level-only override against its tracked
-    // predecessor, the counter gets that same owned reference: leaving the
-    // unresolved authored override would classify a marker the counter cannot
-    // advance. Every other paragraph keeps its own sources, so style numbering
-    // still counts as style numbering.
-    const countWithInheritedReference = (
-      reference: Extract<ResolvedParagraphNumbering, { kind: "reference" }>,
-    ): void => {
-      if (!inheritedReference) return;
-      counterInput.numPr = paragraphNumberingAttr(reference);
-      delete counterInput.numPrFromStyle;
-    };
     if (list.kind === "marker") {
       Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
-      countWithInheritedReference(list.reference);
     } else if (list.kind === "markerless" && list.rendering !== undefined) {
       Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
-      countWithInheritedReference(list.reference);
     } else if (
       list.kind === "markerless" &&
       projectedRendering?.markerHidden === true
@@ -322,17 +280,8 @@ export const createListLabelCounter = (
             numId: countedNumbering?.numId ?? 1,
           })
         : undefined;
-    const countedInheritedReference = inheritedNumberingReference(
-      counterAttrs,
-      countedSources,
-    );
     const countedList = resolveParagraphList(
-      {
-        ...countedSources,
-        ...(countedInheritedReference
-          ? { inheritedReference: countedInheritedReference }
-          : {}),
-      },
+      countedSources,
       numbering,
       revisionSelectedRendering ?? projectedRendering,
     );

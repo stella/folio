@@ -248,7 +248,7 @@ describe("paragraph list reader agreement", () => {
     ).toBe("marker");
   });
 
-  test("a tracked level-only override uses its inherited reference for classification and counting", async () => {
+  test("a level-only override with no style numbering is no list, whatever its tracked predecessor numbered", async () => {
     const document = fromMarkdown("seed");
     document.package.numbering = {
       abstractNums: [
@@ -287,21 +287,20 @@ describe("paragraph list reader agreement", () => {
       },
     );
 
+    // ECMA-376 §17.9.19: an `ilvl` without a `numId` takes the numId its
+    // style supplies, and nothing here does. The `w:pPrChange` records what
+    // rejecting restores; it numbers nothing now.
     assertReaders(reviewer, [
-      { text: "Tracked level", kind: "listItem", marker: true },
+      { text: "Tracked level", kind: "paragraph", marker: false },
     ]);
-    expect(reviewer.getContent().at(0)?.displayLabel).toBe("1.");
-    expect(reviewer.snapshot().blocks.at(0)).toMatchObject({
-      kind: "listItem",
-      displayLabel: "1.",
-    });
+    expect(reviewer.snapshot().blocks.at(0)?.displayLabel).toBeUndefined();
     expect(
       toMarkdown(reviewer.toDocument(), {
         annotations: "strip",
         trackedChanges: "clean",
         comments: "strip",
       }),
-    ).toContain("1. Tracked level");
+    ).not.toContain("1. Tracked level");
   });
 
   test("full level overrides use startOverride in definitions and rendered labels", async () => {
