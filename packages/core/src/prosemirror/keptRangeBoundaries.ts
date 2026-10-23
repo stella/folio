@@ -11,7 +11,7 @@
  * kept boundary is always one the repair sees.
  */
 
-import type { Node as PMNode } from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import {
@@ -263,14 +263,17 @@ const REVISION_MARK_NAMES: ReadonlySet<string> = new Set([
 
 /**
  * Remove `node` and everything in it. Rejecting keeps every range boundary
- * within it, at any depth, as the engine's `removedContentBoundaries` does,
- * carrying no revision of its own; accepting keeps none, as a direct
- * deletion does. Each kept node is a new node, so the range repair can tell
- * it from a boundary that was already standing.
+ * within it, at any depth, as the engine's `removedContentBoundaries` does;
+ * accepting keeps none, as a direct deletion does. A kept boundary carries
+ * of each revision mark only what `unresolved` returns: the layers this
+ * resolution leaves, which the engine leaves the boundary inside, and none
+ * when every revision resolves. Each kept node is a new node, so the range
+ * repair can tell it from a boundary that was already standing.
  */
 export const removeResolvedSubtree = (
   node: PMNode,
   mode: "accept" | "reject",
+  unresolved: (mark: Mark) => Mark | null = () => null,
 ): RemovedSubtree => {
   const kept: PMNode[] = [];
   const visit = (candidate: PMNode): void => {
@@ -279,9 +282,11 @@ export const removeResolvedSubtree = (
         candidate.type.create(
           candidate.attrs,
           null,
-          candidate.marks.filter(
-            (mark) => !REVISION_MARK_NAMES.has(mark.type.name),
-          ),
+          candidate.marks.flatMap((mark) => {
+            if (!REVISION_MARK_NAMES.has(mark.type.name)) return [mark];
+            const left = unresolved(mark);
+            return left === null ? [] : [left];
+          }),
         ),
       );
       return;

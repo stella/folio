@@ -14,7 +14,10 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { createHarnessState } from "../__tests__/editorHarness";
-import { rejectAllChanges } from "../prosemirror/commands/comments";
+import {
+  rejectAIEditRevision,
+  rejectAllChanges,
+} from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { Document, InlineSdt, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -150,6 +153,52 @@ describe("rejecting an insertion keeps its range boundaries", () => {
       "type:moveToRangeStart,id:7",
       "text:two",
       "type:moveToRangeEnd,id:7",
+    ]);
+  });
+
+  test("rejecting an insertion inside a deletion keeps its bookmark inside the deletion, in both", () => {
+    const deletion = { id: 20, author: "B", date: "2026-03-04T05:00:04Z" };
+    const document = documentWith([
+      { type: "run", content: [{ type: "text", text: "a" }] },
+      {
+        type: "deletion",
+        info: deletion,
+        content: [
+          { type: "run", content: [{ type: "text", text: "d" }] },
+          {
+            type: "insertion",
+            info: insertion,
+            content: [
+              { type: "run", content: [{ type: "text", text: "x" }] },
+              { type: "bookmarkStart", id: 5, name: "_Ref5" },
+              { type: "bookmarkEnd", id: 5 },
+            ],
+          },
+          { type: "run", content: [{ type: "text", text: "e" }] },
+        ],
+      },
+      { type: "run", content: [{ type: "text", text: "b" }] },
+    ]);
+    const state = createHarnessState(document, "editing");
+    let resolved = state;
+    expect(
+      rejectAIEditRevision(insertion.id)(state, (tr) => {
+        resolved = state.apply(tr);
+      }),
+    ).toBe(true);
+    const editor = firstParagraphContent(
+      fromProseDoc(resolved.doc, document, {
+        stylesheetSource: { type: "package" },
+      }),
+    );
+    /** Each deletion's text and range boundaries, in order. */
+    const deleted = (content: Paragraph["content"]) =>
+      content.flatMap((item) =>
+        item.type === "deletion" ? [outline(item.content)] : [],
+      );
+    expect(deleted(editor)).toEqual(deleted(rejectInEngine(document)));
+    expect(deleted(editor)).toEqual([
+      ["text:d", "type:bookmarkStart,id:5", "type:bookmarkEnd,id:5", "text:e"],
     ]);
   });
 

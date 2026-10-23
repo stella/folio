@@ -280,6 +280,24 @@ function resolveChange(
       const deleteRanges: RemovedRange[] = [];
       /** The boundaries removed content left standing, for the range repair. */
       const keptBoundaries = new Set<PMNode>();
+      /**
+       * What a kept boundary still carries of `mark` once the selected
+       * revisions resolve: the layers left unselected, which the engine
+       * leaves the boundary inside.
+       */
+      const unresolvedLayers = (mark: Mark): Mark | null => {
+        if (revisionSet === null) return null;
+        if (
+          !trackedRevisionPathOf(mark).some((layer) =>
+            revisionSet.has(layer.revisionId),
+          )
+        )
+          return mark;
+        return retainedTrackedRevisionMark(
+          mark,
+          (layer) => !revisionSet.has(layer.revisionId),
+        );
+      };
       const removeRange = (
         rangeFrom: number,
         rangeTo: number,
@@ -446,7 +464,11 @@ function resolveChange(
               resolves: resolvesRevision,
             })
           ) {
-            removeRange(pos, nodeEnd, removeResolvedSubtree(node, mode));
+            removeRange(
+              pos,
+              nodeEnd,
+              removeResolvedSubtree(node, mode, unresolvedLayers),
+            );
             return false;
           }
           const released = withoutResolvedEnclosures(node, resolvesRevision);
@@ -541,7 +563,7 @@ function resolveChange(
               removeRange(
                 rangeFrom,
                 rangeTo,
-                removeResolvedSubtree(node, mode),
+                removeResolvedSubtree(node, mode, unresolvedLayers),
               );
               // The removal answers for everything inside the node.
               if (!node.isLeaf) return false;
@@ -563,7 +585,11 @@ function resolveChange(
         }
 
         if (removesNode) {
-          removeRange(rangeFrom, rangeTo, removeResolvedSubtree(node, mode));
+          removeRange(
+            rangeFrom,
+            rangeTo,
+            removeResolvedSubtree(node, mode, unresolvedLayers),
+          );
           // The removal answers for everything inside the node.
           if (!node.isLeaf) return false;
         }
@@ -1712,13 +1738,16 @@ const resolveAllChanges =
         positionMap: result.positionMap,
       }),
     );
+    // The resolved ranges are positions in the resolved document: the range
+    // repair's steps map them too.
+    const resolvedAt = tr.steps.length;
     normalizeKeptRangeBoundaries(tr, result.keptBoundaries);
     // Resolution is a reproducible projection. Schema fillers, including cells
     // a table-repair plugin adds, need the same identities on every reading.
     requestDeterministicParaIds(tr, `resolve-all:${mode}`);
     markChangedParagraphRanges(tr, {
       ranges: finalRevisionParagraphRanges(result),
-      mappingFrom: tr.steps.length,
+      mappingFrom: resolvedAt,
       replacesStepMapAt: 0,
     });
     markParagraphPropertySourceTransfers(tr, result.transfers);
