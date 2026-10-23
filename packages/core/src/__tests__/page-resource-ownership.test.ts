@@ -11,23 +11,38 @@ const OWNER_PATH = path.resolve(
 const FORBIDDEN_OWNER_IMPORT =
   /(?:^|\/)(?:dom|render-dom|layout-painter|test|tests)(?:\/|$)|\.test(?:\.|$)/u;
 
-const importsForSource = (source: string): string[] => {
+const moduleSpecifiersForSource = (source: string): string[] => {
   const parsed = ts.createSourceFile(
     OWNER_PATH,
     source,
     ts.ScriptTarget.Latest,
     true,
   );
-  return parsed.statements.flatMap((statement) =>
-    ts.isImportDeclaration(statement) &&
-    ts.isStringLiteral(statement.moduleSpecifier)
-      ? [statement.moduleSpecifier.text]
-      : [],
-  );
+  const specifiers: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier !== undefined &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      specifiers.push(node.moduleSpecifier.text);
+    }
+    const firstArgument =
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword
+        ? node.arguments.at(0)
+        : undefined;
+    if (firstArgument !== undefined && ts.isStringLiteral(firstArgument)) {
+      specifiers.push(firstArgument.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parsed);
+  return specifiers;
 };
 
 const forbiddenOwnerImports = (source: string): string[] =>
-  importsForSource(source).filter((specifier) =>
+  moduleSpecifiersForSource(source).filter((specifier) =>
     FORBIDDEN_OWNER_IMPORT.test(specifier),
   );
 
@@ -104,12 +119,16 @@ test("the owner boundary rejects renderer, DOM, and test imports", () => {
         'import "../dom/renderDisplayListToDom";',
         'import type { RenderPage } from "../layout-painter/renderPage";',
         'import { fixture } from "./owner.test";',
+        'export * from "../render-dom/commentAnchorAttributes";',
+        'void import("../layout-painter/renderPage");',
       ].join("\n"),
     ),
   ).toEqual([
     "../dom/renderDisplayListToDom",
     "../layout-painter/renderPage",
     "./owner.test",
+    "../render-dom/commentAnchorAttributes",
+    "../layout-painter/renderPage",
   ]);
 });
 
