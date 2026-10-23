@@ -252,7 +252,7 @@ export function useFindReplace({
     view.dispatch(
       view.state.tr.insertText(replaceText.value, range.from, range.to),
     );
-    performSearch();
+    performSearch("refresh");
     return true;
   };
   const replaceAll = (): ReplaceAllSummary => {

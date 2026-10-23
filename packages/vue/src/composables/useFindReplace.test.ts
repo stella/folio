@@ -781,6 +781,78 @@ const mountNavigationMatch = (shell: HTMLElement, kind: "body" | "header") => {
   shell.append(span);
 };
 
+test("Vue replace current does not reveal the remaining search match", () => {
+  const source = navigationFixture("body");
+  source.package.document.content = [
+    { type: "paragraph", content: [textRun("needle needle")] },
+  ];
+  const { container, shell } = navigationViewport();
+  const fragment = navigationLayout("body").pages.at(1)?.fragments.at(0);
+  if (!fragment) throw new TypeError("Body navigation fixture has no fragment");
+  const baseLayout = navigationLayout("body");
+  const secondPage = baseLayout.pages.at(1);
+  if (!secondPage)
+    throw new TypeError("Body navigation fixture has no second page");
+  const layout = {
+    ...baseLayout,
+    pages: baseLayout.pages.map((page) =>
+      page.number === 2
+        ? Object.assign({}, page, {
+            fragments: [Object.assign({}, fragment, { pmEnd: 50 })],
+          })
+        : page,
+    ),
+  };
+  mountNavigationMatch(shell, "body");
+
+  const host = document.createElement("div");
+  const hidden = document.createElement("div");
+  document.body.append(host, hidden);
+  const view = new EditorView(hidden, {
+    state: EditorState.create({ doc: toProseDoc(source) }),
+  });
+  const holder: { search: UseFindReplaceReturn | null } = { search: null };
+  const scroll = spyOn(container, "scrollTo").mockImplementation(() => {});
+  const app = createApp(
+    defineComponent({
+      setup() {
+        holder.search = useFindReplace({
+          editorView: shallowRef(view),
+          pagesRef: shallowRef(container),
+          layout: shallowRef(layout),
+          getDocument: () =>
+            fromProseDoc(view.state.doc, source, {
+              stylesheetSource: { type: "package" },
+            }),
+          displayMode: ref("all-markup"),
+          readOnly: ref(false),
+          onResultChange: () => {},
+        });
+        return () => h("div");
+      },
+    }),
+  );
+  app.mount(host);
+  try {
+    const search = holder.search ?? panic("Search composable was not mounted");
+    expect(search.find("needle")?.totalCount).toBe(2);
+    scroll.mockClear();
+
+    search.replaceText.value = "changed";
+    expect(search.replaceCurrent()).toBe(true);
+
+    expect(view.state.doc.textContent).toBe("changed needle");
+    expect(scroll).not.toHaveBeenCalled();
+  } finally {
+    app.unmount();
+    view.destroy();
+    scroll.mockRestore();
+    container.remove();
+    host.remove();
+    hidden.remove();
+  }
+});
+
 test.each(["body", "header"] as const)(
   "Vue navigation mounts an unmounted page for a %s match",
   async (kind) => {
