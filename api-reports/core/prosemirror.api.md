@@ -232,13 +232,8 @@ export function getStyleId(state: EditorState): string | null;
 export function getTableContext(state: EditorState): TableContextInfo;
 
 // @public
-export type HyperlinkAttrs = {
+export type HyperlinkAttrs = Omit<import__stll_docx_core_model.Hyperlink, "type" | "children" | "href"> & {
     href: string;
-    tooltip?: string;
-    rId?: string;
-    target?: import__stll_docx_core_model.Hyperlink["target"];
-    history?: import__stll_docx_core_model.Hyperlink["history"];
-    docLocation?: import__stll_docx_core_model.Hyperlink["docLocation"];
     _docxHyperlinkIndex?: number;
 };
 
