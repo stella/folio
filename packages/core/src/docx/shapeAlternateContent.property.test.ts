@@ -385,11 +385,20 @@ describe("a shape read from mc:AlternateContent", () => {
           getNamespaceUri(element) === NAMESPACES.mc &&
           getLocalName(element.name ?? "") === branchName,
       );
+      const bodies = branch
+        ? descendants(branch).filter(
+            (element) =>
+              getLocalName(element.name ?? "") === "txbxContent" &&
+              getNamespaceUri(element) === NAMESPACES.w,
+          )
+        : [];
       const paragraphs = branch
         ? descendants(branch).filter(
             (element) => getLocalName(element.name ?? "") === "p",
           )
         : [];
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0]?.name).toBe("w:txbxContent");
       expect(paragraphs).toHaveLength(1);
       expect(
         paragraphs.every(
