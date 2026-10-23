@@ -3993,6 +3993,114 @@ describe("fromProseDoc", () => {
     expect(firstShapeType(block)).toBe("textBox");
   });
 
+  test("preserves run metadata on an inline text-box carrier", () => {
+    const document = documentWithTextBoxParagraph({
+      includeText: true,
+      textBoxCount: 2,
+    });
+    const sourceParagraph = document.package.document.content.at(0);
+    if (sourceParagraph?.type !== "paragraph") {
+      throw new Error("Expected source paragraph");
+    }
+    sourceParagraph.content.push({
+      type: "run",
+      content: [{ type: "text", text: "After" }],
+    });
+    const carriers = sourceParagraph.content.filter(
+      (item): item is Run =>
+        item.type === "run" &&
+        item.content.some(({ type }) => type === "shape"),
+    );
+    if (carriers.length !== 2) {
+      throw new Error("Expected two inline text-box carrier runs");
+    }
+    const formattedCarrier = carriers.at(0);
+    const emptyCarrier = carriers.at(1);
+    if (!formattedCarrier || !emptyCarrier) {
+      throw new Error("Expected both inline text-box carrier runs");
+    }
+    formattedCarrier.formatting = {
+      noProof: true,
+      language: { eastAsia: "ru-RU" },
+    };
+    formattedCarrier.preservedAttributes = [
+      {
+        namespace:
+          "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        name: "rsidRPr",
+        value: "00A20602",
+      },
+    ];
+    emptyCarrier.formatting = {};
+    emptyCarrier.preservedAttributes = [
+      {
+        namespace:
+          "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        name: "rsidR",
+        value: "00A20603",
+      },
+    ];
+
+    const roundTripped = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
+    const paragraph = roundTripped.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected round-tripped paragraph");
+    }
+    const savedCarriers = paragraph.content.filter(
+      (item): item is Run =>
+        item.type === "run" &&
+        item.content.some(({ type }) => type === "shape"),
+    );
+
+    expect(paragraphInlineOrder(paragraph)).toEqual([
+      "Before",
+      "textBox",
+      "textBox",
+      "After",
+    ]);
+    expect(savedCarriers.map(({ formatting }) => formatting)).toEqual([
+      { noProof: true, language: { eastAsia: "ru-RU" } },
+      {},
+    ]);
+    expect(
+      savedCarriers.map(({ preservedAttributes }) => preservedAttributes),
+    ).toEqual([
+      [
+        {
+          namespace:
+            "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+          name: "rsidRPr",
+          value: "00A20602",
+        },
+      ],
+      [
+        {
+          namespace:
+            "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+          name: "rsidR",
+          value: "00A20603",
+        },
+      ],
+    ]);
+    for (const carrier of savedCarriers) {
+      const innerRuns = carrier.content.flatMap((item) => {
+        if (item.type !== "shape") return [];
+        return (item.shape.textBody?.content ?? []).flatMap((block) =>
+          block.type === "paragraph"
+            ? block.content.filter(
+                (content): content is Run => content.type === "run",
+              )
+            : [],
+        );
+      });
+      expect(innerRuns.map(({ formatting }) => formatting)).toEqual([
+        undefined,
+      ]);
+    }
+  });
+
   test("preserves an inline text box between surrounding text", () => {
     const document = documentWithTextBoxParagraph({ includeText: true });
     const sourceParagraph = document.package.document.content.at(0);

@@ -173,6 +173,7 @@ import {
 } from "../runStyleFormatting";
 import { schema } from "../schema";
 import type {
+  HyperlinkAttrs,
   InlineWrapperLayer,
   TrackedRevisionAncestor,
 } from "../schema/marks";
@@ -2898,7 +2899,6 @@ function convertField(
   let fieldPropertyChanges: readonly RunPropertyChange[] | undefined;
   const inlineNodes: PMNode[] = [];
   const commentsOpenBeforeField = new Set(openCommentIds);
-  const hasPageBreakContent = fieldResultHasPageBreakContent(field);
   const resultRuns =
     field.type === "complexField"
       ? field.fieldResult
@@ -3085,9 +3085,7 @@ function convertField(
     createMark: runScope.createMark,
   });
 
-  const createStructuredField =
-    (field.type === "simpleField" || hasPageBreakContent) &&
-    fieldRequiresStructuredContent(inlineNodes);
+  const createStructuredField = fieldRequiresStructuredContent(inlineNodes);
   const displayText = getInlineDisplayText(
     schema.node("paragraph", null, inlineNodes),
   );
@@ -4918,13 +4916,14 @@ function convertHyperlink(
     hyperlink.href || (hyperlink.anchor ? `#${hyperlink.anchor}` : "");
   const linkMark = schema.mark("hyperlink", {
     href,
+    anchor: hyperlink.anchor,
     tooltip: hyperlink.tooltip,
     rId: hyperlink.rId,
     target: hyperlink.target,
     history: hyperlink.history,
     docLocation: hyperlink.docLocation,
     _docxHyperlinkIndex: hyperlinkIndex,
-  });
+  } as const satisfies Record<keyof HyperlinkAttrs, unknown>);
 
   // A wrapper authored inside the link rides its leaves as the `inlineWrapper`
   // mark. Its provenance says which suffix of the wrapper stack belongs below
