@@ -132,6 +132,33 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
     expect(firstParagraph(rejectAll(tracked, [3]))).toEqual([link]);
   });
 
+  test("a kept boundary goes inside the content control its insertion split, which joins again", () => {
+    const base = documentWith([
+      {
+        type: "inlineSdt",
+        properties: { sdtType: "richText", id: 2, tag: "clause" },
+        content: [{ type: "run", content: [{ type: "text", text: "ab" }] }],
+      },
+    ]);
+    const tracked = insertAt(
+      base,
+      [{ type: "moveToRangeStart", id: 1, name: "move1", author: "A" }],
+      1,
+    );
+    const rejected = firstParagraph(rejectAll(tracked, [3]));
+    expect(rejected.map(({ type }) => type)).toEqual(["inlineSdt"]);
+    const [control] = rejected;
+    if (control?.type !== "inlineSdt") throw new Error("expected the control");
+    expect(control.properties.id).toBe(2);
+    expect(JSON.stringify(control.content)).toContain('"moveToRangeStart"');
+    expect(
+      control.content
+        .flatMap((item) => (item.type === "run" ? item.content : []))
+        .map((content) => (content.type === "text" ? content.text : ""))
+        .join(""),
+    ).toBe("ab");
+  });
+
   test("accepting a deletion removes the bookmark inside it, as deleting directly does", () => {
     const base = documentWith([
       {

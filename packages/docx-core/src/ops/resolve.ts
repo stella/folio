@@ -58,6 +58,7 @@ import {
   type RelocatedBoundaries,
   removedContentBoundaries,
   wellFormedRanges,
+  withBoundariesAtEdge,
 } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
@@ -901,6 +902,21 @@ const withoutCommentAnchors = (
  * A list with its tracked changes resolved. Where a change was resolved,
  * the records left meeting are merged as far as they are alike.
  */
+/** What a resolution knows about `from`, now about `to`, its rebuilt copy. */
+const carryResolutionState = (
+  resolution: Resolution,
+  from: InlineNode,
+  to: InlineNode,
+): void => {
+  const edges = resolution.cutEdges.get(from);
+  if (edges !== undefined) resolution.cutEdges.set(to, edges);
+  if (resolution.emptied.has(from)) resolution.emptied.add(to);
+  if (resolution.acceptedClosed.first.has(from))
+    resolution.acceptedClosed.first.add(to);
+  if (resolution.acceptedClosed.last.has(from))
+    resolution.acceptedClosed.last.add(to);
+};
+
 const resolveList = (
   nodes: readonly InlineNode[],
   resolution: Resolution,
@@ -947,14 +963,39 @@ const resolveList = (
             ...prepared.slice(prefixLength),
           );
         }
-        out.push(
-          ...removedContentBoundaries({
-            nodes: node.content,
-            rejecting: resolution.decision === REVISION_DECISIONS.REJECT,
-            pairedComments: resolution.pairedComments,
-            relocated: resolution.relocated,
-          }),
-        );
+        const kept = removedContentBoundaries({
+          nodes: node.content,
+          rejecting: resolution.decision === REVISION_DECISIONS.REJECT,
+          pairedComments: resolution.pairedComments,
+          relocated: resolution.relocated,
+        });
+        // Where the removed content cut containers, its boundaries go inside
+        // the piece after it (or before it) at that depth, so the pieces it
+        // separated still join around them.
+        // Accepting removes what a direct deletion would, where it would.
+        const depth =
+          resolution.decision === REVISION_DECISIONS.REJECT
+            ? (node.resolutionJoins?.remove ?? 0)
+            : 0;
+        const next = pending[index + 1];
+        const intoNext =
+          next === undefined
+            ? undefined
+            : withBoundariesAtEdge(next, kept, depth, "start");
+        const previous = out.at(-1);
+        const intoPrevious =
+          intoNext !== undefined || previous === undefined
+            ? undefined
+            : withBoundariesAtEdge(previous, kept, depth, "end");
+        if (intoNext !== undefined && next !== undefined) {
+          carryResolutionState(resolution, next, intoNext);
+          pending[index + 1] = intoNext;
+        } else if (intoPrevious !== undefined && previous !== undefined) {
+          carryResolutionState(resolution, previous, intoPrevious);
+          out[out.length - 1] = intoPrevious;
+        } else {
+          out.push(...kept);
+        }
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else recordSourceSeam(out.length, node.resolutionJoins.remove);
         continue;

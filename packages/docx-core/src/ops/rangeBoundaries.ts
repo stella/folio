@@ -102,6 +102,62 @@ export const removedContentBoundaries = ({
     });
   });
 
+/** Which kept boundaries each container may hold, as its model declares. */
+const HOLDS: Partial<
+  Record<InlineNode["type"], (boundary: Boundary) => boolean>
+> = {
+  inlineSdt: (boundary) => !isCommentAnchor(boundary),
+  hyperlink: (boundary) =>
+    boundary.type === "bookmarkStart" || boundary.type === "bookmarkEnd",
+  inlineWrapper: () => true,
+  insertion: () => true,
+  deletion: () => true,
+  moveFrom: () => true,
+  moveTo: () => true,
+};
+
+/**
+ * `node` with `boundaries` at its start or end, as deep as `depth` containers
+ * in as the containers on the way can hold them: where removed content that
+ * cut those containers was, so the pieces it separated still join around the
+ * boundaries, down to the level that holds them. `undefined` when `node`
+ * itself cannot hold them, or `depth` is 0.
+ */
+export const withBoundariesAtEdge = (
+  node: InlineNode,
+  boundaries: readonly InlineNode[],
+  depth: number,
+  edge: "start" | "end",
+): InlineNode | undefined => {
+  if (depth <= 0 || boundaries.length === 0) return undefined;
+  const children = childNodes(node);
+  const holds = HOLDS[node.type];
+  if (
+    children === undefined ||
+    holds === undefined ||
+    !boundaries.every((boundary) => isBoundary(boundary) && holds(boundary))
+  )
+    return undefined;
+  const inner = edge === "start" ? children.at(0) : children.at(-1);
+  const nested =
+    depth > 1 && inner !== undefined
+      ? withBoundariesAtEdge(inner, boundaries, depth - 1, edge)
+      : undefined;
+  if (nested !== undefined)
+    return rebuildNode(
+      node,
+      edge === "start"
+        ? [nested, ...children.slice(1)]
+        : [...children.slice(0, -1), nested],
+    );
+  return rebuildNode(
+    node,
+    edge === "start"
+      ? [...boundaries, ...children]
+      : [...children, ...boundaries],
+  );
+};
+
 type Occurrence = { paragraph: string; node: Boundary };
 
 const withoutNode = (
