@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { withFakeTextMeasure as withFakeCanvasTextMeasure } from "../layout-engine/measure/__tests__/fakeTextMeasure";
 import { clearAllCaches } from "../layout-engine/measure/cache";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import { DEFAULT_FONT_FAMILY } from "../layout-engine/measure/measureHelpers";
@@ -184,7 +185,7 @@ function withFakeTextMeasure(runTest: () => void): void {
   resetCanvasContext();
 
   try {
-    runTest();
+    withFakeCanvasTextMeasure(runTest);
   } finally {
     resetCanvasContext();
     clearAllCaches();
