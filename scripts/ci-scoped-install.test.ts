@@ -17,6 +17,7 @@ import {
   INSTALL_SCOPES,
   installedPackageBytes,
   isInstallScope,
+  prunedLockChanges,
   scopeInstall,
 } from "./ci-scoped-install";
 import { installFrozenRepositoryDependencies } from "./clean-room-install";
@@ -237,5 +238,39 @@ describe("scoped CI environments", () => {
     } finally {
       rmSync(fixture, { recursive: true, force: true });
     }
+  });
+});
+
+describe("settled scoped lockfile", () => {
+  const entry = (id: string, deps: Record<string, string> = {}) =>
+    [id, "", { dependencies: deps }, "sha512-x"] as [string, ...unknown[]];
+  const lock = (packages: Record<string, [string, ...unknown[]]>) => ({
+    workspaces: { "": { name: "root", devDependencies: { b: "1", a: "1" } } },
+    packages,
+  });
+  const before = lock({
+    a: entry("a@1.0.0", { y: "^1" }),
+    fsevents: entry("fsevents@2.3.3"),
+    "playwright/fsevents": entry("fsevents@2.3.2"),
+    unused: entry("unused@1.0.0"),
+  });
+
+  test("removing unreached packages and re-hoisting a locked copy pass", () => {
+    const after = lock({
+      a: entry("a@1.0.0", { y: "^1" }),
+      fsevents: entry("fsevents@2.3.2"),
+    });
+    after.workspaces[""].devDependencies = { a: "1", b: "1" };
+    expect(prunedLockChanges(before, after)).toEqual([]);
+  });
+
+  test("a new or re-resolved package and a changed field fail", () => {
+    const resolved = lock({ a: entry("a@1.1.0", { y: "^1" }) });
+    expect(prunedLockChanges(before, resolved)).toEqual(["re-resolved a"]);
+    const added = lock({ ...before.packages, extra: entry("extra@1.0.0") });
+    expect(prunedLockChanges(before, added)).toEqual(["re-resolved extra"]);
+    const widened = lock(before.packages);
+    widened.workspaces[""].devDependencies = { a: "2", b: "1" };
+    expect(prunedLockChanges(before, widened)).toEqual(["changed workspaces"]);
   });
 });

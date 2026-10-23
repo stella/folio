@@ -63,7 +63,7 @@ type Manifest = {
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
 };
-type Lock = {
+export type Lock = {
   workspaces: Record<string, Manifest>;
   packages: Record<string, [string, ...unknown[]]>;
 };
@@ -95,6 +95,60 @@ export const installedPackageBytes = (repoRoot: string): number => {
     bytes += stat.size;
   }
   return bytes;
+};
+
+/**
+ * Bun 1.4.4 drops lockfile packages a scoped install no longer reaches, so a
+ * pruned lock is not frozen-clean by itself. Bun writes its own pruned lock
+ * here, and it may only remove packages or re-hoist an already locked one (a
+ * nested copy becoming the top-level entry): every entry it keeps must equal
+ * an entry of the pruned lock, and any other changed field fails, so a scoped
+ * install still resolves nothing new.
+ */
+/** JSON with object keys sorted, so key order never reads as a lockfile change. */
+const canonical = (value: unknown): string =>
+  JSON.stringify(value, (_, inner: unknown) =>
+    inner !== null && typeof inner === "object" && !Array.isArray(inner)
+      ? Object.fromEntries(
+          Object.entries(inner).toSorted(([left], [right]) =>
+            left < right ? -1 : left > right ? 1 : 0,
+          ),
+        )
+      : inner,
+  );
+
+/** Why a settled lock is not a subset of the pruned one, or nothing. */
+export const prunedLockChanges = (before: Lock, after: Lock): string[] => {
+  const locked = new Set(
+    Object.values(before.packages).map((entry) => canonical(entry)),
+  );
+  const resolved = Object.entries(after.packages)
+    .filter(([, entry]) => !locked.has(canonical(entry)))
+    .map(([name]) => `re-resolved ${name}`);
+  const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])]
+    .filter(
+      (key) =>
+        key !== "packages" &&
+        canonical(Reflect.get(before, key)) !==
+          canonical(Reflect.get(after, key)),
+    )
+    .map((key) => `changed ${key}`);
+  return [...resolved, ...fields];
+};
+
+export const settlePrunedLockfile = (repoRoot: string): void => {
+  const file = path.join(repoRoot, "bun.lock");
+  const before: Lock = Bun.JSONC.parse(readFileSync(file, "utf8"));
+  const result = Bun.spawnSync(
+    [process.execPath, "install", "--lockfile-only"],
+    { cwd: repoRoot, stdout: "inherit", stderr: "inherit" },
+  );
+  if (result.exitCode !== 0)
+    throw new TypeError("Scoped lockfile settle failed");
+  const after: Lock = Bun.JSONC.parse(readFileSync(file, "utf8"));
+  const changes = prunedLockChanges(before, after);
+  if (changes.length > 0)
+    throw new TypeError(`Scoped lockfile settle: ${changes.join("; ")}`);
 };
 
 export const scopeInstall = (
@@ -192,6 +246,7 @@ if (import.meta.main) {
     try {
       for (const [file, text] of files)
         writeFileSync(path.join(repoRoot, file), text);
+      settlePrunedLockfile(repoRoot);
       installFrozenRepositoryDependencies(repoRoot);
       if (existsSync(path.join(repoRoot, "node_modules/binaryen")))
         throw new TypeError(
