@@ -1512,6 +1512,8 @@ export type LayoutOptions = {
   sectionVerticalAlignments?: readonly (VerticalAlign | undefined)[];
   /** Column configuration. */
   columns?: ColumnLayout;
+  /** Column balancing policy after applying document compatibility settings. */
+  columnBalancing?: "balanced" | "natural";
   /** Gap between rendered pages (for UI). */
   pageGap?: number;
   /** Default line height multiplier. */
