@@ -48,8 +48,39 @@ import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
 import { fieldRequiresStructuredContent } from "./fieldRepresentation";
 import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
-import type { ParagraphAttrs } from "./schema/nodes";
+import { isRunContentInlineNodeName } from "./runContentProjection";
+import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
+import { RUN_IDENTITY_MARK_NAME } from "./runIdentity";
+import { type ParagraphAttrs, PRESERVED_XML_LEVELS } from "./schema/nodes";
 import { readTextBoxAnchorAttrs } from "./textBoxAnchorAttrs";
+
+const COMPLEX_FIELD_RESULT_MARK_NAMES = new Set([
+  ...RUN_FORMATTING_MARK_NAMES,
+  RUN_IDENTITY_MARK_NAME,
+  "runPropertyChange",
+  "footnoteRef",
+]);
+
+const hasUnsupportedComplexFieldResultContent = (node: PMNode): boolean =>
+  node.content.content.some((child) => {
+    if (child.type.name === "bookmarkBoundary") {
+      return false;
+    }
+    const preservedXmlAttrs =
+      child.type.name === "preservedXml"
+        ? readPreservedXmlAttrs(child)
+        : undefined;
+    const inlinePreservedXml =
+      preservedXmlAttrs?.ok &&
+      preservedXmlAttrs.value.level === PRESERVED_XML_LEVELS.inline;
+    return (
+      inlinePreservedXml ||
+      !isRunContentInlineNodeName(child.type.name) ||
+      child.marks.some(
+        (mark) => !COMPLEX_FIELD_RESULT_MARK_NAMES.has(mark.type.name),
+      )
+    );
+  });
 
 export type ProseMirrorDocumentValidationIssue = {
   path: string;
@@ -481,17 +512,11 @@ const validateNodeAttrs = (
           const hasStructuredHyperlink = node.content.content.some((child) =>
             child.marks.some((mark) => mark.type.name === "hyperlink"),
           );
-          const hasPageBreakCarrier = node.content.content.some(
-            (child) => child.type.name === "pageBreakRun",
-          );
-          if (
-            fieldAttrs.value.fieldKind === "complex" &&
-            !hasPageBreakCarrier
-          ) {
+          if (!fieldRequiresStructuredContent(node.content.content)) {
             issues.push({
               path: `${path}.content`,
               message:
-                "Complex fields cannot contain structured result children.",
+                "Structured fields require run metadata, distinct run marks or inline structure.",
             });
           } else if (
             fieldAttrs.value.fieldKind === "complex" &&
@@ -502,11 +527,14 @@ const validateNodeAttrs = (
               message:
                 "Complex field results cannot contain hyperlink content.",
             });
-          } else if (!fieldRequiresStructuredContent(node.content.content)) {
+          } else if (
+            fieldAttrs.value.fieldKind === "complex" &&
+            hasUnsupportedComplexFieldResultContent(node)
+          ) {
             issues.push({
               path: `${path}.content`,
               message:
-                "Structured simple fields require non-text, hyperlink, wrapper or tracked content.",
+                "Complex field results can contain only run-representable content.",
             });
           }
           // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
@@ -516,15 +544,6 @@ const validateNodeAttrs = (
               (mark) => mark.type.name === "hyperlink",
             );
             if (
-              fieldAttrs.value.fieldKind === "complex" &&
-              child.type.name === "textBoxAnchor"
-            ) {
-              issues.push({
-                path: childPath,
-                message:
-                  "Complex field results cannot contain text-box anchors.",
-              });
-            } else if (
               fieldAttrs.value.fieldKind === "complex" &&
               child.type.name === "bookmarkBoundary"
             ) {

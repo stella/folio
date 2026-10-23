@@ -156,6 +156,7 @@ import { pageBreakRunParagraphProjectionDispositionForFeatures } from "../pageBr
 import { directionFromBidi } from "../paragraphDirection";
 import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
+import { isRunContentProjectionNode } from "../runContentProjection";
 import {
   hasRunIdentityPayload,
   RUN_IDENTITY_MARK_NAME,
@@ -3051,7 +3052,7 @@ function convertField(
     for (const run of field.fieldResult) {
       const runNodes: PMNode[] = [];
       appendRun(run, runNodes);
-      inlineNodes.push(...applyCommentMarks(runNodes, openCommentIds));
+      inlineNodes.push(...runNodes);
     }
   }
 
@@ -3135,7 +3136,7 @@ function convertField(
     createStructuredField ? inlineNodes : undefined,
     marks,
   );
-  return createStructuredField
+  return createStructuredField && field.type === "simpleField"
     ? fieldNode
     : (applyCommentMarks([fieldNode], commentsOpenBeforeField).at(0) ??
         fieldNode);
@@ -3498,6 +3499,13 @@ function convertRun(
       authoredFormatting: run.formatting,
       nextNoteReferenceOccurrenceId: runScope.nextNoteReferenceOccurrenceId,
     });
+    for (const node of contentNodes) {
+      if (!isRunContentProjectionNode(content.type, node.type.name)) {
+        panic(
+          `Run content ${content.type} projected unsupported inline node ${node.type.name}`,
+        );
+      }
+    }
     nodes.push(...contentNodes);
   }
 

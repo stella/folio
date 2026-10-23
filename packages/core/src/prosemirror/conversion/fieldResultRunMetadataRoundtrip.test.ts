@@ -188,6 +188,35 @@ describe("field result run metadata round-trip", () => {
     expect(projectField(source).type).toBe(schema.nodes.field);
   });
 
+  test("retains native note carriers inside both field representations", () => {
+    for (const content of [
+      { type: "footnoteRef", id: 3 },
+      { type: "endnoteRef", id: 4 },
+      { type: "noteMarker", kind: "footnote" },
+      { type: "noteMarker", kind: "endnote" },
+    ] satisfies Run["content"]) {
+      const run = { type: "run", content: [content] } satisfies Run;
+      const simple = {
+        type: "simpleField",
+        instruction: " REF target ",
+        fieldType: "REF",
+        content: [run],
+      } satisfies FieldContent;
+      const complex = {
+        type: "complexField",
+        instruction: " REF target ",
+        fieldType: "REF",
+        fieldCode,
+        fieldResult: [run],
+      } satisfies FieldContent;
+
+      expect(projectField(simple).type).toBe(schema.nodes.structuredField);
+      expect(projectField(complex).type).toBe(schema.nodes.structuredField);
+      expect(roundTrip(simple)).toMatchObject({ content: [run] });
+      expect(roundTrip(complex)).toMatchObject({ fieldResult: [run] });
+    }
+  });
+
   test("retains distinct formatting across text-only result runs", () => {
     const simpleSource = {
       type: "simpleField",
@@ -253,5 +282,44 @@ describe("field result run metadata round-trip", () => {
       fieldCode,
       fieldResult: resultRuns,
     });
+  });
+
+  test("keeps a complex field inside its comment range", () => {
+    const source: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "commentRangeStart", id: 17 },
+                {
+                  type: "complexField",
+                  instruction: " REF target ",
+                  fieldType: "REF",
+                  fieldCode,
+                  fieldResult: resultRuns,
+                },
+                { type: "commentRangeEnd", id: 17 },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const paragraph = fromProseDoc(toProseDoc(source), source, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
+
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected a paragraph containing the field");
+    }
+    expect(paragraph.content).toMatchObject([
+      { type: "commentRangeStart", id: 17 },
+      { type: "complexField", fieldResult: resultRuns },
+      { type: "commentRangeEnd", id: 17 },
+    ]);
   });
 });

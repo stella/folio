@@ -16,6 +16,7 @@ export const fieldRequiresStructuredContent = (
       child.marks.some(
         (mark) =>
           mark.type.name === RUN_IDENTITY_MARK_NAME ||
+          mark.type.name === "footnoteRef" ||
           mark.type.name === "hyperlink" ||
           mark.type.name === INLINE_WRAPPER_MARK_NAME ||
           mark.type.name === "insertion" ||
