@@ -255,6 +255,69 @@ function floatingClippedTableFixture(): {
 }
 
 describe("selection rect geometry", () => {
+  test("aligns image-only carets with an anchored picture's line geometry", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "image-line",
+      pmStart: 0,
+      pmEnd: 1,
+      attrs: { alignment: "left" },
+      runs: [
+        {
+          kind: "image",
+          src: "image.png",
+          width: 40,
+          height: 20,
+          displayMode: "inline",
+          position: { horizontal: { relativeTo: "margin", align: "right" } },
+          pmStart: 0,
+          pmEnd: 1,
+        },
+      ],
+    };
+    const measure: Measure = {
+      kind: "paragraph",
+      lines: [
+        {
+          fromRun: 0,
+          toRun: 0,
+          fromChar: 0,
+          toChar: 1,
+          width: 40,
+          lineHeight: 20,
+          ascent: 16,
+          descent: 4,
+        },
+      ],
+      width: 100,
+      height: 20,
+    };
+    const layout: Layout = {
+      pageGap: 0,
+      pages: [
+        {
+          number: 1,
+          size: { w: 100, h: 100 },
+          margins: { top: 0, right: 0, bottom: 0, left: 0 },
+          fragments: [
+            {
+              kind: "paragraph",
+              blockId: "image-line",
+              x: 0,
+              y: 0,
+              width: 100,
+              height: 20,
+              fromLine: 0,
+              toLine: 1,
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(getCaretPosition(layout, [block], [measure], 0)?.x).toBe(60);
+  });
+
   test("caret positions advance over atomic math runs", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",

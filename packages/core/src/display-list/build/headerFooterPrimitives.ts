@@ -80,7 +80,11 @@ export const paintHeaderFooter = ({
         yPx: originYPx,
         widthPx: page.size.w - page.margins.left - page.margins.right,
         page,
-        context: { ...context, story },
+        context: {
+          ...context,
+          story,
+          inlinePictureViewport: { left: 0, right: page.size.w },
+        },
         label:
           content.rId === undefined ? section : `${section} ${content.rId}`,
       });

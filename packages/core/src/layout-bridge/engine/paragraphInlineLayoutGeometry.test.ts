@@ -205,6 +205,81 @@ const makeTableFixture = () => {
 };
 
 describe("bidi paragraph interaction geometry", () => {
+  test("uses the painted anchored-picture origin for clicks and selection geometry", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "positioned-picture-line",
+      pmStart: 0,
+      pmEnd: 1,
+      attrs: { alignment: "left", indent: { left: 20, firstLine: 15 } },
+      runs: [
+        {
+          kind: "image",
+          src: "picture.png",
+          width: 40,
+          height: 20,
+          position: { horizontal: { relativeTo: "margin", align: "right" } },
+          pmStart: 0,
+          pmEnd: 1,
+        },
+      ],
+    };
+    const measure: ParagraphMeasure = {
+      kind: "paragraph",
+      lines: [
+        {
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 0,
+          toChar: 1,
+          width: 40,
+          ascent: 16,
+          descent: 4,
+          lineHeight: 20,
+          leftOffset: 10,
+          rightOffset: 10,
+        },
+      ],
+      totalHeight: 20,
+    };
+    const fragment: ParagraphFragment = {
+      kind: "paragraph",
+      blockId: block.id,
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 20,
+      fromLine: 0,
+      toLine: 1,
+    };
+    const layout: Layout = {
+      pageGap: 0,
+      pages: [
+        {
+          number: 1,
+          size: { w: 200, h: 200 },
+          margins: { top: 0, right: 0, bottom: 0, left: 0 },
+          fragments: [fragment],
+        },
+      ],
+    };
+
+    const click = clickToPositionInParagraph({
+      fragment,
+      block,
+      measure,
+      pageIndex: 0,
+      localX: 170,
+      localY: 10,
+    });
+    const caret = getCaretPosition(layout, [block], [measure], 0);
+    const selection = selectionToRects(layout, [block], [measure], 0, 1);
+
+    expect(click?.charOffset).toBe(1);
+    expect(caret?.x).toBe(150);
+    expect(selection[0]?.x).toBe(150);
+  });
+
   test("keeps click, caret, and selection on the mirrored physical left", () => {
     const { block, fragment, layout, measure, measures } = makeFixture(
       "right",

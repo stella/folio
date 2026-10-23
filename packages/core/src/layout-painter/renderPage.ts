@@ -62,6 +62,10 @@ import { cssBorderStyle } from "../utils/borderCss";
 import { resolveFontFamily } from "../utils/fontResolver";
 import { borderToStyle } from "../utils/formatToStyle";
 import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
+import {
+  pageHorizontalColumns,
+  paragraphInlinePictureViewport,
+} from "../utils/paragraphInlineLayout";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { eighthsToPixels, pointsToPixels } from "../utils/units";
 import {
@@ -1559,6 +1563,9 @@ function renderFootnoteContent(
     totalPages: context?.totalPages ?? 0,
     section: context?.section ?? "body",
     contentWidth,
+    inlinePictureSizing: "textColumnFit",
+    inlinePictureViewport: { left: 0, right: contentWidth },
+    inlinePictureOriginX: 0,
   };
 
   let y = 0;
@@ -2011,14 +2018,35 @@ export function renderPage(
 
   let prevParagraphBorders: ParagraphBorders | undefined;
   const renderedInlineImageKeysByBlock = new Map<string, Set<string>>();
+  const paperPictureViewport = { left: 0, right: page.size.w };
+  const pictureColumns = pageHorizontalColumns({
+    layout: page.columns,
+    contentLeft: page.margins.left,
+    contentWidth,
+  });
 
   for (let i = 0; i < page.fragments.length; i++) {
     const fragment = page.fragments[i]!; // SAFETY: i < page.fragments.length
     let fragmentEl: HTMLElement;
+    const fragmentBlock = options.blockLookup?.get(
+      String(fragment.blockId),
+    )?.block;
+    const inlinePictureViewport =
+      fragment.kind === "paragraph" && fragmentBlock?.kind === "paragraph"
+        ? paragraphInlinePictureViewport({
+            block: fragmentBlock,
+            fragment,
+            paper: paperPictureViewport,
+            columns: pictureColumns,
+          })
+        : undefined;
     const fragmentContext = {
       ...context,
       section: "body" as const,
       contentWidth,
+      inlinePictureSizing: "authoredExtent" as const,
+      inlinePictureViewport,
+      inlinePictureOriginX: fragment.x,
     };
 
     // Calculate fragment's Y position relative to content area (for per-line margin calculation)
@@ -2259,7 +2287,14 @@ export function renderPage(
     if (options.headerContent && options.headerContent.blocks.length > 0) {
       const headerContentEl = renderHeaderFooterContent(
         options.headerContent,
-        { ...context, section: "header", contentWidth: headerContentWidth },
+        {
+          ...context,
+          section: "header",
+          contentWidth: headerContentWidth,
+          inlinePictureSizing: "authoredExtent",
+          inlinePictureViewport: { left: 0, right: page.size.w },
+          inlinePictureOriginX: page.margins.left,
+        },
         options,
         {
           flowTop: headerDistance,
@@ -2351,7 +2386,14 @@ export function renderPage(
     if (options.footerContent && options.footerContent.blocks.length > 0) {
       const footerContentEl = renderHeaderFooterContent(
         options.footerContent,
-        { ...context, section: "footer", contentWidth: footerContentWidth },
+        {
+          ...context,
+          section: "footer",
+          contentWidth: footerContentWidth,
+          inlinePictureSizing: "authoredExtent",
+          inlinePictureViewport: { left: 0, right: page.size.w },
+          inlinePictureOriginX: page.margins.left,
+        },
         options,
         {
           flowTop: footerNaturalTop,

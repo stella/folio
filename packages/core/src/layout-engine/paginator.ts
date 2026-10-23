@@ -7,6 +7,7 @@
 
 import { panic } from "better-result";
 
+import { columnPictureClipViewportForColumn } from "../utils/paragraphInlineLayout";
 import { collapseParagraphSpacing } from "./paragraphSpacing";
 import type {
   ColumnLayout,
@@ -352,6 +353,28 @@ export function createPaginator(options: PaginatorOptions) {
     });
   }
 
+  function getColumnPictureViewport(columnIndex: number): {
+    left: number;
+    right: number;
+  } {
+    const state = getCurrentState();
+    if (columns.count < 2) {
+      return { left: 0, right: state.page.size.w };
+    }
+    const horizontalColumns = Array.from(
+      { length: columns.count },
+      (_, index) => ({
+        left: getColumnX(index),
+        width: columnWidths[index] ?? 0,
+      }),
+    );
+    return columnPictureClipViewportForColumn({
+      paper: { left: 0, right: state.page.size.w },
+      columns: horizontalColumns,
+      columnIndex,
+    });
+  }
+
   function getPagePaginationState(page: Page): PagePaginationState {
     const state = paginationStateByPage.get(page);
     if (!state) {
@@ -586,6 +609,11 @@ export function createPaginator(options: PaginatorOptions) {
     // Position the fragment
     fragment.x = x;
     fragment.y = y;
+    if (fragment.kind === "paragraph") {
+      fragment.inlinePictureViewport = getColumnPictureViewport(
+        state.columnIndex,
+      );
+    }
 
     commitFragment(state, fragment);
 
@@ -630,6 +658,15 @@ export function createPaginator(options: PaginatorOptions) {
 
   function addUnflowedFragment(fragment: Fragment): PageState {
     const state = getCurrentState();
+    if (
+      fragment.kind === "paragraph" &&
+      fragment.inlinePictureViewport === undefined
+    ) {
+      fragment.inlinePictureViewport = {
+        left: fragment.x,
+        right: fragment.x + fragment.width,
+      };
+    }
     commitFragment(state, fragment);
     return state;
   }

@@ -11,6 +11,7 @@
  */
 
 import { AUTHOR_COLORS } from "../../utils/authorColors";
+import type { HorizontalClipViewport } from "../../utils/paragraphInlineLayout";
 import type {
   DisplayColor,
   DisplayLink,
@@ -74,4 +75,6 @@ export type BuildContext = {
   /** Authored page number, for `PAGE` fields. */
   readonly pageNumber: number;
   readonly totalPages: number;
+  /** Horizontal crop bounds for inline images in this painted story. */
+  readonly inlinePictureViewport?: HorizontalClipViewport;
 };
