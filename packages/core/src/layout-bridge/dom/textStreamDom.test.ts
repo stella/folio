@@ -1,8 +1,13 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { paintedTextOffset } from "./textStreamDom";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 test("one-unit model ranges expose only the complete painted text's endpoints", () => {
   fc.assert(
