@@ -501,7 +501,7 @@ describe("painter — OMML math run", () => {
     const host = findElement(line, (el) => el.className.includes("docx-math"));
     expect(host?.innerHTML).not.toContain("rPr");
     // The plain text k still made it through.
-    expect(host?.innerHTML).toContain("<mi>k</mi>");
+    expect(host?.innerHTML).toContain('<mi mathvariant="normal">k</mi>');
   });
 
   test("only one `<math>` root per inline run", () => {

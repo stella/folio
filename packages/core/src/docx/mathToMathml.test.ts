@@ -388,7 +388,7 @@ describe("ommlToMathml — graceful degradation", () => {
     // `<m:rPr>` should not bleed into MathML output.
     expect(mml).not.toContain("rPr");
     expect(mml).not.toContain("<nor");
-    expect(mml).toContain("<mi>k</mi>");
+    expect(mml).toContain('<mi mathvariant="normal">k</mi>');
   });
 
   test("preserves explicit OMML run styles", () => {
