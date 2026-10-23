@@ -646,6 +646,8 @@ export type ParagraphAttrs = {
         type: "legacy";
     };
     kinsoku?: boolean;
+    autoSpaceDE?: boolean;
+    autoSpaceDN?: boolean;
     overflowPunctuation?: boolean;
     suppressAutoHyphens?: boolean;
     automaticHyphenation?: {
