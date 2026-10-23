@@ -7,7 +7,7 @@
 
 import { panic } from "better-result";
 
-import { releaseDisplayPageResources } from "../display-list/dom/renderDisplayListToDom";
+import { releaseDisplayPageResources } from "../display-list/pageResourceOwnership";
 import type {
   FlowBlock,
   Fragment,
@@ -49,7 +49,7 @@ export {
   type RenderContext,
 };
 
-export { releaseDisplayPageResources } from "../display-list/dom/renderDisplayListToDom";
+export { releaseDisplayPageResources } from "../display-list/pageResourceOwnership";
 
 // Re-export feature-module registry surface
 export { createFeatureRegistry } from "./registry/registry";
