@@ -18,6 +18,11 @@ import React, {
 } from "react";
 import type { CSSProperties } from "react";
 
+import {
+  calculateResizedImageDimensions,
+  type ImageResizeHandle,
+} from "@stll/folio-core/utils/imageResize";
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -28,7 +33,7 @@ import type { CSSProperties } from "react";
  * ("n"/"s"/"e"/"w") resize a single axis so the user can deliberately stretch
  * the image (break aspect).
  */
-export type ResizeHandle = "nw" | "ne" | "se" | "sw" | "n" | "s" | "e" | "w";
+export type ResizeHandle = ImageResizeHandle;
 
 export type ImageSelectionInfo = {
   /** The DOM element of the selected image in the pages container */
@@ -149,71 +154,6 @@ const HANDLES = [
   { pos: "e", x: 1, y: 0.5 },
   { pos: "w", x: 0, y: 0.5 },
 ] as const satisfies readonly { pos: ResizeHandle; x: number; y: number }[];
-
-// =============================================================================
-// RESIZE CALCULATION
-// =============================================================================
-
-const MIN_IMAGE_PX = 20;
-const MAX_IMAGE_PX = 2000;
-
-/**
- * New image dimensions for a resize drag. Corner handles drive both axes; with
- * `lockAspect` (the default; Shift frees it) the resize follows the dominant
- * drag axis — the one whose scale moved furthest from 1 — so a corner drag that
- * mostly shrinks one side actually shrinks the image instead of snapping back to
- * the axis that barely moved. The scale is clamped as a whole so the aspect
- * ratio survives the min/max pixel bounds. Edge handles drive a single axis and
- * never lock; the non-driven axis passes through unchanged and unclamped.
- */
-export function calculateNewDimensions(
-  handle: ResizeHandle,
-  deltaX: number,
-  deltaY: number,
-  startWidth: number,
-  startHeight: number,
-  lockAspect: boolean,
-): { width: number; height: number } {
-  const drivesWidth = handle.includes("w") || handle.includes("e");
-  const drivesHeight = handle.includes("n") || handle.includes("s");
-  const isCorner = drivesWidth && drivesHeight;
-
-  const signX = handle.includes("w") ? -1 : 1;
-  const signY = handle.includes("n") ? -1 : 1;
-
-  const clamp = (n: number) =>
-    Math.max(MIN_IMAGE_PX, Math.min(MAX_IMAGE_PX, n));
-
-  if (isCorner && lockAspect) {
-    const scaleX =
-      startWidth > 0 ? (startWidth + deltaX * signX) / startWidth : 1;
-    const scaleY =
-      startHeight > 0 ? (startHeight + deltaY * signY) / startHeight : 1;
-    let scale = Math.abs(scaleX - 1) > Math.abs(scaleY - 1) ? scaleX : scaleY;
-
-    // Clamp the scale itself (not each dimension) so neither side can drift off
-    // the aspect ratio when it hits MIN/MAX before the other. maxScale is
-    // applied last so an extreme aspect ratio whose min-size and max-size
-    // constraints cannot both hold (minScale > maxScale, e.g. a 700x1 rule)
-    // caps at MAX_IMAGE_PX instead of running away past it.
-    const minScale = Math.max(
-      startWidth > 0 ? MIN_IMAGE_PX / startWidth : 0,
-      startHeight > 0 ? MIN_IMAGE_PX / startHeight : 0,
-    );
-    const maxScale = Math.min(
-      startWidth > 0 ? MAX_IMAGE_PX / startWidth : Infinity,
-      startHeight > 0 ? MAX_IMAGE_PX / startHeight : Infinity,
-    );
-    scale = Math.min(maxScale, Math.max(minScale, scale));
-
-    return { width: startWidth * scale, height: startHeight * scale };
-  }
-
-  return {
-    width: drivesWidth ? clamp(startWidth + deltaX * signX) : startWidth,
-    height: drivesHeight ? clamp(startHeight + deltaY * signY) : startHeight,
-  };
-}
 
 function applyDragGhostTheme(
   ghostEl: HTMLElement,
@@ -397,16 +337,14 @@ export function ImageSelectionOverlay({
         const currentZoom = zoomRef.current;
         const deltaX = (moveEvent.clientX - startX) / currentZoom;
         const deltaY = (moveEvent.clientY - startY) / currentZoom;
-        const lockAspect = !moveEvent.shiftKey;
-
-        const dims = calculateNewDimensions(
+        const dims = calculateResizedImageDimensions({
           handle,
           deltaX,
           deltaY,
           startWidth,
           startHeight,
-          lockAspect,
-        );
+          aspect: moveEvent.shiftKey ? "free" : "locked",
+        });
 
         finalWidth = Math.round(dims.width);
         finalHeight = Math.round(dims.height);

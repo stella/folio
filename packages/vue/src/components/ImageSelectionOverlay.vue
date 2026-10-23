@@ -60,13 +60,15 @@ import { clickToPositionDom } from "@stll/folio-core/layout-bridge/dom/clickToPo
 import { findBodyPmAnchor } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import { findImageElement } from "@stll/folio-core/layout-painter/imageLayout";
 import {
-  calculateResizedImageDimensions,
   commitImageFloatMove,
   commitImageInlineMove,
   commitImageResize,
-  type ImageResizeHandle,
   isFloatingImage,
 } from "@stll/folio-core/prosemirror/imageCommit";
+import {
+  calculateResizedImageDimensions,
+  type ImageResizeHandle,
+} from "@stll/folio-core/utils/imageResize";
 import { pixelsToEmu } from "@stll/folio-core/utils/units";
 
 import { computeImageOverlayRect } from "../composables/imageOverlayRect";
@@ -471,16 +473,14 @@ function onResizeMove(e: MouseEvent) {
   const z = props.zoom;
   const deltaX = (e.clientX - startX) / z;
   const deltaY = (e.clientY - startY) / z;
-  const lockAspect = !e.shiftKey;
-
-  const dims = calculateResizedImageDimensions(
-    resizeHandle,
+  const dims = calculateResizedImageDimensions({
+    handle: resizeHandle,
     deltaX,
     deltaY,
     startWidth,
     startHeight,
-    lockAspect,
-  );
+    aspect: e.shiftKey ? "free" : "locked",
+  });
   currentWidth.value = Math.round(dims.width);
   currentHeight.value = Math.round(dims.height);
 

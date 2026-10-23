@@ -15,56 +15,6 @@ import type { EditorView } from "prosemirror-view";
 import { allowsDirectDrawingEdit } from "../docx/imageRawXml";
 import { expectImageAttrs, mergeImageAttrs } from "./attrs";
 
-/**
- * An image resize handle: the 4 corners ('nw'/'ne'/'se'/'sw') resize both axes
- * and keep the aspect ratio; the 4 edge midpoints ('n'/'s'/'e'/'w') resize a
- * single axis so the user can deliberately stretch the image (break aspect).
- */
-export type ImageResizeHandle =
-  "nw" | "ne" | "se" | "sw" | "n" | "s" | "e" | "w";
-
-const MIN_IMAGE_PX = 20;
-const MAX_IMAGE_PX = 2000;
-
-/**
- * New image dimensions for a resize drag, shared by the React and Vue overlays
- * (issue #266). Corner handles drive both axes (aspect-locked unless
- * `lockAspect` is false, e.g. Shift held); edge handles drive one axis and
- * never lock. The non-driven axis is returned unchanged. Driven axes are
- * clamped to a sane pixel range.
- */
-export function calculateResizedImageDimensions(
-  handle: ImageResizeHandle,
-  deltaX: number,
-  deltaY: number,
-  startWidth: number,
-  startHeight: number,
-  lockAspect: boolean,
-): { width: number; height: number } {
-  const drivesWidth = handle.includes("w") || handle.includes("e");
-  const drivesHeight = handle.includes("n") || handle.includes("s");
-  const isCorner = drivesWidth && drivesHeight;
-
-  const signX = handle.includes("w") ? -1 : 1;
-  const signY = handle.includes("n") ? -1 : 1;
-
-  let newWidth = drivesWidth ? startWidth + deltaX * signX : startWidth;
-  let newHeight = drivesHeight ? startHeight + deltaY * signY : startHeight;
-
-  if (isCorner && lockAspect) {
-    const scale = Math.max(newWidth / startWidth, newHeight / startHeight);
-    newWidth = startWidth * scale;
-    newHeight = startHeight * scale;
-  }
-
-  const clamp = (n: number) =>
-    Math.max(MIN_IMAGE_PX, Math.min(MAX_IMAGE_PX, n));
-  return {
-    width: drivesWidth ? clamp(newWidth) : startWidth,
-    height: drivesHeight ? clamp(newHeight) : startHeight,
-  };
-}
-
 /** True when the image is floating (anchored) rather than inline. */
 export function isFloatingImage(node: PMNode): boolean {
   const wrapType = node.attrs["wrapType"] as string | undefined;
