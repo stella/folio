@@ -8,10 +8,16 @@
  * matching OOXML's `w:tblGrid` and `w:tcW` units.
  */
 
+import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
-import { mergeTableCellAttrs } from "./attrs";
+import {
+  expectTableAttrs,
+  expectTableCellAttrs,
+  mergeTableAttrs,
+  mergeTableCellAttrs,
+} from "./attrs";
 
 /** 1px ≈ 15 twips at 96dpi (20 twips/pt × 72pt/in ÷ 96px/in). */
 export const TWIPS_PER_PIXEL = 15;
@@ -97,10 +103,76 @@ export function readColumnWidthAt(
   return width;
 }
 
-/**
- * Bake a column-resize into the PM doc: update the table's `columnWidths`
- * attr and every cell at `colIdx` / `colIdx + 1` in every row.
- */
+type CommitGridResizeOptions = {
+  view: EditorView;
+  table: FoundTable;
+  widths: number[];
+  firstColumn: number;
+  lastColumn: number;
+};
+
+const commitGridResize = ({
+  view,
+  table: { node, tablePos },
+  widths,
+  firstColumn,
+  lastColumn,
+}: CommitGridResizeOptions): void => {
+  const tr = view.state.tr;
+  tr.setNodeMarkup(
+    tablePos,
+    undefined,
+    mergeTableAttrs(node, {
+      columnWidths: widths,
+      _originalFormatting: {
+        ...expectTableAttrs(node)._originalFormatting,
+        layout: "fixed",
+      },
+    }),
+  );
+
+  let rowOffset = tablePos + 1;
+  node.forEach((row) => {
+    let cellOffset = rowOffset + 1;
+    let cellColumn = 0;
+    row.forEach((cell) => {
+      const { colspan } = expectTableCellAttrs(cell);
+      if (!Number.isInteger(colspan) || colspan < 1) {
+        panic("A resized table cell must span a positive number of columns.");
+      }
+      const endColumn = cellColumn + colspan;
+      if (cellColumn <= lastColumn && endColumn > firstColumn) {
+        let width = 0;
+        for (let column = cellColumn; column < endColumn; column++) {
+          const coveredWidth = widths[column];
+          if (
+            coveredWidth === undefined ||
+            !Number.isFinite(coveredWidth) ||
+            coveredWidth <= 0
+          ) {
+            panic("A resized table cell must cover valid grid columns.");
+          }
+          width += coveredWidth;
+        }
+        tr.setNodeMarkup(
+          cellOffset,
+          undefined,
+          mergeTableCellAttrs(cell, {
+            width,
+            widthType: "dxa",
+            colwidth: null,
+          }),
+        );
+      }
+      cellOffset += cell.nodeSize;
+      cellColumn = endColumn;
+    });
+    rowOffset += row.nodeSize;
+  });
+  view.dispatch(tr);
+};
+
+/** Commit a column-pair resize, preserving each spanning cell's full grid width. */
 export function commitColumnResize(
   view: EditorView,
   opts: { pmStart: number; colIdx: number; newLeft: number; newRight: number },
@@ -108,45 +180,23 @@ export function commitColumnResize(
   const { pmStart, colIdx, newLeft, newRight } = opts;
   const found = findTableAt(view, pmStart);
   if (!found) return;
-  const { node, tablePos } = found;
-
-  const tr = view.state.tr;
-  const widths = [...((node.attrs["columnWidths"] as number[]) ?? [])];
+  const sourceWidths = expectTableAttrs(found.node).columnWidths;
+  if (
+    !sourceWidths ||
+    sourceWidths[colIdx] === undefined ||
+    sourceWidths[colIdx + 1] === undefined
+  )
+    return;
+  const widths = [...sourceWidths];
   widths[colIdx] = newLeft;
   widths[colIdx + 1] = newRight;
-  // Switch to fixed layout so Word honors the explicit widths — autofit would
-  // recompute columns to fit content and discard the resize (issue #781).
-  tr.setNodeMarkup(tablePos, undefined, {
-    ...node.attrs,
-    columnWidths: widths,
-    tableLayout: "fixed",
+  commitGridResize({
+    view,
+    table: found,
+    widths,
+    firstColumn: colIdx,
+    lastColumn: colIdx + 1,
   });
-
-  let rowOffset = tablePos + 1;
-  node.forEach((row) => {
-    let cellOffset = rowOffset + 1;
-    let cellColIdx = 0;
-    row.forEach((cell) => {
-      const colspan = (cell.attrs["colspan"] as number) || 1;
-      if (cellColIdx === colIdx || cellColIdx === colIdx + 1) {
-        const newWidth = cellColIdx === colIdx ? newLeft : newRight;
-        tr.setNodeMarkup(
-          tr.mapping.map(cellOffset),
-          undefined,
-          mergeTableCellAttrs(cell, {
-            width: newWidth,
-            widthType: "dxa",
-            colwidth: null,
-          }),
-        );
-      }
-      cellOffset += cell.nodeSize;
-      cellColIdx += colspan;
-    });
-    rowOffset += row.nodeSize;
-  });
-
-  view.dispatch(tr);
 }
 
 /** Bake a row-resize into the PM doc: update the target row's `height` + `heightRule`. */
@@ -177,10 +227,7 @@ export function commitRowResize(
   view.dispatch(tr);
 }
 
-/**
- * Bake a right-edge resize into the PM doc: grow only the last column.
- * Updates `columnWidths[colIdx]` and the cell at `colIdx` in every row.
- */
+/** Commit a right-edge resize, including cells that span the resized column. */
 export function commitRightEdgeResize(
   view: EditorView,
   opts: { pmStart: number; colIdx: number; newWidth: number },
@@ -188,40 +235,15 @@ export function commitRightEdgeResize(
   const { pmStart, colIdx, newWidth } = opts;
   const found = findTableAt(view, pmStart);
   if (!found) return;
-  const { node, tablePos } = found;
-
-  const tr = view.state.tr;
-  const widths = [...((node.attrs["columnWidths"] as number[]) ?? [])];
+  const sourceWidths = expectTableAttrs(found.node).columnWidths;
+  if (!sourceWidths || sourceWidths[colIdx] === undefined) return;
+  const widths = [...sourceWidths];
   widths[colIdx] = newWidth;
-  // Fixed layout so Word honors the explicit widths (issue #781).
-  tr.setNodeMarkup(tablePos, undefined, {
-    ...node.attrs,
-    columnWidths: widths,
-    tableLayout: "fixed",
+  commitGridResize({
+    view,
+    table: found,
+    widths,
+    firstColumn: colIdx,
+    lastColumn: colIdx,
   });
-
-  let rowOffset = tablePos + 1;
-  node.forEach((row) => {
-    let cellOffset = rowOffset + 1;
-    let cellColIdx = 0;
-    row.forEach((cell) => {
-      const colspan = (cell.attrs["colspan"] as number) || 1;
-      if (cellColIdx === colIdx) {
-        tr.setNodeMarkup(
-          tr.mapping.map(cellOffset),
-          undefined,
-          mergeTableCellAttrs(cell, {
-            width: newWidth,
-            widthType: "dxa",
-            colwidth: null,
-          }),
-        );
-      }
-      cellOffset += cell.nodeSize;
-      cellColIdx += colspan;
-    });
-    rowOffset += row.nodeSize;
-  });
-
-  view.dispatch(tr);
 }

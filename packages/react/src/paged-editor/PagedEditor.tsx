@@ -177,14 +177,7 @@ import { resizeColumnPair } from "@stll/folio-core/paged-layout/tableColumnResiz
 import { tableInsertButtonOffset } from "@stll/folio-core/paged-layout/tableInsertButtonGeometry";
 // Table commands (for quick-action insert buttons)
 import { addColumnRight, addRowBelow } from "@stll/folio-core/prosemirror";
-import {
-  expectImageAttrs,
-  expectTableAttrs,
-  expectTableCellAttrs,
-  mergeTableAttrs,
-  mergeTableCellAttrs,
-  mergeTableRowAttrs,
-} from "@stll/folio-core/prosemirror/attrs";
+import { expectImageAttrs } from "@stll/folio-core/prosemirror/attrs";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
   commitImageFloatMove,
@@ -215,6 +208,11 @@ import type {
   TemplatePreviewValues,
 } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import { getTemplateSlashMenu } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
+import {
+  commitColumnResize,
+  commitRightEdgeResize,
+  commitRowResize,
+} from "@stll/folio-core/prosemirror/tableResize";
 import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
 import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
 import { resolveHeaderFooterSelectionGeometry } from "@stll/folio-core/render-dom/HeaderFooterSelectionOverlay";
@@ -4583,60 +4581,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           const { left: newLeft, right: newRight } =
             resizeOrigWidthsRef.current;
 
-          // Find the table node and update columnWidths + cell widths
-          const $pos = view.state.doc.resolve(pmStart + 1);
-          for (let d = $pos.depth; d >= 0; d--) {
-            const node = $pos.node(d);
-            if (node.type.name === "table") {
-              const tablePos = $pos.before(d);
-              const tr = view.state.tr;
-              const tableAttrs = expectTableAttrs(node);
-              if (!tableAttrs.columnWidths) {
-                break;
-              }
-              const widths = [...tableAttrs.columnWidths];
-              widths[colIdx] = newLeft;
-              widths[colIdx + 1] = newRight;
-
-              // Update table columnWidths attr
-              tr.setNodeMarkup(
-                tablePos,
-                undefined,
-                mergeTableAttrs(node, { columnWidths: widths }),
-              );
-
-              // Update cell width attrs in each row
-              let rowOffset = tablePos + 1;
-              // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
-              node.forEach((row) => {
-                let cellOffset = rowOffset + 1;
-                let cellColIdx = 0;
-                // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
-                row.forEach((cell) => {
-                  const cellAttrs = expectTableCellAttrs(cell);
-                  const colspan = cellAttrs.colspan || 1;
-                  if (cellColIdx === colIdx || cellColIdx === colIdx + 1) {
-                    const newWidth = cellColIdx === colIdx ? newLeft : newRight;
-                    tr.setNodeMarkup(
-                      tr.mapping.map(cellOffset),
-                      undefined,
-                      mergeTableCellAttrs(cell, {
-                        width: newWidth,
-                        widthType: "dxa",
-                        colwidth: null,
-                      }),
-                    );
-                  }
-                  cellOffset += cell.nodeSize;
-                  cellColIdx += colspan;
-                });
-                rowOffset += row.nodeSize;
-              });
-
-              view.dispatch(tr);
-              break;
-            }
-          }
+          commitColumnResize(view, { pmStart, colIdx, newLeft, newRight });
         }
         return;
       }
@@ -4659,36 +4604,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           const rowIdx = resizeRowIndexRef.current;
           const newHeight = resizeRowOrigHeightRef.current;
 
-          const $pos = view.state.doc.resolve(pmStart + 1);
-          for (let d = $pos.depth; d >= 0; d--) {
-            const node = $pos.node(d);
-            if (node.type.name === "table") {
-              const tablePos = $pos.before(d);
-              const tr = view.state.tr;
-
-              // Walk to the target row
-              let rowOffset = tablePos + 1;
-              let idx = 0;
-              // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
-              node.forEach((row) => {
-                if (idx === rowIdx) {
-                  tr.setNodeMarkup(
-                    tr.mapping.map(rowOffset),
-                    undefined,
-                    mergeTableRowAttrs(row, {
-                      height: newHeight,
-                      heightRule: "atLeast",
-                    }),
-                  );
-                }
-                rowOffset += row.nodeSize;
-                idx++;
-              });
-
-              view.dispatch(tr);
-              break;
-            }
-          }
+          commitRowResize(view, { pmStart, rowIdx, newHeight });
         }
         return;
       }
@@ -4711,58 +4627,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           const colIdx = resizeRightEdgeColIndexRef.current;
           const newWidth = resizeRightEdgeOrigWidthRef.current;
 
-          const $pos = view.state.doc.resolve(pmStart + 1);
-          for (let d = $pos.depth; d >= 0; d--) {
-            const node = $pos.node(d);
-            if (node.type.name === "table") {
-              const tablePos = $pos.before(d);
-              const tr = view.state.tr;
-
-              // Update columnWidths — only change last column
-              const tableAttrs = expectTableAttrs(node);
-              if (!tableAttrs.columnWidths) {
-                break;
-              }
-              const widths = [...tableAttrs.columnWidths];
-              widths[colIdx] = newWidth;
-
-              tr.setNodeMarkup(
-                tablePos,
-                undefined,
-                mergeTableAttrs(node, { columnWidths: widths }),
-              );
-
-              // Update cell width attrs in the last column of each row
-              let rowOffset = tablePos + 1;
-              // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
-              node.forEach((row) => {
-                let cellOffset = rowOffset + 1;
-                let cellColIdx = 0;
-                // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
-                row.forEach((cell) => {
-                  const cellAttrs = expectTableCellAttrs(cell);
-                  const colspan = cellAttrs.colspan || 1;
-                  if (cellColIdx === colIdx) {
-                    tr.setNodeMarkup(
-                      tr.mapping.map(cellOffset),
-                      undefined,
-                      mergeTableCellAttrs(cell, {
-                        width: newWidth,
-                        widthType: "dxa",
-                        colwidth: null,
-                      }),
-                    );
-                  }
-                  cellOffset += cell.nodeSize;
-                  cellColIdx += colspan;
-                });
-                rowOffset += row.nodeSize;
-              });
-
-              view.dispatch(tr);
-              break;
-            }
-          }
+          commitRightEdgeResize(view, { pmStart, colIdx, newWidth });
         }
         return;
       }
