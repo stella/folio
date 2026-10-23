@@ -136,6 +136,20 @@ read-only refusal policy. Adapters thread host callbacks and cover only their
 explicit menu operations; native copy, cut, and paste events stay in the shared
 controller seam.
 
+Image resize dimensions and handle types have one pure owner:
+`packages/core/src/utils/imageResize.ts`. Both adapters pass unscaled drag
+deltas and the initial image dimensions to that owner. Locked corners follow
+the dominant drag axis and clamp one common scale; edge handles leave the
+other dimension unchanged. Adapter code retains coordinate-space conversion,
+preview placement, lifecycle, and chrome.
+
+`folio-geometry-owners/image-resize-owner` requires each adapter's resize
+handler to call the core owner. It rejects local min/max bounds (including
+aliases), conditional clamps of its result, and duplicate handle unions. Its
+fixtures exercise both production adapter paths. New geometry ownership slices
+should migrate their call sites
+and add an equivalent guard, not add another adapter-local implementation.
+
 ### Seam 7 — Operation / Edit API (the agentic surface)
 
 A stable, versioned, documented schema of edit operations over `Document`

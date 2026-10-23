@@ -105,6 +105,7 @@ export default library({
     "./.oxlint-plugins/folio-find-navigation.ts",
     "./.oxlint-plugins/folio-identity-attributes.ts",
     "./.oxlint-plugins/folio-painted-text.ts",
+    "./.oxlint-plugins/folio-geometry-owners.ts",
     "./.oxlint-plugins/folio-verbatim-capture.ts",
     "./.oxlint-plugins/folio-ref-mirrors.ts",
     "./.oxlint-plugins/no-untranslated-jsx-literal.ts",
@@ -136,6 +137,16 @@ export default library({
     "test/__fixtures__/**",
   ],
   overrides: [
+    {
+      files: [
+        "packages/react/src/paged-editor/ImageSelectionOverlay.tsx",
+        "packages/vue/src/components/ImageSelectionOverlay.vue",
+        "test/__fixtures__/geometry-owner/**",
+      ],
+      rules: {
+        "folio-geometry-owners/image-resize-owner": "error",
+      },
+    },
     {
       files: ["packages/*/src/**/*.{ts,tsx,js,jsx,vue}"],
       rules: {
