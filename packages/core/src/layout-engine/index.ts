@@ -359,6 +359,14 @@ function layoutDocumentPass(
     }
 
     const pageBeforeBlockLayout = paginator.getCurrentState().page.number;
+    const stateBeforeBlockLayout = paginator.getCurrentState();
+    const suppressDocumentStartAutomaticSpaceBefore =
+      i === 0 &&
+      block.kind === "paragraph" &&
+      block.attrs?.automaticSpacing?.before === true &&
+      stateBeforeBlockLayout.page.number === 1 &&
+      stateBeforeBlockLayout.topMargin === initialConfig.margins.top &&
+      stateBeforeBlockLayout.cursorY === stateBeforeBlockLayout.topMargin;
     switch (block.kind) {
       case "paragraph":
         layoutParagraph({
@@ -367,7 +375,9 @@ function layoutDocumentPass(
           paginator,
           contentWidth: paginator.columnWidth,
           footnoteHeightById: options.footnoteHeightById,
-          suppressSpaceBefore: breakDecision.suppressSpaceBefore,
+          suppressSpaceBefore:
+            breakDecision.suppressSpaceBefore ||
+            suppressDocumentStartAutomaticSpaceBefore,
         });
         break;
 

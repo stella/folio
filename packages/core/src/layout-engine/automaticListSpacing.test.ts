@@ -48,6 +48,64 @@ const numberedParagraph = ({
 });
 
 describe("automatic numbered-list spacing", () => {
+  test("drops automatic before-space only at document start", () => {
+    const documentStart: ParagraphBlock = {
+      kind: "paragraph",
+      id: "document-start",
+      runs: [{ kind: "text", text: "document-start" }],
+      attrs: {
+        spacing: { before: 18 },
+        automaticSpacing: { before: true },
+      },
+    };
+    const later: ParagraphBlock = {
+      ...documentStart,
+      id: "later",
+      runs: [{ kind: "text", text: "later" }],
+    };
+    const authored: ParagraphBlock = {
+      ...documentStart,
+      id: "authored",
+      attrs: { spacing: { before: 18 } },
+    };
+    const withTopMargin = {
+      ...layoutOptions,
+      margins: { ...layoutOptions.margins, top: 50 },
+    };
+
+    const startLayout = layoutDocument(
+      [documentStart],
+      [paragraphMeasure],
+      withTopMargin,
+    );
+    const laterLayout = layoutDocument(
+      [{ ...numberedParagraph({ id: "prior", numId: 4 }), attrs: {} }, later],
+      [paragraphMeasure, paragraphMeasure],
+      withTopMargin,
+    );
+    const authoredLayout = layoutDocument(
+      [authored],
+      [paragraphMeasure],
+      withTopMargin,
+    );
+    const headerInsetLayout = layoutDocument(
+      [documentStart],
+      [paragraphMeasure],
+      {
+        ...withTopMargin,
+        firstPageMargins: { ...withTopMargin.margins, top: 70 },
+      },
+    );
+
+    expect(startLayout.pages.at(0)?.fragments.at(0)?.y).toBe(50);
+    expect(laterLayout.pages.at(0)?.fragments.map(({ y }) => y)).toEqual([
+      50, 86,
+    ]);
+    expect(authoredLayout.pages.at(0)?.fragments.at(0)?.y).toBe(68);
+    expect(headerInsetLayout.pages.at(0)?.fragments.at(0)?.y).toBe(88);
+    expect(documentStart.attrs?.spacing).toEqual({ before: 18 });
+  });
+
   test("suppresses automatic spacing inside one sequence", () => {
     const first = numberedParagraph({
       id: "first",
