@@ -57,6 +57,13 @@ import {
 import { requestDeterministicParaIds } from "../extensions/features/ParaIdAllocatorExtension";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
 import { canonicalFieldNode } from "../fieldRepresentation";
+import {
+  normalizeKeptRangeBoundaries,
+  type RemovedSubtree,
+  removeResolvedSubtree,
+  revisionLayerRemovesContent,
+  type RevisionSelection,
+} from "../keptRangeBoundaries";
 import { resolveStateStory } from "../markupViewProjection";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import {
@@ -166,14 +173,6 @@ export function removeCommentMark(commentId: number): Command {
 
 type ResolveMode = "accept" | "reject";
 
-const revisionLayerRemovesContent = (
-  layer: TrackedRevisionAncestor,
-  mode: ResolveMode,
-): boolean =>
-  mode === "accept"
-    ? layer.type === "deletion" || layer.type === "moveFrom"
-    : layer.type === "insertion" || layer.type === "moveTo";
-
 /**
  * Resolve a tracked change: accept or reject.
  * - Accept: keep insertions (remove mark), delete deletions (remove text)
@@ -186,6 +185,19 @@ const revisionLayerRemovesContent = (
  * the operation matches every revision mark or property-change entry in the
  * range (the bulk accept-all/reject-all path).
  */
+/**
+ * A range a resolution takes out. Only {@link removeResolvedSubtree} answers
+ * for what it holds, so no range can drop the boundaries inside it.
+ */
+type RemovedRange = {
+  from: number;
+  to: number;
+  removals: readonly RemovedSubtree[];
+};
+
+const keptIn = (range: RemovedRange): PMNode[] =>
+  range.removals.flatMap(({ kept }) => kept);
+
 function resolveChange(
   from: number,
   to: number,
@@ -258,7 +270,27 @@ function resolveChange(
       const tr = state.tr;
       // Joins below re-read the runs they move themselves.
       tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
-      const deleteRanges: { from: number; to: number }[] = [];
+      /** Content this resolution takes out, and what each removal keeps. */
+      const deleteRanges: RemovedRange[] = [];
+      /** The boundaries removed content left standing, for the range repair. */
+      const keptBoundaries = new Set<PMNode>();
+      /** What this resolution resolves, for what removed content keeps. */
+      const selection: RevisionSelection = {
+        mode,
+        resolves: (revisionId) =>
+          revisionSet === null || revisionSet.has(revisionId),
+      };
+      const removeRange = (
+        rangeFrom: number,
+        rangeTo: number,
+        removed: RemovedSubtree,
+      ): void => {
+        deleteRanges.push({
+          from: rangeFrom,
+          to: rangeTo,
+          removals: [removed],
+        });
+      };
       /** Where resolved inline content began and ended, in `state.doc`. */
       const resolvedBoundaries: number[] = [];
       const pPrMarkOps: PPrMarkOp[] = [];
@@ -414,7 +446,7 @@ function resolveChange(
               resolves: resolvesRevision,
             })
           ) {
-            deleteRanges.push({ from: pos, to: nodeEnd });
+            removeRange(pos, nodeEnd, removeResolvedSubtree(node, selection));
             return false;
           }
           const released = withoutResolvedEnclosures(node, resolvesRevision);
@@ -506,7 +538,13 @@ function resolveChange(
                   selected(layer) && revisionLayerRemovesContent(layer, mode),
               )
             ) {
-              deleteRanges.push({ from: rangeFrom, to: rangeTo });
+              removeRange(
+                rangeFrom,
+                rangeTo,
+                removeResolvedSubtree(node, selection),
+              );
+              // The removal answers for everything inside the node.
+              if (!node.isLeaf) return false;
             } else {
               tr.removeMark(rangeFrom, rangeTo, nestedMark);
               const retained = retainedTrackedRevisionMark(
@@ -525,7 +563,13 @@ function resolveChange(
         }
 
         if (removesNode) {
-          deleteRanges.push({ from: rangeFrom, to: rangeTo });
+          removeRange(
+            rangeFrom,
+            rangeTo,
+            removeResolvedSubtree(node, selection),
+          );
+          // The removal answers for everything inside the node.
+          if (!node.isLeaf) return false;
         }
 
         if (
@@ -560,14 +604,15 @@ function resolveChange(
       if (revisionSet === null) {
         // Adjacent inline ranges have no paragraph boundary between them, so
         // one replacement has the same mapping outside the deleted content.
-        const coalescedDeleteRanges: { from: number; to: number }[] = [];
+        const coalescedDeleteRanges: RemovedRange[] = [];
         for (const range of deleteRanges) {
           const previous = coalescedDeleteRanges.at(-1);
           if (previous && range.from <= previous.to) {
             previous.to = Math.max(previous.to, range.to);
+            previous.removals = [...previous.removals, ...range.removals];
             continue;
           }
-          coalescedDeleteRanges.push({ from: range.from, to: range.to });
+          coalescedDeleteRanges.push({ ...range });
         }
         rangesToDelete = coalescedDeleteRanges;
       }
@@ -575,6 +620,7 @@ function resolveChange(
         const start = tr.doc.resolve(range.from);
         const field = start.parent;
         if (
+          keptIn(range).length === 0 &&
           field.type.name === "structuredField" &&
           start.parentOffset === 0 &&
           range.to === start.end()
@@ -586,7 +632,10 @@ function resolveChange(
           tr.replaceWith(position, position + field.nodeSize, empty);
           continue;
         }
-        tr.delete(range.from, range.to);
+        const kept = keptIn(range);
+        for (const boundary of kept) keptBoundaries.add(boundary);
+        if (kept.length === 0) tr.delete(range.from, range.to);
+        else tr.replaceWith(range.from, range.to, kept);
       }
       // A text box goes with its anchor, and before any paragraph mark joins:
       // the box stands between its paragraph and the next one.
@@ -951,6 +1000,7 @@ function resolveChange(
           tr.delete(carrier.position, carrier.position + carrier.size);
         }
       }
+      normalizeKeptRangeBoundaries(tr, keptBoundaries);
       if (tr.steps.length > 0) {
         dispatch(tr);
       }
@@ -1666,12 +1716,16 @@ const resolveAllChanges =
         positionMap: result.positionMap,
       }),
     );
+    // The resolved ranges are positions in the resolved document: the range
+    // repair's steps map them too.
+    const resolvedAt = tr.steps.length;
+    normalizeKeptRangeBoundaries(tr, result.keptBoundaries);
     // Resolution is a reproducible projection. Schema fillers, including cells
     // a table-repair plugin adds, need the same identities on every reading.
     requestDeterministicParaIds(tr, `resolve-all:${mode}`);
     markChangedParagraphRanges(tr, {
       ranges: finalRevisionParagraphRanges(result),
-      mappingFrom: tr.steps.length,
+      mappingFrom: resolvedAt,
       replacesStepMapAt: 0,
     });
     markParagraphPropertySourceTransfers(tr, result.transfers);

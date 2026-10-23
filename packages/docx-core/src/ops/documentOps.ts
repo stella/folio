@@ -16,6 +16,11 @@ export {
 
 export { withBodyContent } from "./blocks";
 export { paragraphMarkOutcome } from "./blockDeletion";
+export {
+  type BoundaryOccurrence,
+  planWellFormedRanges,
+  type WellFormedRangePlan,
+} from "./rangeBoundaries";
 export { captureDocumentOp } from "./wire";
 export {
   compareGaps,

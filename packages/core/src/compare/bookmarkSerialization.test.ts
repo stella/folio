@@ -59,7 +59,7 @@ describe("tracked bookmark serialization", () => {
     expect(xml).not.toContain("deleted");
   });
 
-  test("rejecting an inserted range removes its bookmark boundaries", async () => {
+  test("rejecting an inserted range keeps its bookmark where the insertion was", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await withTrackedBookmark("ins", "inserted "),
     );
@@ -69,9 +69,12 @@ describe("tracked bookmark serialization", () => {
     }
     reviewer.resolveReviewedStory({ story, view: "original" });
 
+    // A bookmark is a position, not inserted content: it stays, emptied,
+    // between the text either side of the insertion.
     const xml = await documentPartOf(await reviewer.toBuffer());
-    expect(xml).not.toContain("bookmarkStart");
-    expect(xml).not.toContain("bookmarkEnd");
     expect(xml).not.toContain("inserted");
+    expect(xml).toMatch(
+      /Before <\/w:t><\/w:r><w:bookmarkStart w:id="9" w:name="TrackedTerm"\/><w:bookmarkEnd w:id="9"\/><w:r><w:t>after\./u,
+    );
   });
 });
