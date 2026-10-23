@@ -67,6 +67,7 @@ import {
   calculateTypographyMetrics,
   cjkLineHeightStyle,
   complexScriptLineHeightStyle,
+  scriptLineHeightStyle,
 } from "./lineTypography";
 import { getListMarkerInlineWidth } from "./listMarkerWidth";
 import {
@@ -79,7 +80,7 @@ import {
   measureRun,
   measureTextWidth,
 } from "./measureProvider";
-import type { FontStyle } from "./measureTypes";
+import type { FontMetrics, FontStyle } from "./measureTypes";
 import {
   canonicalLineWidth,
   DEFAULT_FONT_SIZE,
@@ -397,6 +398,52 @@ export function measureParagraph(
     if (!lineFontMetrics) {
       lineFontMetrics = line.maxTabFontMetrics;
       fontSize = lineFontMetrics ? line.maxTabFontSize : paragraphFontSize;
+    }
+    let consumedText: { fontSize: number; metrics: FontMetrics } | undefined;
+    for (let runIndex = line.fromRun; runIndex <= line.toRun; runIndex++) {
+      const run = runs[runIndex];
+      if (!run || !isTextRun(run)) {
+        continue;
+      }
+      const start = runIndex === line.fromRun ? line.fromChar : 0;
+      const end = runIndex === line.toRun ? line.toChar : run.text.length;
+      if (end <= start) {
+        continue;
+      }
+      const style = runToFontStyle(run);
+      const lineHeightStyle = scriptLineHeightStyle({
+        run,
+        style: cjkLineHeightStyle(
+          run,
+          complexScriptLineHeightStyle(run, style),
+        ),
+        unshiftedFontSize:
+          run.fontSize ?? attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE,
+      });
+      const scriptFontSize = lineHeightStyle.fontSize ?? DEFAULT_FONT_SIZE;
+      const textMetrics = getFontMetrics(lineHeightStyle);
+      if (
+        !consumedText ||
+        scriptFontSize > consumedText.fontSize ||
+        (scriptFontSize === consumedText.fontSize &&
+          isCjkFont(lineHeightStyle.fontFamily ?? "") &&
+          textMetrics.singleLineRatio > consumedText.metrics.singleLineRatio)
+      ) {
+        consumedText = { fontSize: scriptFontSize, metrics: textMetrics };
+      }
+    }
+    if (consumedText) {
+      const replacesCurrentMetrics =
+        !line.maxFontMetrics ||
+        consumedText.fontSize > fontSize ||
+        (consumedText.fontSize === fontSize &&
+          isCjkFont(consumedText.metrics.fontFamily ?? "") &&
+          consumedText.metrics.singleLineRatio >
+            (lineFontMetrics?.singleLineRatio ?? 0));
+      if (replacesCurrentMetrics) {
+        fontSize = consumedText.fontSize;
+        lineFontMetrics = consumedText.metrics;
+      }
     }
     const metrics =
       lineFontMetrics ??
@@ -979,15 +1026,19 @@ export function measureParagraph(
       const breakPolicy = effectiveLineBreakPolicy.provider;
       // Line height comes from the CJK-aware style; width measurement below
       // keeps `style` so wrapping is unchanged.
-      const lineHeightStyle = cjkLineHeightStyle(
-        textRun,
-        complexScriptLineHeightStyle(textRun, style),
-      );
-
-      updateMaxFont(lineHeightStyle);
+      const lineHeightStyle = scriptLineHeightStyle({
+        run: textRun,
+        style: cjkLineHeightStyle(
+          textRun,
+          complexScriptLineHeightStyle(textRun, style),
+        ),
+        unshiftedFontSize:
+          textRun.fontSize ?? attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE,
+      });
 
       if (!text || text.length === 0) {
         // Empty text run, just update position
+        updateMaxFont(lineHeightStyle);
         currentLine.toRun = runIndex;
         currentLine.toChar = 0;
         continue;

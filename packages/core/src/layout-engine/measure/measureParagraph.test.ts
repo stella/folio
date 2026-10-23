@@ -167,6 +167,66 @@ describe("script measurement", () => {
       buildRunFontStyle({ superscript: true }, "Calibri", 11).fontSize,
     ).toBe(7);
   });
+
+  test.each(["superscript", "subscript"] as const)(
+    "full-size %s metrics follow the consumed text across wrapped lines",
+    (script) => {
+      withFakeTextMeasure(() => {
+        const fullSize = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "full-size-script-reference",
+            runs: [{ kind: "text", text: "x", fontSize: 18 }],
+          },
+          200,
+        );
+        const scripted = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "full-size-script-line",
+            runs: [
+              { kind: "text", text: "xxxxx", fontSize: 12 },
+              {
+                kind: "text",
+                text: "abcdefghijkl",
+                fontSize: 18,
+                [script]: true,
+              },
+              { kind: "lineBreak" },
+              { kind: "text", text: "x", fontSize: 12 },
+            ],
+          },
+          30,
+        );
+
+        expect(scripted.lines).toHaveLength(5);
+        expect(scripted.lines.at(0)?.lineHeight).toBeCloseTo(
+          12 * PT_TO_PX * 1.15,
+          5,
+        );
+        expect(scripted.lines.at(0)?.ascent).toBeCloseTo(
+          12 * PT_TO_PX * 0.8,
+          5,
+        );
+        expect(scripted.lines.at(0)?.descent).toBeCloseTo(
+          12 * PT_TO_PX * 0.2,
+          5,
+        );
+        for (const line of scripted.lines.slice(1, 4)) {
+          expect(line.lineHeight).toBeCloseTo(
+            fullSize.lines.at(0)!.lineHeight,
+            5,
+          );
+          expect(line.ascent).toBeCloseTo(fullSize.lines.at(0)!.ascent, 5);
+          expect(line.descent).toBeCloseTo(fullSize.lines.at(0)!.descent, 5);
+        }
+        expect(scripted.lines.at(4)?.lineHeight).toBeCloseTo(
+          12 * PT_TO_PX * 1.15,
+          5,
+        );
+      }, fakeMeasure);
+    },
+  );
 });
 
 describe("run kerning threshold", () => {
